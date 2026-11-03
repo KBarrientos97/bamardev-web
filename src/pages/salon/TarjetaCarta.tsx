@@ -3,6 +3,7 @@ import IconoProducto from "../../components/IconoProducto";
 import { Badge } from "../../components/ui";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import type { Producto } from "../../types";
+import { controlaStock } from "../pos/useCarrito";
 
 /**
  * Un producto de la carta.
@@ -31,11 +32,19 @@ export default function TarjetaCarta({
   onAgregar: () => void;
   onQuitar: () => void;
 }) {
-  // Sólo los almacenables se quedan sin stock; un elaborado se prepara al
-  // momento y un combo se arma con lo que haya.
-  const controlaStock = producto.tipoProducto === "ALMACENABLE";
-  const agotado = controlaStock && producto.stockTotal <= 0;
+  // Sólo el elaborado no se agota: se prepara al momento. El combo tiene su
+  // propio stock (los que armó el local) y se agota como un producto. Antes la
+  // carta lo ofrecía siempre, sin decir cuántos quedaban, y como cobrar la
+  // mesa deja pasar el negativo, el stock del combo quedaba en rojo sin que
+  // nadie lo viera venir (POS-2).
+  const controla = controlaStock(producto);
+  const agotado = controla && producto.stockTotal <= 0;
   const enPedido = cantidad > 0;
+  // El "+" se apaga al llegar a lo que queda, como en la app (que usa la misma
+  // tarjeta del POS): avisa que ya no hay para prometer. No es un freno, y
+  // tocar la tarjeta sigue sumando, igual que en la app: cobrar la mesa deja
+  // pasar el negativo a propósito, porque lo servido no vuelve a la heladera.
+  const alTope = controla && cantidad >= producto.stockTotal;
 
   return (
     <li>
@@ -61,8 +70,20 @@ export default function TarjetaCarta({
               size={40}
             />
             {agotado && <Badge tono="rojo">Sin stock</Badge>}
-            {!agotado && controlaStock && producto.stockTotal <= producto.stockMinimo && (
-              <Badge tono="amarillo">{fmtCantidad(producto.stockTotal)} disp.</Badge>
+            {/* Cuántos quedan siempre, como en el Punto de Venta y en la app:
+                antes sólo bajo el mínimo, y el mesero no sabía qué podía
+                prometer hasta que se agotaba. Un span y no <Badge>: Badge
+                fuerza mayúsculas y "2 DISP." se leía como una sigla. */}
+            {!agotado && controla && (
+              <span
+                className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                  producto.stockTotal <= producto.stockMinimo
+                    ? "bg-warning-bg text-warning-text"
+                    : "bg-primary-50 text-primary-700"
+                }`}
+              >
+                {fmtCantidad(producto.stockTotal)} disp.
+              </span>
             )}
           </div>
           <h3 className="mt-2 line-clamp-2 min-h-[34px] text-[13px] font-bold leading-snug text-texto">
@@ -94,8 +115,10 @@ export default function TarjetaCarta({
             <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
             <button
               onClick={onAgregar}
+              disabled={alTope}
               aria-label="Uno más"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50"
+              title={alTope ? "No quedan más en la carta" : undefined}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50 disabled:opacity-30 disabled:hover:bg-transparent"
             >
               <Icon name="plus" size={15} />
             </button>

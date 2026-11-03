@@ -106,6 +106,17 @@ vi.mock("./PantallaHistorial", () => ({
   ),
 }));
 
+// El cierre de caja (CAJA-3): basta saber que se abre y que se puede volver.
+vi.mock("./PantallaCierre", () => ({
+  default: (props: { onAtras: () => void }) => (
+    <div>
+      <p>cierre de caja</p>
+      <button onClick={props.onAtras}>volver del cierre</button>
+    </div>
+  ),
+  CierreOk: () => <p>caja cerrada</p>,
+}));
+
 // La venta: muestra el carrito (y lo que va arriba) y deja quitar una
 // línea o ir a cobrar.
 vi.mock("./PantallaVenta", () => ({
@@ -183,9 +194,17 @@ vi.mock("./PantallaCobro", () => ({
 }));
 
 vi.mock("./PantallaCredito", () => ({
-  default: (props: { avisoPropinas?: string; onConfirmar: (c: unknown, p: unknown[]) => void }) => (
+  default: (props: {
+    avisoPropinas?: string;
+    onConfirmar: (c: unknown, p: unknown[]) => void;
+    error?: string;
+    rechazosPorLimite?: number;
+  }) => (
     <div>
       <p>{props.avisoPropinas ?? "fiado sin propinas"}</p>
+      {/* CRE-4: lo que le llega a la pantalla del fiado cuando el backend lo frena. */}
+      <p>rechazos por límite: {props.rechazosPorLimite ?? 0}</p>
+      {props.error && <p>error del fiado: {props.error}</p>}
       <button
         onClick={() =>
           props.onConfirmar({ clienteNombre: "Rosa", fechaCompromiso: "2026-10-13T12:00:00-04:00" }, [])
@@ -448,6 +467,60 @@ describe("cobrar una cita", () => {
     fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
     expect(screen.getByRole("button", { name: "pagar 230 con propina" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "fiar con propina" })).not.toBeInTheDocument();
+  });
+
+  it("CRE-4: si el backend frena el fiado por el límite, la pantalla del fiado se entera y el carrito queda", async () => {
+    // Antes sólo se pintaba el texto: la firma del encargado no se ofrecía y
+    // volver a tocar "Registrar fiado" rebotaba igual.
+    const { ApiError } = await import("../../lib/api");
+    const rechazo = Object.assign(
+      new ApiError("El cliente pasa su límite de crédito: hace falta la autorización de un encargado", 403),
+      // El ApiError de este mock no lee el cuerpo: el código se pone a mano.
+      { codigo: "LIMITE_CREDITO" },
+    );
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(rechazo);
+    sesion.features = ["pos", "caja", "agenda", "propinas", "fiado"];
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "fiar con propina" }));
+    expect(screen.getByText("rechazos por límite: 0")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "fiar" }));
+    });
+    expect(screen.getByText("rechazos por límite: 1")).toBeInTheDocument();
+    expect(screen.getByText(/error del fiado: El cliente pasa su límite/)).toBeInTheDocument();
+    expect(screen.queryByText("recibo")).not.toBeInTheDocument();
+
+    // El reintento (que la pantalla del fiado manda con la firma) sale con el
+    // mismo carrito y la misma clave: el rechazo no creó nada.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "fiar" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.crearVenta).mock.calls[1][0]).toEqual(vi.mocked(api.crearVenta).mock.calls[0][0]);
+    expect(screen.getByText("recibo")).toBeInTheDocument();
+  });
+
+  it("CRE-4: otro rechazo del fiado no se toma como el del límite", async () => {
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(new Error("Sin stock de Tinte raíz"));
+    sesion.features = ["pos", "caja", "agenda", "propinas", "fiado"];
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "fiar con propina" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "fiar" }));
+    });
+    expect(screen.getByText("rechazos por límite: 0")).toBeInTheDocument();
+    expect(screen.getByText(/error del fiado: Sin stock/)).toBeInTheDocument();
   });
 
   describe("QA PER-10: la cita entera con paquete", () => {
@@ -1127,5 +1200,34 @@ describe("Caja del instituto: el mismo POS en su propia ruta (26-oct)", () => {
     await act(async () => {});
     expect(screen.getByTestId("destino")).toHaveTextContent(/^\/pos$/);
     expect(screen.queryByText("ventas del turno")).not.toBeInTheDocument();
+  });
+});
+
+describe("CAJA-3: «Ir al cierre de caja» del aviso de no cerrar sesión con la caja abierta", () => {
+  it("llegar a /pos con el pedido abre el cierre, y el pedido se consume", async () => {
+    function Estado() {
+      return <p data-testid="estado">{JSON.stringify(useLocation().state)}</p>;
+    }
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/pos", state: { pantalla: "cierre" } }]}>
+        <Pos />
+        <Estado />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByText("cierre de caja")).toBeInTheDocument();
+    // Si quedara en el historial, un F5 (o abrir la caja siguiente, después
+    // de cerrar ésta) volvería a abrir el cierre.
+    expect(screen.getByTestId("estado")).toHaveTextContent("null");
+    fireEvent.click(screen.getByText("volver del cierre"));
+    await act(async () => {});
+    expect(screen.queryByText("cierre de caja")).not.toBeInTheDocument();
+  });
+
+  it("sin el pedido, /pos abre la venta como siempre", async () => {
+    await montar();
+    expect(screen.queryByText("cierre de caja")).not.toBeInTheDocument();
+    expect(screen.getByText("ir a cobrar")).toBeInTheDocument();
   });
 });

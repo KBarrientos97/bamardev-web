@@ -242,7 +242,9 @@ export default function NuevoGrupo({
       const g = await apiAcademia.crearGrupo({
         carreraId: carrera.id,
         almacenId,
-        ...(typeof aulaId === "number" ? { aulaId } : {}),
+        // «Sin aula» se manda a propósito (null): si se omite, el backend da
+        // la única aula de la sede (Lista 2 #6).
+        aulaId: typeof aulaId === "number" ? aulaId : null,
         dias,
         horaInicio,
         horaFin,

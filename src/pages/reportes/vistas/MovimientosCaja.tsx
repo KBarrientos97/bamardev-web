@@ -16,8 +16,9 @@ import {
   anuladosDelFiltro,
   aspectoMovimiento,
   efectoEnGanancia,
+  exportarMovimientos,
   filasPorMotivo,
-  hojaMovimientos,
+  hojaPaginaMovimientos,
   montoConSigno,
   netoDe,
   TEXTO_EFECTO,
@@ -27,6 +28,7 @@ import {
   type EfectoEnGanancia,
   type FilaPorMotivo,
 } from "./MovimientosCaja.datos";
+import { exportaElPeriodo } from "./todoElPeriodo";
 
 /**
  * Movimientos de caja: el efectivo que entró o salió del cajón SIN una venta
@@ -42,6 +44,11 @@ import {
  * quedó de cada motivo y abajo, plegados, los anulados (un anulado y su
  * anulación ya no inflan Entradas y Salidas: el backend los saca de la lista y
  * de los totales). Sin motivos, la pantalla es la de siempre.
+ *
+ * La lista va de a 50, pero en el restaurante el Excel es del período entero,
+ * con el filtro puesto: lo baja de a 200 recién al tocar el botón
+ * (`todoElPeriodo.ts`, REP-03). Antes traía la página que se veía, y en los
+ * demás rubros la sigue trayendo (`exportaElPeriodo`).
  */
 
 const LIMITE = 50;
@@ -56,7 +63,7 @@ type Filtro = (typeof FILTROS)[number][0];
 
 export default function MovimientosCaja() {
   const { rango, veReporte } = useReporte();
-  const { negocio } = useAuth();
+  const { negocio, rubro } = useAuth();
   const conFiado = tieneFeature(negocio?.features, "fiado");
   const [tipo, setTipo] = useState<Filtro>("");
   // Al cambiar el período, el local o el filtro se vuelve a la página 1: la 7
@@ -72,7 +79,19 @@ export default function MovimientosCaja() {
     [rango.desde, rango.hasta, rango.sucursalId, tipo, page],
   );
   const d = datos.datos;
-  useExportar("movimientos-de-caja", d && d.items.length > 0 ? () => [hojaMovimientos(d.items, d.pagina, tipo)] : null);
+  useExportar(
+    "movimientos-de-caja",
+    d && d.items.length > 0 ? () => [hojaPaginaMovimientos(d.items, d.pagina, tipo)] : null,
+    // En el restaurante el botón baja el período entero, con el filtro puesto
+    // (REP-03); los demás rubros, la página que se ve.
+    exportaElPeriodo(rubro)
+      ? () =>
+          exportarMovimientos(
+            (pag, limite) => api.reporteCaja({ ...rango, ...(tipo ? { tipo } : {}), page: pag, limite }),
+            tipo,
+          )
+      : undefined,
+  );
 
   return (
     <Cargador

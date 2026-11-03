@@ -232,11 +232,13 @@ function FormMesa({
         ...(nombre.trim() ? { nombre: nombre.trim() } : {}),
         zonaId,
         capacidad: cap,
-        ...(nota.trim() ? { notaMesa: nota.trim() } : {}),
         activa,
       };
-      if (mesa) await api.actualizarMesa(mesa.id, input);
-      else await api.crearMesa(input);
+      // `nota`, que es lo que espera el backend: viajaba como `notaMesa` y la
+      // nota nunca se guardaba. Al editar va SIEMPRE, también vacía: es la
+      // única forma de borrarla (sin la clave, el backend deja la que estaba).
+      if (mesa) await api.actualizarMesa(mesa.id, { ...input, nota: nota.trim() });
+      else await api.crearMesa({ ...input, ...(nota.trim() ? { nota: nota.trim() } : {}) });
       onGuardado();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");

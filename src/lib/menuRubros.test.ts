@@ -55,9 +55,11 @@ const TODAS = [
   "notas",
   "planilla_docente",
   "preinscripcion_online",
+  // Tickets y despacho: sólo restaurante (permisos.ts lo encierra en el rubro).
+  "tickets_pedido",
 ];
 
-const BLOQUES: Bloque[] = ["agenda", "vender", "stock", "administracion"];
+const BLOQUES: Bloque[] = ["agenda", "vender", "pantallas", "stock", "administracion"];
 // Reportes va entre los grupos, de primer nivel: junta los de todas las
 // funcionalidades y ya no cuelga de Finanzas (13-oct-2026).
 const GRUPOS = ["Equipo", "Finanzas", "Reportes", "Marketing"];
@@ -141,7 +143,7 @@ describe("menú: Supervisión del billar", () => {
 /**
  * El instituto: un menú por rol. Todo lo que es sólo del instituto vive en UN
  * grupo "Academia" (dueño, 26-oct); afuera quedan vender, "Mi negocio" (la
- * gente, los avisos y la contraseña) y, para el dueño, los módulos generales
+ * gente, sólo del administrador) y, para el dueño, los módulos generales
  * sueltos (no se le quita ninguno). Nada de lo que no existe en el rubro.
  */
 describe("menú de ACADEMIA", () => {
@@ -167,15 +169,19 @@ describe("menú de ACADEMIA", () => {
 
   it("la recepción: el grupo Academia con lo del día y Cobranza, y aparte Punto de venta y Caja", () => {
     const m = menuDe("CAJERO");
-    expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
+    expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender"]);
     // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para
     // productos; desde el 26-oct se entra por Cobranza, sin un "Cobrar" suelto.
     // 26-oct: sin "Hoy" (sus clases del día están arriba del Calendario).
     expect(academia(m)).toEqual(["Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
-    // Su cuenta, como cualquiera: en "Mi negocio" y no al pie del menú.
-    expect(bloque(m, "administracion")).toEqual(["Mi negocio"]);
-    expect(miNegocio(m)).toEqual(["Notificaciones", "Cambiar mi contraseña"]);
+    // M6 (02-nov): "Mi negocio" es del administrador. La recepción no tiene
+    // personal, usuarios ni roles, así que el grupo no existe para ella (ni su
+    // ruta: cada pantalla pide su permiso). Sus avisos y su contraseña viven
+    // en el menú de usuario, al pie de la barra.
+    expect(bloque(m, "administracion")).toBeUndefined();
+    expect(todos(m)).not.toContain("Mi negocio");
+    expect(todos(m)).not.toContain("Notificaciones");
   });
 
   it("Caja tiene su ruta: se enciende ella y no Punto de venta (26-oct)", () => {
@@ -209,7 +215,7 @@ describe("menú de ACADEMIA", () => {
     expect(bloque(m, "administracion")).toEqual([
       "Mi negocio", "Inventario", "Gastos operativos", "Reportes de ventas", "Mi página",
     ]);
-    expect(miNegocio(m)).toEqual(["Personal", "Usuarios", "Roles", "Notificaciones", "Cambiar mi contraseña"]);
+    expect(miNegocio(m)).toEqual(["Personal", "Usuarios", "Roles"]);
     const nombres = todos(m);
     // Cursos, sedes, planilla y ajustes son pestañas de Configuración, no
     // renglones del menú (26-oct); las sedes tampoco se repiten en Inventario.
@@ -241,8 +247,9 @@ describe("menú de ACADEMIA", () => {
 
   it("el docente ve sólo sus clases, dentro de Academia (sin «Mi planilla»: es del admin, D1 del 22-oct)", () => {
     const m = menuDe("PROFESIONAL");
-    expect(m.map((b) => b.bloque)).toEqual(["instituto", "administracion"]);
-    expect(miNegocio(m)).toEqual(["Notificaciones", "Cambiar mi contraseña"]);
+    // M6: sin "Mi negocio" (es del administrador); el docente cierra en Academia.
+    expect(m.map((b) => b.bloque)).toEqual(["instituto"]);
+    expect(todos(m)).not.toContain("Mi negocio");
     expect(academia(m)).toEqual(["Mis clases de hoy", "Pasar lista", "Notas"]);
     expect(m[0].nodos[0].item.a).toBe("/academia/mis-clases");
   });
@@ -278,5 +285,73 @@ describe("menú de ACADEMIA", () => {
     const m = construirMenu((s) => puedeVer(c, s), "RESTAURANTE");
     for (const b of m) expect(b.bloque).not.toBe("instituto");
     expect(todos(m)).not.toContain("Academia");
+  });
+});
+
+/**
+ * Tickets y despacho (29-oct): el bloque Pantallas, después de Vender, sólo en
+ * un restaurante con el extra. El encargado ve las dos pantallas; la caja,
+ * que también entrega, sólo Despacho.
+ */
+describe("menú: Pantallas (tickets y despacho)", () => {
+  const pantallas = (rol: Plantilla, rubro: string, features: string[]) => {
+    const c = ctxDe(rol, rubro, features);
+    return (
+      construirMenu((s) => puedeVer(c, s), rubro)
+        .find((b) => b.bloque === "pantallas")
+        ?.nodos.map((n) => n.item.label) ?? []
+    );
+  };
+  const CON = ["pos", "caja", "catalogo", "usuarios", "tickets_pedido"];
+
+  it("el restaurante con el extra ve el bloque después de Vender", () => {
+    const c = ctxDe("ADMIN", "RESTAURANTE", CON);
+    const orden = construirMenu((s) => puedeVer(c, s), "RESTAURANTE").map((b) => b.bloque);
+    expect(orden.indexOf("pantallas")).toBe(orden.indexOf("vender") + 1);
+    expect(pantallas("ADMIN", "RESTAURANTE", CON)).toEqual(["Tickets y pedidos", "Despacho"]);
+    expect(pantallas("SUPERVISOR", "RESTAURANTE", CON)).toEqual(["Tickets y pedidos", "Despacho"]);
+  });
+
+  it("la caja ve Despacho, no el diseño de la TV", () => {
+    expect(pantallas("CAJERO", "RESTAURANTE", CON)).toEqual(["Despacho"]);
+  });
+
+  it("sin el extra no existe, aunque la lista de features venga vacía", () => {
+    // Fail-open de siempre: con la lista vacía todo se ve, salvo lo estricto.
+    expect(pantallas("ADMIN", "RESTAURANTE", ["pos", "caja"])).toEqual([]);
+    expect(pantallas("ADMIN", "RESTAURANTE", [])).toEqual([]);
+  });
+
+  it.each(["FARMACIA", "BILLAR", "PELUQUERIA"])("%s no lo ve aunque le prendan el extra", (rubro) => {
+    expect(pantallas("ADMIN", rubro, CON)).toEqual([]);
+  });
+});
+
+/**
+ * Configuración (el recibo y el logo), con su permiso desde el 31-oct: el
+ * logo es también el de la página pública y quién lo cambia lo decide el
+ * dueño en Roles (Kevin). Antes entraba cualquiera que configurara la TV de
+ * tickets o el menú.
+ */
+describe("menú: Configuración del recibo y el logo", () => {
+  const CON = ["pos", "caja", "catalogo", "usuarios", "tickets_pedido", "menu_digital"];
+
+  it("de fábrica la ven el dueño y el encargado, no la caja", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", CON), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("SUPERVISOR", "RESTAURANTE", CON), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", CON), "config_recibo")).toBe(false);
+  });
+
+  it("sacado el permiso, el encargado sigue con la TV de tickets y el menú", () => {
+    const c = ctxDe("SUPERVISOR", "RESTAURANTE", CON, { sin: ["recibo.configurar"] });
+    expect(puedeVer(c, "config_recibo")).toBe(false);
+    expect(puedeVer(c, "tickets")).toBe(true);
+    expect(puedeVer(c, "menu_digital")).toBe(true);
+  });
+
+  it("con uno solo de los dos extras el dueño la ve igual", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja", "menu_digital"]), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja", "tickets_pedido"]), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(false);
   });
 });

@@ -97,6 +97,8 @@ export interface PropsProductos {
   /** El selector de modo, arriba de todo. */
   selector: ReactNode;
   c: Paleta;
+  /** Cómo llama el rubro a un local: «sede» en el instituto (Lista 2 #9). */
+  sucursal?: string;
   onAviso: (t: string) => void;
 }
 
@@ -108,6 +110,7 @@ export default function CatalogoProductosEditor({
   onFijados,
   selector,
   c,
+  sucursal = "sucursal",
   onAviso,
 }: PropsProductos) {
   const [elegir, setElegir] = useState(false);
@@ -243,7 +246,7 @@ export default function CatalogoProductosEditor({
             ))}
           </ol>
           <p className="text-xs text-texto-4">
-            El nombre, el precio y el ícono salen de tu sistema: si los cambiás allá, cambian acá. Si una sucursal tiene
+            El nombre, el precio y el ícono salen de tu sistema: si los cambiás allá, cambian acá. Si una {sucursal} tiene
             su propio precio o no ofrece un producto, tu página lo respeta.
             {ocultos > 0 &&
               ` ${ocultos === 1 ? "Uno está inactivo o dado de baja" : `${ocultos} están inactivos o dados de baja`}: no se ve${ocultos === 1 ? "" : "n"} hasta que lo${ocultos === 1 ? "" : "s"} reactives.`}

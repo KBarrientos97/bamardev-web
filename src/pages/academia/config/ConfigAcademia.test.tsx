@@ -68,7 +68,7 @@ describe("Configuración del instituto", () => {
     montar("/configuracion/sedes");
     const nav = screen.getByRole("navigation", { name: "Configuración del instituto" });
     // Sin pestaña «Aulas» suelta: las aulas viven dentro de cada sede (WEB-8).
-    expect(Array.from(nav.querySelectorAll("a"), (a) => a.textContent)).toEqual(["Cursos", "Sedes", "Planilla docentes", "Ajustes"]);
+    expect(Array.from(nav.querySelectorAll("a"), (a) => a.textContent)).toEqual(["Cursos", "Sedes", "Planilla docentes", "Ajustes", "Configuración rápida"]);
     expect(screen.getByRole("link", { name: "Sedes" })).toHaveAttribute("aria-current", "page");
   });
 
@@ -81,6 +81,8 @@ describe("Configuración del instituto", () => {
     expect(screen.queryByRole("link", { name: "Aulas" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Cursos" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ajustes" })).toBeInTheDocument();
+    // M1: la Configuración rápida cuelga de la misma sección que Ajustes.
+    expect(screen.getByRole("link", { name: "Configuración rápida" })).toHaveAttribute("href", "/configuracion/rapida");
   });
 
   it("fuera del instituto Almacenes queda como siempre: sin pestañas", () => {
@@ -91,28 +93,23 @@ describe("Configuración del instituto", () => {
   });
 });
 
-describe("L1 · «Configuración rápida» a la derecha de las pestañas", () => {
-  const boton = () => screen.queryByRole("button", { name: /^Configuración rápida/ });
-
-  it("quien configura el instituto ve el botón (no una tarjeta) mientras falten pasos", async () => {
+describe("M1 · «Configuración rápida» es una pestaña, no un botón", () => {
+  it("no hay botón suelto en la barra de pestañas", async () => {
     sesion.usuario.permisos = ["academia.configurar"];
     montar("/configuracion/academia");
     await act(async () => {});
-    expect(boton()).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Configuración rápida/ })).not.toBeInTheDocument();
   });
 
-  it("quien no configura no lo ve", async () => {
-    montar("/configuracion/academia");
-    await act(async () => {});
-    expect(boton()).not.toBeInTheDocument();
+  it("quien sólo ve la planilla (sin Ajustes) no tiene esa pestaña", () => {
+    sesion.puede = (s: string) => s === "academia_planilla";
+    montar("/academia/planilla");
+    expect(screen.queryByRole("link", { name: "Configuración rápida" })).not.toBeInTheDocument();
   });
 
   it("fuera del instituto no existe", async () => {
     sesion.rubro = "RESTAURANTE";
-    sesion.usuario.permisos = ["academia.configurar"];
     montar("/inventario/almacenes");
-    await act(async () => {});
-    expect(boton()).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Configuración rápida" })).not.toBeInTheDocument();
   });
 });

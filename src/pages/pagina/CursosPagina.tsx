@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { Icon } from "../../components/Icon";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { TonosPagina } from "../../lib/pagina/estilosPagina";
 import { fechaCorta, horarioGrupo } from "../../lib/academia/formato";
@@ -9,7 +10,10 @@ import type { CursoPublico } from "../../lib/academia/tipos";
  * §9, ronda 2): una tarjeta por curso publicado, con su foto, sus módulos, el
  * precio de las dos formas ("Bs 500 por módulo · o Bs 1.350 todo junto") con
  * lo que se ahorra, y el próximo inicio con los lugares que quedan. El botón
- * lleva a inscribirse (P2), donde se elige el horario.
+ * lleva a inscribirse (P2), donde se elige el horario. Un grupo lleno ya no
+ * recibe preinscripciones (M5): si todos lo están, en lugar del botón dice que
+ * se comuniquen con la academia. Al pie, «Pagar mi inscripción»: entrar con el
+ * carnet para pagar (M5).
  *
  * Va con los tonos del estilo de la página (estilos en línea, como el resto
  * de la vista): no es la app, es la vitrina del negocio.
@@ -32,6 +36,7 @@ export default function CursosPagina({
   radio,
   titulo,
   urlInscribirme,
+  urlMiCuenta,
   escritorio,
 }: {
   cursos: CursoPublico[];
@@ -43,6 +48,8 @@ export default function CursosPagina({
   titulo: ReactNode;
   /** Sin esto (la vista previa del editor) el botón se dibuja pero no lleva a ningún lado. */
   urlInscribirme?: (grupoId: number) => string;
+  /** «Pagar mi inscripción» (M5). Sin esto (la vista previa) no se dibuja. */
+  urlMiCuenta?: string;
   escritorio: boolean;
 }) {
   const visibles = cursos.filter((c) => c.grupos.length > 0 || c.desde != null);
@@ -61,7 +68,137 @@ export default function CursosPagina({
           <TarjetaCurso key={c.id} c={c} t={t} colorBoton={colorBoton} radio={radio} urlInscribirme={urlInscribirme} />
         ))}
       </div>
+      {urlMiCuenta && <SeccionPagar url={urlMiCuenta} t={t} colorBoton={colorBoton} radio={radio} escritorio={escritorio} />}
     </section>
+  );
+}
+
+/**
+ * «Pagar mi inscripción» como sección propia y no un enlace al pie: es la
+ * puerta de los que ya se preinscribieron, y un renglón subrayado no se veía.
+ * En la compu, el texto a la izquierda y el botón a la derecha; en el celular,
+ * uno debajo del otro. Los tres pasos dicen qué va a pasar antes de entrar.
+ */
+function SeccionPagar({
+  url,
+  t,
+  colorBoton,
+  radio,
+  escritorio,
+}: {
+  url: string;
+  t: TonosPagina;
+  colorBoton: string;
+  radio: CSSProperties["borderRadius"];
+  escritorio: boolean;
+}) {
+  const pasos = ["Entrá con tu carnet", "Elegí qué pagar", "Pagá con QR y subí el comprobante"];
+  return (
+    <div
+      aria-labelledby="t-pagar-inscripcion"
+      role="region"
+      // La misma tarjeta que las de curso (fondo, borde, sombra y radio del
+      // estilo), sin franja de color: el dueño la quería igual a las demás.
+      style={{
+        marginTop: 8,
+        background: t.tarjeta,
+        border: t.borde ? `1px solid ${t.borde}` : undefined,
+        boxShadow: t.sombra ?? undefined,
+        borderRadius: radio,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: escritorio ? "22px 26px" : 18,
+          display: "flex",
+          flexDirection: escritorio ? "row" : "column",
+          alignItems: escritorio ? "center" : "stretch",
+          gap: escritorio ? 28 : 16,
+        }}
+      >
+        <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              flexShrink: 0,
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: colorBoton,
+              color: "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="qr" size={22} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: t.texto3Tarjeta }}>¿YA TE PREINSCRIBISTE?</p>
+            <h3 id="t-pagar-inscripcion" style={{ margin: "2px 0 0", fontSize: 19, fontWeight: 700, color: t.textoTarjeta }}>
+              Pagá tu inscripción o tus cuotas desde acá
+            </h3>
+            <ol
+              style={{
+                margin: "10px 0 0",
+                padding: 0,
+                listStyle: "none",
+                display: "flex",
+                flexDirection: escritorio ? "row" : "column",
+                flexWrap: "wrap",
+                gap: escritorio ? "6px 18px" : 6,
+              }}
+            >
+              {pasos.map((p, i) => (
+                <li key={p} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: t.texto2Tarjeta }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      background: velo(t.textoTarjeta, 0.08),
+                      color: t.textoTarjeta,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  {p}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+        <a
+          href={url}
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            background: colorBoton,
+            color: "#ffffff",
+            fontWeight: 600,
+            fontSize: 15,
+            padding: escritorio ? "13px 24px" : "13px 0",
+            borderRadius: 12,
+            textDecoration: "none",
+            boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)",
+          }}
+        >
+          Pagar mi inscripción
+          <Icon name="arrowRight" size={16} />
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -79,7 +216,9 @@ function TarjetaCurso({
   urlInscribirme?: (grupoId: number) => string;
 }) {
   const foto = urlDeImagen(c.fotoUrl);
-  const primero = c.grupos[0];
+  // M5: un grupo lleno ya no recibe preinscripciones; se manda al primero con lugar.
+  const primero = c.grupos.find((g) => g.cuposLibres !== 0);
+  const todosLlenos = c.grupos.length > 0 && !primero;
   const modulos = c.modulos?.length ? c.modulos : c.materias;
   const n = modulos.length;
   const bs = (x: number) => `Bs ${x.toLocaleString("es-BO")}`;
@@ -197,8 +336,13 @@ function TarjetaCurso({
               </div>
             )
           )}
-          {!primero && (
+          {!primero && !todosLlenos && (
             <p style={{ margin: 0, fontSize: 13, color: t.texto3Tarjeta }}>Próximo grupo por confirmar.</p>
+          )}
+          {todosLlenos && (
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: t.textoTarjeta }}>
+              Los grupos están llenos, comunicate con la academia.
+            </p>
           )}
           {primero &&
             (urlInscribirme ? (

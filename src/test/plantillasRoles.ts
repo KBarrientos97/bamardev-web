@@ -84,6 +84,12 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "personal.gestionar": null,
   "billar.operar": "billar",
   "billar.admin": "billar",
+  // Tickets de pedido (extra de restaurante, 29-oct).
+  "tickets.despachar": "tickets_pedido",
+  "tickets.configurar": "tickets_pedido",
+  "menu_digital.editar": "menu_digital",
+  // El recibo y el logo (31-oct): también con el menú (OTRAS_FEATURES_DE_PERMISO).
+  "recibo.configurar": "tickets_pedido",
   // Educación (PLAN-ACADEMIAS-TECNICO §5.2).
   "academia.ver": "academia",
   "academia.configurar": "academia",
@@ -101,6 +107,15 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "notas.reabrir": "notas",
   "planilla.ver": "planilla_docente",
   "planilla.liquidar": "planilla_docente",
+};
+
+/**
+ * Otras features que también habilitan un permiso (`otrasFeatures` del
+ * catálogo): alcanza con una. El recibo y el logo valen con los tickets o con
+ * el menú digital.
+ */
+export const OTRAS_FEATURES_DE_PERMISO: Record<string, string[]> = {
+  "recibo.configurar": ["menu_digital"],
 };
 
 export const PLANTILLAS = {
@@ -172,6 +187,10 @@ export const PLANTILLAS = {
     "personal.gestionar",
     "billar.operar",
     "billar.admin",
+    "tickets.despachar",
+    "tickets.configurar",
+    "menu_digital.editar",
+    "recibo.configurar",
     "academia.ver",
     "academia.configurar",
     "academia.grupos",
@@ -248,6 +267,10 @@ export const PLANTILLAS = {
     "fichatecnica.editar",
     "billar.operar",
     "billar.admin",
+    "tickets.despachar",
+    "tickets.configurar",
+    "menu_digital.editar",
+    "recibo.configurar",
     // Coordinación (§5.3): academia.* salvo configurar, asistencia y notas.
     // Sin planilla.ver desde el 22-oct: la planilla es sólo del admin (D1).
     "academia.ver",
@@ -289,6 +312,7 @@ export const PLANTILLAS = {
     "fichatecnica.ver",
     "fichatecnica.editar",
     "billar.operar",
+    "tickets.despachar",
     // Secretaría (§5.3).
     "academia.ver",
     "academia.inscribir",

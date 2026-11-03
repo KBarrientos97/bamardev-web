@@ -6,6 +6,7 @@ import { esPositivo } from "../../../lib/dinero";
 import { fmtFecha, fmtMoney, fmtNum } from "../../../lib/format";
 import { tzOffsetMin } from "../../../lib/rangoApi";
 import { esFarmacia } from "../../../lib/rubro";
+import { usePalabras } from "../../../lib/academia/usePalabras";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import type { EstadoDocumento, PaginaMeta, ReporteComprasGeneral, ReporteComprasMensual } from "../../../types";
@@ -70,7 +71,10 @@ function DelPeriodo({ pestana }: { pestana: Exclude<Pestana, "mensual"> }) {
   );
   const d = estado.datos;
   const conInsumos = usaInsumos(rubro, negocio?.features);
-  const almacen = esFarmacia(rubro) ? "Sucursal" : "Almacén";
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9): la
+  // sede es un almacén SUCURSAL y en pantalla nunca dice "almacén".
+  const pal = usePalabras();
+  const almacen = esFarmacia(rubro) ? "Sucursal" : rubro === "ACADEMIA" ? pal.Sede : "Almacén";
 
   useExportar(
     "compras",

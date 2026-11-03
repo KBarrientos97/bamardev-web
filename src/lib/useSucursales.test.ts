@@ -14,6 +14,7 @@ vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { sucursalId: sesion.sucursalId },
     negocio: { features: sesion.features, tipoNegocio: sesion.tipoNegocio },
+    rubro: sesion.tipoNegocio,
   }),
 }));
 
@@ -56,6 +57,15 @@ beforeEach(() => {
 });
 
 describe("useSucursales", () => {
+  it("Lista 2 #9: «Todas las sedes» en el instituto, «Todas las sucursales» en los demás", async () => {
+    sesion.features = ["inventario", "reportes", "multi_almacen"];
+    expect((await abrir()).opciones[0]).toEqual(["", "Todas las sucursales"]);
+    sesion.tipoNegocio = "ACADEMIA";
+    const suc = await abrir();
+    expect(suc.opciones[0]).toEqual(["", "Todas las sedes"]);
+    expect(suc.todas).toBe("Todas las sedes");
+  });
+
   it("con varios almacenes y dos locales se elige", async () => {
     sesion.features = ["inventario", "reportes", "multi_almacen"];
     expect((await abrir()).elegir).toBe(true);

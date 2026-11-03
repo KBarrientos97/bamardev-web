@@ -1,5 +1,6 @@
 import { esCero, esPositivo, excede } from "./dinero";
 import { fmtNum } from "./format";
+import { normalizar } from "./texto";
 import type { EstadoGasto, FiltroGasto, Gasto, MetodoPagoGasto, PlantillaGasto } from "../types";
 
 /**
@@ -196,4 +197,41 @@ export function proximosAutomaticos(
       (a, b) =>
         a.proximaCarga!.localeCompare(b.proximaCarga!) || a.concepto.localeCompare(b.concepto, "es"),
     );
+}
+
+/**
+ * El código que el backend le pone a una categoría nueva con ese nombre: es el
+ * espejo de `codigoDesdeNombre` (gastos.catalogo.ts del backend). Mayúsculas,
+ * sin tildes —la ñ también pierde la suya, como allá— y lo demás a guiones
+ * bajos: "Música en vivo" → MUSICA_EN_VIVO.
+ */
+export function codigoDesdeNombre(nombre: string): string {
+  const codigo = nombre
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return codigo || "OTROS";
+}
+
+/**
+ * La categoría que ya existe con ese nombre, si hay: por el código que le
+ * daría el backend o por el nombre sin tildes ni mayúsculas (una del pack
+ * renombrada conserva su código: "Electricidad" sigue siendo LUZ).
+ *
+ * Se mira ANTES de crear porque el backend, ante un nombre que ya tiene,
+ * devuelve la que hay y, si se le pidió otro tipo de costo, se lo cambia.
+ * Escribir "Gas" en "Nueva categoría" con el Fijo que viene marcado pasaba el
+ * Gas del pack a fijo, y con él todos los gastos de gas de los meses pasados
+ * en el punto de equilibrio, sin que nadie lo hubiera pedido.
+ */
+export function categoriaConNombre<T extends { codigo: string; nombre: string }>(
+  categorias: readonly T[],
+  nombre: string,
+): T | undefined {
+  const codigo = codigoDesdeNombre(nombre);
+  const buscado = normalizar(nombre.trim());
+  return categorias.find((c) => c.codigo === codigo || normalizar(c.nombre.trim()) === buscado);
 }

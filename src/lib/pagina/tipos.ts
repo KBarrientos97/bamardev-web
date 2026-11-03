@@ -139,6 +139,11 @@ export interface SucursalPublica {
    * general. Opcional: un backend anterior no lo manda.
    */
   whatsappUrl?: string | null;
+  /**
+   * El pin del mapa (PLAN-PAGINA-WEB §3.1): si la sucursal tiene ubicación y
+   * el dueño no ocultó el mapa. Ausente o null = sin pin.
+   */
+  ubicacion?: { lat: number; lng: number } | null;
 }
 
 /**
@@ -269,7 +274,6 @@ export interface SucursalEditor {
   esPrincipal: boolean;
   publicarEnPagina: boolean;
   horarioTexto: string | null;
-  mapsUrl: string | null;
   /** El horario por día; opcional por lo mismo que en `SucursalPublica` (ausente = null). */
   horarioSemanal?: Tramo[] | null;
   /** El WhatsApp propio (sólo dígitos, con 591), o null = usa el general. */
@@ -277,6 +281,21 @@ export interface SucursalEditor {
   /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
   publicaReservas?: boolean;
   slugReservas?: string | null;
+  /** Dónde está: se marca en Mi página o en la ficha de la sucursal. */
+  latitud?: number | null;
+  longitud?: number | null;
+}
+
+/** La ficha única de una sucursal (Configuración › Sucursales, 02-nov). */
+export interface FichaSucursal {
+  id: number;
+  nombre: string;
+  direccion: string | null;
+  telefono: string | null;
+  esPrincipal: boolean;
+  latitud: number | null;
+  longitud: number | null;
+  horarioSemanal: Tramo[] | null;
 }
 
 export interface AjustesPagina {
@@ -311,6 +330,10 @@ export interface AjustesPagina {
   regalos?: ConfigRegalos;
   /** La sección Cursos de un instituto (P1). Opcional por lo mismo. */
   mostrarCursos?: boolean;
+  /** El mapa con las sucursales (PLAN-PAGINA-WEB §3.1). Opcional por lo mismo. */
+  mostrarMapa?: boolean;
+  /** Mostrar el horario de las sucursales (se carga en su ficha). Opcional por lo mismo. */
+  mostrarHorario?: boolean;
   actualizadoEn: string;
 }
 
@@ -403,6 +426,12 @@ export interface EstadoEditor {
     iniciales: string;
   };
   pagina: AjustesPagina;
+  /**
+   * Si hay cambios sin publicar (PLAN-PAGINA-WEB §4.2). Lo demás de este
+   * estado ya viene con el borrador encima. Opcional: un backend anterior
+   * no lo manda.
+   */
+  borrador?: { hay: boolean; actualizadoEn: string | null };
   imagenes: { logo: string | null; portada: string | null };
   enlaces: EnlaceEditor[];
   sucursales: SucursalEditor[];
@@ -442,6 +471,8 @@ export type CambiosPagina = Partial<
     | "catalogoModo"
     | "pedidosWhatsapp"
     | "mostrarCursos"
+    | "mostrarMapa"
+    | "mostrarHorario"
   >
 > & {
   regalosActivo?: boolean;

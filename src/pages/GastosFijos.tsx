@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { CampoCategoria, PanelCategorias } from "../components/CategoriasGasto";
 import { Icon } from "../components/Icon";
 import InputMonto from "../components/InputMonto";
 import { EncabezadoPagina } from "../components/filtros";
@@ -20,8 +21,10 @@ import { api } from "../lib/api";
 import { esPositivo } from "../lib/dinero";
 import { leerMonto, montoParaEditar } from "../lib/montoTecleado";
 import { fmtFecha, fmtMoney } from "../lib/format";
+import { esFarmacia } from "../lib/rubro";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
+import { useAuth } from "../store/AuthContext";
 import type {
   CategoriaGasto,
   FrecuenciaGasto,
@@ -55,6 +58,7 @@ const ETIQUETA_FRECUENCIA: Record<FrecuenciaGasto, string> = Object.fromEntries(
 
 export default function GastosFijos() {
   const { sucursalId } = useSucursales();
+  const { rubro } = useAuth();
   const [editando, setEditando] = useState<PlantillaGasto | null | undefined>(
     undefined,
   );
@@ -199,6 +203,18 @@ export default function GastosFijos() {
             mostrarAviso(texto);
             lista.recargar();
           }}
+          // El mismo panel que el formulario de Gastos operativos (G-03): la
+          // regla del alquiler también necesita su categoría. La farmacia
+          // administra las suyas desde su pantalla y acá queda como estaba.
+          onCatalogo={
+            esFarmacia(rubro)
+              ? undefined
+              : (nuevo) => {
+                  categorias.setDatos(nuevo);
+                  // Un renombre cambia cómo se lee cada regla de la lista.
+                  lista.recargar();
+                }
+          }
         />
       )}
 
@@ -238,6 +254,7 @@ function FormPlantilla({
   sucursalSugerida,
   onCerrar,
   onGuardado,
+  onCatalogo,
 }: {
   /** null = alta. */
   plantilla: PlantillaGasto | null;
@@ -245,6 +262,8 @@ function FormPlantilla({
   sucursalSugerida: number | null;
   onCerrar: () => void;
   onGuardado: (texto: string) => void;
+  /** Ver `FormGasto`: sin esto, el desplegable de siempre y nada más. */
+  onCatalogo?: (lista: CategoriaGasto[]) => void;
 }) {
   const [concepto, setConcepto] = useState(plantilla?.concepto ?? "");
   const [categoria, setCategoria] = useState(plantilla?.categoria ?? "");
@@ -272,6 +291,9 @@ function FormPlantilla({
   const [guardando, setGuardando] = useState(false);
   /** Ver `Gastos.tsx`: el estado no frena el segundo clic del mismo tick. */
   const enVuelo = useRef(false);
+  /** true mientras el cuerpo del formulario muestra el panel de categorías. */
+  const [conCategorias, setConCategorias] = useState(false);
+  const panel = conCategorias && !!onCatalogo;
 
   const guardar = async () => {
     if (enVuelo.current) return;
@@ -329,22 +351,53 @@ function FormPlantilla({
   return (
     <Modal
       abierto
-      titulo={plantilla ? "Editar gasto automático" : "Nuevo gasto automático"}
-      subtitulo="Se va a crear solo cada vez que corresponda"
-      onClose={onCerrar}
+      titulo={
+        panel
+          ? "Categorías de gasto"
+          : plantilla
+            ? "Editar gasto automático"
+            : "Nuevo gasto automático"
+      }
+      subtitulo={panel ? "Tocá una para elegirla" : "Se va a crear solo cada vez que corresponda"}
+      // Con el panel abierto, cerrar vuelve a la regla: ver `FormGasto`.
+      onClose={panel ? () => setConCategorias(false) : onCerrar}
       cerrarAlClicAfuera={false}
       acciones={
-        <>
-          <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
-            Cancelar
+        panel ? (
+          <Boton variante="ghost" onClick={() => setConCategorias(false)}>
+            Volver al gasto automático
           </Boton>
-          <Boton onClick={guardar} disabled={guardando}>
-            {guardando ? "Guardando…" : "Guardar"}
-          </Boton>
-        </>
+        ) : (
+          <>
+            <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
+              Cancelar
+            </Boton>
+            <Boton onClick={guardar} disabled={guardando}>
+              {guardando ? "Guardando…" : "Guardar"}
+            </Boton>
+          </>
+        )
       }
     >
-      <div className="space-y-3">
+      {panel && onCatalogo && (
+        <PanelCategorias
+          categorias={categorias}
+          elegida={categoria}
+          onElegir={(c) => {
+            setCategoria(c.codigo);
+            setConCategorias(false);
+          }}
+          onCatalogo={(lista) => {
+            // Se retiró la que estaba elegida: se pide elegir otra, menos si es
+            // la que la regla ya tenía (ver `FormGasto`).
+            const estaba = categorias.some((c) => c.codigo === categoria);
+            const seRetiro = estaba && !lista.some((c) => c.codigo === categoria);
+            if (seRetiro && categoria !== plantilla?.categoria) setCategoria("");
+            onCatalogo(lista);
+          }}
+        />
+      )}
+      <div className="space-y-3" hidden={panel}>
         <Campo label="Concepto">
           <Input
             value={concepto}
@@ -353,16 +406,13 @@ function FormPlantilla({
             autoFocus
           />
         </Campo>
-        <Campo label="Categoría">
-          <Select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-            <option value="">Elegí una categoría</option>
-            {categorias.map((c) => (
-              <option key={c.codigo} value={c.codigo}>
-                {c.nombre} ({c.tipoCosto === "FIJO" ? "Fijo" : "Variable"})
-              </option>
-            ))}
-          </Select>
-        </Campo>
+        <CampoCategoria
+          categorias={categorias}
+          valor={categoria}
+          onChange={setCategoria}
+          original={plantilla ? { codigo: plantilla.categoria, nombre: plantilla.categoriaNombre } : null}
+          onAdministrar={onCatalogo ? () => setConCategorias(true) : undefined}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Cada cuánto">
             <Select

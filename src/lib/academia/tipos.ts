@@ -6,6 +6,8 @@
  * "Supuesto" para revisarlo contra el backend real.
  */
 
+import type { Tramo } from "../pagina/tipos";
+
 /** Las listas paginadas del contrato: `?page=1&pageSize=20` (máx 100). */
 export interface Paginado<T> {
   items: T[];
@@ -765,8 +767,16 @@ export interface Sede {
   nombre: string;
   direccion: string | null;
   telefono: string | null;
-  /** Texto libre ("Lun a Vie 8:00–20:00"); es el mismo que muestra Mi página. */
+  /**
+   * El horario en texto libre de antes ("Lun a Vie 8:00–20:00"). Ya no se
+   * edita: queda para las sedes que todavía no cargaron el horario por día.
+   */
   horarioAtencion: string | null;
+  /** El horario por día (02-nov), el mismo de la ficha de cualquier sucursal. */
+  horarioSemanal: Tramo[] | null;
+  /** La ubicación en el mapa de la página; las dos juntas o ninguna. */
+  latitud: number | null;
+  longitud: number | null;
   esPrincipal: boolean;
   /** Aulas activas. */
   aulas: number;
@@ -779,7 +789,9 @@ export interface SedeInput {
   nombre?: string;
   direccion?: string | null;
   telefono?: string | null;
-  horarioAtencion?: string | null;
+  horarioSemanal?: Tramo[] | null;
+  latitud?: number | null;
+  longitud?: number | null;
 }
 
 /** Una franja tal como la ve una sede (C5). */
@@ -1327,6 +1339,35 @@ export interface CursoPublico {
   planes?: { id: number; nombre: string; generado: PlanGenerado | null }[];
 }
 
+/** Cómo se cobra desde la página (M5): el QR del banco, el QR fijo o nada en línea. */
+export type ModoDeCobro = "AUTOMATIZADO" | "FIJO" | "NINGUNO";
+
+/** Una cosa que el estudiante puede pagar ahora: el monto lo calcula el servidor (M5). */
+export interface OpcionDePago {
+  clave: "COMPLETO" | "CUOTA";
+  titulo: string;
+  detalle: string;
+  monto: number;
+  /** Lo que se ahorra pagando todo junto, si hay descuento. */
+  ahorro: number | null;
+  etiqueta: string;
+  vence: string | null;
+}
+
+/** El bloque `pago` del estado de cuenta público (M5). */
+export interface PagoPublico {
+  /** El estado de la inscripción: PREINSCRITA, ACTIVA, OBSERVACION… */
+  estado: string;
+  modo: ModoDeCobro;
+  /** Sólo el pago cubre el cupo: con el grupo lleno una preinscripción no ofrece pagar. */
+  grupoLleno: boolean;
+  opciones: OpcionDePago[];
+  /** El comprobante que la recepción todavía no resolvió. */
+  enRevision: { monto: number; etiqueta: string; enviadoEn: string } | null;
+  /** El último comprobante, si lo rechazaron (la deuda sigue y puede subir otro). */
+  rechazado: { motivo: string | null; monto: number; etiqueta: string; en: string | null } | null;
+}
+
 /** `GET /publico/academia/:sub/pagar/:token` (P6): nunca CI, teléfono ni apellidos. */
 export interface EstadoCuentaPublico {
   instituto: { nombre: string; logoUrl: string | null; telefono: string | null };
@@ -1337,6 +1378,44 @@ export interface EstadoCuentaPublico {
   proxima: { concepto: string; saldo: number; vence: string; vencida: boolean } | null;
   saldoTotal: number;
   qr: { tipo: "FIJO"; imagenUrl: string } | null;
+  pago: PagoPublico;
+}
+
+/**
+ * `POST /publico/academia/:sub/mi-cuenta` (M5): una inscripción vigente y su
+ * enlace. Desde el 03-nov se entra sólo con el carnet, así que no trae el
+ * nombre ni nada de la persona: sólo lo que hace falta para elegir cuál pagar.
+ */
+export interface InscripcionDeMiCuenta {
+  token: string;
+  estado: string;
+  curso: string;
+  grupo: string;
+  sede: string;
+}
+
+// ── Pagos en línea: la bandeja de la recepción (M5) ─────────────────────────
+
+export type EstadoPagoEnLinea = "POR_REVISAR" | "APROBADO" | "RECHAZADO";
+
+export interface PagoEnLinea {
+  id: number;
+  estado: EstadoPagoEnLinea;
+  opcion: "COMPLETO" | "CUOTA";
+  etiqueta: string;
+  monto: number;
+  creadoEn: string;
+  revisadoEn: string | null;
+  motivoRechazo: string | null;
+  inscripcionId: number;
+  /** PREINSCRITA mientras el pago no se aprobó. */
+  estadoInscripcion: string;
+  alumno: string;
+  curso: string;
+  grupo: string;
+  sede: string;
+  /** Sólo resuelto: el aviso por WhatsApp (manual, `wa.me`). */
+  whatsapp: { telefono: string | null; aTutor: boolean; url: string } | null;
 }
 
 export interface PreinscripcionInput {

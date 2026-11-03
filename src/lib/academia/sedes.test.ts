@@ -83,7 +83,11 @@ describe("C4 · textos chicos de la sede", () => {
   });
 
   it("qué datos faltan, sin contar los vacíos como cargados", () => {
-    expect(datosQueFaltan({ direccion: "  ", telefono: null, horarioAtencion: "Lun a Vie" })).toEqual(["la dirección", "el teléfono"]);
-    expect(datosQueFaltan({ direccion: "A", telefono: "1", horarioAtencion: "B" })).toEqual([]);
+    expect(datosQueFaltan({ direccion: "  ", telefono: null, horarioSemanal: null, horarioAtencion: "Lun a Vie" })).toEqual(["la dirección", "el teléfono"]);
+    expect(datosQueFaltan({ direccion: "A", telefono: "1", horarioSemanal: null, horarioAtencion: "B" })).toEqual([]);
+    // El horario por día cuenta como cargado; una lista vacía y un texto en blanco, no.
+    const lunes = [{ dia: 1, desde: "08:00", hasta: "12:00" }];
+    expect(datosQueFaltan({ direccion: "A", telefono: "1", horarioSemanal: lunes, horarioAtencion: null })).toEqual([]);
+    expect(datosQueFaltan({ direccion: "A", telefono: "1", horarioSemanal: [], horarioAtencion: " " })).toEqual(["el horario de atención"]);
   });
 });

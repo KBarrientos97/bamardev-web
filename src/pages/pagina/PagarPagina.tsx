@@ -9,6 +9,7 @@ import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { Icon } from "../../components/Icon";
 import { Chip } from "../academia/piezas";
 import { NoDisponible } from "./PaginaPublica";
+import PagoEnLineaPublico from "./PagoEnLineaPublico";
 import { MarcaBamarDev } from "./VistaPagina";
 
 const bs = (n: number) => `Bs ${n.toLocaleString("es-BO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -22,10 +23,16 @@ function waDe(telefono: string | null): string | null {
 
 /**
  * P6 · Pagar (ronda 2, D10): el enlace personal que la recepción manda por
- * WhatsApp (`/p/<sub>/pagar/<token>`). El estudiante ve lo próximo que tiene
- * que pagar, su estado de cuenta y cómo pagar: el QR fijo del instituto si lo
- * tiene (escanea, paga y muestra el comprobante) o "pagá en el instituto".
- * El QR del banco por monto exacto, que se acredita solo, llega con BISA.
+ * WhatsApp (`/p/<sub>/pagar/<token>`) o al que se llega entrando con el carnet
+ * (`mi-cuenta`, M5). El estudiante ve lo próximo que
+ * tiene que pagar, su estado de cuenta y cómo pagar: con el QR fijo del
+ * instituto elige qué paga (completo, primer mes o la próxima cuota), escanea y
+ * sube el comprobante, que la recepción aprueba; sin QR, "pagá en la academia".
+ * El QR del banco por monto exacto, que se acredita solo, llega con BISA
+ * (`pago.modo === "AUTOMATIZADO"`, todavía no se ofrece).
+ *
+ * También sirve a una preinscripción (todavía sin cuotas): ahí es donde paga
+ * para asegurar el cupo.
  *
  * Nunca muestra el carnet, el teléfono ni los apellidos completos: lo manda
  * así el backend, y un token que no existe da "no disponible".
@@ -37,6 +44,8 @@ export default function PagarPagina() {
   const [d, setD] = useState<EstadoCuentaPublico | null>(null);
   const [error, setError] = useState("");
   const [copiado, setCopiado] = useState(false);
+  /** Sube cada vez que hay que pedir el estado de nuevo (subió un comprobante). */
+  const [vuelta, setVuelta] = useState(0);
 
   useEffect(() => {
     let vivo = true;
@@ -50,7 +59,7 @@ export default function PagarPagina() {
     return () => {
       vivo = false;
     };
-  }, [sub, token]);
+  }, [sub, token, vuelta]);
 
   useEffect(() => {
     if (d) document.title = `Estado de cuenta · ${d.instituto.nombre}`;
@@ -62,9 +71,12 @@ export default function PagarPagina() {
   const color = pagina ? paleta(pagina.color.hex).oscuro : "#111827";
   const logo = urlDeImagen(d.instituto.logoUrl);
   const wa = waDe(d.instituto.telefono);
-  // El QR fijo llega como data URL (cambio #25); una ruta del API, por las dudas.
-  const qr = d.qr ? (/^(data:|https?:)/.test(d.qr.imagenUrl) ? d.qr.imagenUrl : urlDeImagen(d.qr.imagenUrl)) : null;
   const p = d.proxima;
+  const preinscrita = d.pago.estado === "PREINSCRITA";
+  // Lo mismo que decide si `PagoEnLineaPublico` dibuja algo: sin pago que
+  // mostrar, la compu no parte la pantalla en dos.
+  const hayPago = !!d.pago.enRevision || preinscrita || d.pago.opciones.length > 0;
+  const dos = hayPago ? "lg:col-start-1" : "";
 
   async function copiar() {
     try {
@@ -77,8 +89,14 @@ export default function PagarPagina() {
 
   return (
     <div style={{ minHeight: "100dvh", background: "#F6F7F9", fontFamily: "Roboto, system-ui, sans-serif" }}>
-      <div className="mx-auto w-full max-w-[480px] space-y-4 px-4 py-6">
-        <header className="flex items-center gap-3">
+      {/* En el celular, una columna (saludo, pago, cuotas). En la compu, el pago
+          pasa a la derecha y queda a la vista mientras se recorren las cuotas. */}
+      <div
+        className={`mx-auto flex w-full max-w-[480px] flex-col gap-4 px-4 py-6 lg:py-10 ${
+          hayPago ? "lg:grid lg:max-w-[1080px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start lg:gap-x-6" : "lg:max-w-[640px]"
+        }`}
+      >
+        <header className="flex items-center gap-3 lg:col-span-2">
           {logo ? (
             <img src={logo} alt="" className="h-9 w-9 rounded-xl object-cover" />
           ) : (
@@ -89,7 +107,7 @@ export default function PagarPagina() {
           <span className="text-[15px] font-bold text-[#111827]">{d.instituto.nombre}</span>
         </header>
 
-        <section aria-labelledby="t-hola" className="space-y-1 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <section aria-labelledby="t-hola" className={`space-y-1 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm ${dos}`}>
           <h1 id="t-hola" className="text-xl font-bold text-[#111827]">
             Hola, {d.alumno.nombres.split(" ")[0]}
           </h1>
@@ -111,6 +129,10 @@ export default function PagarPagina() {
                 {p.vencida ? `Venció el ${fechaCorta(p.vence)}` : `Vence el ${fechaCorta(p.vence)}`}
               </p>
             </div>
+          ) : preinscrita ? (
+            <p className="mt-3 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4 text-sm text-[#374151]">
+              <strong className="text-[#111827]">Estás preinscrito.</strong> Tu inscripción se confirma con tu primer pago.
+            </p>
           ) : (
             <p className="mt-3 flex items-center gap-2 rounded-xl border border-[#A7F3D0] bg-[#ECFDF5] p-4 text-sm font-semibold text-[#047857]">
               <Icon name="checkCirculo" size={18} />
@@ -119,44 +141,14 @@ export default function PagarPagina() {
           )}
         </section>
 
-        {p && (
-          <section aria-label="Cómo pagar" className="space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
-            {qr ? (
-              <>
-                <img src={qr} alt={`QR de ${d.instituto.nombre} para pagar`} className="mx-auto w-full max-w-[240px] rounded-xl border border-[#E5E7EB]" />
-                <p className="text-center text-sm font-semibold text-[#111827]">Escaneá el QR con la app de tu banco</p>
-                <p className="text-center text-[13px] text-[#4B5563]">
-                  Pagá {bs(p.saldo)} (o una parte: lo que falte queda de saldo) y mandá el comprobante al instituto para que lo registren.
-                </p>
-                <a
-                  href={qr}
-                  download
-                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl py-2.5 text-center text-sm font-semibold text-white"
-                  style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
-                >
-                  <Icon name="download" size={16} />
-                  Descargar el QR
-                </a>
-                <p className="text-center text-[12px] text-[#6B7280]">Si pagás desde este mismo celular, descargalo y subilo en tu app del banco.</p>
-              </>
-            ) : (
-              <div className="flex items-start gap-3">
-                <span
-                  aria-hidden="true"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#374151]"
-                >
-                  <Icon name="home" size={18} />
-                </span>
-                <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-[#111827]">Pagá en el instituto</p>
-                  <p className="text-[13px] text-[#4B5563]">En la sede {d.grupo.sede}, en efectivo o con QR. Llevá tu carnet.</p>
-                </div>
-              </div>
-            )}
-          </section>
+        {hayPago && (
+          <div className="lg:sticky lg:top-6 lg:col-start-2 lg:row-span-4 lg:row-start-2">
+            <PagoEnLineaPublico d={d} sub={sub} token={token} color={color} whatsapp={wa} onCambio={() => setVuelta((v) => v + 1)} />
+          </div>
         )}
 
-        <section aria-labelledby="t-cuenta" className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+        {d.cuotas.length > 0 && (
+        <section aria-labelledby="t-cuenta" className={`overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm ${dos}`}>
           <h2 id="t-cuenta" className="border-b border-[#E5E7EB] px-5 py-3.5 text-sm font-bold text-[#111827]">
             Tu estado de cuenta
           </h2>
@@ -197,8 +189,9 @@ export default function PagarPagina() {
             <span className="tabular-nums">{bs(d.saldoTotal)}</span>
           </p>
         </section>
+        )}
 
-        <section className="space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm">
+        <section className={`space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm ${dos}`}>
           <p className="text-[13px] text-[#4B5563]">Guardá este enlace: siempre muestra tu estado de cuenta.</p>
           <button
             type="button"
@@ -211,7 +204,7 @@ export default function PagarPagina() {
           </button>
         </section>
 
-        <footer className="space-y-3 text-center text-[12px] text-[#6B7280]">
+        <footer className={`space-y-3 text-center text-[12px] text-[#6B7280] ${dos}`}>
           {wa && (
             <a
               href={wa}

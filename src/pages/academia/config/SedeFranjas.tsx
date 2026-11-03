@@ -168,7 +168,12 @@ export default function SedeFranjas({
       setFilas(f);
       setMalas(new Set());
       setResumen(r);
-      if (r.agregadas.length) onCambio?.();
+      if (r.agregadas.length) {
+        onCambio?.();
+        // Lista 2 #8: «Configuración rápida» seguía pidiendo las franjas recién
+        // cargadas con «Usar las típicas» (sólo «Guardar franjas» la avisaba).
+        avisarPrimerosPasos();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar las franjas típicas");
     } finally {

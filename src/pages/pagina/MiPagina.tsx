@@ -22,7 +22,7 @@ import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import { leerColoresDeImagen, muestrasDeColores } from "../../lib/pagina/coloresLogo";
 import { prepararImagen } from "../../lib/pagina/imagen";
 import { TOPE_CATALOGO } from "../../lib/pagina/catalogo";
-import { mismoHorario } from "../../lib/pagina/horario";
+import { resumenHorario } from "../../lib/pagina/horario";
 import type {
   AjustesPagina,
   CambiosPagina,
@@ -37,9 +37,9 @@ import type {
   SucursalEditor,
   TipoEnlace,
   Tipografia,
-  Tramo,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
+import { RUTA_SEDES } from "../../lib/academia/vista";
 import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
 import type { CursoPublico } from "../../lib/academia/tipos";
 import { numeroParaEditar } from "../../lib/pagina/whatsapp";
@@ -50,8 +50,8 @@ import CatalogoProductosEditor, { SelectorModoCatalogo } from "./CatalogoProduct
 import EditorPedidosRegalos from "./EditorPedidosRegalos";
 import { useAuthOpcional } from "../../store/AuthContext";
 import { tieneFeature } from "../../lib/permisos";
+import { conMayuscula, termino } from "../../lib/rubro";
 import EditorEnlace from "./EditorEnlace";
-import EditorHorario from "./EditorHorario";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
 import Seccion from "./Seccion";
@@ -155,27 +155,50 @@ function Imagen({
   );
 }
 
-/** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
-type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null; whatsapp: string };
+/**
+ * Lo que el dueño escribió en una sucursal y todavía no se guardó: sólo su
+ * WhatsApp. La dirección, la ubicación y el horario son de su ficha
+ * (Configuración › Sucursales, 02-nov).
+ */
+type BorradorSucursal = { whatsapp: string };
 
 /** Lo guardado de una sucursal, como borrador (para comparar y para seguir editando). */
-const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
-  horarioTexto: s.horarioTexto ?? "",
-  mapsUrl: s.mapsUrl ?? "",
-  horarioSemanal: s.horarioSemanal ?? null,
-  whatsapp: numeroParaEditar(s.whatsapp),
+const borradorDe = (s: SucursalEditor): BorradorSucursal => ({ whatsapp: numeroParaEditar(s.whatsapp) });
+
+/** Lo escrito, como lo guarda el backend (vacío = null). */
+const limpio = (b: BorradorSucursal) => ({ whatsapp: b.whatsapp.trim() || null });
+
+/** Lo que se manda de una sucursal: el WhatsApp sólo si cambió (13-oct). */
+const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
+  const { whatsapp } = limpio(b);
+  return (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? {} : { whatsapp };
+};
+
+/**
+ * Un estado que vuelve de guardar la página o de ordenar los enlaces trae el
+ * catálogo; si un backend anterior no lo manda, queda el que había.
+ */
+const conCatalogo = (nuevo: EstadoEditor, antes: EstadoEditor | null): EstadoEditor => ({
+  ...nuevo,
+  catalogo: nuevo.catalogo ?? antes?.catalogo,
+  topeCatalogo: nuevo.topeCatalogo ?? antes?.topeCatalogo,
+  productosCatalogo: nuevo.productosCatalogo ?? antes?.productosCatalogo,
+  productosVendibles: nuevo.productosVendibles ?? antes?.productosVendibles,
+  topeProductos: nuevo.topeProductos ?? antes?.topeProductos,
 });
 
 /**
- * Una sucursal en la página: si sale (se guarda al toque, como los enlaces),
- * su horario y su mapa. Esos van al borrador y se guardan con "Guardar
- * cambios": antes tenían un botón propio y el dueño, con razón, apretaba el
- * de abajo y el mapa se perdía sin aviso. El horario por día, en su popup.
+ * Una sucursal en la página: si sale (va al borrador al toque, como los
+ * enlaces) y su WhatsApp propio. La dirección, la ubicación y el horario se
+ * ven resumidos y se editan en su ficha (Configuración › Sucursales): son de
+ * la sucursal, no de la página (decisión del dueño, 02-nov).
  */
 function FilaSucursal({
   s,
   borrador,
   c,
+  academia,
+  sede,
   onCambio,
   onGuardada,
   onError,
@@ -183,6 +206,10 @@ function FilaSucursal({
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
   c: Paleta;
+  /** La academia no tiene la ficha de Configuración: sus datos se cargan en Sedes. */
+  academia: boolean;
+  /** "sucursal", o "sede" en el instituto. */
+  sede: string;
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
@@ -200,6 +227,8 @@ function FilaSucursal({
       setGuardando(false);
     }
   };
+  const horario = resumenHorario(s.horarioSemanal) ?? (s.horarioTexto?.trim() || null);
+  const conUbicacion = s.latitud != null && s.longitud != null;
   return (
     <div className="space-y-3 rounded-xl border border-borde-soft p-3">
       <label className="flex items-start gap-3">
@@ -220,57 +249,30 @@ function FilaSucursal({
         </span>
       </label>
       {s.publicarEnPagina && (
-        <EditorHorario
-          nombre={s.nombre}
-          valor={actual.horarioSemanal}
-          c={c}
-          onCambio={(horarioSemanal) => onCambio({ ...actual, horarioSemanal })}
-        />
-      )}
-      {s.publicarEnPagina && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Campo
-            label="Aclaración del horario (opcional)"
-            hint={
-              actual.horarioSemanal
-                ? "Lo que el horario no dice: «Feriados cerrado»."
-                : "Como lo dirías: «Lun a sáb 9:00 – 20:00». Mejor cargá el horario de arriba."
-            }
-          >
-            <Input
-              aria-label={`Aclaración del horario de ${s.nombre}`}
-              value={actual.horarioTexto}
-              onChange={(e) => onCambio({ ...actual, horarioTexto: e.target.value })}
-              maxLength={120}
-            />
-          </Campo>
-          <Campo
-            label="Enlace de Google Maps (opcional)"
-            hint={
-              s.direccion
-                ? "Sin enlace, «Cómo llegar» busca la dirección."
-                : "Sin enlace ni dirección cargada, la página no muestra «Cómo llegar»."
-            }
-          >
-            <Input
-              aria-label={`Mapa de ${s.nombre}`}
-              value={actual.mapsUrl}
-              onChange={(e) => onCambio({ ...actual, mapsUrl: e.target.value })}
-              placeholder="https://maps.app.goo.gl/…"
-            />
-          </Campo>
+        <>
+          <ul className="space-y-0.5 text-xs text-texto-3" aria-label={`Ficha de ${s.nombre}`}>
+            <li>Horario: {horario ?? "sin cargar"}</li>
+            <li>Ubicación en el mapa: {conUbicacion ? "marcada" : "sin marcar"}</li>
+            <li>
+              <Link to={academia ? RUTA_SEDES : "/configuracion/sucursales"} className="font-semibold" style={{ color: c.oscuro }}>
+                Editar dirección, horario y ubicación
+              </Link>
+            </li>
+          </ul>
           {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
-          <Campo label="WhatsApp de esta sucursal (opcional)" hint="Vacío: usa el WhatsApp de tu página.">
-            <Input
-              aria-label={`WhatsApp de ${s.nombre}`}
-              value={actual.whatsapp}
-              onChange={(e) => onCambio({ ...actual, whatsapp: e.target.value })}
-              inputMode="tel"
-              placeholder="70123456"
-              maxLength={40}
-            />
-          </Campo>
-        </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Campo label={`WhatsApp de esta ${sede} (opcional)`} hint="Vacío: usa el WhatsApp de tu página.">
+              <Input
+                aria-label={`WhatsApp de ${s.nombre}`}
+                value={actual.whatsapp}
+                onChange={(e) => onCambio({ ...actual, whatsapp: e.target.value })}
+                inputMode="tel"
+                placeholder="70123456"
+                maxLength={40}
+              />
+            </Campo>
+          </div>
+        </>
       )}
     </div>
   );
@@ -458,15 +460,21 @@ function BotonPrincipal({
  * negocio, con la vista previa en vivo al lado. Sólo el ADMIN y con la
  * feature `pagina_publica` (permisos.ts y el backend).
  *
- * La apariencia, la presentación y el horario y el mapa de cada sucursal se
- * juntan en un borrador y se guardan con "Guardar cambios"; los enlaces, si
- * una sucursal sale o no, y las imágenes se guardan al toque (cada uno es una
- * acción completa).
+ * Todo lo que el dueño toca va al BORRADOR del servidor (PLAN-PAGINA-WEB
+ * §4.2, decisión del 02-nov): lo que se escribe, solo, un rato después de
+ * dejar de escribir; los enlaces, las imágenes y si una sucursal sale, al
+ * toque. La página pública no cambia hasta "Publicar cambios" (o "Guardar
+ * cambios" mientras la página no está publicada). Antes unas cosas salían al
+ * toque y otras con el botón, y el dueño no sabía qué ya se veía.
+ *
+ * El catálogo es la excepción que queda: cada ítem se guarda al toque, como
+ * antes (sus fotos pasan a borrador en la fase siguiente).
  */
 export default function MiPagina() {
   const carga = useApi(() => apiPagina.estado(), []);
   // Opcional: los tests montan el editor sin sesión (sin features = falla abierto).
-  const negocioSesion = useAuthOpcional()?.negocio;
+  const sesion = useAuthOpcional();
+  const negocioSesion = sesion?.negocio;
   const [borrador, setBorrador] = useState<CambiosPagina>({});
   // Sólo las sucursales cambiadas: una que vuelve a su valor guardado sale.
   const [borradorSucursales, setBorradorSucursales] = useState<Record<number, BorradorSucursal>>({});
@@ -532,8 +540,8 @@ export default function MiPagina() {
     };
   }, [logoGuardado]);
 
-  // Con cambios sin guardar, el navegador pregunta antes de cerrar o recargar:
-  // la apariencia se arma de a poco y perderla entera por un F5 desanima.
+  // Lo escrito que todavía no llegó al borrador del servidor. Con eso, el
+  // navegador pregunta antes de cerrar o recargar.
   const haySinGuardar = Object.keys(borrador).length > 0 || Object.keys(borradorSucursales).length > 0;
   useEffect(() => {
     if (!haySinGuardar) return;
@@ -541,6 +549,92 @@ export default function MiPagina() {
     window.addEventListener("beforeunload", avisar);
     return () => window.removeEventListener("beforeunload", avisar);
   }, [haySinGuardar]);
+
+  const [guardandoBorrador, setGuardandoBorrador] = useState(false);
+  const pendiente = useRef({ borrador, borradorSucursales });
+  pendiente.current = { borrador, borradorSucursales };
+  const montado = useRef(true);
+
+  /**
+   * Manda lo pendiente al borrador. Lo que se siguió escribiendo mientras la
+   * respuesta viajaba queda en pantalla y sale en la próxima vuelta.
+   */
+  const enviar = async () => {
+    const { borrador: cambios, borradorSucursales: sucursales } = pendiente.current;
+    const conAjustes = Object.keys(cambios).length > 0;
+    if (!conAjustes && Object.keys(sucursales).length === 0) return;
+    let actual = ultimo.current;
+    if (!actual) return;
+    const vivo = () => montado.current;
+    if (vivo()) setGuardandoBorrador(true);
+    try {
+      // Primero las sucursales: si un mapa no es de Google Maps, el error
+      // dice cuál y el resto de lo escrito sigue en pantalla.
+      for (const [id, b] of Object.entries(sucursales)) {
+        const s = actual.sucursales.find((x) => x.id === Number(id));
+        let nueva: SucursalEditor;
+        try {
+          nueva = await apiPagina.sucursal(Number(id), cuerpoSucursal(s, b));
+        } catch (err) {
+          throw new Error(`${s?.nombre ?? conMayuscula(termino(actual.negocio.rubro, "sucursal", sesion?.vocabulario))}: ${mensaje(err)}`);
+        }
+        actual = { ...actual, sucursales: actual.sucursales.map((x) => (x.id === nueva.id ? { ...x, ...nueva } : x)) };
+        ultimo.current = actual;
+        if (vivo()) {
+          carga.setDatos(actual);
+          setBorradorSucursales((todos) => {
+            if (todos[Number(id)] !== b) return todos;
+            const resto = { ...todos };
+            delete resto[Number(id)];
+            return resto;
+          });
+        }
+      }
+      // El estado que vuelve dice si quedó algo sin publicar (`borrador.hay`).
+      const nuevo = conCatalogo(conAjustes ? await apiPagina.guardar(cambios) : await apiPagina.estado(), actual);
+      ultimo.current = nuevo;
+      if (vivo()) {
+        carga.setDatos(nuevo);
+        if (conAjustes)
+          setBorrador((b) => {
+            const resto: Record<string, unknown> = { ...b };
+            for (const [k, v] of Object.entries(cambios)) if (resto[k] === v) delete resto[k];
+            return resto as CambiosPagina;
+          });
+      }
+    } finally {
+      if (vivo()) setGuardandoBorrador(false);
+    }
+  };
+  const enviarRef = useRef(enviar);
+  enviarRef.current = enviar;
+  // De a uno: dos envíos juntos mandarían lo mismo dos veces.
+  const cola = useRef<Promise<void>>(Promise.resolve());
+  const encolar = useRef(() => {
+    const turno = cola.current.then(() => enviarRef.current());
+    cola.current = turno.catch(() => undefined);
+    return turno;
+  }).current;
+
+  useEffect(() => {
+    if (!haySinGuardar) return;
+    const t = setTimeout(() => {
+      encolar().catch((err: unknown) => montado.current && setError(mensaje(err)));
+    }, 800);
+    return () => clearTimeout(t);
+  }, [borrador, borradorSucursales, haySinGuardar, encolar]);
+
+  // Al irse a otra pantalla, lo que faltaba se manda igual.
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      encolar().catch(() => undefined);
+    };
+  }, [encolar]);
+
+  const [confirmarDescarte, setConfirmarDescarte] = useState(false);
+  const [personalizar, setPersonalizar] = useState(false);
 
   const e = carga.datos;
   if (!e) {
@@ -555,20 +649,10 @@ export default function MiPagina() {
   }
 
   const ajustes: AjustesPagina = { ...e.pagina, ...borrador };
-  const limpio = (b: BorradorSucursal) => ({
-    horarioTexto: b.horarioTexto.trim() || null,
-    mapsUrl: b.mapsUrl.trim() || null,
-    horarioSemanal: b.horarioSemanal,
-    whatsapp: b.whatsapp.trim() || null,
-  });
-  // Lo que se manda de una sucursal: el horario por día sólo si cambió (un
-  // backend anterior no lo conoce, y mandarlo igual no aporta nada).
-  const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
-    const { horarioSemanal, whatsapp, ...resto } = limpio(b);
-    // El WhatsApp, igual: sólo si cambió (13-oct).
-    const conWhatsapp = (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? resto : { ...resto, whatsapp };
-    return mismoHorario(horarioSemanal, s?.horarioSemanal) ? conWhatsapp : { ...conWhatsapp, horarioSemanal };
-  };
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9). El
+  // rubro sale del editor, como el de la vista previa: con o sin sesión.
+  const sede = termino(e.negocio.rubro, "sucursal", sesion?.vocabulario);
+  const sedes = termino(e.negocio.rubro, "sucursales", sesion?.vocabulario);
   // La vista previa muestra el horario y el mapa que se están escribiendo.
   const sucursalesEditadas = e.sucursales.map((s) =>
     borradorSucursales[s.id] ? { ...s, ...limpio(borradorSucursales[s.id]) } : s,
@@ -584,7 +668,10 @@ export default function MiPagina() {
   const estilo = estiloPagina(ajustes.estiloClave);
   const tonos = tonosPagina(estilo.clave, c, !!e.imagenes.portada);
   const fondoEstilo = { superficie: tonos.superficie, fondo: tonos.fondo };
-  const sucio = haySinGuardar;
+  const hayBorrador = haySinGuardar || !!e.borrador?.hay;
+  // Mientras la página no está publicada, pasar el borrador a la página es
+  // sólo guardar: el botón lo dice así.
+  const accionGuardar = e.pagina.publicada ? "Publicar cambios" : "Guardar cambios";
   const cambiar = (cambios: CambiosPagina) => setBorrador((b) => ({ ...b, ...cambios }));
   // Como `cambiar`, pero lo que vuelve a quedar como está guardado sale del
   // borrador: "Mantener los míos" no manda la letra y la forma de siempre.
@@ -624,19 +711,8 @@ export default function MiPagina() {
     ultimo.current = nuevo;
     carga.setDatos(nuevo);
   };
-  // Un estado que vuelve de guardar la página o de ordenar los enlaces trae
-  // el catálogo; si un backend anterior no lo manda, queda el que había.
-  const conCatalogo = (nuevo: EstadoEditor): EstadoEditor => ({
-    ...nuevo,
-    catalogo: nuevo.catalogo ?? e.catalogo,
-    topeCatalogo: nuevo.topeCatalogo ?? e.topeCatalogo,
-    productosCatalogo: nuevo.productosCatalogo ?? e.productosCatalogo,
-    productosVendibles: nuevo.productosVendibles ?? e.productosVendibles,
-    topeProductos: nuevo.topeProductos ?? e.topeProductos,
-  });
-
   // El catálogo es uno u otro (13-oct): armado a mano o "Mis productos". El
-  // modo va al borrador, como el título, y se guarda con "Guardar cambios".
+  // modo va al borrador, como el título, y sale a la página al publicar.
   // Sin productos a la venta ni siquiera se pregunta (salvo que ya estuviera
   // en "Mis productos", para poder volver).
   const modoCatalogo = ajustes.catalogoModo ?? "MANUAL";
@@ -655,48 +731,62 @@ export default function MiPagina() {
     setBorradorSucursales((todos) => {
       const resto = { ...todos };
       const guardado = borradorDe(s);
-      if (
-        b.horarioTexto === guardado.horarioTexto &&
-        b.mapsUrl === guardado.mapsUrl &&
-        b.whatsapp.trim() === guardado.whatsapp &&
-        mismoHorario(b.horarioSemanal, guardado.horarioSemanal)
-      )
+      if (b.whatsapp.trim() === guardado.whatsapp)
         delete resto[s.id];
       else resto[s.id] = b;
       return resto;
     });
 
-  const guardar = async (extra: CambiosPagina = {}, texto = "Cambios guardados") => {
+  /**
+   * Lo pendiente al borrador y el borrador a la página. Con `publicarPagina`
+   * además la publica (la primera vez, desde "Publicar").
+   */
+  const publicar = async (publicarPagina = false) => {
     setGuardando(true);
     setError("");
     try {
-      // Primero las sucursales: si un mapa no es de Google Maps, el error
-      // dice cuál y el resto de lo escrito sigue en pantalla.
-      let sucursales = e.sucursales;
-      for (const [id, b] of Object.entries(borradorSucursales)) {
-        const s = e.sucursales.find((x) => x.id === Number(id));
-        try {
-          const nueva = await apiPagina.sucursal(Number(id), cuerpoSucursal(s, b));
-          sucursales = sucursales.map((x) => (x.id === nueva.id ? { ...x, ...nueva } : x));
-          setBorradorSucursales((todos) => {
-            const resto = { ...todos };
-            delete resto[Number(id)];
-            return resto;
-          });
-        } catch (err) {
-          carga.setDatos({ ...e, sucursales });
-          throw new Error(`${s?.nombre ?? "Sucursal"}: ${mensaje(err)}`);
-        }
-      }
-      const cambios = { ...borrador, ...extra };
-      if (Object.keys(cambios).length > 0) {
-        carga.setDatos(conCatalogo(await apiPagina.guardar(cambios)));
-        setBorrador({});
-        setAvisoEstilo(null);
-      } else {
-        carga.setDatos({ ...e, sucursales });
-      }
-      setAviso(texto);
+      await encolar();
+      const nuevo = await apiPagina.publicarCambios(publicarPagina);
+      carga.setDatos(conCatalogo(nuevo, ultimo.current));
+      setAvisoEstilo(null);
+      setAviso(
+        publicarPagina ? "¡Tu página está publicada!" : e.pagina.publicada ? "Cambios publicados" : "Cambios guardados",
+      );
+    } catch (err) {
+      setError(mensaje(err));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const despublicar = async () => {
+    setGuardando(true);
+    setError("");
+    try {
+      carga.setDatos(conCatalogo(await apiPagina.publicacion(false), ultimo.current));
+      setAviso("Tu página ya no está publicada");
+    } catch (err) {
+      setError(mensaje(err));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  /** Vuelve a lo publicado: lo escrito en pantalla y el borrador del servidor. */
+  const descartar = async () => {
+    setConfirmarDescarte(false);
+    setBorrador({});
+    setBorradorSucursales({});
+    pendiente.current = { borrador: {}, borradorSucursales: {} };
+    setOpcionPrincipal(null);
+    setAvisoEstilo(null);
+    if (!e.borrador?.hay) return;
+    setGuardando(true);
+    setError("");
+    try {
+      await cola.current;
+      carga.setDatos(conCatalogo(await apiPagina.descartarBorrador(), ultimo.current));
+      setAviso("Volviste a lo publicado");
     } catch (err) {
       setError(mensaje(err));
     } finally {
@@ -722,7 +812,7 @@ export default function MiPagina() {
   const reordenar = async (ids: number[]) => {
     setError("");
     try {
-      carga.setDatos(conCatalogo(await apiPagina.ordenar(ids)));
+      carga.setDatos(conCatalogo(await apiPagina.ordenar(ids), ultimo.current));
     } catch (err) {
       setError(mensaje(err));
     }
@@ -784,6 +874,15 @@ export default function MiPagina() {
   ) : (
     <Badge tono="gris">Sin publicar</Badge>
   );
+  const estadoBorrador = guardandoBorrador
+    ? "Guardando…"
+    : hayBorrador
+      ? e.pagina.publicada
+        ? "Tenés cambios sin publicar. Se guardan solos; tu página no cambia hasta que los publiques."
+        : "Tus cambios se guardan solos."
+      : e.pagina.publicada
+        ? "Todo publicado."
+        : "";
 
   // A la dirección que se comparte (`link…/<sub>` cuando el backend la tiene
   // configurada); si no vino, a la de siempre dentro de la app.
@@ -810,13 +909,14 @@ export default function MiPagina() {
         accion={
           <div className="flex flex-wrap items-center gap-2">
             {estadoBadge}
+            {e.pagina.publicada && hayBorrador && <Badge tono="amarillo">Cambios sin publicar</Badge>}
             {!ajustes.bloqueada &&
               (e.pagina.publicada ? (
-                <Boton variante="ghost" disabled={guardando} onClick={() => void guardar({ publicada: false }, "Tu página ya no está publicada")}>
+                <Boton variante="ghost" disabled={guardando} onClick={() => void despublicar()}>
                   Despublicar
                 </Boton>
               ) : (
-                <Boton disabled={guardando || sinDireccion} onClick={() => void guardar({ publicada: true }, "¡Tu página está publicada!")}>
+                <Boton disabled={guardando || sinDireccion} onClick={() => void publicar(true)}>
                   Publicar
                 </Boton>
               ))}
@@ -889,7 +989,7 @@ export default function MiPagina() {
               )}
               {estilo.pideCatalogo && !vista.catalogo && (
                 <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
-                  Carta luce con tu catálogo. Sin productos se ven tus botones y tus sucursales.
+                  Carta luce con tu catálogo. Sin productos se ven tus botones y tus {sedes}.
                 </p>
               )}
             </div>
@@ -931,21 +1031,39 @@ export default function MiPagina() {
                 fondo={fondoEstilo}
                 onCambio={(clave) => cambiar({ colorClave: clave })}
               />
-              <SelectorForma
-                valor={ajustes.formaBotones}
-                c={c}
-                recomendadas={estilo.formas}
-                fondo={fondoEstilo}
-                onCambio={(f) => cambiar({ formaBotones: f })}
-              />
-              <SelectorLetra
-                valor={ajustes.tipografia}
-                nombre={e.negocio.nombre}
-                c={c}
-                recomendadas={estilo.letras}
-                onCambio={(t) => cambiar({ tipografia: t })}
-              />
             </div>
+
+            {/* PLAN-PAGINA-WEB §4.1: el estilo ya trae la letra y los botones que
+                le van; cambiarlos es ajuste fino y queda plegado. */}
+            <button
+              type="button"
+              aria-expanded={personalizar}
+              onClick={() => setPersonalizar((v) => !v)}
+              className="flex items-center gap-1.5 text-[13px] font-semibold"
+              style={{ color: c.oscuro }}
+            >
+              <Icon name="chevronDown" size={14} className={personalizar ? "rotate-180" : ""} />
+              {personalizar ? "Menos opciones" : "Personalizar más: letra y forma de los botones"}
+            </button>
+            {personalizar && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SelectorForma
+                  valor={ajustes.formaBotones}
+                  c={c}
+                  recomendadas={estilo.formas}
+                  fondo={fondoEstilo}
+                  sucursales={sedes}
+                  onCambio={(f) => cambiar({ formaBotones: f })}
+                />
+                <SelectorLetra
+                  valor={ajustes.tipografia}
+                  nombre={e.negocio.nombre}
+                  c={c}
+                  recomendadas={estilo.letras}
+                  onCambio={(t) => cambiar({ tipografia: t })}
+                />
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-[3fr_1fr]">
               <Campo label="Anuncio destacado (opcional)" hint="Una franja arriba de los botones. Se quita sola el día que elijas.">
@@ -1014,6 +1132,7 @@ export default function MiPagina() {
               onFijados={actualizarProductos}
               selector={selectorModo}
               c={c}
+              sucursal={sede}
               onAviso={setAviso}
             />
           ) : (
@@ -1174,12 +1293,43 @@ export default function MiPagina() {
             )}
           </Seccion>
 
-          <Seccion titulo="Sucursales en la página">
+          <Seccion titulo={`${conMayuscula(sedes)} en la página`}>
             <p className="-mt-2 text-[13px] text-texto-3">
-              La dirección y el teléfono salen de tus sucursales. El horario y el mapa se guardan con «Guardar cambios».
+              La dirección, el horario y la ubicación salen de la ficha de cada {sede}. Acá elegís qué se muestra.
             </p>
+            {/* PLAN-PAGINA-WEB §3.1: el mapa es para todos (02-nov); esto sólo lo oculta. */}
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-[18px] w-[18px]"
+                style={{ accentColor: c.acento }}
+                checked={ajustes.mostrarHorario !== false}
+                onChange={(ev) => cambiar({ mostrarHorario: ev.target.checked })}
+              />
+              <span className="flex min-w-0 flex-col">
+                <strong className="text-sm text-texto">Mostrar el horario</strong>
+                <span className="text-xs text-texto-3">
+                  El de cada {sede}, con «Abierto ahora» o «Cerrado» según la hora.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-[18px] w-[18px]"
+                style={{ accentColor: c.acento }}
+                checked={ajustes.mostrarMapa !== false}
+                onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
+              />
+              <span className="flex min-w-0 flex-col">
+                <strong className="text-sm text-texto">Mostrar un mapa con tus {sedes}</strong>
+                <span className="text-xs text-texto-3">
+                  Cada {sede} con su ubicación marcada sale con su pin, y «Cómo llegar» abre la ruta exacta.
+                </span>
+              </span>
+            </label>
             {e.sucursales.length === 0 ? (
-              <p className="text-sm text-texto-3">No hay sucursales activas.</p>
+              <p className="text-sm text-texto-3">No hay {sedes} activas.</p>
             ) : (
               <div className="space-y-2">
                 {e.sucursales.map((s) => (
@@ -1188,11 +1338,14 @@ export default function MiPagina() {
                     s={s}
                     borrador={borradorSucursales[s.id]}
                     c={c}
+                    academia={e.negocio.rubro === "ACADEMIA"}
+                    sede={sede}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {
                       carga.setDatos({ ...e, sucursales: e.sucursales.map((x) => (x.id === nueva.id ? nueva : x)) });
-                      setAviso("Sucursal actualizada");
+                      // Para que `borrador.hay` diga la verdad.
+                      carga.recargar();
                     }}
                   />
                 ))}
@@ -1200,7 +1353,12 @@ export default function MiPagina() {
             )}
           </Seccion>
 
-          <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap justify-end gap-2 border-t border-borde bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+          <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center justify-end gap-2 border-t border-borde bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+            {estadoBorrador && (
+              <span role="status" className="mr-auto min-w-0 flex-[1_1_220px] text-[13px] text-texto-3">
+                {estadoBorrador}
+              </span>
+            )}
             {!previaAncha && (
               <Boton variante="ghost" className="lg:hidden" onClick={() => setPreviaCelular((v) => !v)}>
                 {previaCelular ? "Ocultar vista previa" : "Ver vista previa"}
@@ -1208,18 +1366,13 @@ export default function MiPagina() {
             )}
             <Boton
               variante="ghost"
-              disabled={!sucio || guardando}
-              onClick={() => {
-                setBorrador({});
-                setBorradorSucursales({});
-                setOpcionPrincipal(null);
-                setAvisoEstilo(null);
-              }}
+              disabled={!hayBorrador || guardando}
+              onClick={() => (e.borrador?.hay ? setConfirmarDescarte(true) : void descartar())}
             >
               Descartar
             </Boton>
-            <Boton disabled={!sucio || guardando} onClick={() => void guardar()}>
-              {guardando ? "Guardando…" : "Guardar cambios"}
+            <Boton disabled={!hayBorrador || guardando} onClick={() => void publicar()}>
+              {guardando ? (e.pagina.publicada ? "Publicando…" : "Guardando…") : accionGuardar}
             </Boton>
           </div>
           {!previaAncha && previaCelular && <div className="lg:hidden">{previa}</div>}
@@ -1237,9 +1390,18 @@ export default function MiPagina() {
         onGuardar={guardarEnlace}
       />
       <Confirmar
+        abierto={confirmarDescarte}
+        titulo="Descartar los cambios"
+        texto="¿Volver a lo que está publicado? Se pierde todo lo que cambiaste desde la última vez que publicaste."
+        etiquetaOk="Descartar"
+        peligroso
+        onCancel={() => setConfirmarDescarte(false)}
+        onOk={() => void descartar()}
+      />
+      <Confirmar
         abierto={aBorrar !== null}
         titulo="Quitar enlace"
-        texto={`¿Quitar «${aBorrar?.etiqueta ?? ""}» de tu página? Se pierden sus clics.`}
+        texto={`¿Quitar «${aBorrar?.etiqueta ?? ""}» de tu página? Se quita al publicar y se pierden sus clics.`}
         etiquetaOk="Quitar"
         peligroso
         onCancel={() => setABorrar(null)}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto, RecetaVenta } from "../../types";
@@ -35,7 +35,7 @@ vi.mock("../../lib/api", () => ({
 import { api } from "../../lib/api";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
 import PantallaVenta, { type ProfesionalesDelCarrito } from "./PantallaVenta";
-import type { Carrito } from "./useCarrito";
+import type { Carrito, LineaCarrito } from "./useCarrito";
 
 function med(over: Partial<Producto>): Producto {
   return {
@@ -275,5 +275,147 @@ describe("QA PER-07b: el profesional de cada línea (belleza con agenda)", () =>
     await montar([med({ id: 7, nombre: "1/4 Pollo", manejaLote: false })]);
     expect(screen.queryByLabelText(/Quién atendió/)).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+});
+
+/** El POS del restaurante con las líneas que se le pasen (el carrito es un doble). */
+async function montarRestaurante(productos: Producto[], lineas: LineaCarrito[] = []) {
+  sesion.rubro = "RESTAURANTE";
+  sesion.features = new Set(["mesa_llevar"]);
+  const carrito: Carrito = {
+    ...carritoCon([]),
+    lineas,
+    unidades: lineas.reduce((s, l) => s + l.cantidad, 0),
+  };
+  render(
+    <MemoryRouter>
+      <PantallaVenta productos={productos} categorias={[]} carrito={carrito} onCobrar={onCobrar} />
+    </MemoryRouter>,
+  );
+  await act(async () => {});
+  return carrito;
+}
+
+const linea = (producto: Producto, cantidad: number, nota = ""): LineaCarrito => ({
+  producto,
+  cantidad,
+  enMesa: 0,
+  nota,
+});
+
+/** La card de la grilla con ese nombre (el <h3>; el <p> es el renglón del carrito). */
+const card = (nombre: string) => within(screen.getByText(nombre, { selector: "h3" }).closest("li")!);
+
+const combo = (over: Partial<Producto> = {}) =>
+  med({ id: 20, nombre: "Combo familiar", tipoProducto: "COMPUESTO", stockTotal: 3, stockMinimo: 0, manejaLote: false, ...over });
+const elaborado = med({ id: 21, nombre: "Sopa del día", tipoProducto: "SERVICIO", stockTotal: 0, manejaLote: false });
+
+describe("POS-2: el combo tiene su propio stock, como en la app", () => {
+  // Desde el 25-ago el backend descuenta el stock propio del combo y rechaza la
+  // venta de mostrador que no alcanza. La web lo trataba como un elaborado: no
+  // decía cuántos quedaban y el cobro rebotaba al confirmar.
+  it("la card del combo dice cuántos quedan", async () => {
+    await montarRestaurante([combo()]);
+    expect(card("Combo familiar").getByText("3 disp.")).toBeInTheDocument();
+  });
+
+  it("un combo en 0 dice Agotado y la card no se puede tocar", async () => {
+    const sinCombos = combo({ stockTotal: 0 });
+    const carrito = await montarRestaurante([sinCombos]);
+    const c = card("Combo familiar");
+    expect(c.getByText("Agotado")).toBeInTheDocument();
+    const cuerpo = c.getByText("Combo familiar").closest("button")!;
+    expect(cuerpo).toBeDisabled();
+    fireEvent.click(cuerpo);
+    expect(carrito.agregar).not.toHaveBeenCalled();
+  });
+
+  it("el elaborado no muestra stock ni se agota", async () => {
+    // Guarda: el SERVICIO se prepara al vender, con stock 0 se sigue ofreciendo.
+    const carrito = await montarRestaurante([elaborado]);
+    const c = card("Sopa del día");
+    expect(c.queryByText("Agotado")).not.toBeInTheDocument();
+    expect(c.queryByText(/disp\./)).not.toBeInTheDocument();
+    fireEvent.click(c.getByText("Sopa del día").closest("button")!);
+    expect(carrito.agregar).toHaveBeenCalledWith(elaborado);
+  });
+});
+
+describe("POS-10: el «+» se apaga al llegar al stock disponible", () => {
+  it("en la card y en la línea del carrito, cuando ya está todo lo que hay", async () => {
+    // Antes el "+" se veía igual y el carrito ignoraba el toque en silencio:
+    // el cajero tocaba y no pasaba nada, sin saber por qué.
+    const dos = combo({ stockTotal: 2 });
+    await montarRestaurante([dos], [linea(dos, 2)]);
+    expect(card("Combo familiar").getByRole("button", { name: "Uno más" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar una unidad" })).toBeDisabled();
+  });
+
+  it("con lugar todavía, los dos «+» siguen prendidos", async () => {
+    const cinco = combo({ stockTotal: 5 });
+    const carrito = await montarRestaurante([cinco], [linea(cinco, 2)]);
+    expect(card("Combo familiar").getByRole("button", { name: "Uno más" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Agregar una unidad" }));
+    expect(carrito.setCantidad).toHaveBeenCalledWith(20, 3);
+  });
+
+  it("el elaborado nunca apaga el «+»", async () => {
+    await montarRestaurante([elaborado], [linea(elaborado, 30)]);
+    expect(card("Sopa del día").getByRole("button", { name: "Uno más" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Agregar una unidad" })).toBeEnabled();
+  });
+});
+
+describe("BUG-pos-venta-1: la nota escrita y sin confirmar no se pierde", () => {
+  // La nota pasaba al carrito sólo con Enter o con el ✓. Quien escribía "sin
+  // cebolla" y tocaba Cobrar directo mandaba la venta sin la nota: la pantalla
+  // se desmontaba con lo escrito adentro, sin ningún aviso.
+  const pollo = med({ id: 7, nombre: "1/4 Pollo", manejaLote: false });
+
+  async function escribirNota(texto: string) {
+    const carrito = await montarRestaurante([pollo], [linea(pollo, 1)]);
+    fireEvent.click(screen.getByRole("button", { name: "Nota" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Nota de 1/4 Pollo" }), {
+      target: { value: texto },
+    });
+    return carrito;
+  }
+
+  it("tocar Cobrar guarda lo escrito antes de pasar al cobro", async () => {
+    const carrito = await escribirNota("sin cebolla ");
+    fireEvent.click(screen.getByRole("button", { name: /Cobrar/ }));
+    expect(carrito.setNota).toHaveBeenCalledWith(7, "sin cebolla");
+    expect(onCobrar).toHaveBeenCalled();
+    expect(vi.mocked(carrito.setNota).mock.invocationCallOrder[0]).toBeLessThan(
+      onCobrar.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("salir del campo también la guarda", async () => {
+    const carrito = await escribirNota("sin ají");
+    fireEvent.blur(screen.getByRole("textbox", { name: "Nota de 1/4 Pollo" }));
+    expect(carrito.setNota).toHaveBeenCalledWith(7, "sin ají");
+  });
+
+  it("cerrar la hoja del carrito (celular) también la guarda", async () => {
+    const carrito = await escribirNota("bien cocido");
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar carrito" }));
+    expect(carrito.setNota).toHaveBeenCalledWith(7, "bien cocido");
+  });
+
+  it("Enter la guarda y cierra el campo, como siempre", async () => {
+    const carrito = await escribirNota("para llevar aparte");
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Nota de 1/4 Pollo" }), { key: "Enter" });
+    expect(carrito.setNota).toHaveBeenCalledWith(7, "para llevar aparte");
+    expect(screen.queryByRole("textbox", { name: "Nota de 1/4 Pollo" })).not.toBeInTheDocument();
+  });
+
+  it("una nota ya confirmada no se vuelve a mandar al cobrar", async () => {
+    const carrito = await escribirNota("sin sal");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar la nota" }));
+    vi.mocked(carrito.setNota).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /Cobrar/ }));
+    expect(carrito.setNota).not.toHaveBeenCalled();
+    expect(onCobrar).toHaveBeenCalled();
   });
 });

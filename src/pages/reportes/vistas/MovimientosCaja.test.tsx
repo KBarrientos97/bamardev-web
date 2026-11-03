@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fmtMoney } from "../../../lib/format";
 import type { ReporteMovimientosCaja } from "../../../types";
-import { ContextoReporte, type DatosReporte } from "../contexto";
+import { ContextoReporte, type DatosReporte, type Exportacion } from "../contexto";
 import MovimientosCaja from "./MovimientosCaja";
 
 /**
@@ -21,8 +21,11 @@ vi.mock("../../../lib/api", () => ({
   request: vi.fn(async () => null),
 }));
 
+/** Sin rubro, como una sesión vieja: la pantalla decide por los datos, salvo el Excel (REP-03). */
+const sesion = vi.hoisted(() => ({ rubro: undefined as string | undefined }));
+
 vi.mock("../../../store/AuthContext", () => ({
-  useAuth: () => ({ negocio: { features: [] } }),
+  useAuth: () => ({ rubro: sesion.rubro, negocio: { features: [] } }),
 }));
 
 const RANGO = { desde: "2026-10-01", hasta: "2026-10-25" };
@@ -44,6 +47,8 @@ function respuesta(items: Fila[], extra: Partial<ReporteMovimientosCaja> = {}): 
   };
 }
 
+let exportacion: Exportacion | null = null;
+
 function mostrar() {
   const datos: DatosReporte = {
     periodo: { preset: "rango", ...RANGO },
@@ -51,7 +56,9 @@ function mostrar() {
     rango: RANGO,
     rangoAnterior: { desde: "2026-09-06", hasta: "2026-09-30" },
     sucursalNombre: "",
-    registrarExportacion: () => {},
+    registrarExportacion: (e) => {
+      exportacion = e;
+    },
     veReporte: () => false,
   };
   return render(
@@ -76,7 +83,11 @@ const ANULADA: NonNullable<ReporteMovimientosCaja["anulados"]>[number] = {
   anuladoEn: "2026-10-25T00:10:00.000Z",
 };
 
-beforeEach(() => reporteCaja.mockReset());
+beforeEach(() => {
+  reporteCaja.mockReset();
+  exportacion = null;
+  sesion.rubro = undefined;
+});
 
 describe("Movimientos de caja: los demás rubros quedan como siempre", () => {
   it("sin motivos no hay chips, ni tarjeta por motivo, ni anulados", async () => {
@@ -181,5 +192,47 @@ describe("Movimientos de caja de un billar", () => {
     mostrar();
 
     expect(await screen.findByText("Sin movimientos de efectivo")).toBeInTheDocument();
+  });
+});
+
+describe("Movimientos de caja: el Excel del período entero es del restaurante (REP-03, 28-oct)", () => {
+  it("en el restaurante baja todas las páginas, de a 200 y con el filtro puesto, no las 50 filas que se ven", async () => {
+    sesion.rubro = "RESTAURANTE";
+    const salidas = [fila({ id: 3, clase: "EGRESO", concepto: "Hielo", monto: 15 }), fila({ id: 2, clase: "EGRESO", monto: 40 })];
+    reporteCaja.mockImplementation(async (p: { page: number; limite: number }) =>
+      p.limite === 200
+        ? { ...respuesta(p.page === 1 ? salidas : [fila({ id: 1, clase: "EGRESO", monto: 5 })]), pagina: { page: p.page, limite: 200, total: 3, totalPaginas: 2 } }
+        : respuesta([salidas[0]]),
+    );
+    mostrar();
+    await screen.findByText("Hielo");
+    fireEvent.click(screen.getByRole("tab", { name: "Salidas" }));
+    await waitFor(() => expect(reporteCaja).toHaveBeenLastCalledWith(expect.objectContaining({ tipo: "SALIDA", page: 1, limite: 50 })));
+
+    await waitFor(() => expect(exportacion?.completa).toBeDefined());
+    const r = await exportacion!.completa!();
+    expect(reporteCaja).toHaveBeenCalledWith(expect.objectContaining({ ...RANGO, tipo: "SALIDA", page: 1, limite: 200 }));
+    expect(reporteCaja).toHaveBeenCalledWith(expect.objectContaining({ ...RANGO, tipo: "SALIDA", page: 2, limite: 200 }));
+    expect(r.hojas[0].nombre).toBe("Salidas");
+    // Los títulos y las tres salidas del período.
+    expect(r.hojas[0].filas).toHaveLength(4);
+    expect(r.aviso).toBeNull();
+  });
+
+  it("en el billar sigue bajando la página que se ve, y la hoja lo dice", async () => {
+    // Guarda: el período entero es del restaurante. La primera versión se lo
+    // cambiaba también al billar, que no lo había pedido.
+    sesion.rubro = "BILLAR";
+    reporteCaja.mockResolvedValue({
+      ...respuesta([fila({ id: 1, clase: "EGRESO", concepto: "Hielo", origen: "GASTO", monto: 15 })], { porMotivo: [], anulados: [] }),
+      pagina: { page: 1, limite: 50, total: 60, totalPaginas: 2 },
+    });
+    mostrar();
+    await screen.findByText("Gasto · Hielo");
+
+    await waitFor(() => expect(exportacion).not.toBeNull());
+    expect(exportacion!.completa).toBeUndefined();
+    expect(exportacion!.hojas()[0].nombre).toBe("Movimientos pág. 1 de 2");
+    expect(reporteCaja).not.toHaveBeenCalledWith(expect.objectContaining({ limite: 200 }));
   });
 });

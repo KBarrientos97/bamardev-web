@@ -4,6 +4,7 @@ import { iconoDe } from "../../lib/pagina/aspecto";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
 import { rgbaCapa } from "../../lib/pagina/estilosPagina";
 import type { ItemCatalogoPublico } from "../../lib/pagina/tipos";
+import { termino } from "../../lib/rubro";
 import { etiquetaItem, SinFoto, VisorCatalogo } from "./CatalogoPagina";
 import { columna, enFilas, Nombre, Raiz, rubroYDescripcion, tamanoNombre, type PiezasArmado } from "./piezasArmado";
 import { LogoNegocio, soloLector, Trazo } from "./piezasPagina";
@@ -316,13 +317,16 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       <section aria-label={x.visor.titulo} style={{ ...columna, gap: 8 }}>
         <h2 style={soloLector}>{x.visor.titulo}</h2>
         {x.visor.selector}
-        <p style={{ margin: 0, fontSize: 14 }}>No hay productos disponibles en esta sucursal.</p>
+        {/* «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9). */}
+        <p style={{ margin: 0, fontSize: 14 }}>No hay productos disponibles en esta {termino(x.p.rubroClave, "sucursal")}.</p>
       </section>
     );
   }
 
   // Las sucursales y el anuncio, como bloques anchos: de a dos en computadora.
   const anchos: ReactNode[] = [
+    // El mapa (PLAN-PAGINA-WEB §3.1), un bloque ancho más, antes de las tarjetas.
+    ...(x.mapa ? [<div key="mapa" style={{ gridColumn: "1 / -1", minWidth: 0 }}>{x.mapa}</div>] : []),
     ...x.tarjetasSucursal.map((s, i) => (
       // En grilla: la tarjeta se estira al alto de la fila, como su vecina.
       <div key={`sucursal-${i}`} style={{ display: "grid", minWidth: 0 }}>

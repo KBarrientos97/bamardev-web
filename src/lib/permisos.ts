@@ -69,6 +69,20 @@ export type Seccion =
   /** La pestaña Billar de Reportes. */
   | "reportes_billar"
   /**
+   * Tickets y pedidos: los pedidos con número del mostrador, el diseño y el
+   * sonido de la TV que los llama y la numeración del día. Del encargado.
+   */
+  | "tickets"
+  /** Despacho: marcar listo, llamar en la TV y entregar. Quien entrega. */
+  | "despacho"
+  /** Menú digital: las TVs del menú y la ficha de cada plato. Del encargado. */
+  | "menu_digital"
+  /**
+   * Ticket y recibo: el logo, los datos del negocio en el recibo y el papel.
+   * La tienen los dos extras de pantallas (tickets y menú).
+   */
+  | "config_recibo"
+  /**
    * El resumen de la farmacia como primer ítem DENTRO de Inventario. Es la
    * misma ruta que Inventario (`/inventario`): el grupo lleva a su primera
    * pantalla, y el sub-ítem dice cuál es. Sólo farmacia: en los demás rubros
@@ -112,6 +126,7 @@ export type Seccion =
   | "agenda_config"
   /** Las reglas del negocio y cómo se confirma una reserva online (A11). */
   | "config_negocio"
+  | "config_sucursales"
   // ── Agenda de belleza (fase 1) ──
   /** A1: la agenda del día, columnas por profesional. */
   | "agenda"
@@ -271,6 +286,16 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // cómo atienden, sin tener que atender él (no pide caja propia).
   supervision_billar: { permiso: "billar.admin", feature: "billar" },
   reportes_billar: { permiso: "reportes.ver", feature: "billar" },
+  // Los pedidos con número (extra `tickets_pedido`): la TV y la numeración
+  // son del encargado; despachar, de quien entrega (también la caja).
+  tickets: { permiso: "tickets.configurar", feature: "tickets_pedido" },
+  despacho: { permiso: "tickets.despachar", feature: "tickets_pedido" },
+  menu_digital: { permiso: "menu_digital.editar", feature: "menu_digital" },
+  // El recibo y el logo, con su permiso desde el 31-oct (el backend pide lo
+  // mismo para guardarlos). Antes entraba cualquiera que configurara una de
+  // las pantallas, y el logo es también el de la página pública: quién lo
+  // cambia lo decide el dueño en Roles (Kevin). Con tickets o con el menú.
+  config_recibo: { permiso: "recibo.configurar", feature: "tickets_pedido", oFeature: "menu_digital" },
   // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
   // atender el mostrador. No se vende aparte.
   busqueda: { permiso: "catalogo.ver", feature: null },
@@ -322,6 +347,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   personal: { permiso: "personal.gestionar", feature: "agenda", oFeature: "academia" },
   // Los roles del negocio existen en todos los rubros y no se venden aparte.
   roles: { permiso: "roles.gestionar", feature: null },
+  // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
+  // Para todos los rubros y sin feature: el dueño, como Mi página.
+  config_sucursales: { permiso: "negocio.configurar", feature: null },
   // ── Educación (PLAN-ACADEMIAS-TECNICO §5.2) ──
   // Hoy es de la secretaría y la dirección: el docente (academia.ver PROPIO)
   // entra a sus grupos, como el profesional entra a "Mi agenda".
@@ -405,6 +433,10 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "notas",
   "planilla_docente",
   "preinscripcion_online",
+  // Tickets y despacho y el menú digital nacen el 29-oct para una pollería
+  // de mostrador.
+  "tickets_pedido",
+  "menu_digital",
 ];
 
 /**
@@ -461,6 +493,12 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   gift_cards: RUBROS_BELLEZA,
   propinas: RUBROS_BELLEZA,
   recetas_servicio: RUBROS_BELLEZA,
+  // Los pedidos con número son del restaurante de mostrador: segundo candado
+  // además de la feature, que el backend ya ata a la vertical Gastronomía.
+  tickets: ["RESTAURANTE"],
+  despacho: ["RESTAURANTE"],
+  menu_digital: ["RESTAURANTE"],
+  config_recibo: ["RESTAURANTE"],
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
   // ahí carga a sus docentes, con su % y su retención.
@@ -474,6 +512,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
  * prendida a mano en el panel— vería "Mesas" en el menú.
  */
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  // El instituto ya tiene sus Sedes en Configuración (con su horario de
+  // atención): otra entrada "Sedes" sería la misma pantalla dos veces.
+  config_sucursales: ["ACADEMIA"],
   // El salón entero es de restaurante: una farmacia no atiende mesas, y una
   // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos.
   mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
@@ -513,20 +554,39 @@ export function tienePermiso(usuario: ConPermisos, codigo: string): boolean {
 }
 
 /**
- * ¿Se le ofrece "Aprobar" en un movimiento de inventario de este tipo?
+ * ¿Se le ofrece "Aprobar" en un movimiento de inventario de este tipo? Y
+ * "Anular" uno ya aprobado: deshace la aprobación y el servidor pide lo mismo.
  *
- * Una TRANSFERENCIA pide SIEMPRE `inventario.aprobar_transferencias` (16-oct):
- * mueve mercadería entre locales, y si falta algo entre dos sucursales tiene
- * que haber pocas personas que la hayan dado por buena. Viene de fábrica en
- * Administrador y Encargado.
+ * Es la regla de `puedeAprobar` del backend (`movimiento.service.ts`):
  *
- * Entradas, salidas y ajustes siguen como antes: el botón se ofrece y el
- * servidor decide (con el doble control aprueba sólo `inventario.aprobar`,
- * sin él alcanza con mover inventario; ver `puedeAprobar` en el backend).
+ * - Una TRANSFERENCIA pide SIEMPRE `inventario.aprobar_transferencias`
+ *   (16-oct): mueve mercadería entre locales, y si falta algo entre dos
+ *   sucursales tiene que haber pocas personas que la hayan dado por buena.
+ *   Viene de fábrica en Administrador y Encargado.
+ * - Entradas, salidas y ajustes: `inventario.aprobar`, o mover inventario si
+ *   el negocio NO tiene el extra del doble control (`aprobacion_inventario`).
+ *   Con el extra uno carga y otro aprueba: a quien sólo mueve inventario el
+ *   servidor le contesta 403 al aprobar y al anular lo aprobado (backend
+ *   `test/aprobar-movimientos.e2e-spec.ts`, «quien sólo mueve inventario
+ *   carga, pero no aprueba»). Antes el botón se le ofrecía igual y terminaba
+ *   en ese 403 (MOV-03).
+ *
+ * `dobleControl` es el extra CONFIRMADO en la lista del plan, no `incluye`,
+ * que falla abierto: con la lista vacía (un negocio sin features cargadas) el
+ * backend tampoco ve el extra y deja aprobar a quien mueve inventario, así que
+ * el botón se ofrece y decide él. Sin el tercer argumento (las pantallas de
+ * farmacia) quien mueve inventario lo sigue viendo como siempre.
  */
-export function ofreceAprobarMovimiento(usuario: ConPermisos, tipo: string | undefined): boolean {
+export function ofreceAprobarMovimiento(
+  usuario: ConPermisos,
+  tipo: string | undefined,
+  dobleControl = false,
+): boolean {
   if (tipo === "TRANSFERENCIA") return tienePermiso(usuario, "inventario.aprobar_transferencias");
-  return true;
+  return (
+    tienePermiso(usuario, "inventario.aprobar") ||
+    (tienePermiso(usuario, "inventario.mover") && !dobleControl)
+  );
 }
 
 /** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? */
@@ -774,6 +834,9 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["billar", "/billar"],
   ["pos", "/pos"],
   ["caja", "/pos"],
+  // Quien sólo despacha (un rol armado con `tickets.despachar`) entra directo
+  // a su pantalla; la caja, que también despacha, sigue entrando al POS.
+  ["despacho", "/despacho"],
   ["reportes", "/reportes"],
   ["usuarios", "/usuarios"],
   ["creditos", "/creditos"],
@@ -799,7 +862,11 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["comisiones", "/comisiones"],
   ["personal", "/personal"],
   ["roles", "/roles"],
+  ["tickets", "/tickets"],
+  ["menu_digital", "/menu-digital"],
+  ["config_recibo", "/configuracion/recibo"],
   ["config_negocio", "/configuracion/negocio"],
+  ["config_sucursales", "/configuracion/sucursales"],
   ["mi_pagina", "/mi-pagina"],
   ["mis_enlaces", "/mis-enlaces"],
   ["mi_asistente", "/mi-asistente"],

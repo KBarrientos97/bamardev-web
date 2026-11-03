@@ -3,6 +3,7 @@ import { Boton, Modal } from "../../components/ui";
 import { cargarFuentesEstilos } from "../../lib/pagina/estilos";
 import { ESTILOS_PAGINA, estiloPagina, estiloRecomendado } from "../../lib/pagina/estilosPagina";
 import type { ClaveEstilo, PaginaPublica } from "../../lib/pagina/tipos";
+import { termino } from "../../lib/rubro";
 import { FilaEleccion } from "./EstilosPagina";
 import VistaPagina from "./VistaPagina";
 
@@ -191,7 +192,7 @@ export default function SelectorEstilo({
           )}
           {elegido.pideCatalogo && !vista.catalogo?.items.length && (
             <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              <strong>Carta luce con tu catálogo.</strong> Sin productos se ven tus botones y tus sucursales. Podés cargarlos
+              <strong>Carta luce con tu catálogo.</strong> Sin productos se ven tus botones y tus {termino(rubro, "sucursales")}. Podés cargarlos
               en «Catálogo».
             </p>
           )}

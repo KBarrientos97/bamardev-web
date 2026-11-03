@@ -80,9 +80,12 @@ function Cartel({ tramos, t, testId }: { tramos: Tramo[]; t: TonosPagina; testId
 }
 
 /**
- * "Ver horario": la semana agrupada como en el editor ("Lun a vie
- * 9:00–20:00"), cerrada de entrada. Un `<details>` nativo: abre con teclado y
- * lector de pantalla sin código.
+ * "Horario": la semana agrupada como en el editor ("Lun a vie
+ * 9:00–20:00"). Arranca desplegada (pedido del dueño, 03-nov): plegada, casi
+ * nadie la abría y es lo primero que busca quien quiere ir. Sigue siendo un
+ * `<details>` nativo, así que se puede plegar con un toque, con teclado o
+ * con lector de pantalla, sin código. `open` es sólo el valor de arranque: si
+ * el visitante la pliega, React no la vuelve a abrir al redibujar.
  */
 export function SemanaSucursal({
   tramos,
@@ -97,7 +100,7 @@ export function SemanaSucursal({
   if (grupos.length === 0) return null;
   const fila: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16 };
   return (
-    <details style={{ fontSize: 13, color: t.texto2Tarjeta, alignSelf: centrada ? "center" : "stretch" }}>
+    <details open style={{ fontSize: 13, color: t.texto2Tarjeta, alignSelf: centrada ? "center" : "stretch" }}>
       <summary
         style={{
           cursor: "pointer",
@@ -108,7 +111,8 @@ export function SemanaSucursal({
           margin: centrada ? "0 auto" : undefined,
         }}
       >
-        Ver horario
+        {/* "Horario" y no "Ver horario": ya se ve, el triángulo dice que se pliega. */}
+        Horario
       </summary>
       {/* Con tope de ancho: en la tarjeta ancha de la computadora el día y su hora no quedan a media pantalla. */}
       <dl

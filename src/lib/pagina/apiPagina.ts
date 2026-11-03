@@ -8,6 +8,7 @@ import type {
   EnlaceInput,
   EstadisticasEnlace,
   EstadoEditor,
+  FichaSucursal,
   ItemCatalogoEditor,
   ItemCatalogoInput,
   PaginaPublica,
@@ -68,31 +69,47 @@ async function subirArchivo<T>(ruta: string, archivo: Blob, nombre: string): Pro
 /**
  * Editor "Mi página" y enlaces cortos: pasan por el `request` de siempre
  * (token, sesión vencida, licencia y PostHog).
+ *
+ * Desde el 02-nov (PLAN-PAGINA-WEB §4.2) lo que el editor cambia va al
+ * BORRADOR (`/pagina/borrador/...`): mismos nombres y mismas respuestas que
+ * antes, pero la página pública no cambia hasta `publicarCambios`. Sólo
+ * `publicacion` (Publicar/Despublicar la página entera) va directo.
  */
 export const apiPagina = {
   estado: () => request<EstadoEditor>("/pagina"),
   guardar: (cambios: CambiosPagina) =>
-    request<EstadoEditor>("/pagina", { method: "PATCH", body: json(cambios) }),
+    request<EstadoEditor>("/pagina/borrador", { method: "PATCH", body: json(cambios) }),
+  /** Despublicar (o volver a publicar sin cambios): directo, no pasa por el borrador. */
+  publicacion: (publicada: boolean) =>
+    request<EstadoEditor>("/pagina", { method: "PATCH", body: json({ publicada }) }),
+  /** Pasa el borrador a la página; con `publicarPagina`, además la deja publicada. */
+  publicarCambios: (publicarPagina = false) =>
+    request<EstadoEditor>("/pagina/borrador/publicar", { method: "POST", body: json({ publicarPagina }) }),
+  descartarBorrador: () => request<EstadoEditor>("/pagina/borrador", { method: "DELETE" }),
   crearEnlace: (input: EnlaceInput) =>
-    request<EnlaceEditor>("/pagina/enlaces", { method: "POST", body: json(input) }),
+    request<EnlaceEditor>("/pagina/borrador/enlaces", { method: "POST", body: json(input) }),
   editarEnlace: (id: number, cambios: Partial<EnlaceInput>) =>
-    request<EnlaceEditor>(`/pagina/enlaces/${id}`, { method: "PATCH", body: json(cambios) }),
-  borrarEnlace: (id: number) => request<void>(`/pagina/enlaces/${id}`, { method: "DELETE" }),
+    request<EnlaceEditor>(`/pagina/borrador/enlaces/${id}`, { method: "PATCH", body: json(cambios) }),
+  borrarEnlace: (id: number) => request<void>(`/pagina/borrador/enlaces/${id}`, { method: "DELETE" }),
   ordenar: (ids: number[]) =>
-    request<EstadoEditor>("/pagina/enlaces/orden", { method: "PUT", body: json({ ids }) }),
+    request<EstadoEditor>("/pagina/borrador/enlaces/orden", { method: "PUT", body: json({ ids }) }),
   sucursal: (
     id: number,
-    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "horarioTexto" | "mapsUrl" | "horarioSemanal">>,
-  ) => request<SucursalEditor>(`/pagina/sucursales/${id}`, { method: "PATCH", body: json(cambios) }),
+    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "whatsapp">>,
+  ) => request<SucursalEditor>(`/pagina/borrador/sucursales/${id}`, { method: "PATCH", body: json(cambios) }),
+  /** Configuración › Sucursales: la ficha única (se guarda al toque, no es de la página). */
+  fichasSucursal: () => request<FichaSucursal[]>("/sucursales/fichas"),
+  guardarFichaSucursal: (id: number, cambios: Partial<Omit<FichaSucursal, "id" | "nombre" | "esPrincipal">>) =>
+    request<FichaSucursal>(`/sucursales/${id}/ficha`, { method: "PATCH", body: json(cambios) }),
   borrarImagen: (tipo: "logo" | "portada") =>
-    request<void>(`/pagina/imagen/${tipo}`, { method: "DELETE" }),
+    request<void>(`/pagina/borrador/imagen/${tipo}`, { method: "DELETE" }),
   enlaceCorto: (canal: "CARTEL" | "COMPARTIR" | "RESERVA" = "CARTEL") =>
     request<EnlaceCortoSistema>("/pagina/enlace-corto", { method: "POST", body: json({ canal }) }),
 
   /** Sube el logo o la portada (ver `subirArchivo`). */
   subirImagen: (tipo: "logo" | "portada", archivo: Blob) =>
     subirArchivo<{ url: string | null }>(
-      `/pagina/imagen/${tipo}`,
+      `/pagina/borrador/imagen/${tipo}`,
       archivo,
       tipo === "logo" ? "logo.webp" : "portada.webp",
     ),

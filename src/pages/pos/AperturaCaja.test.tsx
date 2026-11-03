@@ -104,3 +104,30 @@ describe("el vocabulario del rubro", () => {
     expect(screen.getByText("Sucursal")).toBeInTheDocument();
   });
 });
+
+describe("BUG-caja-4: el conteo por billetes se descarta si el monto se corrige", () => {
+  it("con un atajo (o tecleando), la cabecera del conteo no puede seguir diciendo otro monto", async () => {
+    // El conteo prometía descartarse y nadie lo hacía: decía Bs 40 con Bs 100
+    // en el monto, y el billete siguiente sumaba sobre los 40 viejos.
+    render(<AperturaCaja onAbierta={vi.fn()} />);
+    await act(async () => {});
+    fireEvent.click(screen.getByText("Contar por denominación"));
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 20,00"));
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 20,00"));
+    const campo = screen.getByPlaceholderText("0,00") as HTMLInputElement;
+    expect(campo.value).toBe("40,00");
+    const cabecera = screen.getByText("Contar por denominación").closest("button")!;
+    expect(cabecera).toHaveTextContent("Bs 40,00");
+
+    fireEvent.click(screen.getByRole("button", { name: "Bs 100,00" }));
+    expect(campo.value).toBe("100,00");
+    expect(cabecera).not.toHaveTextContent("Bs 40,00");
+    expect(screen.getByLabelText("Cantidad de Bs 20,00")).toHaveValue(null);
+
+    // Abre con lo que dice el campo, no con el conteo descartado.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Abrir caja/ }));
+    });
+    expect(abrirCaja).toHaveBeenCalledWith(expect.objectContaining({ montoApertura: 100 }));
+  });
+});

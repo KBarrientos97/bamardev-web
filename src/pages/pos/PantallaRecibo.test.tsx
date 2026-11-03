@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import type { Feature, Venta } from "../../types";
+import { RECIBO_DE_FABRICA } from "../../types/menuDigital";
 
 /**
  * La "M" (mesa) y "LL" (llevar) al lado de cada producto del ticket.
@@ -31,11 +33,17 @@ vi.mock("../../store/AuthContext", async () => {
   };
 });
 
+// El diseño del recibo de los negocios con pantallas: null es el de siempre.
+const disenoRecibo = vi.hoisted(() => ({ valor: null as ReciboNegocio | null }));
+vi.mock("../../lib/menuDigital/useReciboNegocio", () => ({
+  useReciboNegocio: () => disenoRecibo.valor,
+}));
+
 vi.mock("../../lib/academia/apiAcademia", () => ({
   apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
 }));
 
-import { act } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import PantallaRecibo from "./PantallaRecibo";
 
@@ -82,8 +90,8 @@ function venta(datos: Partial<Venta> = {}): Venta {
   } as Venta;
 }
 
-function dibujar(v: Venta) {
-  render(<PantallaRecibo venta={v} onNuevaVenta={() => {}} onHistorial={() => {}} />);
+function dibujar(v: Venta, extra: { reimpresion?: boolean } = {}) {
+  return render(<PantallaRecibo venta={v} onNuevaVenta={() => {}} onHistorial={() => {}} {...extra} />);
 }
 
 beforeEach(() => {
@@ -517,5 +525,260 @@ describe("con lugar: los botones al lado del ticket (27-oct)", () => {
     } finally {
       restaurar();
     }
+  });
+});
+
+describe("bamardev-restaurant: el ticket de un fiado", () => {
+  const credito = { clienteNombre: "Pensión Doña Rosa", adelanto: 0, saldo: 80, fechaCompromiso: "2026-11-20" };
+
+  it("sin adelanto dice que se llevó a crédito, no «Pago: —»", () => {
+    // QA 29-oct: un fiado sin adelanto no tiene pagos y el ticket decía
+    // "Pago: —", como si faltara un dato.
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta({ credito } as Partial<Venta>));
+    expect(screen.getByText("Pago:").nextElementSibling).toHaveTextContent("A crédito");
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+  });
+
+  it("el saldo por cobrar va separado de su monto", () => {
+    // QA 29-oct: en el ticket angosto se leía "SALDO POR COBRARBs 37,00".
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta({ credito } as Partial<Venta>));
+    expect(screen.getByText("SALDO POR COBRAR").parentElement).toHaveClass("gap-2");
+  });
+});
+
+describe("bamardev-restaurant: el ticket de un pedido dice a quién y a dónde va", () => {
+  it("un delivery lleva el cliente, el teléfono, la dirección, el repartidor y la nota", () => {
+    // QA 29-oct: el papel que sale con el pedido traía sólo productos y
+    // totales. Android (ReciboVentaDialog) ya lo identificaba.
+    sesion.rubro = "RESTAURANTE";
+    dibujar(
+      venta({
+        tipoPedido: "DELIVERY",
+        clienteNombre: "Marco Rojas",
+        clienteTelefono: "70012345",
+        clienteDireccion: "Av. Blanco Galindo km 4",
+        repartidor: { id: 3, nombre: "Repartidor QA" },
+        notaPedido: "Timbre de arriba",
+      } as Partial<Venta>),
+    );
+    expect(screen.getByText("Pedido:").nextElementSibling).toHaveTextContent("Delivery");
+    expect(screen.getByText("Cliente:").nextElementSibling).toHaveTextContent("Marco Rojas");
+    expect(screen.getByText("Teléfono:").nextElementSibling).toHaveTextContent("70012345");
+    expect(screen.getByText("Dirección:").nextElementSibling).toHaveTextContent("Av. Blanco Galindo km 4");
+    expect(screen.getByText("Repartidor:").nextElementSibling).toHaveTextContent("Repartidor QA");
+    expect(screen.getByText("Nota:").nextElementSibling).toHaveTextContent("Timbre de arriba");
+  });
+
+  it("una venta de mostrador no inventa datos de entrega", () => {
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta());
+    expect(screen.queryByText("Pedido:")).not.toBeInTheDocument();
+  });
+});
+
+describe("pedidos con número (extra tickets_pedido)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  const conNumero = (datos: Partial<Venta> = {}) =>
+    venta({
+      ticket: { numero: 72, estado: "PREPARANDO" },
+      detalles: [
+        { productoId: 1, producto: "Brasa cuarto", cantidad: 2, precio: 26, subtotal: 52, nota: "sin ensalada", consumo: "LLEVAR" },
+        { productoId: 2, producto: "Coca Cola 1.5L", cantidad: 1, precio: 15, subtotal: 15, nota: null, consumo: "MESA" },
+      ],
+      ...datos,
+    } as Partial<Venta>);
+
+  it("muestra el número grande y el botón imprime recibo y comanda juntos", () => {
+    dibujar(conNumero());
+    expect(screen.getByText("NÚMERO DE TICKET DEL CLIENTE")).toBeInTheDocument();
+    // En la pantalla, en el recibo y en la comanda.
+    expect(screen.getAllByText("072")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /Imprimir recibo y comanda/ })).toBeInTheDocument();
+    // El "Imprimir" de siempre no aparece: imprimía el recibo sin la comanda
+    // y no decía cuál. Cada papel tiene el suyo, con nombre.
+    expect(screen.queryByRole("button", { name: /^Imprimir$/ })).not.toBeInTheDocument();
+  });
+
+  it("cada papel se imprime solo con el botón de su rótulo, y después vuelven a salir juntos", () => {
+    // Kevin, 29-oct: la caja y la cocina pueden tener cada una su impresora y
+    // no imprimir juntas; hay que poder mandar dos veces, una a cada una.
+    dibujar(conNumero());
+    const area = document.getElementById("area-impresion")!;
+    let impreso: string | undefined = "sin imprimir";
+    const imprimir = vi.spyOn(window, "print").mockImplementation(() => {
+      impreso = area.dataset.imprimir;
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir solo la comanda" }));
+    expect(impreso).toBe("comanda");
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    expect(area.dataset.imprimir).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir solo el recibo" }));
+    expect(impreso).toBe("recibo");
+
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir recibo y comanda/ }));
+    expect(impreso).toBeUndefined();
+    expect(imprimir).toHaveBeenCalledTimes(3);
+    imprimir.mockRestore();
+  });
+
+  it("los papeles marcan cuál es cuál para la impresión suelta", () => {
+    dibujar(conNumero());
+    const area = document.getElementById("area-impresion")!;
+    expect(area.querySelector(".recibo-impreso")).toHaveTextContent("Brasa cuarto");
+    expect(area.querySelector(".comanda-impresa")).toHaveTextContent("COMANDA · COCINA");
+    expect(screen.getByText("Impresora de caja")).toBeInTheDocument();
+    expect(screen.getByText("Impresora de cocina")).toBeInTheDocument();
+  });
+
+  it("el recibo y la comanda van en la misma área de impresión, la comanda en hoja aparte", () => {
+    dibujar(conNumero());
+    const area = document.getElementById("area-impresion")!;
+    expect(area.querySelectorAll("article")).toHaveLength(2);
+    expect(area.querySelector(".comanda-impresa")).not.toBeNull();
+    expect(area.querySelector(".comanda-impresa")).toHaveTextContent("COMANDA · COCINA");
+  });
+
+  it("la comanda separa en mesa y para llevar, con la nota y sin precios", () => {
+    dibujar(conNumero());
+    const comanda = document.querySelector(".comanda-impresa") as HTMLElement;
+    expect(comanda).toHaveTextContent("EN MESA");
+    expect(comanda).toHaveTextContent("PARA LLEVAR");
+    expect(comanda).toHaveTextContent("sin ensalada");
+    expect(comanda).toHaveTextContent("3 productos");
+    expect(comanda.textContent).not.toContain("Bs");
+  });
+
+  it("el comprobante pasa a llamarse Venta: el ticket es el número de arriba", () => {
+    dibujar(conNumero());
+    expect(screen.getByText("Venta:").nextElementSibling).toHaveTextContent("T-0007");
+    expect(screen.queryByText("Ticket:")).not.toBeInTheDocument();
+  });
+
+  it("sin número, el recibo sale como siempre", () => {
+    dibujar(venta());
+    expect(screen.queryByText("NÚMERO DE TICKET DEL CLIENTE")).not.toBeInTheDocument();
+    expect(document.querySelector(".comanda-impresa")).toBeNull();
+    expect(document.getElementById("area-impresion")?.tagName).toBe("ARTICLE");
+  });
+});
+
+describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
+  // La caja y la cocina pueden tener cada una su impresora: Configuración
+  // deja elegir el recibo, la comanda, o los dos juntos o por separado.
+  const conNumero = () =>
+    venta({
+      ticket: { numero: 72, estado: "PREPARANDO" },
+      detalles: [
+        { productoId: 1, producto: "Brasa cuarto", cantidad: 1, precio: 26, subtotal: 26, nota: null, consumo: "LLEVAR" },
+      ],
+    } as Partial<Venta>);
+
+  let impresos: (string | undefined)[];
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    vi.useFakeTimers();
+    impresos = [];
+    vi.spyOn(window, "print").mockImplementation(() => {
+      impresos.push(document.getElementById("area-impresion")?.dataset.imprimir);
+    });
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const alCobrar = (recibo: boolean, comanda: boolean, juntos: boolean) => {
+    disenoRecibo.valor = { recibo: { ...RECIBO_DE_FABRICA, alCobrar: { recibo, comanda, juntos } }, logo: null };
+  };
+  const cerrarImpresion = () =>
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+      vi.advanceTimersByTime(400);
+    });
+
+  it("por separado: primero el recibo y, al cerrarse, la comanda en su propia impresión", () => {
+    alCobrar(true, true, false);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(impresos).toEqual(["recibo"]);
+    cerrarImpresion();
+    expect(impresos).toEqual(["recibo", "comanda"]);
+    // Cerrada la comanda no se abre nada más, y la pantalla vuelve a tener los dos papeles.
+    cerrarImpresion();
+    expect(impresos).toHaveLength(2);
+    expect(document.getElementById("area-impresion")?.dataset.imprimir).toBeUndefined();
+  });
+
+  it("sólo la comanda: sale sola, sin el recibo", () => {
+    alCobrar(false, true, true);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(impresos).toEqual(["comanda"]);
+  });
+
+  it("juntos: una sola impresión con los dos papeles, como antes", () => {
+    alCobrar(true, true, true);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(impresos).toEqual([undefined]);
+  });
+
+  it("sin nada elegido no imprime solo", () => {
+    alCobrar(false, false, true);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual([]);
+  });
+
+  it("reabierto desde el historial no imprime solo ni ofrece la comanda con el foco", () => {
+    // 31-oct: "Ver comprobante" de la 0072 una hora después mandaba la
+    // comanda otra vez a la cocina (y en modo kiosco salía sin diálogo).
+    alCobrar(true, true, true);
+    dibujar(conNumero(), { reimpresion: true });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual([]);
+    expect(screen.queryByRole("button", { name: /Imprimir recibo y comanda/ })).not.toBeInTheDocument();
+    const recibo = screen.getByRole("button", { name: "Imprimir recibo" });
+    expect(recibo).not.toHaveFocus();
+    fireEvent.click(recibo);
+    expect(impresos).toEqual(["recibo"]);
+    // La comanda, si se perdió, sigue saliendo con el botón de su rótulo.
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir solo la comanda" }));
+    expect(impresos).toEqual(["recibo", "comanda"]);
+  });
+
+  it("si la cajera imprime antes de que llegue el diseño, la impresión sola no se repite", () => {
+    // La primera venta del día: el diseño todavía no llegó, Enter imprime, y
+    // cuando llegaba (dentro de los 4 s) salía todo otra vez.
+    const pantalla = dibujar(conNumero());
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir recibo y comanda/ }));
+    expect(impresos).toEqual([undefined]);
+    cerrarImpresion();
+    alCobrar(true, true, true);
+    pantalla.rerender(<PantallaRecibo venta={conNumero()} onNuevaVenta={() => {}} onHistorial={() => {}} />);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual([undefined]);
   });
 });

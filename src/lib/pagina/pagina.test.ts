@@ -42,8 +42,8 @@ function editor(cambios: Partial<EstadoEditor> = {}): EstadoEditor {
       { id: 4, tipo: "BOTON", formato: "BOTON", etiqueta: "Precios", valor: "https://bv.bo", url: "https://bv.bo/", icono: "promo", orden: 4, visible: true, clics: 0 },
     ],
     sucursales: [
-      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20", mapsUrl: null },
-      { id: 11, nombre: "Sur", direccion: null, telefono: null, esPrincipal: false, publicarEnPagina: false, horarioTexto: null, mapsUrl: null },
+      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20" },
+      { id: 11, nombre: "Sur", direccion: null, telefono: null, esPrincipal: false, publicarEnPagina: false, horarioTexto: null },
     ],
     reservaOnline: false,
     enlacesCortos: true,
@@ -207,9 +207,42 @@ describe("vista previa desde el editor", () => {
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");
   });
 
-  it("el mapa: el pegado o una búsqueda por dirección", () => {
-    expect(urlMapa("https://maps.app.goo.gl/x", "Junín")).toBe("https://maps.app.goo.gl/x");
-    expect(urlMapa(null, null)).toBeNull();
+  it("«Cómo llegar»: la ruta a la ubicación o una búsqueda por dirección", () => {
+    expect(urlMapa("Junín")).toBe("https://www.google.com/maps/search/?api=1&query=Jun%C3%ADn");
+    expect(urlMapa(null)).toBeNull();
+    expect(urlMapa("Junín", { lat: -17.78, lng: -63.18 })).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
+  });
+
+  it("el horario de la vista previa: el por día si no está oculto; el texto de antes, sólo sin él", () => {
+    const HABILES = [1, 2, 3, 4, 5].map((dia) => ({ dia, desde: "09:00", hasta: "20:00" }));
+    const centro = (mostrarHorario: boolean | undefined, horarioSemanal: typeof HABILES | null) => {
+      const e = editor();
+      e.pagina = { ...e.pagina, mostrarHorario };
+      e.sucursales = e.sucursales.map((s) => (s.id === 10 ? { ...s, horarioSemanal } : s));
+      return vistaDesdeEditor(e).sucursales[0];
+    };
+    expect(centro(true, HABILES)).toMatchObject({ horario: null, horarioSemanal: HABILES });
+    expect(centro(undefined, null)).toMatchObject({ horario: "9 a 20", horarioSemanal: null });
+    expect(centro(false, HABILES)).toMatchObject({ horario: null, horarioSemanal: null });
+    expect(centro(false, null)).toMatchObject({ horario: null });
+  });
+
+  it("el pin de la vista previa: con ubicación y el mapa sin ocultar, como el backend", () => {
+    const conPin = (mostrarMapa: boolean | undefined) => {
+      const e = editor();
+      e.pagina = { ...e.pagina, mostrarMapa };
+      e.sucursales = e.sucursales.map((s) => (s.id === 10 ? { ...s, latitud: -17.78, longitud: -63.18 } : s));
+      return vistaDesdeEditor(e).sucursales[0];
+    };
+    expect(conPin(true).ubicacion).toEqual({ lat: -17.78, lng: -63.18 });
+    expect(conPin(true).mapaUrl).toMatch(/maps\/dir/);
+    // Un backend anterior no manda el interruptor: prendido, como el default.
+    expect(conPin(undefined).ubicacion).not.toBeNull();
+    expect(conPin(false).ubicacion).toBeNull();
+    // 03-nov: con el mapa oculto, "Cómo llegar" sigue yendo al punto marcado.
+    expect(conPin(false).mapaUrl).toBe("https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18");
   });
 });
 
@@ -242,6 +275,8 @@ describe("rutas y permisos", () => {
     expect(esRutaDePaginaPublica("/p/horizonte/inscribirme/22")).toBe(true);
     expect(esRutaDePaginaPublica("/p/horizonte/inscribirme/x")).toBe(false);
     expect(esRutaDePaginaPublica("/p/horizonte/pagar/K7Q2abcdef")).toBe(true);
+    expect(esRutaDePaginaPublica("/p/horizonte/mi-cuenta")).toBe(true);
+    expect(esRutaDePaginaPublica("/p/horizonte/mi-cuenta/x")).toBe(false);
     expect(esRutaDePaginaPublica("/p/")).toBe(false);
     expect(esRutaDePaginaPublica("/pos")).toBe(false);
     expect(esRutaDePaginaPublica("/p/bv/otra")).toBe(false);

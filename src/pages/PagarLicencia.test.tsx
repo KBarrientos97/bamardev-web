@@ -47,7 +47,7 @@ import PagarLicencia from "./PagarLicencia";
 
 /** Escribe el alias y pide los plazos, como lo haría el dueño. */
 async function escribirAlias(texto: string) {
-  fireEvent.change(screen.getByPlaceholderText("pollosdonomar"), {
+  fireEvent.change(screen.getByPlaceholderText("alias del negocio"), {
     target: { value: texto },
   });
   await act(async () => {
@@ -64,7 +64,7 @@ describe("pagar la licencia por QR", () => {
   it("arranca pidiendo el alias, vacío y sin consultar ningún precio", async () => {
     render(<PagarLicencia onSalir={() => {}} />);
     await act(async () => {});
-    expect(screen.getByPlaceholderText("pollosdonomar")).toHaveValue("");
+    expect(screen.getByPlaceholderText("alias del negocio")).toHaveValue("");
     expect(api.opcionesPagoLicencia).not.toHaveBeenCalled();
     expect(screen.queryByText("Elegí tu plazo")).not.toBeInTheDocument();
   });
@@ -100,7 +100,7 @@ describe("pagar la licencia por QR", () => {
     render(<PagarLicencia onSalir={() => {}} />);
     await escribirAlias("noexiste");
     expect(screen.getByText(/No encontramos ese negocio/)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("pollosdonomar")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("alias del negocio")).toBeInTheDocument();
   });
 
   it("«Cambiar» vuelve al alias para escribir otro negocio", async () => {

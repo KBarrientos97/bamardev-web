@@ -31,6 +31,8 @@ export default function PantallaEntrega({
   unidades,
   repartidores,
   enviando,
+  inicial,
+  errorServidor,
   onAtras,
   onContinuar,
 }: {
@@ -44,21 +46,40 @@ export default function PantallaEntrega({
    * descontado dos veces (no hay clienteRequestId que lo ataje).
    */
   enviando: boolean;
+  /**
+   * Lo que ya se había cargado, al volver del cobro. El formulario volvía
+   * vacío (BUG-pedidos-9): había que tipear de nuevo nombre, dirección y
+   * teléfono con el cliente esperando, por haber tocado "atrás" una vez.
+   */
+  inicial?: DatosEntrega | null;
+  /**
+   * El rechazo del servidor al crear el pedido contra entrega ("Stock
+   * insuficiente de…", "El repartidor no existe o está inactivo", un 403 del
+   * plan). Se guardaba en el POS pero acá no se dibujaba: el botón volvía a
+   * estar activo sin ningún mensaje y el pedido no existía (BUG-pedidos-1).
+   */
+  errorServidor?: string;
   onAtras: () => void;
   /** `prepagado` decide si sigue al cobro o si el pedido queda pendiente. */
   onContinuar: (datos: DatosEntrega) => void;
 }) {
   const esDelivery = tipo === "DELIVERY";
 
-  const [nombre, setNombre] = useState("");
-  const [direccion, setDireccion] = useState("");
-  const [telefono, setTelefono] = useState("");
+  const [nombre, setNombre] = useState(inicial?.clienteNombre ?? "");
+  const [direccion, setDireccion] = useState(inicial?.clienteDireccion ?? "");
+  const [telefono, setTelefono] = useState(inicial?.clienteTelefono ?? "");
   const [repartidorId, setRepartidorId] = useState(
-    repartidores.length === 1 ? String(repartidores[0].id) : "",
+    inicial?.repartidorId != null
+      ? String(inicial.repartidorId)
+      : repartidores.length === 1
+        ? String(repartidores[0].id)
+        : "",
   );
-  const [tarifa, setTarifa] = useState(montoParaEditar(esDelivery ? 8 : 0));
-  const [minutos, setMinutos] = useState(20);
-  const [nota, setNota] = useState("");
+  const [tarifa, setTarifa] = useState(
+    montoParaEditar(inicial ? inicial.tarifaEnvio : esDelivery ? 8 : 0),
+  );
+  const [minutos, setMinutos] = useState(inicial?.minutosEstimados ?? 20);
+  const [nota, setNota] = useState(inicial?.notaPedido ?? "");
   const [error, setError] = useState("");
 
   const tarifaNum = leerMonto(tarifa) ?? 0;
@@ -212,6 +233,9 @@ export default function PantallaEntrega({
       </div>
 
       <div className="space-y-2 border-t border-borde bg-white p-4">
+        {/* Junto a los botones y no al final del formulario: es donde se tocó,
+            y con el formulario largo el final queda fuera de la vista. */}
+        <ErrorMsg>{errorServidor}</ErrorMsg>
         <p className="text-center text-xs font-semibold uppercase tracking-wide text-texto-4">
           ¿Cómo se cobra?
         </p>

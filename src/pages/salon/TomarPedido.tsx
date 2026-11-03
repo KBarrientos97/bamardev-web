@@ -6,6 +6,7 @@ import { fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import type { Mesa } from "../../types/salon";
+import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import CarritoPedido from "./CarritoPedido";
 import TarjetaCarta from "./TarjetaCarta";
 import { etiquetaMesa } from "./logicaSalon";
@@ -51,8 +52,18 @@ export default function TomarPedido({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const proximoId = useRef(1);
+  /**
+   * La identidad de ESTE envío a cocina (`clienteRequestId`), la misma en cada
+   * reintento. La comanda viajaba sin ella: si la respuesta se perdía (wifi
+   * del local, el corte de 20 s) la pantalla mostraba el error, el mesero
+   * tocaba "Enviar a cocina" de nuevo y la cocina recibía el pedido dos veces
+   * — y se cobraba dos veces si nadie lo veía. Con el mismo id el backend
+   * devuelve la comanda que ya entró. Se renueva al enviar bien o si el pedido
+   * cambió (mismo criterio que el cobro del POS: ver `useIntentoDeCobro`).
+   */
+  const intento = useIntentoDeCobro();
 
-  const productos = carta.datos ?? [];
+  const productos = useMemo(() => carta.datos ?? [], [carta.datos]);
 
   const categorias = useMemo(() => {
     const vistas = new Map<string, string>();
@@ -81,7 +92,12 @@ export default function TomarPedido({
     setError("");
     setEnviando(true);
     try {
-      await api.crearComanda(mesa.id, { items: aItemsDeComanda(lineas) });
+      const items = aItemsDeComanda(lineas);
+      await api.crearComanda(mesa.id, {
+        items,
+        clienteRequestId: intento.actual(huellaDeCobro(items)),
+      });
+      intento.registrado();
       setLineas([]);
       setAbierto(false);
       // Vuelve al salón y no a la mesa: después de mandar un pedido el mesero

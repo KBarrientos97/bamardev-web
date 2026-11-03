@@ -1,5 +1,14 @@
+import { urlRuta, type Ubicacion } from "../mapa";
 import { TITULO_CATALOGO } from "./catalogo";
-import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, ItemCatalogoPublico, PaginaPublica } from "./tipos";
+import type {
+  CatalogoPublico,
+  EnlaceEditor,
+  EnlacePublico,
+  EstadoEditor,
+  ItemCatalogoPublico,
+  PaginaPublica,
+  SucursalEditor,
+} from "./tipos";
 import { numeroInternacional } from "./whatsapp";
 
 /** El `wa.me` del WhatsApp de una sucursal, como lo arma el backend. */
@@ -13,11 +22,19 @@ export function hoyBolivia(ahora = new Date()): string {
   return new Date(ahora.getTime() - 4 * 3_600_000).toISOString().slice(0, 10);
 }
 
-/** URL de "Cómo llegar": el mapa pegado o una búsqueda por dirección. */
-export function urlMapa(mapsUrl: string | null, direccion: string | null): string | null {
-  if (mapsUrl) return mapsUrl;
+/**
+ * URL de "Cómo llegar", como la arma el backend (`mapaDeSucursal`): la ruta a
+ * la ubicación marcada o, sin ella, una búsqueda por dirección.
+ */
+export function urlMapa(direccion: string | null, ubicacion: Ubicacion | null = null): string | null {
+  if (ubicacion) return urlRuta(ubicacion);
   if (!direccion) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
+}
+
+/** El punto marcado en la ficha de la sucursal (PLAN-PAGINA-WEB §3.1). */
+function marcadaDe(s: SucursalEditor): Ubicacion | null {
+  return s.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
 }
 
 /**
@@ -91,6 +108,7 @@ function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | n
  */
 export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPublica {
   const p = e.pagina;
+  const conHorario = p.mostrarHorario !== false;
   const muestra = e.muestras.find((m) => m.clave === p.colorClave) ?? e.muestras[0];
   const visibles = [...e.enlaces].filter((x) => x.visible).sort((a, b) => a.orden - b.orden || a.id - b.id);
   const publico = (x: EnlaceEditor): EnlacePublico => ({
@@ -140,14 +158,20 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     botones,
     sucursales: e.sucursales
       .filter((s) => s.publicarEnPagina)
-      .map((s) => ({
+      .map((s) => ({ s, marcada: marcadaDe(s) }))
+      .map(({ s, marcada }) => ({
         nombre: s.nombre,
         reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
         direccion: s.direccion,
         telefono: s.telefono,
-        horario: s.horarioTexto,
-        mapaUrl: urlMapa(s.mapsUrl, s.direccion),
-        horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
+        // Como el backend (`horarioDeSucursal`): el por día si el dueño no lo
+        // ocultó; el texto de antes, sólo sin horario por día (02-nov).
+        horario: conHorario && !s.horarioSemanal?.length ? s.horarioTexto?.trim() || null : null,
+        // Como el backend (`mapaDeSucursal`, 03-nov): el pin sólo con el mapa a
+        // la vista; "Cómo llegar" va al punto marcado aunque esté oculto.
+        mapaUrl: urlMapa(s.direccion, marcada),
+        ubicacion: p.mostrarMapa !== false ? marcada : null,
+        horarioSemanal: conHorario && s.horarioSemanal?.length ? s.horarioSemanal : null,
         whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
     catalogo: catalogoVisible(e),

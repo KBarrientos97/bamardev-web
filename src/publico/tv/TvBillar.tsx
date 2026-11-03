@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { useAhora } from "../../pages/billar/reloj";
@@ -7,6 +7,11 @@ import { vistaSalon } from "../../pages/billar/SalonTv.datos";
 import { useAlDia, useMantenerEncendida, usePantallaCompleta } from "./pantalla";
 import { llaveConForma, mesasDelSalon, sucursalDeLaDireccion, tiposDelSalon } from "./TvBillar.datos";
 import { useSalonPublico } from "./useSalonPublico";
+
+/** La TV de tickets del restaurante (`/tv/tickets/<llave>`). */
+const TvTickets = lazy(() => import("./TvTickets"));
+/** Las TVs del menú digital (`/tv/menu/<llave>/<n>`). */
+const TvMenu = lazy(() => import("./TvMenu"));
 
 /**
  * La TV del salón del billar SIN sesión (§7.11): `/tv/billar/<llave>`, con
@@ -27,6 +32,24 @@ export default function RutasTv() {
   return (
     <Routes>
       <Route path="billar/:llave" element={<TvBillar />} />
+      {/* La TV de tickets del restaurante: aparte, para que una no baje la otra. */}
+      <Route
+        path="tickets/:llave"
+        element={
+          <Suspense fallback={<div className="min-h-dvh bg-[#1A1210]" />}>
+            <TvTickets />
+          </Suspense>
+        }
+      />
+      {/* Las TVs del menú digital: `/tv/menu/<llave>` elige cuál, `/<n>` la muestra. */}
+      <Route
+        path="menu/*"
+        element={
+          <Suspense fallback={<div className="min-h-dvh bg-[#1A1210]" />}>
+            <TvMenu />
+          </Suspense>
+        }
+      />
       <Route path="*" element={<EnlaceIncompleto />} />
     </Routes>
   );

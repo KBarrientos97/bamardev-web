@@ -124,3 +124,75 @@ describe("el pie de la hoja de mesa", () => {
     );
   });
 });
+
+/**
+ * "Cobrar" del mesero (BUG-salon-3 / SAL-02), con las reglas de la app
+ * (`pintarCobrarYo`). La web lo dibujaba con sólo mirar que hubiera consumo.
+ */
+describe("el mesero cobra su mesa", () => {
+  /** El mesero 7, con `salon.cobrar_mesero`, y el negocio con mesero_cobra. */
+  const yo = { cobraSusMesas: true, usuarioId: 7 };
+  const mia = (p: Partial<Mesa> = {}) => mesa({ meseroId: 7, meseroNombre: "Carla", ...p });
+
+  it("su mesa ocupada y todo servido: Cobrar con el consumo, y pasar a caja sigue", () => {
+    const pie = pieDeMesa(mia(), money, yo);
+    expect(pie.cobrar?.texto).toBe("Cobrar Bs 26.00");
+    // Son dos caminos, no un reemplazo.
+    expect(pie.secundario?.accion).toBe("cuenta");
+  });
+
+  it("su mesa en caja: también la puede cobrar", () => {
+    // El cliente le pone la plata en la mano: no tiene sentido mandarlo a caja.
+    expect(pieDeMesa(mia({ estado: "CUENTA" }), money, yo).cobrar).toBeDefined();
+  });
+
+  it("en una mesa pagada no ofrece cobrar: lo que falta es liberarla", () => {
+    // El bug: estaOcupada cuenta la PAGADA y el consumo sigue > 0 hasta
+    // liberar, así que TODA mesa pagada mostraba "Cobrar Bs X" como botón
+    // principal (el backend: "la mesa ya se cobró") y "Levantar y liberar"
+    // quedaba de segundo.
+    const pie = pieDeMesa(mia({ estado: "PAGADA", consumo: 52 }), money, yo);
+    expect(pie.cobrar).toBeUndefined();
+    expect(pie.principal.accion).toBe("liberar");
+  });
+
+  it("con platos sin servir no la cobra: sería cobrar algo que el cliente no recibió", () => {
+    // Acá el backend no frena: la regla vive sólo en la pantalla.
+    const pie = pieDeMesa(mia({ comandas: [comanda()] }), money, yo);
+    expect(pie.cobrar).toBeUndefined();
+    expect(pie.banner).toContain("Primero llevá a la mesa");
+  });
+
+  it("sin nada pedido no hay nada que cobrar", () => {
+    expect(pieDeMesa(mia({ comandas: [], consumo: 0 }), money, yo).cobrar).toBeUndefined();
+  });
+
+  it("la mesa de otro mesero no se cobra, y se dice por qué", () => {
+    // El backend la rechaza: ofrecer un botón que siempre falla es peor que
+    // no ofrecerlo, y sin el porqué parecería que la app se rompió.
+    const pie = pieDeMesa(mesa({ meseroId: 3, meseroNombre: "Luis" }), money, yo);
+    expect(pie.cobrar).toBeUndefined();
+    expect(pie.banner).toBe(
+      "Esta mesa la atiende Luis. Sólo puede cobrarla quien la atendió, o la caja.",
+    );
+  });
+
+  it("en caja, la mesa de otro no pisa el aviso de la caja", () => {
+    const pie = pieDeMesa(mesa({ estado: "CUENTA", meseroId: 3, meseroNombre: "Luis" }), money, yo);
+    expect(pie.cobrar).toBeUndefined();
+    expect(pie.banner).toContain("ya está en caja");
+  });
+
+  it("sin el permiso salon.cobrar_mesero no se ofrece, aunque el negocio lo habilite", () => {
+    const pie = pieDeMesa(mia(), money, { ...yo, cobraSusMesas: false });
+    expect(pie.cobrar).toBeUndefined();
+    // Ni el porqué: no es algo que esta persona pueda hacer.
+    expect(pie.banner).toBeUndefined();
+  });
+
+  it("sin mesero_cobra (no llega el contexto) el pie es el de siempre", () => {
+    const pie = pieDeMesa(mia(), money);
+    expect(pie.cobrar).toBeUndefined();
+    expect(pie.banner).toBeUndefined();
+  });
+});

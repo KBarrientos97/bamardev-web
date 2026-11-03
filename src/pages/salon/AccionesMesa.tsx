@@ -1,16 +1,44 @@
 import { useState } from "react";
+import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import type { ItemComanda, Mesa } from "../../types/salon";
-import { consumoDeMesa, estaOcupada, subtotalItem } from "./logicaSalon";
+import {
+  consumoDeMesa,
+  mesasParaElegir,
+  subtotalItem,
+  type MovimientoMesa,
+} from "./logicaSalon";
+
+/** Lo que dice el diálogo en cada movimiento (los textos de `strings.xml`). */
+const TEXTOS: Record<MovimientoMesa, { titulo: string; subtitulo: string; vacio: string }> = {
+  pasar: {
+    titulo: "¿A qué mesa la paso?",
+    subtitulo: "El consumo y los pedidos se mueven con el grupo.",
+    vacio: "No hay ninguna mesa libre ahora mismo.",
+  },
+  juntar: {
+    titulo: "¿Qué mesa junto con esta?",
+    subtitulo: "El consumo de esa mesa se suma a esta y la otra queda libre.",
+    vacio: "No hay otra mesa ocupada para juntar.",
+  },
+  unir: {
+    titulo: "¿Con qué mesa la unís?",
+    subtitulo:
+      "Para un grupo que no entra en una sola mesa. Se suman los lugares de las dos y queda una sola cuenta.",
+    vacio: "No hay otra mesa libre para unir.",
+  },
+};
 
 /**
- * Elegir la mesa destino de un "pasar" o un "juntar".
+ * Elegir la otra mesa de un "pasar", un "juntar" o un "unir".
  *
- * Son dos cosas distintas y por eso el diálogo cambia de texto y de lista:
+ * Son tres cosas distintas y por eso el diálogo cambia de texto y de lista
+ * (las reglas, en `mesasParaElegir`):
  *  - **Pasar**: el grupo se levanta y se sienta en otra mesa. Va a una LIBRE.
  *  - **Juntar**: dos cuentas que ya comieron se cobran juntas. Va a una
- *    OCUPADA.
+ *    con gente y sin cobrar.
+ *  - **Unir**: se arrima una mesa LIBRE antes de sentar a un grupo grande.
  */
 export function ElegirMesa({
   modo,
@@ -20,27 +48,22 @@ export function ElegirMesa({
   onElegir,
   onCerrar,
 }: {
-  modo: "pasar" | "juntar";
+  modo: MovimientoMesa;
   mesa: Mesa;
   mesas: Mesa[];
   procesando: boolean;
   onElegir: (otra: Mesa) => void;
   onCerrar: () => void;
 }) {
-  const pasar = modo === "pasar";
-  const candidatas = mesas.filter((m) =>
-    m.id === mesa.id ? false : pasar ? m.estado === "LIBRE" : estaOcupada(m),
-  );
+  const juntar = modo === "juntar";
+  const textos = TEXTOS[modo];
+  const candidatas = mesasParaElegir(modo, mesa, mesas);
 
   return (
     <Modal
       abierto
-      titulo={pasar ? "¿A qué mesa la paso?" : "¿Qué mesa junto con esta?"}
-      subtitulo={
-        pasar
-          ? "El consumo y los pedidos se mueven con el grupo."
-          : "El consumo de esa mesa se suma a esta y la otra queda libre."
-      }
+      titulo={textos.titulo}
+      subtitulo={textos.subtitulo}
       onClose={onCerrar}
       ancho="max-w-sm"
       acciones={
@@ -50,11 +73,7 @@ export function ElegirMesa({
       }
     >
       {candidatas.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-texto-3">
-          {pasar
-            ? "No hay ninguna mesa libre ahora mismo."
-            : "No hay otra mesa ocupada para juntar."}
-        </p>
+        <p className="py-6 text-center text-[13px] text-texto-3">{textos.vacio}</p>
       ) : (
         <div className="space-y-2">
           {candidatas.map((m) => (
@@ -73,10 +92,12 @@ export function ElegirMesa({
                   {m.zonaNombre}
                   {/* Quién la atiende: juntar la mesa de otro mesero es una
                       decisión distinta que juntar la propia. */}
-                  {!pasar && m.meseroNombre ? ` · Atiende ${m.meseroNombre}` : ""}
+                  {juntar && m.meseroNombre ? ` · Atiende ${m.meseroNombre}` : ""}
+                  {/* Al unir lo que se elige son lugares: cuántos suma. */}
+                  {modo === "unir" ? ` · ${m.capacidad} ${m.capacidad === 1 ? "lugar" : "lugares"}` : ""}
                 </p>
               </div>
-              {!pasar && (
+              {juntar && (
                 <span className="shrink-0 text-sm font-bold text-texto">
                   {fmtMoney(consumoDeMesa(m))}
                 </span>
@@ -186,6 +207,9 @@ export function AnularItem({
   );
 }
 
+/** El mismo tope que al abrir la mesa (`AbrirMesa`) y que la app. */
+const MAX_PERSONAS_RESERVA = 30;
+
 /**
  * Reservar la mesa para más tarde.
  *
@@ -204,7 +228,7 @@ export function Reserva({
     hora: string;
     nombre: string;
     telefono?: string;
-    personas?: number;
+    personas: number;
     nota?: string;
   }) => void;
   onCerrar: () => void;
@@ -213,7 +237,13 @@ export function Reserva({
   const [hora, setHora] = useState(previa?.hora ?? "");
   const [nombre, setNombre] = useState(previa?.nombre ?? "");
   const [telefono, setTelefono] = useState(previa?.telefono ?? "");
-  const [personas, setPersonas] = useState(String(previa?.personas ?? 2));
+  // Un stepper de 1 a 30 y no un campo libre: vacío o en 0 la web no mandaba
+  // las personas, `ReservarMesaDto` las exige y guardar fallaba con un error de
+  // validación (un "2.5" también pasaba). Así siempre viaja un número válido,
+  // como en la app (ReservaDialog.kt).
+  const [personas, setPersonas] = useState(() =>
+    Math.min(MAX_PERSONAS_RESERVA, Math.max(1, Math.round(previa?.personas ?? 2))),
+  );
   const [nota, setNota] = useState(previa?.nota ?? "");
   const [error, setError] = useState("");
 
@@ -225,7 +255,7 @@ export function Reserva({
       hora: hora.trim(),
       nombre: nombre.trim(),
       ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
-      ...(Number(personas) > 0 ? { personas: Number(personas) } : {}),
+      personas,
       ...(nota.trim() ? { nota: nota.trim() } : {}),
     });
   }
@@ -265,13 +295,30 @@ export function Reserva({
             inputMode="tel"
           />
         </Campo>
-        <Campo label="¿Cuántas personas?">
-          <Input
-            type="number"
-            value={personas}
-            onChange={(e) => setPersonas(e.target.value)}
-          />
-        </Campo>
+        {/* Un div y no un `Campo`: el `Campo` es un <label>, y tocar su texto
+            activaría el primer botón de adentro (una persona menos). */}
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-texto-2">¿Cuántas personas?</p>
+          <div className="flex items-center gap-3">
+            <BotonPersonas
+              etiqueta="Una persona menos"
+              onClick={() => setPersonas((n) => Math.max(1, n - 1))}
+              disabled={personas <= 1}
+            >
+              <Icon name="minus" size={18} />
+            </BotonPersonas>
+            <p className="min-w-10 text-center text-2xl font-extrabold text-texto" aria-live="polite">
+              {personas}
+            </p>
+            <BotonPersonas
+              etiqueta="Una persona más"
+              onClick={() => setPersonas((n) => Math.min(MAX_PERSONAS_RESERVA, n + 1))}
+              disabled={personas >= MAX_PERSONAS_RESERVA}
+            >
+              <Icon name="plus" size={18} />
+            </BotonPersonas>
+          </div>
+        </div>
         <Campo label="Nota (opcional)">
           <Input
             value={nota}
@@ -282,5 +329,29 @@ export function Reserva({
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>
+  );
+}
+
+function BotonPersonas({
+  etiqueta,
+  onClick,
+  disabled,
+  children,
+}: {
+  etiqueta: string;
+  onClick: () => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={etiqueta}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-borde bg-white text-texto-2 transition-colors enabled:hover:border-primary enabled:hover:bg-primary-50 enabled:hover:text-primary-700 disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }

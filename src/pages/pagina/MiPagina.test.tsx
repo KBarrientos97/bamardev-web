@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EstadoEditor, ItemCatalogoEditor } from "../../lib/pagina/tipos";
@@ -11,6 +11,9 @@ vi.mock("../../lib/pagina/apiPagina", () => ({
   apiPagina: {
     estado: vi.fn(),
     guardar: vi.fn(),
+    publicacion: vi.fn(),
+    publicarCambios: vi.fn(),
+    descartarBorrador: vi.fn(),
     crearEnlace: vi.fn(),
     editarEnlace: vi.fn(),
     borrarEnlace: vi.fn(),
@@ -71,7 +74,7 @@ function estado(cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor {
       { id: 2, tipo: "TIKTOK", formato: "ICONO", etiqueta: "TikTok", valor: "@bv", url: "https://www.tiktok.com/@bv", icono: null, orden: 2, visible: true, clics: 87 },
     ],
     sucursales: [
-      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20", mapsUrl: null },
+      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20" },
     ],
     reservaOnline: true,
     enlacesCortos: false,
@@ -96,10 +99,16 @@ const abrir = (etiqueta: string) =>
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${etiqueta}:`) }));
 const fila = (etiqueta: string, elegido: string) =>
   screen.getByRole("button", { name: `${etiqueta}: ${elegido}. Cambiar` });
+/** La letra y la forma de los botones van plegadas (PLAN-PAGINA-WEB §4.1). */
+const personalizar = () => fireEvent.click(screen.getByRole("button", { name: /^Personalizar más/ }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiPagina.estado).mockResolvedValue(estado());
+  // El borrador (PLAN-PAGINA-WEB §4.2): publicar y descartar devuelven el estado.
+  vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado());
+  vi.mocked(apiPagina.descartarBorrador).mockResolvedValue(estado());
+  vi.mocked(apiPagina.publicacion).mockResolvedValue(estado());
 });
 
 describe("Mi página", () => {
@@ -152,13 +161,15 @@ describe("Mi página", () => {
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
-  it("Publicar manda publicada:true", async () => {
-    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ publicada: true }));
+  it("Publicar pasa el borrador a la página y la publica", async () => {
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ publicada: true }));
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Publicar" }));
     await act(async () => {});
-    expect(apiPagina.guardar).toHaveBeenCalledWith({ publicada: true });
+    expect(apiPagina.publicarCambios).toHaveBeenCalledWith(true);
+    expect(apiPagina.guardar).not.toHaveBeenCalled();
     expect(screen.getByText("Publicada")).toBeInTheDocument();
+    expect(screen.getByText("¡Tu página está publicada!")).toBeInTheDocument();
   });
 
   it("bloqueada por BamarDev: lo explica y no ofrece publicar", async () => {
@@ -268,21 +279,65 @@ describe("Mi página", () => {
     expect(previa()).toHaveAttribute("data-modo", "movil");
   });
 
-  it("el mapa y el horario de la sucursal se guardan con «Guardar cambios» y se ven en la vista previa", async () => {
+  it("la sucursal muestra su ficha resumida y lleva a editarla en Sucursales (02-nov)", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      sucursales: [
+        {
+          ...base.sucursales[0],
+          latitud: -17.78,
+          longitud: -63.18,
+          horarioSemanal: [1, 2, 3, 4, 5].map((dia) => ({ dia, desde: "09:00", hasta: "20:00" })),
+        },
+      ],
+    });
     await montar();
-    fireEvent.change(screen.getByLabelText("Mapa de Centro"), { target: { value: "https://maps.app.goo.gl/abc" } });
-    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute("href", "https://maps.app.goo.gl/abc");
-    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
+    const ficha = screen.getByRole("list", { name: "Ficha de Centro" });
+    expect(within(ficha).getByText("Horario: Lun a vie 9:00–20:00 · Sáb y dom cerrado")).toBeInTheDocument();
+    expect(within(ficha).getByText("Ubicación en el mapa: marcada")).toBeInTheDocument();
+    expect(within(ficha).getByRole("link", { name: "Editar dirección, horario y ubicación" })).toHaveAttribute(
+      "href",
+      "/configuracion/sucursales",
+    );
+    // Ya no se editan acá: ni el horario, ni su aclaración, ni el mapa.
+    expect(screen.queryByRole("button", { name: /^Horario de Centro:/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Aclaración del horario de Centro")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar en el mapa" })).not.toBeInTheDocument();
+    // La vista previa lo muestra igual.
+    expect(within(previa()).getByText("Horario", { selector: "summary" })).toBeInTheDocument();
+    expect(within(previa()).getByRole("region", { name: "Mapa: Centro" })).toBeInTheDocument();
+  });
 
-    const s = estado().sucursales[0];
-    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, mapsUrl: "https://maps.app.goo.gl/abc" });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
-    await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: "https://maps.app.goo.gl/abc" });
-    // Sólo cambió la sucursal: la página no se manda.
-    expect(apiPagina.guardar).not.toHaveBeenCalled();
-    expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  it("en academia, los datos de la sede se editan en Sedes (no tiene la ficha de Configuración)", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "ACADEMIA" } });
+    await montar();
+    expect(screen.getByRole("link", { name: "Editar dirección, horario y ubicación" })).toHaveAttribute(
+      "href",
+      "/configuracion/sedes",
+    );
+  });
+
+  it("sin horario por día, el texto de antes sale en el resumen", async () => {
+    await montar();
+    expect(screen.getByText("Horario: 9 a 20")).toBeInTheDocument();
+    expect(screen.getByText("Ubicación en el mapa: sin marcar")).toBeInTheDocument();
+  });
+
+  it("Lista 2 #9: en un instituto la sección y la ficha dicen «sede», en los demás «sucursal»", async () => {
+    await montar();
+    expect(screen.getByText("Sucursales en la página")).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp de esta sucursal (opcional)")).toBeInTheDocument();
+    cleanup();
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "ACADEMIA" } });
+    await montar();
+    expect(screen.getByText("Sedes en la página")).toBeInTheDocument();
+    expect(screen.getByText(/salen de la ficha de cada sede/)).toBeInTheDocument();
+    expect(screen.getByText("Mostrar un mapa con tus sedes")).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp de esta sede (opcional)")).toBeInTheDocument();
+    expect(screen.queryByText(/sucursal/i)).not.toBeInTheDocument();
   });
 
   it("el WhatsApp de la sucursal es opcional, va con «Guardar cambios» y se ve en la tarjeta", async () => {
@@ -292,29 +347,31 @@ describe("Mi página", () => {
     expect(within(previa()).getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", "https://wa.me/59170123456");
     const s = estado().sucursales[0];
     vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, whatsapp: "59170123456" });
+    // Publicar devuelve la página con la sucursal ya publicada.
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue({ ...estado(), sucursales: [{ ...s, whatsapp: "59170123456" }] });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, whatsapp: "7012-3456" });
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { whatsapp: "7012-3456" });
     // Guardado se muestra sin el 591.
     expect(screen.getByLabelText("WhatsApp de Centro")).toHaveValue("70123456");
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
-  it("un mapa que no es de Google Maps: dice de qué sucursal y no pierde lo escrito", async () => {
-    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("Ese enlace no es de Google Maps"));
+  it("si el backend rechaza la sucursal: dice cuál y no pierde lo escrito", async () => {
+    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("Ese número de WhatsApp no es válido"));
     await montar();
-    fireEvent.change(screen.getByLabelText("Mapa de Centro"), { target: { value: "https://otro.com" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp de Centro"), { target: { value: "12" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(screen.getByText("Centro: Ese enlace no es de Google Maps")).toBeInTheDocument();
-    expect(screen.getByLabelText("Mapa de Centro")).toHaveValue("https://otro.com");
+    expect(screen.getByText("Centro: Ese número de WhatsApp no es válido")).toBeInTheDocument();
+    expect(screen.getByLabelText("WhatsApp de Centro")).toHaveValue("12");
   });
 
   it("volver a escribir lo guardado no deja la página como cambiada", async () => {
     await montar();
-    fireEvent.change(screen.getByLabelText("Aclaración del horario de Centro"), { target: { value: "9 a 21" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp de Centro"), { target: { value: "70000001" } });
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
-    fireEvent.change(screen.getByLabelText("Aclaración del horario de Centro"), { target: { value: "9 a 20" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp de Centro"), { target: { value: "" } });
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
@@ -332,6 +389,7 @@ describe("Mi página", () => {
 
   it("forma de los botones: a la vista la elegida; en el popup ≥ 9, en vivo y se manda al guardar", async () => {
     await montar();
+    personalizar();
     expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
     abrir("Forma de los botones");
     const dialogo = screen.getByRole("dialog", { name: "Forma de los botones" });
@@ -354,6 +412,7 @@ describe("Mi página", () => {
 
   it("letra del nombre: a la vista la elegida; en el popup 30 agrupadas, y el catálogo baja sólo al abrir", async () => {
     await montar();
+    personalizar();
     expect(fila("Letra del nombre", "Moderna")).toBeInTheDocument();
     expect(document.getElementById("fuentes-pagina-catalogo")).toBeNull();
     abrir("Letra del nombre");
@@ -532,6 +591,7 @@ describe("Mi página: estilo", () => {
     expect(screen.getByText("Carta luce con tu catálogo.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Usar este estilo" }));
     expect(screen.getByText(/Carta luce con tu catálogo\. Sin productos/)).toBeInTheDocument();
+    personalizar();
     expect(fila("Letra del nombre", "Alfa Slab")).toBeInTheDocument();
     expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
     expect(previa()).toHaveAttribute("data-estilo", "CARTA");
@@ -547,6 +607,7 @@ describe("Mi página: estilo", () => {
     fireEvent.click(within(dialogo).getByRole("button", { name: "Usar este estilo" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(fila("Estilo", "Noche")).toBeInTheDocument();
+    personalizar();
     expect(fila("Letra del nombre", "Bebas Neue")).toBeInTheDocument();
     expect(fila("Forma de los botones", "Rectos")).toBeInTheDocument();
     expect(previa()).toHaveAttribute("data-estilo", "NOCHE");
@@ -589,6 +650,7 @@ describe("Mi página: estilo", () => {
   it("los popups de color, forma y letra muestran primero los recomendados para el estilo", async () => {
     vi.mocked(apiPagina.estado).mockResolvedValue(estado({ estiloClave: "NOCHE", tipografia: "BEBAS", formaBotones: "RECTO" }));
     await montar();
+    personalizar();
     abrir("Forma de los botones");
     const recoForma = screen.getByRole("radiogroup", { name: "Formas recomendadas para este estilo" });
     expect(within(recoForma).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Rectos", "Contorno", "Esquina cortada"]);
@@ -799,117 +861,30 @@ describe("Mi página: catálogo", () => {
   });
 });
 
-describe("Mi página: horario por día de la sucursal", () => {
+describe("Mi página: horario (se carga en la ficha; acá sólo se muestra o no)", () => {
   const HABILES = [1, 2, 3, 4, 5].map((dia) => ({ dia, desde: "09:00", hasta: "20:00" }));
-  const filaHorario = () => screen.getByRole("button", { name: /^Horario de Centro:/ });
 
-  it("se carga en el popup (copiar a días hábiles, corte, error) y se guarda con «Guardar cambios»", async () => {
-    await montar();
-    expect(filaHorario()).toHaveTextContent("Sin horario cargado");
-    fireEvent.click(filaHorario());
-    const d = screen.getByRole("dialog", { name: "Horario de Centro" });
-
-    // Lunes 9 a 20, y lo mismo de martes a viernes.
-    fireEvent.click(within(d).getByRole("switch", { name: "Lunes abierto" }));
-    expect(within(d).getByLabelText("Lunes: abre")).toHaveValue("09:00");
-    fireEvent.change(within(d).getByLabelText("Lunes: cierra"), { target: { value: "20:00" } });
-    fireEvent.click(within(d).getByRole("button", { name: "Copiar a todos los días hábiles" }));
-    expect(within(d).getByRole("switch", { name: "Viernes abierto" })).toHaveAttribute("aria-checked", "true");
-    expect(within(d).getByLabelText("Viernes: cierra")).toHaveValue("20:00");
-    expect(within(d).getByRole("switch", { name: "Sábado abierto" })).toHaveAttribute("aria-checked", "false");
-
-    // El sábado arranca con las horas del viernes; cierra a la una.
-    fireEvent.click(within(d).getByRole("switch", { name: "Sábado abierto" }));
-    fireEvent.change(within(d).getByLabelText("Sábado: cierra"), { target: { value: "13:00" } });
-
-    // Un corte el lunes que se pisa: el error va en el lunes y "Listo" no cierra.
-    fireEvent.click(within(d).getByRole("button", { name: "Agregar corte el lunes" }));
-    expect(within(d).getByLabelText("Lunes: cierra")).toHaveValue("13:00");
-    expect(within(d).getByLabelText("Lunes: abre (después del corte)")).toHaveValue("15:00");
-    fireEvent.change(within(d).getByLabelText("Lunes: abre (después del corte)"), { target: { value: "12:00" } });
-    expect(within(d).getByRole("alert")).toHaveTextContent("El lunes: los tramos 09:00-13:00 y 12:00-20:00 se pisan");
-    fireEvent.click(within(d).getByRole("button", { name: "Listo" }));
-    expect(screen.getByRole("dialog", { name: "Horario de Centro" })).toBeInTheDocument();
-
-    // Sin el corte vuelve a 9 a 13: se deja el lunes 9 a 20 otra vez.
-    fireEvent.click(within(d).getByRole("button", { name: "Quitar el segundo horario del lunes" }));
-    fireEvent.change(within(d).getByLabelText("Lunes: cierra"), { target: { value: "20:00" } });
-    expect(within(d).queryByRole("alert")).not.toBeInTheDocument();
-    fireEvent.click(within(d).getByRole("button", { name: "Listo" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb 9:00–13:00 · Dom cerrado");
-    // La vista previa ya lo muestra.
-    expect(within(previa()).getByText("Ver horario")).toBeInTheDocument();
-    expect(within(previa()).getByTestId("estado-sucursal")).toBeInTheDocument();
-
-    const s = estado().sucursales[0];
-    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }] });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
-    await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, {
-      horarioTexto: "9 a 20",
-      mapsUrl: null,
-      horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }],
-    });
-    expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
-    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb 9:00–13:00 · Dom cerrado");
-  });
-
-  it("Quitar horario lo deja en null; Descartar lo vuelve atrás", async () => {
+  it("«Mostrar el horario» nace prendido y apagarlo va al borrador y lo saca de la vista previa", async () => {
     const base = estado();
-    vi.mocked(apiPagina.estado).mockResolvedValue({
-      ...base,
-      sucursales: [{ ...base.sucursales[0], horarioSemanal: HABILES }],
-    });
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, sucursales: [{ ...base.sucursales[0], horarioSemanal: HABILES }] });
+    vi.mocked(apiPagina.guardar).mockResolvedValue({ ...base, pagina: { ...base.pagina, mostrarHorario: false } });
     await montar();
-    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb y dom cerrado");
-
-    fireEvent.click(filaHorario());
-    fireEvent.click(screen.getByRole("button", { name: "Quitar horario" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(filaHorario()).toHaveTextContent("Sin horario cargado");
-    expect(within(previa()).queryByText("Ver horario")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
-    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb y dom cerrado");
-    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
-
-    fireEvent.click(filaHorario());
-    fireEvent.click(screen.getByRole("button", { name: "Quitar horario" }));
-    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...base.sucursales[0], horarioSemanal: null });
+    const interruptor = screen.getByRole("checkbox", { name: /Mostrar el horario/ });
+    expect(interruptor).toBeChecked();
+    expect(within(previa()).getByText("Horario", { selector: "summary" })).toBeInTheDocument();
+    fireEvent.click(interruptor);
+    expect(within(previa()).queryByText("Horario", { selector: "summary" })).not.toBeInTheDocument();
+    expect(within(previa()).queryByTestId("estado-sucursal")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, horarioSemanal: null });
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarHorario: false });
   });
 
-  it("cerrar el popup sin «Listo» no cambia nada; volver al horario guardado no deja cambios", async () => {
+  it("con horario por día, el texto de antes ya no sale en la vista previa", async () => {
     const base = estado();
     vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, sucursales: [{ ...base.sucursales[0], horarioSemanal: HABILES }] });
     await montar();
-    fireEvent.click(filaHorario());
-    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00");
-    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
-
-    // Cerrar el lunes y volver a abrirlo recupera sus horas: queda como estaba.
-    fireEvent.click(filaHorario());
-    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
-    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
-    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
-    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
-  });
-
-  it("el error del backend dice de qué sucursal es", async () => {
-    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("El lunes: hasta 2 tramos por día (por ejemplo, mañana y tarde)"));
-    await montar();
-    fireEvent.click(filaHorario());
-    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
-    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
-    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
-    await act(async () => {});
-    expect(screen.getByText("Centro: El lunes: hasta 2 tramos por día (por ejemplo, mañana y tarde)")).toBeInTheDocument();
-    expect(filaHorario()).toHaveTextContent("Lun 9:00–18:00");
+    expect(within(previa()).queryByText("9 a 20")).not.toBeInTheDocument();
   });
 });
 
@@ -1022,5 +997,130 @@ describe("Mi página: el catálogo es armado a mano o «Mis productos»", () => 
     fireEvent.click(screen.getByRole("button", { name: "Quitar Pollo entero de la página" }));
     await act(async () => {});
     expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2]);
+  });
+});
+
+describe("Mi página: borrador (PLAN-PAGINA-WEB §4.2)", () => {
+  const conBorrador = (cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor => ({
+    ...estado({ publicada: true, ...cambios }),
+    borrador: { hay: true, actualizadoEn: "2026-11-02T15:00:00Z" },
+  });
+  const esperar = (ms: number) => act(async () => {
+    await new Promise((r) => setTimeout(r, ms));
+  });
+
+  it("lo escrito se guarda solo en el borrador, sin apretar nada", async () => {
+    vi.mocked(apiPagina.guardar).mockResolvedValue(conBorrador({ descripcion: "Cortes y color" }));
+    await montar();
+    fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Cortes y color" } });
+    expect(apiPagina.guardar).not.toHaveBeenCalled();
+    await esperar(900);
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ descripcion: "Cortes y color" });
+    expect(apiPagina.publicarCambios).not.toHaveBeenCalled();
+    expect(screen.getByText("Cambios sin publicar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar cambios" })).toBeEnabled();
+  });
+
+  it("publicada y con borrador: «Publicar cambios» lo pasa a la página", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conBorrador());
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ publicada: true }));
+    await montar();
+    expect(screen.getByText(/Tenés cambios sin publicar/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Publicar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.publicarCambios).toHaveBeenCalledWith(false);
+    expect(screen.getByText("Cambios publicados")).toBeInTheDocument();
+    expect(screen.getByText("Todo publicado.")).toBeInTheDocument();
+    expect(screen.queryByText("Cambios sin publicar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar cambios" })).toBeDisabled();
+  });
+
+  it("Despublicar va directo, sin tocar el borrador", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conBorrador());
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Despublicar" }));
+    await act(async () => {});
+    expect(apiPagina.publicacion).toHaveBeenCalledWith(false);
+    expect(apiPagina.publicarCambios).not.toHaveBeenCalled();
+  });
+
+  it("descartar un borrador guardado pide confirmación y vuelve a lo publicado", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conBorrador({ descripcion: "Del borrador" }));
+    vi.mocked(apiPagina.descartarBorrador).mockResolvedValue(estado({ publicada: true, descripcion: "La publicada" }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+    const d = screen.getByRole("dialog", { name: "Descartar los cambios" });
+    expect(apiPagina.descartarBorrador).not.toHaveBeenCalled();
+    fireEvent.click(within(d).getByRole("button", { name: "Descartar" }));
+    await act(async () => {});
+    expect(apiPagina.descartarBorrador).toHaveBeenCalled();
+    expect(screen.getByLabelText("Descripción corta")).toHaveValue("La publicada");
+    expect(screen.getByText("Volviste a lo publicado")).toBeInTheDocument();
+  });
+
+  it("al irse de la pantalla, lo que faltaba se manda igual", async () => {
+    vi.mocked(apiPagina.guardar).mockResolvedValue(conBorrador());
+    const { unmount } = render(
+      <MemoryRouter>
+        <MiPagina />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "A medio escribir" } });
+    unmount();
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ descripcion: "A medio escribir" });
+  });
+});
+
+describe("Mi página: mapa (PLAN-PAGINA-WEB §3.1)", () => {
+  it("es para todos: el interruptor nace prendido y apagarlo va al borrador", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.guardar).mockResolvedValue({ ...base, pagina: { ...base.pagina, mostrarMapa: false } });
+    await montar();
+    const interruptor = screen.getByRole("checkbox", { name: /Mostrar un mapa con tus sucursales/ });
+    expect(interruptor).toBeChecked();
+    fireEvent.click(interruptor);
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarMapa: false });
+  });
+
+  it("la ubicación ya no se marca acá: va en la ficha de la sucursal", async () => {
+    await montar();
+    expect(screen.queryByLabelText("Mapa de Centro")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /Ubicación en el mapa/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Ubicación en el mapa: sin marcar")).toBeInTheDocument();
+  });
+
+  it("con ubicación marcada, la vista previa muestra el mapa", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      sucursales: base.sucursales.map((s) => ({ ...s, latitud: -17.78, longitud: -63.18 })),
+    });
+    await montar();
+    expect(screen.getByText("Ubicación en el mapa: marcada")).toBeInTheDocument();
+    expect(within(previa()).getByRole("region", { name: "Mapa: Centro" })).toBeInTheDocument();
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
+  });
+
+  it("oculto por el dueño, la vista previa no lo muestra", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      pagina: { ...base.pagina, mostrarMapa: false },
+      sucursales: base.sucursales.map((s) => ({ ...s, latitud: -17.78, longitud: -63.18 })),
+    });
+    await montar();
+    expect(within(previa()).queryByTestId("mapa-pagina")).not.toBeInTheDocument();
+    // Sin mapa a la vista, "Cómo llegar" igual va al punto marcado (03-nov).
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
   });
 });

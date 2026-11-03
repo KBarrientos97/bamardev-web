@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RUBROS, esBelleza, esBillar, esFarmacia, esRubro, marcaConsumo, termino } from "./rubro";
+import { RUBROS, esBelleza, esBillar, esFarmacia, esRubro, insumosSinStock, marcaConsumo, termino } from "./rubro";
 
 describe("termino", () => {
   it("en una farmacia los artículos son medicamentos", () => {
@@ -102,5 +102,26 @@ describe("rubro billar", () => {
     expect(marcaConsumo("BILLAR")).toBe(false);
     expect(marcaConsumo("RESTAURANTE")).toBe(true);
     expect(marcaConsumo(undefined)).toBe(true);
+  });
+});
+
+describe("insumos sin stock", () => {
+  it("el restaurante no ve el stock de sus insumos: vender un plato no lo descuenta", () => {
+    // Kevin, 28-oct: sin recetas el stock sólo sube con cada compra, y la
+    // pantalla decía "300 kg de pollo" o "Reponer" sobre algo que se compra
+    // todos los días.
+    expect(insumosSinStock("RESTAURANTE")).toBe(true);
+  });
+
+  it("belleza y los demás rubros lo siguen viendo, y una sesión sin rubro también", () => {
+    // A propósito: en un salón el insumo se gasta con cada servicio y su stock
+    // sí baja. Esconderlo ahí sería esconder un dato real.
+    for (const r of ["PELUQUERIA", "BARBERIA", "SPA", "UNAS", "BILLAR", "MINIMARKET", "FERRETERIA", "REPUESTOS", "FARMACIA", "ACADEMIA"]) {
+      expect(insumosSinStock(r)).toBe(false);
+    }
+    expect(insumosSinStock(undefined)).toBe(false);
+    expect(insumosSinStock(null)).toBe(false);
+    // El enum viaja en mayúsculas: un texto parecido no cuenta.
+    expect(insumosSinStock("restaurante")).toBe(false);
   });
 });

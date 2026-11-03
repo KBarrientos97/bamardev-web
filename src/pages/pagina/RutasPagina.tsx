@@ -9,6 +9,8 @@ const VerRegalo = lazy(() => import("./VerRegalo"));
 const InscribirmePagina = lazy(() => import("./InscribirmePagina"));
 // Academias (P6): el estado de cuenta del enlace que manda la recepción.
 const PagarPagina = lazy(() => import("./PagarPagina"));
+// Academias (M5): «Pagar mi inscripción» con el carnet.
+const MiCuentaPagina = lazy(() => import("./MiCuentaPagina"));
 
 /**
  * `/p/<subdominio>` es la página PÚBLICA del negocio: la abre cualquiera, con
@@ -29,6 +31,7 @@ export default function RutasPaginaPublica() {
         <Route path="/p/:subdominio/regalo/:token" element={<VerRegalo />} />
         <Route path="/p/:subdominio/inscribirme/:grupoId" element={<InscribirmePagina />} />
         <Route path="/p/:subdominio/pagar/:token" element={<PagarPagina />} />
+        <Route path="/p/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />
       </Routes>
     </Suspense>
   );

@@ -14,12 +14,15 @@ const sesion = vi.hoisted(() => ({
   actor: null as unknown as SesionUsuario,
   /** ¿El plan incluye la autorización con PIN? */
   conPin: true,
+  /** El rubro del negocio: en el instituto la sucursal se llama «sede». */
+  rubro: undefined as string | undefined,
 }));
 
 vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: sesion.actor,
     negocio: { id: 1, nombre: "Pollos", tipoNegocio: "RESTAURANTE" },
+    rubro: sesion.rubro,
     incluye: (c: string) => c !== "autorizacion_pin" || sesion.conPin,
     puede: () => true,
   }),
@@ -497,6 +500,22 @@ describe("el PIN de autorización", () => {
       expect(api.cambiarPin).not.toHaveBeenCalled();
     });
 
+    // M3 (31-oct): el PIN que se PONE tiene ojito, como las contraseñas; ambos campos juntos.
+    it("M3: el PIN arranca oculto y el ojito lo muestra (y al repetirlo también)", async () => {
+      await abrirCambiarPin();
+      const pin = screen.getByLabelText(/^PIN/);
+      const repetido = screen.getByLabelText(/^Repetir PIN/);
+      expect(pin).toHaveAttribute("type", "password");
+      expect(repetido).toHaveAttribute("type", "password");
+      fireEvent.click(screen.getByRole("button", { name: "Mostrar PIN" }));
+      expect(pin).toHaveAttribute("type", "text");
+      expect(repetido).toHaveAttribute("type", "text");
+      // Un solo ojo para los dos.
+      expect(screen.queryByRole("button", { name: "Mostrar PIN" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Ocultar PIN" }));
+      expect(pin).toHaveAttribute("type", "password");
+    });
+
     it("el aviso de un intento anterior se va al teclear otro PIN", async () => {
       await abrirCambiarPin();
       escribir("123");
@@ -529,11 +548,17 @@ describe("el PIN de autorización", () => {
     expect(screen.getByRole("button", { name: "Asignar PIN" })).toBeInTheDocument();
   });
 
-  it("sin la autorización con PIN en el plan no hay PIN para nadie", async () => {
+  it("sin la feature autorizacion_pin el PIN sigue: lo decide el permiso del rol (BUG-admin-7)", async () => {
+    // Hasta el 28-oct se escondía todo lo del PIN sin la feature. El backend
+    // la desató del PIN el 19-oct (`autorizar.pin` es del núcleo): con el
+    // panel apagándosela a un negocio, nadie podía asignar un PIN aunque el
+    // servidor lo permitía, y sin PIN no hay anulación.
     sesion.conPin = false;
     await montar([OMAR, ELSA]);
+    expect(within(screen.getByRole("button", { name: /@elsa\b/ })).getByText("PIN")).toBeInTheDocument();
     abrir("elsa");
-    expect(screen.queryByRole("button", { name: ACCION_PIN })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar PIN" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar PIN" })).toBeInTheDocument();
   });
 });
 
@@ -553,6 +578,29 @@ describe("la sucursal", () => {
     expect(screen.queryByText("Sucursal")).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "3" } });
     expect(screen.getByText("Sucursal")).toBeInTheDocument();
+  });
+});
+
+describe("la sucursal en el instituto (Lista 2 #9)", () => {
+  const DOS = [
+    { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+
+  it("dice «Sede» donde los demás rubros dicen «Sucursal»", async () => {
+    sesion.rubro = "ACADEMIA";
+    try {
+      vi.mocked(api.getAlmacenes).mockResolvedValue(DOS as never);
+      vi.mocked(apiRoles.asignables).mockResolvedValue([CAJERO]);
+      await montar([OMAR]);
+      fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+      await act(async () => {});
+      expect(screen.getByText("Sede")).toBeInTheDocument();
+      expect(screen.queryByText("Sucursal")).not.toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Elegí una sede…" })).toBeInTheDocument();
+    } finally {
+      sesion.rubro = undefined;
+    }
   });
 });
 

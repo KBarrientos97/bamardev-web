@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_CAJA, RUTA_COBRAR, RUTA_SEDES } from "./lib/academia/vista";
+import { RUTA_CAJA, RUTA_COBRAR, RUTA_CONFIG_RAPIDA, RUTA_SEDES } from "./lib/academia/vista";
 import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
@@ -51,9 +51,10 @@ import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
+import FichasSucursales from "./pages/sucursales/FichasSucursales";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
-import { ActualizarAlNavegar } from "./lib/pwa/actualizarAlNavegar";
+import { ActualizarAlNavegar, useRecargarSiQuedoVieja } from "./lib/pwa/actualizarAlNavegar";
 
 /*
  * La app del negocio: sesión, login, menú y todas sus pantallas. Se baja
@@ -79,6 +80,11 @@ const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervision"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
+// Tickets y despacho (extra `tickets_pedido`): sólo se bajan en un restaurante que lo tiene.
+const TicketsPedidos = lazy(() => import("./pages/tickets/TicketsPedidos"));
+const Despacho = lazy(() => import("./pages/tickets/Despacho"));
+const MenuDigital = lazy(() => import("./pages/menu-digital/MenuDigital"));
+const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 // Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
@@ -99,6 +105,7 @@ const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
 const CobrarAcademia = lazy(() => import("./pages/academia/Cobrar"));
 const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
 const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
+const ConfiguracionRapida = lazy(() => import("./pages/academia/PrimerosPasos"));
 const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m) => ({ default: m.SedesConfig })));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
@@ -162,6 +169,10 @@ function Inicio() {
  */
 function SinAcceso() {
   const { usuario, negocio, logout } = useAuth();
+  // Una sección nueva que la app guardada todavía no conoce también termina
+  // acá (el acceso de despacho con la app del 27-oct): con otra versión
+  // publicada, se recarga sola antes de que alguien lo tome por un error.
+  useRecargarSiQuedoVieja();
   const rol = usuario?.rolNombre?.trim();
   // Si mientras tanto llegaron los permisos (una sesión vieja que los pidió a
   // /auth/me, o el dueño le dio un rol con algo), se va a su inicio solo.
@@ -286,8 +297,51 @@ function PagarConSesion() {
   return <PagarLicencia onSalir={() => window.history.back()} />;
 }
 
+/**
+ * La app del acceso de despacho (la tablet de la cocina, Kevin 29-oct): sólo
+ * Despacho, a pantalla completa y sin la barra lateral, como el panel del
+ * mesero. Cualquier dirección la trae acá; el servidor igual le cierra todo
+ * lo demás. Si al negocio le apagaron el extra, lo dice en vez de mostrar
+ * errores.
+ */
+function SoloDespacho() {
+  const { puede, logout } = useAuth();
+  return (
+    <Routes>
+      <Route
+        path="/despacho"
+        element={
+          puede("despacho") ? (
+            <div className="h-dvh">
+              <Suspense fallback={null}>
+                <Despacho onSalir={logout} />
+              </Suspense>
+            </div>
+          ) : (
+            <div className="flex min-h-dvh items-center justify-center p-6">
+              <div className="max-w-sm text-center">
+                <h1 className="text-lg font-bold text-texto">El despacho no está habilitado</h1>
+                <p className="mt-2 text-[13px] text-texto-3">
+                  Este negocio no tiene prendido Tickets y despacho. Pedile al administrador que lo revise.
+                </p>
+                <button
+                  onClick={logout}
+                  className="mt-5 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to="/despacho" replace />} />
+    </Routes>
+  );
+}
+
 function Rutas() {
-  const { token, permisosListos } = useAuth();
+  const { token, permisosListos, usuario } = useAuth();
   const navigate = useNavigate();
   const teniaSesion = useRef(token !== null);
   // Tocar una notificación con la app abierta la lleva a la pantalla del aviso.
@@ -310,6 +364,7 @@ function Rutas() {
   // Una sesión vieja sin permisos los está trayendo de /auth/me: sin esperar,
   // el inicio la mandaría a "sin acceso" un segundo antes de tener su menú.
   if (!permisosListos) return <div className="min-h-dvh bg-fondo" aria-busy="true" />;
+  if (usuario?.esDespacho) return <SoloDespacho />;
 
   return (
     <Routes>
@@ -626,6 +681,54 @@ function Rutas() {
           }
         />
 
+        {/* Los pedidos con número: la TV, su diseño y la numeración (del encargado). */}
+        <Route
+          path="/tickets"
+          element={
+            <Protegida seccion="tickets">
+              <Suspense fallback={null}>
+                <TicketsPedidos />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Menú digital: las TVs del menú y la ficha de cada plato (del encargado). */}
+        <Route
+          path="/menu-digital"
+          element={
+            <Protegida seccion="menu_digital">
+              <Suspense fallback={null}>
+                <MenuDigital />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* El recibo, el logo y los datos del negocio (extras de pantallas). */}
+        <Route
+          path="/configuracion/recibo"
+          element={
+            <Protegida seccion="config_recibo">
+              <Suspense fallback={null}>
+                <ConfigRecibo />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Despacho: marcar listo, llamar en la TV y entregar. */}
+        <Route
+          path="/despacho"
+          element={
+            <Protegida seccion="despacho">
+              <Suspense fallback={null}>
+                <Despacho />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
         {/* Billar: lo que hace la cajera, en vivo y sólo para mirar (del administrador). */}
         <Route
           path="/supervision-billar"
@@ -729,6 +832,14 @@ function Rutas() {
           element={
             <Protegida seccion="config_negocio">
               <ConfigNegocio />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/configuracion/sucursales"
+          element={
+            <Protegida seccion="config_sucursales">
+              <FichasSucursales />
             </Protegida>
           }
         />
@@ -855,6 +966,7 @@ function Rutas() {
         <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><ConPestanasConfig><CarrerasAcademia /></ConPestanasConfig></Academia>} />
         <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AjustesAcademia /></ConPestanasConfig></Academia>} />
         <Route path={RUTA_SEDES} element={<Academia seccion="academia_ajustes"><ConPestanasConfig><SedesAcademia /></ConPestanasConfig></Academia>} />
+        <Route path={RUTA_CONFIG_RAPIDA} element={<Academia seccion="academia_ajustes"><ConPestanasConfig><ConfiguracionRapida /></ConPestanasConfig></Academia>} />
         {/* Las aulas dejaron de ser una pestaña (viven en cada sede): el enlace ya compartido sigue andando. */}
         <Route path="/configuracion/aulas" element={<RedirigeConBusqueda a={RUTA_SEDES} />} />
         {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}

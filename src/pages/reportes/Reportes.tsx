@@ -12,7 +12,8 @@ import { apiReportes } from "./api";
 import { ayudaDeReporte } from "./ayuda";
 import { BarraPeriodo } from "./BarraPeriodo";
 import { gruposVisibles, type FichaReporte, type GrupoVisible } from "./catalogo";
-import { bajarXlsx, ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
+import { BotonExportar } from "./BotonExportar";
+import { ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
 import { comparacionDe, textoRango, type Periodo } from "./periodo";
 import { usePeriodo } from "./usePeriodo";
 import { FichaIcono } from "./ui";
@@ -125,7 +126,7 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
             <div className="min-w-0">
               <h1 className="text-[22px] font-extrabold text-texto">Reportes</h1>
               <p className="text-[13px] text-texto-3">
-                Análisis del negocio{suc.elegir ? ` · ${suc.nombre || "Todas las sucursales"}` : ""}
+                Análisis del negocio{suc.elegir ? ` · ${suc.nombre || suc.todas}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -208,7 +209,7 @@ function SelectorSucursal({ suc }: { suc: ReturnType<typeof useSucursales> }) {
       document.removeEventListener("keydown", tecla);
     };
   }, [abierto]);
-  const opciones: [number | null, string][] = [[null, "Todas las sucursales"], ...suc.sucursales.map((s): [number, string] => [s.id, s.nombre])];
+  const opciones: [number | null, string][] = [[null, suc.todas], ...suc.sucursales.map((s): [number, string] => [s.id, s.nombre])];
   return (
     <div ref={ref} className="relative">
       <button
@@ -374,16 +375,11 @@ function EncabezadoReporte({
       </div>
       {ayuda && <AyudaCalculo titulo={titulo} ayuda={ayuda} />}
       {/* Sólo Excel: imprimir va en lo que se le da a un cliente (el ticket),
-          no en los reportes; si alguien necesita papel, lo imprime desde Excel. */}
+          no en los reportes; si alguien necesita papel, lo imprime desde Excel.
+          Con clave: el aviso de una exportación ("vino recortada") es de ese
+          reporte y ese período; al cambiar cualquiera de los dos se va. */}
       {puedeExportar && exportacion && (
-        <button
-          type="button"
-          onClick={() => bajarXlsx(exportacion.nombre, exportacion.hojas())}
-          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-primary-boton px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-primary-boton-hover"
-        >
-          <Icon name="download" size={16} />
-          Exportar a Excel
-        </button>
+        <BotonExportar key={`${ficha?.id ?? ""}|${periodo.desde}|${periodo.hasta}`} exportacion={exportacion} />
       )}
     </header>
   );

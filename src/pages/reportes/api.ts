@@ -93,8 +93,19 @@ export interface FinancieroApi {
   utilidadBruta: number;
   utilidadBrutaDeltaPct: number | null;
   margenBrutoPct: number | null;
-  /** Lo vendido de artículos sin costo cargado: infla el margen. */
+  /**
+   * Lo vendido de artículos sin costo cargado: infla el margen. Desde el 28-oct,
+   * en un restaurante cuenta también los platos (los Elaborados, que el backend
+   * guarda como SERVICIO): antes los dejaba afuera y el aviso decía "platos"
+   * sin contar ninguno.
+   */
   ventasSinCosto: number;
+  /**
+   * Nuevo (28-oct): QUÉ se vendió sin costo, de lo más vendido a lo menos y
+   * como mucho 10, para que el aviso diga a cuál cargarle el costo. Opcional:
+   * un backend anterior no lo manda y el aviso queda con el total solo.
+   */
+  productosSinCosto?: { id: number; nombre: string; ventas: number }[];
   /** Mercadería perdida en el período (vencida, dañada, robada), al costo. */
   mermas: number;
   /**

@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import type { NegocioPublico } from "../../publico/apiReserva";
 
@@ -109,6 +109,20 @@ function fetchDePagina(status: number, cuerpo: unknown) {
   vi.stubGlobal("fetch", f);
   return f;
 }
+
+// Las pantallas son diferidas (lazy) y la primera vez vitest las transforma una
+// por una: `PaginaPublica` arrastra la vista del negocio, el catálogo y las
+// secciones, y eso solo pasaba el segundo que `findBy…` espera por defecto
+// (el test fallaba "en frío" y no en la segunda corrida). Se bajan antes, una
+// vez, con tiempo de sobra; lo que se prueba sigue siendo lo mismo.
+beforeAll(async () => {
+  await Promise.all([
+    import("./PaginaPublica"),
+    import("./PrivacidadNegocio"),
+    import("../../publico/ReservaPublica"),
+    import("./PromoPublica"),
+  ]);
+}, 30_000);
 
 beforeEach(() => {
   vi.stubEnv("VITE_HOST_LINK", "1");

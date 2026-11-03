@@ -9,6 +9,10 @@ import type { CategoriaGasto, Gasto, ResumenGastos } from "../../types";
  * la misma pantalla.
  */
 
+// La pantalla entera y uno o dos popups por test: con la suite completa en
+// paralelo, alguno pasaba los 5 s por la carga de la máquina.
+vi.setConfig({ testTimeout: 60_000 });
+
 vi.mock("../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
   const { permisosDe } = await import("../../test/sesiones");
@@ -28,6 +32,7 @@ vi.mock("../../lib/api", () => ({
     actualizarCategoriaGasto: vi.fn(async () => ({})),
     eliminarCategoriaGasto: vi.fn(async () => ({ mensaje: "ok" })),
     getPlantillasGasto: vi.fn(async () => []),
+    deshacerUltimoPagoGasto: vi.fn(),
   },
 }));
 
@@ -226,6 +231,54 @@ describe("las categorías", () => {
     const fila = within(dialogo).getByText("Gas").closest("li")!;
     await tocar(within(fila).getByRole("button", { name: "Variable" }));
     expect(api.actualizarCategoriaGasto).toHaveBeenCalledWith("GAS", { tipoCosto: "FIJO" });
+  });
+});
+
+/**
+ * Guarda: la farmacia usa el formulario y el panel de pago de la pantalla de
+ * Gastos de siempre, que el 28-oct sumó el panel de categorías, deshacer en la
+ * fila y eliminar (G-01, G-02, G-03). Nada de eso le cambia esta pantalla:
+ * las categorías las administra desde su botón y las acciones viven en su
+ * detalle. Lo único que le llega es el arreglo de "Registrar pago", que es el
+ * mismo componente.
+ */
+describe("lo que comparte con la pantalla de Gastos de siempre", () => {
+  it("su formulario sigue con el desplegable de categorías, sin el panel del restaurante", async () => {
+    await abrir();
+    await tocar(screen.getByText("Luz · DELAPAZ"));
+    await tocar(screen.getByRole("button", { name: /Editar/ }));
+    const form = screen.getByRole("dialog", { name: "Editar gasto" });
+    const desplegable = within(form).getByLabelText("Categoría");
+    // Tampoco la opción "ya no se ofrece" que el restaurante suma para una
+    // categoría que no viene en la lista (acá, LUZ no está en el catálogo).
+    expect(within(desplegable).queryByRole("option", { name: /ya no se ofrece/ })).not.toBeInTheDocument();
+    expect(within(form).queryByRole("button", { name: /Crear o corregir categorías/ })).not.toBeInTheDocument();
+  });
+
+  it("su detalle sigue igual: Eliminar, Editar y Registrar pago", async () => {
+    // A propósito no dice nada de deshacer. Acá un gasto saldado todavía no
+    // deja deshacer su pago (BUG-finanzas-1 sigue abierto en la farmacia), y
+    // una guarda que pidiera "sin deshacer" fijaría ese hueco como lo correcto.
+    await abrir();
+    await tocar(screen.getByText("Luz · DELAPAZ"));
+    const detalle = screen.getByRole("dialog");
+    expect(within(detalle).getByRole("button", { name: /Eliminar/ })).toBeInTheDocument();
+    expect(within(detalle).getByRole("button", { name: /Editar/ })).toBeInTheDocument();
+    expect(within(detalle).getByRole("button", { name: "Registrar pago" })).toBeInTheDocument();
+  });
+
+  it("registrar pago: lo pagado va aparte de deshacer, y deshacer pregunta antes (BUG-finanzas-4)", async () => {
+    // Decía "Deshacer el último pago de Bs 200" con el TOTAL pagado, y borraba
+    // sin preguntar: el mismo componente que el restaurante.
+    await abrir();
+    await tocar(screen.getByText("Luz · DELAPAZ"));
+    await tocar(screen.getByRole("button", { name: "Registrar pago" }));
+    const panel = screen.getByRole("dialog", { name: "Registrar pago" });
+    expect(panel).toHaveTextContent(/Pagado hasta hoy Bs 200,00/);
+    expect(panel).not.toHaveTextContent(/Deshacer el último pago de/);
+    await tocar(within(panel).getByRole("button", { name: "Deshacer el último pago" }));
+    expect(screen.getByRole("dialog", { name: "Deshacer el último pago" })).toBeInTheDocument();
+    expect(api.deshacerUltimoPagoGasto).not.toHaveBeenCalled();
   });
 });
 

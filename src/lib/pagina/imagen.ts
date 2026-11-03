@@ -8,7 +8,14 @@
 
 export const TOPE_ORIGINAL = 10 * 1024 * 1024;
 
-export type TipoImagen = "logo" | "portada" | "catalogo";
+/**
+ * `plato` es la foto de un plato del menú digital (640 px de lado mayor: en
+ * una TV de 4 columnas la tarjeta mide ~350 px, y una TV con 25 platos baja
+ * todas las fotos de una). `marca` es el logo del negocio para el recibo y
+ * las TVs, que no se recorta: un logo ancho ("POLLOS TÍO FABIO") cortado al
+ * cuadrado perdía las letras de los costados.
+ */
+export type TipoImagen = "logo" | "portada" | "catalogo" | "plato" | "marca";
 
 /** El backend rechaza una foto del catálogo con un lado fuera de 200–2048 px. */
 export const LADO_MINIMO_CATALOGO = 200;
@@ -43,6 +50,8 @@ export function medidas(tipo: TipoImagen, ancho: number, alto: number): MedidasD
     };
   }
   let escala = Math.min(1, 1600 / ancho);
+  if (tipo === "plato") escala = Math.min(1, 640 / Math.max(ancho, alto));
+  if (tipo === "marca") escala = Math.min(1, 720 / Math.max(ancho, alto));
   if (tipo === "catalogo") {
     // La tarjeta la recorta al cuadrado y el visor la muestra entera: se
     // achica por el lado mayor. Una panorámica no puede quedar con el lado
@@ -98,7 +107,7 @@ export async function prepararImagen(archivo: File, tipo: TipoImagen): Promise<B
   ctx.drawImage(img, m.sx, m.sy, m.sw, m.sh, 0, 0, m.ancho, m.alto);
   const aBlob = (tipoMime: string, calidad: number) =>
     new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, tipoMime, calidad));
-  let blob = await aBlob("image/webp", tipo === "logo" ? 0.9 : 0.82);
+  let blob = await aBlob("image/webp", tipo === "logo" || tipo === "marca" ? 0.9 : 0.82);
   // Safari viejo devuelve PNG cuando no sabe WebP: el PNG de una foto pesa mucho.
   if (!blob || blob.type !== "image/webp") blob = await aBlob("image/jpeg", 0.85);
   if (!blob) throw new Error("Tu navegador no pudo procesar la imagen.");

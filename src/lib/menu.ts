@@ -51,14 +51,6 @@ export interface ItemNav {
    */
   rutas?: readonly string[];
   /**
-   * Lo ve cualquier rol, sin sección ni permiso: lo de la cuenta de quien está
-   * sentado (sus avisos, su contraseña). Sólo lo usa "Mi negocio" del
-   * instituto; en los demás rubros eso sigue al pie del menú.
-   */
-  paraTodos?: boolean;
-  /** No es una pantalla: el menú lo dibuja como botón (la contraseña abre un formulario). */
-  accion?: "cambiarPassword";
-  /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
    */
@@ -85,7 +77,7 @@ export interface ItemNav {
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
  */
-export type Bloque = "agenda" | "vender" | "stock" | "administracion" | "instituto";
+export type Bloque = "agenda" | "vender" | "pantallas" | "stock" | "administracion" | "instituto";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
   // El del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro lo usa. No se
@@ -96,6 +88,8 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
   // mismo que Stock: adentro vive el grupo Agenda.
   agenda: "Atención",
   vender: "Vender",
+  // Las TVs del local y el despacho (extra `tickets_pedido`).
+  pantallas: "Pantallas",
   stock: "Stock",
   administracion: "Administración",
 };
@@ -218,6 +212,13 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Belleza fase 4: los vales se venden y se consultan al lado del POS.
   { a: "/gift-cards", label: "Gift cards", icono: "gift", seccion: "gift_cards", bloque: "vender" },
   { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos", bloque: "vender" },
+  // Pantallas del local (extra `tickets_pedido`, restaurante de mostrador): lo
+  // que se ve en las TVs y quien despacha lo que llaman. Un bloque propio y no
+  // dentro de Vender: son las pantallas del local, y así lo dibujó la maqueta
+  // que aprobó el dueño. Sin la feature el bloque no existe.
+  { a: "/menu-digital", label: "Menú digital", icono: "pantalla", seccion: "menu_digital", bloque: "pantallas" },
+  { a: "/tickets", label: "Tickets y pedidos", icono: "ticket", seccion: "tickets", bloque: "pantallas" },
+  { a: "/despacho", label: "Despacho", icono: "fuego", seccion: "despacho", bloque: "pantallas" },
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
   {
@@ -409,6 +410,19 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
       // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
       { a: "/configuracion/negocio", label: "Configuración", icono: "settings", seccion: "config_negocio" },
+      // El recibo, el logo y los datos del negocio (extras de pantallas del
+      // restaurante). En un restaurante es el único hijo y se ve suelto,
+      // como "Configuración", que es lo que es.
+      { a: "/configuracion/recibo", label: "Configuración", icono: "settings", seccion: "config_recibo" },
+      // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
+      {
+        a: "/configuracion/sucursales",
+        // No "Sucursales" a secas: en farmacia así se llama Almacenes.
+        label: "Datos de las sucursales",
+        etiqueta: (palabra) => `Datos de las ${palabra("sucursales")}`,
+        icono: "pin",
+        seccion: "config_sucursales",
+      },
       // E17: carreras, materias y planes de pago.
       {
         a: "/configuracion/carreras",
@@ -452,7 +466,7 @@ function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
  *                   lo del día, cobrar, las clases del docente, el control
  *                   del dueño y lo que se configura una vez.
  *   VENDER          Punto de venta · Caja
- *   ADMINISTRACIÓN  "Mi negocio" (la gente, los avisos y la contraseña) y los
+ *   ADMINISTRACIÓN  "Mi negocio" (la gente: personal, usuarios y roles) y los
  *                   módulos generales que el dueño ya tenía: inventario,
  *                   gastos, reportes de ventas, Mi página. Hasta el 26-oct
  *                   colgaban de un grupo "Más", que con el título del bloque
@@ -525,10 +539,13 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
   // La caja del turno: el historial del POS, con el cierre. Es el mismo POS en
   // su propia ruta (ver RUTA_CAJA).
   { a: RUTA_CAJA, label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
-  // "Mi negocio" (el dueño, 26-oct): la gente y la cuenta en un solo grupo,
-  // en vez de un "Equipo" por un lado y los avisos y la contraseña sueltos al
-  // pie del menú. Lo propio del instituto (cursos, sedes, planilla, ajustes)
-  // sigue en Academia → Configuración.
+  // "Mi negocio" (el dueño, 26-oct): la gente en un solo grupo, en vez de un
+  // "Equipo". Es del administrador (M6, 02-nov): cada pantalla pide su
+  // permiso (personal, usuarios, roles), que sólo él tiene de fábrica, así que
+  // la recepción y el docente no ven el grupo ni entran por la URL. Los avisos
+  // y la contraseña, que los usa cualquier rol, volvieron al menú de usuario
+  // (el pie de la barra), como en los demás rubros. Lo propio del instituto
+  // (cursos, sedes, planilla, ajustes) sigue en Academia → Configuración.
   {
     a: "/personal",
     label: "Mi negocio",
@@ -536,15 +553,6 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       ...(general("/personal").hijos ?? []).filter((h) => ["/personal", "/usuarios", "/roles"].includes(h.a)),
-      { a: "/notificaciones", label: "Notificaciones", icono: "bell", paraTodos: true },
-      // Nunca se marca activo: ninguna ruta empieza con "#".
-      {
-        a: "#cambiar-password",
-        label: "Cambiar mi contraseña",
-        icono: "lock",
-        paraTodos: true,
-        accion: "cambiarPassword",
-      },
     ],
   },
   // Sin Almacenes: en el instituto son las sedes, y están en Configuración.
@@ -593,10 +601,6 @@ function filtrar(
   const salida: NodoMenu[] = [];
   for (const i of items) {
     const hijos = filtrar(i.hijos ?? [], puede, rubro, vocabulario);
-    if (i.paraTodos) {
-      salida.push({ item: i, id: `todos:${i.a}`, hijos: [], esTitulo: false });
-      continue;
-    }
     if (!i.seccion) {
       // Grupo sin pantalla propia: con un solo hijo, el hijo va suelto.
       if (hijos.length < 2) {

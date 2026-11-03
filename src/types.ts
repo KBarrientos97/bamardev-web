@@ -3,6 +3,7 @@
 // mental entre lo que viaja por la red y lo que se lee acá.
 
 import type { Tema } from "./lib/temas";
+import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
@@ -71,7 +72,11 @@ export type FeatureConocida =
   /** Vencimientos y el lote que sale por FEFO. Farmacia, plan PRO. */
   | "lotes"
   /** Lo que pidieron y no había. Farmacia, BASICO y PRO. */
-  | "encargos";
+  | "encargos"
+  /** Número de pedido, despacho y la TV que lo llama. Extra de restaurante. */
+  | "tickets_pedido"
+  /** El botón de Ayuda de la web (IDEAS/11). Se prende por negocio desde el panel. */
+  | "ayuda";
 export type Feature = FeatureConocida | (string & {});
 
 export interface SesionUsuario {
@@ -107,6 +112,11 @@ export interface SesionUsuario {
   permisosPropios?: string[];
   /** Huella de los permisos: si cambia, se vuelven a pedir a /auth/me. */
   permisosVersion?: string;
+  /**
+   * El acceso de despacho (extra `tickets_pedido`): la tablet de la cocina.
+   * Entra directo a Despacho, sin menú ni ninguna otra pantalla.
+   */
+  esDespacho?: boolean;
 }
 
 /**
@@ -183,6 +193,7 @@ export interface Me {
   permisos?: string[];
   permisosPropios?: string[];
   permisosVersion?: string;
+  esDespacho?: boolean;
 }
 
 // ── Roles del negocio (PLAN-ROLES-NEGOCIO §8) ───────────────────────────────
@@ -319,7 +330,8 @@ export interface EventoRol {
  * Producto / Elaborado / Combo:
  *   ALMACENABLE → "Producto"  (controla stock)
  *   SERVICIO    → "Elaborado" (no controla stock)
- *   COMPUESTO   → "Combo"     (receta que descuenta ingredientes al vender)
+ *   COMPUESTO   → "Combo"     (controla su PROPIO stock; la receta dice lo que
+ *                               lleva y venderlo no descuenta los ingredientes)
  */
 export type TipoProducto = "ALMACENABLE" | "SERVICIO" | "COMPUESTO";
 
@@ -517,6 +529,9 @@ export interface Almacen {
   esPrincipal: boolean;
   direccion: string | null;
   telefono: string | null;
+  /** Dónde está, para el mapa de la página (PLAN-PAGINA-WEB §3.1). */
+  latitud?: number | null;
+  longitud?: number | null;
   totalArticulos?: number;
   totalUnidades?: number;
   valorTotal?: number;
@@ -530,6 +545,9 @@ export interface AlmacenInput {
   tipo?: TipoAlmacen;
   direccion?: string;
   telefono?: string;
+  /** Las dos juntas; null las borra. Ausentes, no se tocan. */
+  latitud?: number | null;
+  longitud?: number | null;
 }
 
 export interface Insumo {
@@ -559,6 +577,36 @@ export interface InsumoInput {
   proveedor?: string;
   vencimiento?: string;
   almacenId?: number;
+}
+
+/**
+ * Lo comprado en insumos en un período (`GET /insumos/compras`): las ENTRADAS
+ * aprobadas, cada línea a cantidad × su costo, con los insumos dados de baja
+ * incluidos (la plata se gastó igual). Es lo INVERTIDO, no lo consumido: el
+ * restaurante lo muestra en vez del stock, que ahí no baja nunca
+ * (`insumosSinStock` en `lib/rubro.ts`).
+ *
+ * Un backend anterior no tiene el endpoint: la pantalla sigue sin lo invertido.
+ */
+export interface ComprasInsumos {
+  /** Bs, redondeado a centavos. */
+  total: number;
+  /** Las entradas con al menos una línea de insumo. */
+  numCompras: number;
+  /** De lo que más se invirtió a lo que menos. Un insumo sin compras no viene. */
+  porInsumo: CompraDeInsumo[];
+}
+
+export interface CompraDeInsumo {
+  insumoId: number;
+  /** Bs, redondeado a centavos. */
+  total: number;
+  /** En la unidad del insumo (kg, litros, unidades). */
+  cantidad: number;
+  /** En cuántas entradas aparece. */
+  compras: number;
+  /** ISO: la fecha de la entrada más reciente. */
+  ultimaFecha: string;
 }
 
 export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE" | "TRANSFERENCIA";
@@ -738,7 +786,12 @@ export interface ApunteStock {
   saldoDespues: number;
   motivo: MotivoStock;
   fecha: string;
-  producto: { id: number; nombre: string } | null;
+  /**
+   * `esInsumo` desde el 28-oct: el restaurante no muestra el saldo de un insumo
+   * (ver `insumosSinStock`). Un backend anterior no lo manda: `undefined` es
+   * "no se sabe", no "no es insumo".
+   */
+  producto: { id: number; nombre: string; esInsumo?: boolean } | null;
   almacen: { id: number; nombre: string } | null;
   /** Null = proceso automático (el armado de un combo, por ejemplo). */
   usuario: { id: number; username: string; nombre: string | null } | null;
@@ -914,6 +967,12 @@ export interface Caja {
   montoCierre: number | null;
   montoDiferencia: number | null;
   notaCierre: string | null;
+  /**
+   * Sólo en la respuesta de `POST caja/:id/cerrar`: el arqueo con el que se
+   * cerró (el mismo cálculo que fijó la diferencia). Lo muestra el comprobante
+   * del cierre (`CierreOk`). Opcional: un backend anterior no lo manda.
+   */
+  resumen?: ResumenCaja;
 }
 
 export interface FormaPago {
@@ -1250,6 +1309,12 @@ export interface Venta {
    */
   requiereRevision?: boolean;
   motivosRevision?: MotivoRevision[];
+  /**
+   * El número que se le canta al cliente en la TV (feature `tickets_pedido`).
+   * Sólo en una venta de mostrador cobrada en caja con la feature prendida:
+   * sin él, el recibo sale como siempre.
+   */
+  ticket?: { numero: number; estado: EstadoTicket } | null;
 }
 
 /** Por qué una venta quedó "a revisar" (ver `lib/revisionVenta.ts`). */
@@ -1536,6 +1601,39 @@ export interface Credito {
   nota?: string | null;
 }
 
+/** Un renglón de lo que se llevó fiado, como lo trae el detalle del crédito. */
+export interface LineaCredito {
+  producto: string;
+  cantidad: number;
+  precio: number;
+  subtotal: number;
+}
+
+/**
+ * Un cobro registrado contra la cuenta. Cada parte de un abono mixto es uno
+ * (el backend guarda el efectivo y el QR por separado, para el arqueo). El
+ * adelanto NO viene acá: viajó en los pagos de la venta.
+ */
+export interface PagoCredito {
+  id: number;
+  monto: number;
+  formaPago: string;
+  fecha: string;
+  /** Quién lo cobró. */
+  usuario: string | null;
+  nota?: string | null;
+}
+
+/** GET /creditos/:id — el crédito con lo que el listado no trae. */
+export interface CreditoDetalle extends Credito {
+  /** La nota de la FICHA del cliente ("paga los viernes"); `nota` es la de esta cuenta. */
+  clienteNota?: string | null;
+  /** Quién registró el fiado. */
+  registradoPor?: string | null;
+  detalles?: LineaCredito[];
+  pagos?: PagoCredito[];
+}
+
 export interface ClienteCredito {
   id: number;
   nombre: string;
@@ -1557,6 +1655,11 @@ export interface AbonoInput {
   formaPagoId?: number;
   pagos?: { monto: number; formaPagoId: number }[];
   nota?: string;
+  /**
+   * Identidad del cobro, la misma en cada reintento: el backend no lo registra
+   * dos veces (BUG-cobro-4). Ver `useIntentoDeCobro`.
+   */
+  clienteRequestId?: string;
 }
 
 export type FiltroCredito = "por_cobrar" | "vencidos" | "vencen_pronto" | "pagados";

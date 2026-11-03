@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "./api";
 import { tieneFeature } from "./permisos";
-import { esBelleza } from "./rubro";
+import { esBelleza, termino } from "./rubro";
 import { useApi } from "./useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen } from "../types";
@@ -37,7 +37,7 @@ import type { Almacen } from "../types";
  * mercadería entra ahí antes de repartirse a los locales.
  */
 export function useSucursales({ incluirDepositos = false } = {}) {
-  const { usuario, negocio } = useAuth();
+  const { usuario, negocio, rubro, vocabulario } = useAuth();
   const [sucursalId, setSucursalId] = useState<number | null>(null);
 
   const esDeOrganizacion = usuario?.sucursalId == null;
@@ -58,9 +58,11 @@ export function useSucursales({ incluirDepositos = false } = {}) {
     !tieneFeature(negocio?.features, "multi_almacen");
   const elegir = esDeOrganizacion && !unLocal && sucursales.length > 1;
 
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const todas = `Todas las ${termino(rubro, "sucursales", vocabulario)}`;
   /** Opciones para `<Chips>`: "Todas" primero y después cada local. */
   const opciones = [
-    ["", "Todas las sucursales"] as const,
+    ["", todas] as const,
     ...sucursales.map((a) => [String(a.id), a.nombre] as const),
   ];
 
@@ -72,6 +74,8 @@ export function useSucursales({ incluirDepositos = false } = {}) {
     elegir,
     sucursales,
     opciones,
+    /** "Todas las sucursales", o como las llame el rubro: para subtítulos y menús propios. */
+    todas,
     /** Para `<Chips valor=…>`: la cadena vacía representa "todas". */
     valorChip: sucursalId == null ? "" : String(sucursalId),
     /** Traduce lo que devuelve `<Chips>` al id (o null). */

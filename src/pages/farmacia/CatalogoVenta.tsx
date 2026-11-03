@@ -5,7 +5,7 @@ import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto } from "../../types";
-import { paraVender } from "../pos/useCarrito";
+import { controlaStock, paraVender } from "../pos/useCarrito";
 import CampoBusqueda from "./CampoBusqueda";
 import { concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { ChipsCondicion } from "./piezas";
@@ -222,7 +222,8 @@ function TarjetaVenta({
   // hasta la baja pero no se cobran.
   const hay = paraVender(p);
   const vencidas = p.stockVencido ?? 0;
-  const agotado = p.tipoProducto === "ALMACENABLE" && hay <= 0;
+  // Como `sePuedeVender`: el combo también se agota (POS-2).
+  const agotado = controlaStock(p) && hay <= 0;
   const punto = puntoVencimiento(p);
   const concentracion = concentracionAparte(p);
   const detalle = [p.laboratorio, p.formaFarmaceutica].filter(Boolean).join(" · ");

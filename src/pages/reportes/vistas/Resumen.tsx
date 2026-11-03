@@ -74,8 +74,11 @@ export default function Resumen() {
                 valor={fmtMoney(res.ventas)}
                 pie={
                   partes.length > 0 ? (
-                    <div className={`grid gap-3 ${partes.length >= 3 ? "grid-cols-3" : "grid-cols-2"}`}>
-                      {partes.slice(0, 3).map((p) => (
+                    // Todas las que manda partesVenta (hasta 4 en el restaurante),
+                    // con 4 en 2×2. Cortaba en 3 y escondía "Mostrador", que en una
+                    // pollería es la parte más grande: las partes no sumaban el total.
+                    <div className={`grid gap-3 ${partes.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+                      {partes.map((p) => (
                         <CifraClara key={p.etiqueta} etiqueta={p.etiqueta} valor={bsEntero(p.valor)} />
                       ))}
                     </div>

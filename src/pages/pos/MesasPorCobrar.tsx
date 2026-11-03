@@ -4,7 +4,7 @@ import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import type { Mesa } from "../../types/salon";
-import { consumoDeMesa, hace } from "../salon/logicaSalon";
+import { consumoDeMesa, estaUnida, etiquetaMesa, hace } from "../salon/logicaSalon";
 
 /**
  * Las mesas que el salón mandó a caja.
@@ -88,6 +88,9 @@ export default function MesasPorCobrar({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-texto">
+                  {/* Unida, con el nombre del salón ("M5 + M1"): sólo decía "M5"
+                      y la cajera no encontraba la M1 que le cantaban (QA 29-oct). */}
+                  {estaUnida(m) && `${etiquetaMesa(m)} · `}
                   {m.zonaNombre} · {fmtNum(m.comensales)}{" "}
                   {m.comensales === 1 ? "persona" : "personas"}
                 </p>

@@ -643,3 +643,72 @@ describe("aprobar un movimiento de inventario (16-oct)", () => {
     }
   });
 });
+
+describe("Aprobar con el doble control (MOV-03)", () => {
+  /**
+   * La misma regla que `puedeAprobar` del backend. Con el extra, a quien sólo
+   * mueve inventario el servidor le contesta 403 al aprobar y al anular lo
+   * aprobado (`test/aprobar-movimientos.e2e-spec.ts`): ofrecerle el botón era
+   * ofrecerle un error.
+   */
+  const CON_EXTRA: Feature[] = [...PLAN_FULL, "aprobacion_inventario"];
+  const soloMueve = { permisos: ["inventario.mover"] };
+  const TIPOS = ["ENTRADA", "SALIDA", "AJUSTE"];
+
+  it("con el extra, quien sólo mueve inventario no ve Aprobar", () => {
+    for (const tipo of TIPOS) {
+      expect(ofreceAprobarMovimiento(soloMueve, tipo, true)).toBe(false);
+    }
+  });
+
+  it("con el extra, «Aprobar movimientos» sí", () => {
+    // De fábrica lo traen el Administrador y el Encargado: es lo que le dice
+    // el detalle a quien no puede aprobar.
+    for (const plantilla of ["ADMIN", "SUPERVISOR"] as const) {
+      const usuario = permisosDe(plantilla, { features: CON_EXTRA });
+      for (const tipo of TIPOS) {
+        expect(ofreceAprobarMovimiento(usuario, tipo, true)).toBe(true);
+      }
+    }
+    // Y un rol armado a mano que revisa sin cargar.
+    expect(ofreceAprobarMovimiento({ permisos: ["inventario.aprobar"] }, "ENTRADA", true)).toBe(true);
+  });
+
+  it("sin el extra, mover inventario alcanza", () => {
+    // Sin el extra el plan le recorta «Aprobar movimientos» a todos: si hiciera
+    // falta, ni el Administrador aprobaría (14-oct: las cervezas del billar
+    // quedaban pendientes con un 403).
+    const admin = permisosDe("ADMIN", { features: PLAN_FULL });
+    expect(admin.permisos).not.toContain("inventario.aprobar");
+    for (const tipo of TIPOS) {
+      expect(ofreceAprobarMovimiento(admin, tipo, false)).toBe(true);
+      expect(ofreceAprobarMovimiento(soloMueve, tipo, false)).toBe(true);
+    }
+  });
+
+  it("sin ninguno de los dos, no", () => {
+    for (const dobleControl of [true, false]) {
+      expect(ofreceAprobarMovimiento(permisosDe("CAJERO"), "ENTRADA", dobleControl)).toBe(false);
+      expect(ofreceAprobarMovimiento({ permisos: [] }, "SALIDA", dobleControl)).toBe(false);
+      expect(ofreceAprobarMovimiento(null, "AJUSTE", dobleControl)).toBe(false);
+    }
+  });
+
+  it("una transferencia sigue pidiendo su permiso, con o sin el extra", () => {
+    const transfiere = { permisos: ["inventario.mover", "inventario.aprobar_transferencias"] };
+    const aprueba = { permisos: ["inventario.mover", "inventario.aprobar"] };
+    for (const dobleControl of [true, false]) {
+      expect(ofreceAprobarMovimiento(transfiere, "TRANSFERENCIA", dobleControl)).toBe(true);
+      expect(ofreceAprobarMovimiento(aprueba, "TRANSFERENCIA", dobleControl)).toBe(false);
+      expect(ofreceAprobarMovimiento(soloMueve, "TRANSFERENCIA", dobleControl)).toBe(false);
+    }
+  });
+
+  it("con dos argumentos, quien mueve inventario sigue viendo Aprobar", () => {
+    // Guarda de farmacia: `MovimientosFarmacia` lo llama así, y su detalle
+    // sigue como estaba (el botón está y decide el servidor).
+    for (const tipo of [...TIPOS, undefined]) {
+      expect(ofreceAprobarMovimiento(soloMueve, tipo)).toBe(true);
+    }
+  });
+});

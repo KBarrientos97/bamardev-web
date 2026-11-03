@@ -22,6 +22,7 @@ import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
+import { aCentavos } from "../../lib/dinero";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
@@ -50,6 +51,7 @@ import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
 import Entregas from "../salon/Entregas";
 import { consumoDeMesa, etiquetaMesa, itemsVivos } from "../salon/logicaSalon";
+import { avisoCuentaCambiada, cuerpoCobroDeMesa, esCuentaCambiada } from "../salon/cobroDeMesa";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
@@ -289,6 +291,8 @@ function PuntoDeVenta() {
 
   const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
+  // El recibo abierto desde el historial no se imprime solo (ver PantallaRecibo).
+  const [reimpresion, setReimpresion] = useState(false);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
   // El carrito necesita el tipo de pedido: en el local lo nuevo arranca en
@@ -370,6 +374,8 @@ function PuntoDeVenta() {
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   /** Las propinas anotadas en el cobro antes de pasar a "fiado". */
   const [propinasCredito, setPropinasCredito] = useState<PropinaInput[]>([]);
+  /** Veces que el backend frenó el fiado por el límite del cliente (ver `venderACredito`). */
+  const [rechazosPorLimite, setRechazosPorLimite] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
@@ -517,12 +523,22 @@ function PuntoDeVenta() {
   // venta. Las dos rutas montan este mismo componente, así que ir y venir no
   // pierde el carrito. `key` cambia en cada navegación: tocar "Caja" estando
   // ya ahí (en un recibo, después de cerrar) vuelve a la lista del turno.
-  const { pathname, key: navegacion } = useLocation();
+  const { pathname, key: navegacion, state: estadoNavegacion } = useLocation();
   const navigate = useNavigate();
   const enCaja = pathname === RUTA_CAJA;
   useEffect(() => {
     setPantalla((p) => (enCaja ? "historial" : p === "historial" ? "venta" : p));
   }, [enCaja, navegacion]);
+  // "Ir al cierre de caja" del aviso de no cerrar sesión con la caja abierta
+  // (CAJA-3, `useCerrarSesion`) llega a /pos con este pedido. Va después del
+  // efecto de arriba, que si no lo pisaría, y se consume: si quedara en el
+  // historial, un F5 (o abrir la caja siguiente) volvería a abrir el cierre.
+  const pideCierre = (estadoNavegacion as { pantalla?: string } | null)?.pantalla === "cierre";
+  useEffect(() => {
+    if (!pideCierre) return;
+    setPantalla("cierre");
+    navigate(pathname, { replace: true, state: null });
+  }, [pideCierre, navegacion, navigate, pathname]);
 
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
@@ -564,7 +580,7 @@ function PuntoDeVenta() {
   }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
 
   const cobrar = useCallback(
-    async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => {
+    async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[]; propinaMesa?: number }) => {
       setError("");
       const cuerpo = mesaCobrando ? null : cuerpoVenta(pagos);
       // Sin cupo ni créditos no se manda nada: se abre la hoja de compra y el
@@ -576,12 +592,18 @@ function PuntoDeVenta() {
       try {
         // Cobrar una mesa es otro endpoint: la cuenta ya existe en el salón,
         // acá sólo se dice con qué se pagó. La venta la arma el backend con lo
-        // que el mesero cargó.
+        // que el mesero cargó. Con la propina de la mesa y el total que la
+        // cajera tiene en pantalla (ver `cuerpoCobroDeMesa`).
         const creada = mesaCobrando
-          ? await api.cobrarMesa(mesaCobrando.id, {
-              pagos,
-              clienteRequestId: intento.actual(`mesa:${mesaCobrando.id}`),
-            })
+          ? await api.cobrarMesa(
+              mesaCobrando.id,
+              cuerpoCobroDeMesa(
+                consumoDeMesa(mesaCobrando),
+                pagos,
+                extra?.propinaMesa,
+                intento.actual(`mesa:${mesaCobrando.id}`),
+              ),
+            )
           : await (async () => {
               const venta = cuerpo ?? cuerpoVenta(pagos);
               const r = await vender({
@@ -605,6 +627,7 @@ function PuntoDeVenta() {
         }
         // La cita cobrada sale de "por cobrar" en el acto, sin esperar el sondeo.
         if (conAgenda) refrescarCitas();
+        setReimpresion(false);
         setPantalla("recibo");
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
@@ -616,6 +639,18 @@ function PuntoDeVenta() {
         // Una promo cambió entre la cotización y el cobro: se recalcula para
         // que al volver el carrito muestre el total nuevo.
         if (err instanceof ApiError && err.codigo === "DESCUENTO_CAMBIO") descuentos.recotizar();
+        // El mesero le sumó algo a la mesa mientras la cajera cobraba: se
+        // recarga la cuenta para que el total nuevo quede a la vista. Antes
+        // llegaba "Los pagos (197) deben sumar el total de la venta (217)", que
+        // no decía qué pasó. Si no se puede releer, queda el mensaje del backend.
+        if (mesaCobrando && esCuentaCambiada(err)) {
+          const recargada = await api.mesa(mesaCobrando.id).catch(() => null);
+          if (recargada) {
+            setMesaCobrando(recargada);
+            setError(avisoCuentaCambiada(recargada, "caja"));
+            return;
+          }
+        }
         setError(err instanceof Error && err.message ? err.message : "No se pudo registrar la venta");
       } finally {
         setEnviando(false);
@@ -633,6 +668,11 @@ function PuntoDeVenta() {
       hayLugar,
       rechazoPorCupo,
       registrarConsumo,
+      // La mesa que se cobra: sin ella en la lista el cobro podía quedarse con
+      // la de antes (o con ninguna) apenas lo demás dejara de cambiar en cada
+      // render, y cobrar el carrito en vez de la mesa.
+      mesaCobrando,
+      porCobrar,
     ],
   );
 
@@ -709,11 +749,18 @@ function PuntoDeVenta() {
         if (!creada.pendienteSync) registrarConsumo(creada);
         setVenta(creada);
         limpiar();
+        setReimpresion(false);
         setPantalla("recibo");
         productos.recargar();
       } catch (err) {
         cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
+        // CRE-4: el backend frenó el fiado por el límite del cliente (la deuda
+        // cambió desde que se cargó la lista, u otro cajero le fió en el
+        // medio). PantallaCredito abre la firma del encargado y reintenta con
+        // el carrito intacto; antes sólo se pintaba el texto y volver a tocar
+        // "Registrar fiado" rebotaba igual.
+        if (err instanceof ApiError && err.codigo === "LIMITE_CREDITO") setRechazosPorLimite((n) => n + 1);
         setError(err instanceof Error ? err.message : "No se pudo registrar el fiado");
       } finally {
         setEnviando(false);
@@ -857,6 +904,7 @@ function PuntoDeVenta() {
         // recibo de una venta recién cobrada, y su "volver" ya lleva al historial.
         onVerComprobante={(v) => {
           setVenta(v);
+          setReimpresion(true);
           setPantalla("recibo");
         }}
       />
@@ -870,12 +918,25 @@ function PuntoDeVenta() {
         unidades={carrito.unidades}
         repartidores={repartidores.datos ?? []}
         enviando={enviando}
+        // Al volver del cobro, lo que ya se había cargado (BUG-pedidos-9).
+        inicial={datosEntrega}
+        // Si el servidor rechaza el pedido contra entrega, se ve acá: el
+        // `error` sólo se pintaba en el cobro y el fiado (BUG-pedidos-1).
+        errorServidor={error}
         onAtras={() => {
           setError("");
           setTipoPedido("LOCAL");
+          // Sin esto los datos del pedido quedaban colgados en la venta de
+          // mostrador que seguía: su cobro decía "El envío (Bs 8) lo cobra el
+          // repartidor aparte", no ofrecía fiar y su "atrás" abría el
+          // formulario de recoger (BUG-pedidos-9).
+          setDatosEntrega(null);
           setPantalla("venta");
         }}
         onContinuar={(datos) => {
+          // Un rechazo anterior del pedido contra entrega no tiene que
+          // aparecer en el cobro: es otro intento.
+          setError("");
           setDatosEntrega(datos);
           if (datos.prepagado) setPantalla("cobro");
           else void crearPedidoPendiente(datos);
@@ -910,6 +971,15 @@ function PuntoDeVenta() {
       {dialogoCobroIncompleto}
       <CobroEnLaCompu lineas={lineasCobro} total={totalCobro}>
       <PantallaCobro
+        // La cuenta recargada ("cambió mientras cobrabas") es otro cobro: con
+        // otro total, la pantalla se vuelve a montar de cero, como si la
+        // cajera hubiera vuelto a entrar a la mesa, que es lo que pide el
+        // backend. Si no, el QR confirmado por Bs 197 seguía confirmado
+        // con la cuenta en Bs 217, y "Confirmar cobro" registraba 217 por QR
+        // sin que nadie viera en el banco los Bs 20 de diferencia. El aviso no
+        // se pierde: viaja en `error`, que vive en el POS. Sin mesa no hay
+        // clave: el mostrador sigue como siempre.
+        key={mesaCobrando ? `mesa-${mesaCobrando.id}-${aCentavos(totalCobro)}` : undefined}
         total={totalCobro}
         subtitulo={
           mesaCobrando
@@ -944,12 +1014,16 @@ function PuntoDeVenta() {
           }
           setPantalla(datosEntrega ? "entrega" : "venta");
         }}
+        // Cobrando una mesa: la propina de la mesa (para el mesero, no entra al
+        // cajón). Sin esto, el cobro de siempre.
+        cobroDeMesa={mesaCobrando ? "caja" : undefined}
         onConfirmar={(pagos, extra) =>
-          // Una mesa no es una cita: su cobro sigue directo (y no lleva
-          // propinas por profesional: el cobro de la mesa no las ofrece).
+          // Una mesa no es una cita: su cobro sigue directo. No lleva propinas
+          // por profesional (el cobro de la mesa no las ofrece) pero sí la de
+          // la mesa, en `extra.propinaMesa`.
           // QA PER-01: el `extra` (las propinas) se descartaba acá y ninguna
           // propina cobrada desde la web llegaba al backend.
-          mesaCobrando ? void cobrar(pagos) : confirmandoCita(() => void cobrar(pagos, extra))
+          mesaCobrando ? void cobrar(pagos, extra) : confirmandoCita(() => void cobrar(pagos, extra))
         }
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
         // delivery ya define quién y cuándo paga, y una mesa se fía desde el
@@ -996,6 +1070,7 @@ function PuntoDeVenta() {
         }
         enviando={enviando}
         error={error}
+        rechazosPorLimite={rechazosPorLimite}
       />
       </>
     );
@@ -1004,6 +1079,7 @@ function PuntoDeVenta() {
     return (
       <PantallaRecibo
         venta={venta}
+        reimpresion={reimpresion}
         onNuevaVenta={() => {
           setVenta(null);
           setPantalla("venta");
@@ -1488,8 +1564,13 @@ function PedidoOk({
             </div>
           )}
           <div className="flex justify-between border-t border-borde pt-2 text-base font-extrabold text-texto">
-            <dt>A cobrar al entregar</dt>
-            <dd>{fmtMoney(venta.totalACobrar ?? venta.total)}</dd>
+            {/* Un "para recoger" se paga al retirar: decía "al entregar", como
+                si fuera un delivery (QA 29-oct). */}
+            <dt>{venta.tipoPedido === "RECOGER" ? "A cobrar al retirar" : "A cobrar al entregar"}</dt>
+            {/* Sin `totalACobrar`, con el envío: `total` es sólo lo de los
+                productos y decía Bs 50 debajo de "Envío Bs 8" (BUG-cobro-5).
+                El mismo respaldo que el detalle del historial. */}
+            <dd>{fmtMoney(venta.totalACobrar ?? aCentavos(venta.total + (venta.tarifaEnvio ?? 0)))}</dd>
           </div>
         </dl>
 

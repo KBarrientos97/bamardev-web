@@ -1,4 +1,5 @@
 import { Icon } from "../../components/Icon";
+import { esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtMoney } from "../../lib/format";
 import type { Credito } from "../../types";
 
@@ -51,7 +52,8 @@ export default function CuentasPorCobrar({
           <p className="text-[11px] text-primary-700">
             {abiertos.length} {abiertos.length === 1 ? "crédito abierto" : "créditos abiertos"}
             {vencido > 0 ? ` · ${fmtMoney(vencido)} vencido` : ""}
-            {fiadoDelTurno && fiadoDelTurno > 0
+            {/* Con tolerancia: un residuo de centavos no es "fiado en tu turno". */}
+            {esPositivo(fiadoDelTurno ?? 0)
               ? ` · ${fmtMoney(fiadoDelTurno)} fiado en tu turno`
               : ""}
           </p>

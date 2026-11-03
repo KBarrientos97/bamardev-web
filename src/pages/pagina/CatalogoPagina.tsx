@@ -118,6 +118,8 @@ interface Props {
   selector?: ReactNode;
   /** El color de "No hay productos en esta sucursal". */
   colorVacio?: string;
+  /** Cómo llama el rubro a un local: «sede» en el instituto (Lista 2 #9). */
+  sucursal?: string;
 }
 
 function Icono({ d, color, size = 20 }: { d: string; color: string; size?: number }) {
@@ -193,14 +195,17 @@ export function SelectorSucursalCatalogo({
   indice,
   onIndice,
   colores,
+  etiqueta = "Sucursal",
 }: {
   nombres: string[];
   indice: number;
   onIndice: (i: number) => void;
   colores: ColoresSelector;
+  /** El nombre del grupo para el lector de pantalla: «Sede» en el instituto (Lista 2 #9). */
+  etiqueta?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label="Sucursal" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, minWidth: 0 }}>
+    <div role="radiogroup" aria-label={etiqueta} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, minWidth: 0 }}>
       <span style={{ fontSize: 13, color: colores.texto }}>Precios de:</span>
       {nombres.map((n, i) => {
         const elegida = i === indice;
@@ -301,6 +306,7 @@ export default function CatalogoPagina({
   renderTitulo,
   selector,
   colorVacio,
+  sucursal = "sucursal",
 }: Props) {
   const a = aspecto ?? aspectoDeSiempre(c);
   const [abierto, setAbierto] = useState<number | null>(null);
@@ -325,7 +331,7 @@ export default function CatalogoPagina({
       {selector}
       {items.length === 0 ? (
         // Con otra sucursal elegida puede no quedar nada: el selector sigue.
-        <p style={{ margin: 0, fontSize: 14, color: colorVacio ?? GRIS.texto3 }}>No hay productos disponibles en esta sucursal.</p>
+        <p style={{ margin: 0, fontSize: 14, color: colorVacio ?? GRIS.texto3 }}>No hay productos disponibles en esta {sucursal}.</p>
       ) : a.presentacion === "menu" ? (
         <ListaMenu items={items} a={a} onAbrir={setAbierto} />
       ) : (

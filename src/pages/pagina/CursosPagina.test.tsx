@@ -44,4 +44,26 @@ describe("P1 · Cursos", () => {
     expect(screen.getByRole("link", { name: "Inscribirme" })).toHaveAttribute("href", "/p/horizonte/inscribirme/21");
     expect(screen.getByText("Próximo grupo por confirmar.")).toBeInTheDocument();
   });
+
+  it("M5: lleva a «Pagar mi inscripción» y manda al primer grupo con lugar", () => {
+    const llenoYLibre: CursoPublico = {
+      ...CURSO,
+      grupos: [
+        { ...CURSO.grupos[0], id: 21, cuposLibres: 0 },
+        { ...CURSO.grupos[0], id: 22, cuposLibres: 5 },
+      ],
+    };
+    render(<CursosPagina cursos={[llenoYLibre]} t={T} colorBoton="#282D73" radio={12} titulo={<h2>Cursos</h2>} escritorio={false} urlInscribirme={(g) => `/p/horizonte/inscribirme/${g}`} urlMiCuenta="/p/horizonte/mi-cuenta" />);
+    expect(screen.getByRole("link", { name: "Pagar mi inscripción" })).toHaveAttribute("href", "/p/horizonte/mi-cuenta");
+    // El 21 está lleno: ya no recibe preinscripciones, se va al 22.
+    expect(screen.getByRole("link", { name: "Inscribirme" })).toHaveAttribute("href", "/p/horizonte/inscribirme/22");
+  });
+
+  it("M5: con todos los grupos llenos no hay botón: se comunican con la academia", () => {
+    const lleno: CursoPublico = { ...CURSO, grupos: [{ ...CURSO.grupos[0], cuposLibres: 0 }] };
+    render(<CursosPagina cursos={[lleno]} t={T} colorBoton="#282D73" radio={12} titulo={<h2>Cursos</h2>} escritorio={false} urlInscribirme={(g) => `/p/horizonte/inscribirme/${g}`} />);
+    expect(screen.queryByRole("link", { name: "Inscribirme" })).not.toBeInTheDocument();
+    expect(screen.getByText("Los grupos están llenos, comunicate con la academia.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pagar mi inscripción" })).not.toBeInTheDocument();
+  });
 });

@@ -3,6 +3,7 @@ import { formatoPrecio, urlWhatsappConTexto } from "../../lib/pagina/catalogo";
 import { cantidadTotal, mensajePedido, totalPedido, type DatosPedido } from "../../lib/pagina/pedido";
 import type { Pedido } from "../../lib/pagina/usePedido";
 import type { ContactoWhatsapp } from "../../lib/pagina/whatsapp";
+import { conMayuscula, termino } from "../../lib/rubro";
 import { ElegirDestino } from "./EleccionWhatsapp";
 
 /**
@@ -28,6 +29,7 @@ export default function PedidoPagina({
   destinos,
   pedido,
   sucursal,
+  rubro,
 }: {
   negocio: string;
   color: string;
@@ -39,6 +41,8 @@ export default function PedidoPagina({
   pedido: Pedido;
   /** La sucursal elegida en el catálogo, si hay más de una: de ella son los precios. */
   sucursal?: string | null;
+  /** El rubro de la página: en el instituto el local es una «sede» (Lista 2 #9). */
+  rubro?: string | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [destinoElegido, setDestino] = useState<string | null>(null);
@@ -66,7 +70,9 @@ export default function PedidoPagina({
   // La sucursal del mensaje: la elegida en el catálogo o, si se eligió a qué
   // WhatsApp mandarlo, ésa (el general no es una sucursal).
   const sucursalMensaje = sucursal ?? (destinos.length > 1 && destino && destino.etiqueta !== "General" ? destino.etiqueta : null);
-  const url = destino ? urlWhatsappConTexto(destino.url, mensajePedido(negocio, lineas, datos, sucursalMensaje)) : undefined;
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const palabraSucursal = termino(rubro, "sucursal");
+  const url = destino ?urlWhatsappConTexto(destino.url, mensajePedido(negocio, lineas, datos, sucursalMensaje, conMayuscula(palabraSucursal))) : undefined;
   const faltaDireccion = datos.entrega === "DELIVERY" && datos.direccion.trim().length < 5;
   const bloqueado = !lineas.length || faltaDireccion || !destino;
 
@@ -200,6 +206,7 @@ export default function PedidoPagina({
             elegido={destino ? destinos.indexOf(destino) : null}
             onElegir={(i) => setDestino(destinos[i].url)}
             color={color}
+            titulo={`¿A qué ${palabraSucursal} lo mandás?`}
           />
         )}
         <a

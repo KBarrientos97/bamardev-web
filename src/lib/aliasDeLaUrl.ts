@@ -32,13 +32,28 @@ export function aliasDeLaDireccion(search: string): string {
 }
 
 /**
- * La misma búsqueda sin los parámetros del alias (con su `?` si queda algo),
- * o null si no traía ninguno y no hay nada que limpiar.
+ * El usuario que trae la dirección (`?usuario=…`): el QR del acceso de
+ * despacho abre el login con el negocio y el usuario puestos, y en la tablet
+ * sólo se escribe la contraseña (Kevin, 29-oct). Con la forma de un usuario
+ * del alta; si no la tiene, vacío.
+ */
+export function usuarioDeLaDireccion(search: string): string {
+  const usuario = (new URLSearchParams(search).get("usuario") ?? "").trim().toLowerCase();
+  return /^[a-z0-9._-]{3,30}$/.test(usuario) ? usuario : "";
+}
+
+/** Lo que el login toma de la dirección y después saca de ella. */
+const PARAMS_LOGIN = [...PARAMS_ALIAS, "usuario"] as const;
+
+/**
+ * La misma búsqueda sin los parámetros del login —el alias y el usuario—
+ * (con su `?` si queda algo), o null si no traía ninguno y no hay nada que
+ * limpiar.
  */
 export function direccionSinAlias(search: string): string | null {
   const params = new URLSearchParams(search);
-  if (!PARAMS_ALIAS.some((nombre) => params.has(nombre))) return null;
-  for (const nombre of PARAMS_ALIAS) params.delete(nombre);
+  if (!PARAMS_LOGIN.some((nombre) => params.has(nombre))) return null;
+  for (const nombre of PARAMS_LOGIN) params.delete(nombre);
   const resto = params.toString();
   return resto ? `?${resto}` : "";
 }

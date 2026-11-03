@@ -442,18 +442,28 @@ describe("la cuenta de quien está sentado (API-12)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("en el instituto va dentro de «Mi negocio», con los avisos, y no se repite al pie (26-oct)", () => {
+  it("en el instituto, «Mi negocio» es del administrador y los avisos van en el menú de usuario (M6, 02-nov)", () => {
     sesion.rol = "CAJERO";
     sesion.rubro = "ACADEMIA";
     sesion.features = ["pos", "caja", "academia"];
     const nav = abrir("/pos");
-    // Plegado hasta que se lo abre: su nombre lleva a la primera pantalla.
-    fireEvent.click(nav.getByRole("link", { name: "Mi negocio" }));
-    expect(nav.getAllByRole("button", { name: "Cambiar mi contraseña" })).toHaveLength(1);
+    // La recepción no ve «Mi negocio»…
+    expect(nav.queryByRole("link", { name: "Mi negocio" })).toBeNull();
+    // …y sus avisos siguen a mano, una sola vez, al pie de la barra.
     expect(nav.getAllByRole("link", { name: "Notificaciones" })).toHaveLength(1);
-    const boton = nav.getByRole("button", { name: "Cambiar mi contraseña" });
-    expect(boton.dataset.navId).toBe("todos:#cambiar-password");
-    fireEvent.click(boton);
+    expect(nav.getByRole("link", { name: "Notificaciones" }).dataset.navId).toBe("notificaciones");
+  });
+
+  it("en el instituto «Cambiar mi contraseña» sólo sale con permiso de usuarios: al resto se la cambia el administrador (M6)", () => {
+    sesion.rubro = "ACADEMIA";
+    sesion.features = ["pos", "caja", "academia", "usuarios"];
+    sesion.rol = "CAJERO";
+    const { unmount } = render(arbol("/pos"));
+    expect(within(screen.getByRole("navigation")).queryByRole("button", { name: "Cambiar mi contraseña" })).toBeNull();
+    unmount();
+    sesion.rol = "ADMIN";
+    const nav = abrir("/pos");
+    fireEvent.click(nav.getByRole("button", { name: "Cambiar mi contraseña" }));
     expect(screen.getByRole("dialog", { name: "Cambiar mi contraseña" })).toBeInTheDocument();
   });
 });

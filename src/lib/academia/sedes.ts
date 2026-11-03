@@ -1,3 +1,4 @@
+import { resumenHorario } from "../pagina/horario";
 import type { Sede } from "./tipos";
 
 /**
@@ -114,11 +115,19 @@ export function conteosDeSede(s: Pick<Sede, "aulas" | "franjas" | "gruposVigente
   return [plural(s.aulas, "aula", "aulas"), plural(s.franjas, "franja", "franjas"), plural(s.gruposVigentes, "grupo", "grupos")];
 }
 
+/**
+ * El horario de atención para mostrar: el resumen del horario por día o, si
+ * la sede todavía no lo cargó, el texto libre de antes.
+ */
+export function horarioDeSede(s: Pick<Sede, "horarioSemanal" | "horarioAtencion">): string | null {
+  return resumenHorario(s.horarioSemanal) ?? (s.horarioAtencion?.trim() || null);
+}
+
 /** Los datos que una sede todavía no tiene cargados, para invitar a completarlos. */
-export function datosQueFaltan(s: Pick<Sede, "direccion" | "telefono" | "horarioAtencion">): string[] {
+export function datosQueFaltan(s: Pick<Sede, "direccion" | "telefono" | "horarioSemanal" | "horarioAtencion">): string[] {
   const falta: string[] = [];
   if (!s.direccion?.trim()) falta.push("la dirección");
   if (!s.telefono?.trim()) falta.push("el teléfono");
-  if (!s.horarioAtencion?.trim()) falta.push("el horario de atención");
+  if (!horarioDeSede(s)) falta.push("el horario de atención");
   return falta;
 }

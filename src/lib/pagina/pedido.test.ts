@@ -53,6 +53,13 @@ describe("pedido por WhatsApp con sucursal elegida (13-oct)", () => {
     expect(texto).toContain("Sucursal: Sur");
     expect(mensajePedido("X", l, { nombre: "", entrega: "RETIRO", direccion: "", nota: "" })).not.toContain("Sucursal");
   });
+
+  it("Lista 2 #9: en un instituto el mensaje dice «Sede»", () => {
+    const l = agregarLinea([], item(1, "Polera", 80));
+    const texto = mensajePedido("Instituto Avance", l, { nombre: "", entrega: "RETIRO", direccion: "", nota: "" }, "Norte", "Sede");
+    expect(texto).toContain("Sede: Norte");
+    expect(texto).not.toContain("Sucursal");
+  });
 });
 
 describe("pedido por WhatsApp", () => {

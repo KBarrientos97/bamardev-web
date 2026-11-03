@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Producto, TipoPedido } from "../../types";
-import { idsGuardados, paraVender, useCarrito } from "./useCarrito";
+import { controlaStock, idsGuardados, paraVender, topeStock, useCarrito } from "./useCarrito";
 
 function producto(over: Partial<Producto> = {}): Producto {
   return {
@@ -146,14 +146,55 @@ describe("useCarrito", () => {
     expect(paraVender(producto({ stockTotal: 4 }))).toBe(4);
   });
 
-  it("no limita los elaborados ni los combos, que no llevan stock", () => {
+  it("el combo no pasa de su propio stock", () => {
+    // Este test decía lo contrario ("no limita los combos, que no llevan
+    // stock") y fijaba la regla vieja. Desde el 25-ago el combo tiene su
+    // PROPIO stock y el backend rechaza la venta de mostrador que no alcanza:
+    // sin tope, el carrito cargaba 3 combos de los 2 que había y el cobro
+    // rebotaba al confirmar con "Stock insuficiente de …" (POS-2).
     const { result } = renderHook(() => useCarrito());
-    const combo = producto({ id: 9, tipoProducto: "COMPUESTO", stockTotal: 0 });
+    const combo = producto({ id: 9, tipoProducto: "COMPUESTO", stockTotal: 2 });
 
     act(() => result.current.agregar(combo));
     act(() => result.current.agregar(combo));
-
+    act(() => result.current.agregar(combo));
     expect(result.current.lineas[0].cantidad).toBe(2);
+
+    // Escribir la cantidad tampoco lo pasa.
+    act(() => result.current.setCantidad(9, 5));
+    expect(result.current.lineas[0].cantidad).toBe(2);
+  });
+
+  it("un combo en 0 no entra al carrito", () => {
+    const { result } = renderHook(() => useCarrito());
+    act(() => result.current.agregar(producto({ id: 9, tipoProducto: "COMPUESTO", stockTotal: 0 })));
+    expect(result.current.lineas).toHaveLength(0);
+  });
+
+  it("el elaborado sigue sin tope: se prepara al vender", () => {
+    // Guarda: el cambio del combo no puede alcanzar al SERVICIO (el elaborado
+    // del restaurante, el servicio de belleza, el paquete, la carrera).
+    const { result } = renderHook(() => useCarrito());
+    const elaborado = producto({ id: 8, tipoProducto: "SERVICIO", stockTotal: 0 });
+
+    act(() => result.current.agregar(elaborado));
+    act(() => result.current.agregar(elaborado));
+    act(() => result.current.setCantidad(8, 40));
+
+    expect(result.current.lineas[0].cantidad).toBe(40);
+    expect(topeStock(elaborado)).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("sólo el elaborado deja de controlar stock", () => {
+    expect(controlaStock({ tipoProducto: "ALMACENABLE" })).toBe(true);
+    expect(controlaStock({ tipoProducto: "COMPUESTO" })).toBe(true);
+    expect(controlaStock({ tipoProducto: "SERVICIO" })).toBe(false);
+  });
+
+  it("farmacia: el tope sigue siendo lo vendible, sin lo vencido", () => {
+    // Guarda: el tope del combo usa la misma cuenta, así que lo de siempre no
+    // cambia — un almacenable con lotes vencidos se topa en lo que se vende.
+    expect(topeStock(producto({ stockTotal: 10, stockVencido: 4 }))).toBe(6);
   });
 
   it("quita la línea al bajar la cantidad de 1", () => {

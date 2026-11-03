@@ -51,7 +51,10 @@ export default function MenuLateral({
   compacta,
   onNavegar,
   onCambiarPassword,
+  onAyuda,
   onInstalar,
+  onCerrarSesion,
+  cerrandoSesion = false,
 }: {
   menu: Menu;
   compacta: boolean;
@@ -60,10 +63,24 @@ export default function MenuLateral({
   /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
   onCambiarPassword?: () => void;
   /**
+   * "Ayuda" (IDEAS/11): el panel vive en el Layout. Sin ella no se dibuja (el
+   * negocio no tiene la feature `ayuda`). Es la entrada en el punto de venta,
+   * donde no va el botón flotante.
+   */
+  onAyuda?: () => void;
+  /**
    * "Instalar" (PLAN-IOS). Sin ella no
    * se dibuja: ya está instalada o el navegador no deja instalarla.
    */
   onInstalar?: () => void;
+  /**
+   * "Cerrar sesión" (CAJA-3): en el restaurante primero se mira si queda la
+   * caja abierta, y el aviso vive en el Layout por lo mismo que la contraseña
+   * (ver `useCerrarSesion`). Sin ella, se sale directo, como siempre.
+   */
+  onCerrarSesion?: () => void;
+  /** Mientras se pregunta por la caja: el botón no admite otro toque. */
+  cerrandoSesion?: boolean;
 }) {
   const { logout } = useAuth();
   const uid = useId();
@@ -130,12 +147,7 @@ export default function MenuLateral({
     if (n.hijos.length) menu.abrir(n.id);
     setTip(null);
     onNavegar();
-    if (n.item.accion === "cambiarPassword") onCambiarPassword?.();
   };
-
-  // En el instituto, los avisos y la contraseña están en "Mi negocio": al pie
-  // no se repiten.
-  const enElMenu = (a: string) => menu.planos.some((n) => n.item.paraTodos && n.item.a === a);
 
   /** Las filas recorribles con ↑ ↓, sin las de un grupo cerrado. */
   const filas = () =>
@@ -387,7 +399,7 @@ export default function MenuLateral({
     // Un grupo sin pantalla propia (Agenda, Equipo) lleva a la de su primer
     // hijo: en la columna de íconos sería el mismo destino dos veces.
     return aplanar(nodos)
-      .filter((n) => n.item.seccion || n.item.paraTodos)
+      .filter((n) => n.item.seccion)
       .map((n) => nodoCompacto(n, padres.get(n) ?? null));
   };
 
@@ -454,8 +466,7 @@ export default function MenuLateral({
 
       {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como
           la contraseña. Es un link y no un botón: es una pantalla. */}
-      {!enElMenu("/notificaciones") && (
-        <Link
+      <Link
         to="/notificaciones"
         onClick={() => {
           setTip(null);
@@ -477,10 +488,31 @@ export default function MenuLateral({
       >
         <Icon name="bell" size={19} />
         {!compacta && <span>Notificaciones</span>}
-        </Link>
+      </Link>
+
+      {onAyuda && (
+        <button
+          type="button"
+          onClick={() => {
+            setTip(null);
+            onAyuda();
+          }}
+          aria-label={compacta ? "Ayuda" : undefined}
+          data-fila=""
+          data-nav-id="ayuda"
+          {...mostrarTip("Ayuda")}
+          className={[
+            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
+            foco,
+            compacta ? "justify-center px-0" : "px-3",
+          ].join(" ")}
+        >
+          <Icon name="pregunta" size={19} />
+          {!compacta && <span>Ayuda</span>}
+        </button>
       )}
 
-      {onCambiarPassword && !enElMenu("#cambiar-password") && (
+      {onCambiarPassword && (
         <button
           type="button"
           onClick={() => {
@@ -504,19 +536,27 @@ export default function MenuLateral({
 
       <button
         type="button"
-        onClick={logout}
+        onClick={() => {
+          setTip(null);
+          if (onCerrarSesion) onCerrarSesion();
+          else logout();
+        }}
+        disabled={cerrandoSesion}
+        aria-busy={cerrandoSesion || undefined}
         aria-label={compacta ? "Cerrar sesión" : undefined}
         data-fila=""
         data-nav-id="salir"
         {...mostrarTip("Cerrar sesión")}
         className={[
-          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white",
+          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white disabled:opacity-60",
           foco,
           compacta ? "justify-center px-0" : "px-3",
         ].join(" ")}
       >
         <Icon name="logout" size={19} />
-        {!compacta && <span>Cerrar sesión</span>}
+        {/* Mientras se pregunta por la caja lo dice: con el wifi lento son
+            unos segundos, y un botón quieto se vuelve a tocar. */}
+        {!compacta && <span>{cerrandoSesion ? "Revisando tu caja…" : "Cerrar sesión"}</span>}
       </button>
 
       {/* Qué versión tiene este equipo: para comparar con la publicada cuando
@@ -540,14 +580,10 @@ export default function MenuLateral({
   );
 }
 
-/**
- * Un ítem del menú: un link a su pantalla o, si no es una pantalla, un botón
- * ("Cambiar mi contraseña" abre un formulario). Mismo aspecto y mismas teclas.
- */
+/** Un ítem del menú: un link a su pantalla, con las teclas del árbol. */
 function Fila({
   n,
   ...resto
 }: { n: NodoMenu } & HTMLAttributes<HTMLElement>) {
-  if (n.item.accion) return <button type="button" {...resto} />;
   return <Link to={n.item.a} {...resto} />;
 }

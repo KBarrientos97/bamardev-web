@@ -53,11 +53,25 @@ export function paraVender(p: Producto): number {
   return Math.max(0, p.stockTotal - (p.stockVencido ?? 0));
 }
 
-/** Un artículo con stock agotado no se puede seguir sumando. */
-function topeStock(p: Producto): number {
-  // Elaborados y combos no llevan stock propio: se preparan al vender.
-  if (p.tipoProducto !== "ALMACENABLE") return Number.POSITIVE_INFINITY;
-  return paraVender(p);
+/**
+ * Si el artículo se agota. Sólo el elaborado (SERVICIO) no: se prepara al
+ * vender y no lleva stock.
+ *
+ * El combo (COMPUESTO) SÍ: desde el 25-ago tiene su PROPIO stock —cuántos
+ * decidió armar el local— y la venta de mostrador lo descuenta y la rechaza si
+ * no alcanza (`venta.service.aplicarStock`). La receta es la descripción de lo
+ * que lleva y no descuenta nada. Antes la web lo trataba como un elaborado: el
+ * combo nunca decía cuántos quedaban, se cargaban los que se quisieran y el
+ * cobro rebotaba al confirmar con "Stock insuficiente de …", con el cliente
+ * enfrente. Mismo criterio que `ProductoPuntoVenta.controlaStock` en la app.
+ */
+export function controlaStock(p: Pick<Producto, "tipoProducto">): boolean {
+  return p.tipoProducto !== "SERVICIO";
+}
+
+/** Hasta cuánto se puede cargar de un artículo: lo que no se agota, sin tope. */
+export function topeStock(p: Producto): number {
+  return controlaStock(p) ? paraVender(p) : Number.POSITIVE_INFINITY;
 }
 
 /**

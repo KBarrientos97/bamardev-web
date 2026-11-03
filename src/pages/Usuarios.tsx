@@ -24,6 +24,7 @@ import { ApiError, api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from "../lib/roles";
+import { usePalabras } from "../lib/academia/usePalabras";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, CupoUsuarios, RolNegocio, Usuario } from "../types";
@@ -61,19 +62,21 @@ function reparte(rol: RolNegocio | null): boolean {
 
 /**
  * ¿Lleva PIN? El PIN sirve para autorizar lo que hace otro (anular, fiar por
- * encima del límite): lo lleva el rol que tiene `autorizar.pin`, y sólo si el
- * plan incluye la autorización con PIN.
+ * encima del límite): lo lleva el rol que tiene `autorizar.pin`. Sólo el
+ * permiso, como la app: hasta el 28-oct además pedía la feature
+ * `autorizacion_pin`, pero el backend la desató del PIN el 19-oct (anular pide
+ * el PIN siempre y es del núcleo). Con un negocio al que el panel se la apagara,
+ * la pantalla escondía Asignar/Cambiar/Quitar PIN y nadie podía autorizar,
+ * aunque el servidor lo permitía (BUG-admin-7).
  */
-function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
-  return conPin && rolTiene(rol, "autorizar.pin");
+function llevaPin(rol: RolNegocio | null): boolean {
+  return rolTiene(rol, "autorizar.pin");
 }
 
 type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye, usuario: actor, negocio } = useAuth();
-  // El PIN sólo existe si el plan incluye la autorización con PIN.
-  const conPin = incluye("autorizacion_pin");
+  const { usuario: actor, negocio } = useAuth();
   const usuarios = useApi(() => api.getUsuarios(), []);
   const roles = useApi(() => apiRoles.listar(), []);
   // El límite del plan, para avisar al apretar "Nuevo" y no después de llenar el
@@ -306,7 +309,6 @@ export default function Usuarios() {
               key={u.id}
               usuario={u}
               roles={listaRoles}
-              conPin={conPin}
               onClick={() => setDetalle(u)}
             />
           ))}
@@ -326,7 +328,6 @@ export default function Usuarios() {
         onQuitarPin={(u) => setQuitandoPin(u)}
         onEstado={(u) => setCambiandoEstado(u)}
         onEliminar={(u) => setEliminando(u)}
-        conPin={conPin}
       />
 
       <FormUsuario
@@ -355,7 +356,7 @@ export default function Usuarios() {
 
       <FormPin
         usuario={cambiandoPin}
-        llevaPin={!!cambiandoPin && llevaPin(rolDe(cambiandoPin, listaRoles), conPin)}
+        llevaPin={!!cambiandoPin && llevaPin(rolDe(cambiandoPin, listaRoles))}
         onClose={() => setCambiandoPin(null)}
         onGuardado={() => {
           // El detalle sigue abierto atrás: sin esto seguía diciendo "Asignar
@@ -467,12 +468,10 @@ function LimiteDeUsuarios({
 function TarjetaUsuario({
   usuario: u,
   roles,
-  conPin,
   onClick,
 }: {
   usuario: Usuario;
   roles: RolNegocio[];
-  conPin: boolean;
   onClick: () => void;
 }) {
   const rol = rolDe(u, roles);
@@ -492,7 +491,7 @@ function TarjetaUsuario({
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-            {u.tienePin && llevaPin(rol, conPin) && <Badge tono="marca">PIN</Badge>}
+            {u.tienePin && llevaPin(rol) && <Badge tono="marca">PIN</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -513,7 +512,6 @@ function TarjetaUsuario({
 }
 
 function DetalleUsuario({
-  conPin,
   usuario: u,
   roles,
   onClose,
@@ -533,13 +531,13 @@ function DetalleUsuario({
   onQuitarPin: (u: Usuario) => void;
   onEstado: (u: Usuario) => void;
   onEliminar: (u: Usuario) => void;
-  conPin: boolean;
 }) {
   const { usuario: actual } = useAuth();
+  const pal = usePalabras();
   if (!u) return null;
   const rol = rolDe(u, roles);
   const esYo = actual?.id === u.id;
-  const conPinElRol = llevaPin(rol, conPin);
+  const conPinElRol = llevaPin(rol);
   // Lo asigna, cambia o quita quien tiene `usuarios.asignar_pin`.
   const administraPin = conPinElRol && tienePermiso(actual, "usuarios.asignar_pin");
 
@@ -602,7 +600,7 @@ function DetalleUsuario({
           <Dato label="Creado" valor={fmtFechaHora(u.creado)} />
           {/* Sólo si está atado a un local. Al de organización no se le muestra
               "—": ver todo no es un dato faltante. */}
-          {u.sucursal && <Dato label="Sucursal" valor={u.sucursal} />}
+          {u.sucursal && <Dato label={pal.Sede} valor={u.sucursal} />}
           {(reparte(rol) || u.zona || u.vehiculo) && (
             <>
               <Dato label="Zona" valor={u.zona || "—"} />
@@ -723,6 +721,8 @@ function FormUsuarioCuerpo({
   const [username, setUsername] = useState(usuario?.usuario ?? "");
   const [password, setPassword] = useState("");
   const { usuario: actual } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   // Al editar, el usuario se puede cambiar (21-oct, pedido del dueño). Se manda
   // sólo si cambió, y se mira como lo guarda el backend: sin espacios y en
   // minúsculas.
@@ -803,7 +803,7 @@ function FormUsuarioCuerpo({
     // estando parado en otro local. El backend lo rechaza igual; el aviso acá
     // evita que se entere después de llenar todo.
     if (mostrarSucursal && puedeAsignarSucursal && sucursalId == null) {
-      return setError("Elegí la sucursal en la que trabaja.");
+      return setError(`Elegí la ${pal.sede} en la que trabaja.`);
     }
 
     setGuardando(true);
@@ -955,7 +955,7 @@ function FormUsuarioCuerpo({
 
         {mostrarSucursal && puedeAsignarSucursal && (
           <Campo
-            label="Sucursal"
+            label={pal.Sede}
             hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí"
           >
             <Select
@@ -967,7 +967,7 @@ function FormUsuarioCuerpo({
               {/* Sin opción "toda la organización": eso es de un rol que ve
                   todas, y a ése no se le muestra este campo. Queda un
                   placeholder para no elegir por el usuario en el alta. */}
-              <option value="">Elegí una sucursal…</option>
+              <option value="">Elegí una {pal.sede}…</option>
               {sucursales.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}
@@ -1143,6 +1143,9 @@ function FormPinCuerpo({
   const [repetido, setRepetido] = useState("");
   // El generado se muestra una vez, para pasárselo en persona.
   const [generado, setGenerado] = useState<string | null>(null);
+  // M3: el ojito del PIN (se pone a mano, a diferencia del que PIDE el PIN para autorizar). Los
+  // dos campos van juntos: ver uno solo no sirve para compararlos.
+  const [verPin, setVerPin] = useState(false);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -1199,8 +1202,10 @@ function FormPinCuerpo({
         </p>
 
         <Campo label="PIN" hint="4 dígitos">
-          <Input
-            type="password"
+          <InputPassword
+            nombre="PIN"
+            visible={verPin}
+            onCambiarVisible={setVerPin}
             inputMode="numeric"
             autoComplete="off"
             maxLength={4}
@@ -1215,8 +1220,9 @@ function FormPinCuerpo({
           />
         </Campo>
         <Campo label="Repetir PIN">
-          <Input
-            type="password"
+          <InputPassword
+            sinOjo
+            visible={verPin}
             inputMode="numeric"
             autoComplete="off"
             maxLength={4}

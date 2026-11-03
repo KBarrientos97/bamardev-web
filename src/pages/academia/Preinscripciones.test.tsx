@@ -37,6 +37,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       convertir: vi.fn(),
       fotoComoUrl: vi.fn(),
       revisarFotos: vi.fn(),
+      pagosEnLinea: vi.fn(),
     },
   };
 });
@@ -63,6 +64,7 @@ const THIAGO: Preinscripcion = {
 beforeEach(() => {
   vi.clearAllMocks();
   quien.conFotos = false;
+  vi.mocked(apiAcademia.pagosEnLinea).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 });
   vi.mocked(apiAcademia.preinscripciones).mockResolvedValue({ items: [THIAGO, { ...THIAGO, id: 45, fotos: 1 }], total: 2, page: 1, pageSize: 20 });
   vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle());
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba());

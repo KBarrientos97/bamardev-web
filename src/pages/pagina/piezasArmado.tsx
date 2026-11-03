@@ -70,6 +70,11 @@ export interface PiezasArmado {
   botones: ReactNode[];
   catalogo: ReactNode;
   sucursales: ReactNode;
+  /**
+   * El mapa con las sucursales (PLAN-PAGINA-WEB §3.1), o null. Ya va dentro
+   * de `sucursales`; suelto es para los armados que reparten las tarjetas.
+   */
+  mapa: ReactNode;
   pie: ReactNode;
   clic: (e: EnlacePublico) => () => void;
   /** Los botones de la página con la forma elegida, sobre la superficie del estilo. */

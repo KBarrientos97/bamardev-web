@@ -11,11 +11,14 @@ import {
   gananciaPorParte,
   gastosDeCaja,
   horasJugadas,
+  listaSinCosto,
   MOTIVOS_SIN_EFECTO,
   movimientosSinEfecto,
   notaMeta,
   partirVentas,
   perfilResultado,
+  textoCompras,
+  TOPE_SIN_COSTO,
 } from "./EstadoResultado.datos";
 
 function gasto(monto: number, categoria = "ALQUILER"): Gasto {
@@ -272,5 +275,94 @@ describe("qué son los gastos del local en el billar", () => {
   it("avisa que la cena y lo pagado de la caja no se cargan también ahí", () => {
     expect(perfilResultado("BILLAR").queVaLocal).toMatch(/restaría dos veces/);
     expect(perfilResultado("RESTAURANTE").queVaLocal).not.toMatch(/Supervisión/);
+  });
+});
+
+describe("las compras del período, por rubro (28-oct)", () => {
+  const NO_SE_RESTAN = "No se restan acá: el costo ya entra con cada venta.";
+
+  it("el restaurante dice por qué los insumos no restan y dónde van los descartables", () => {
+    // Kevin ve en Insumos cuánto invierte y lo busca restado acá. No resta a
+    // propósito: ya está en el costo de cada plato, y restarlo contaría la
+    // comida dos veces. Lo que sí resta son los descartables, en Gastos.
+    const texto = textoCompras({ insumos: 2400, productos: 600 }, perfilResultado("RESTAURANTE"));
+    expect(texto).toMatch(/^Insumos Bs 2\.400,00 y productos de reventa Bs 600,00\. /);
+    expect(texto).toMatch(/los insumos ya entran en el costo de cada plato, y las bebidas, cuando se venden/);
+    expect(texto).toMatch(/contaría la comida dos veces/);
+    expect(texto).toMatch(/Los descartables \(platos y vasos desechables, servilletas, bolsas, envases para llevar\)/);
+    expect(texto).toMatch(/van en Gastos → Descartables, y ahí sí restan/);
+  });
+
+  it("el restaurante sin insumos comprados igual explica el porqué", () => {
+    const texto = textoCompras({ insumos: 0, productos: 600 }, perfilResultado("RESTAURANTE"));
+    expect(texto).toMatch(/^No se restan acá: los insumos ya entran en el costo de cada plato/);
+    expect(texto).toMatch(/Gastos → Descartables/);
+  });
+
+  it("los demás rubros dicen lo de siempre, palabra por palabra", () => {
+    expect(textoCompras({ insumos: 2400, productos: 600 }, perfilResultado("MINIMARKET"))).toBe(
+      `Insumos ${fmtMoney(2400)} y productos de reventa ${fmtMoney(600)}. ${NO_SE_RESTAN}`,
+    );
+    expect(textoCompras({ insumos: 0, productos: 600 }, perfilResultado("BILLAR"))).toBe(
+      `Lo que compraste para vender: bebidas, snacks. ${NO_SE_RESTAN}`,
+    );
+    for (const rubro of ["FARMACIA", "PELUQUERIA", "FERRETERIA", undefined]) {
+      expect(textoCompras({ insumos: 0, productos: 600 }, perfilResultado(rubro))).toBe(NO_SE_RESTAN);
+      expect(textoCompras({ insumos: 0, productos: 600 }, perfilResultado(rubro))).not.toMatch(/escartables/);
+    }
+  });
+});
+
+describe("lo vendido sin costo, con nombre (28-oct)", () => {
+  const BROASTER = { nombre: "Broaster medio", ventas: 112 };
+  const SALCHIPAPA = { nombre: "Salchipapa", ventas: 34 };
+
+  it("sólo el restaurante nombra lo vendido sin costo", () => {
+    // Kevin decidió el cambio para el restaurante solo ("farmacia, billar,
+    // minimarket: sin cambios"), y el backend manda la lista en todos los
+    // rubros. En belleza la lista además contradecía al aviso: dice
+    // "servicios sin costo" y nombraba productos.
+    expect(perfilResultado("RESTAURANTE").nombraSinCosto).toBe(true);
+    for (const rubro of ["BILLAR", "FARMACIA", "PELUQUERIA", "BARBERIA", "MINIMARKET", "FERRETERIA", undefined]) {
+      expect(perfilResultado(rubro).nombraSinCosto).toBe(false);
+    }
+  });
+
+  it("nombra cada uno con lo que se vendió", () => {
+    expect(listaSinCosto([BROASTER, SALCHIPAPA], 146)).toBe(
+      `Broaster medio (${fmtMoney(112)}), Salchipapa (${fmtMoney(34)})`,
+    );
+  });
+
+  it("sin la lista (backend anterior) o vacía, no hay nada que nombrar: el aviso queda como siempre", () => {
+    expect(listaSinCosto(undefined, 146)).toBeNull();
+    expect(listaSinCosto(null, 146)).toBeNull();
+    expect(listaSinCosto([], 146)).toBeNull();
+  });
+
+  it("recortada para el renglón corto, dice cuántos quedan", () => {
+    const cinco = [BROASTER, SALCHIPAPA, { nombre: "Coca 2L", ventas: 30 }, { nombre: "Té", ventas: 5 }, { nombre: "Pan", ventas: 2 }];
+    expect(listaSinCosto(cinco, 183, 3)).toBe(
+      `Broaster medio (${fmtMoney(112)}), Salchipapa (${fmtMoney(34)}), Coca 2L (${fmtMoney(30)}) y 2 más`,
+    );
+  });
+
+  it("si llegó el tope y no suma el total, hubo más: termina en «y otros»", () => {
+    // El backend manda como mucho diez. Sin el "y otros", cargarles el costo a
+    // esos diez parecía arreglar todo y el aviso volvía al mes siguiente.
+    const diez = Array.from({ length: TOPE_SIN_COSTO }, (_, i) => ({ nombre: `Plato ${i + 1}`, ventas: 10 }));
+    expect(listaSinCosto(diez, 130)).toMatch(/Plato 10 \(Bs 10,00\) y otros$/);
+    expect(listaSinCosto(diez, 100)).not.toMatch(/y otros/);
+  });
+
+  it("los centavos de redondeo no inventan «otros»", () => {
+    // Cada renglón viene redondeado a centavos por su lado: la suma puede
+    // quedar unos centavos debajo del total sin que falte ningún plato.
+    const diez = Array.from({ length: TOPE_SIN_COSTO }, (_, i) => ({ nombre: `Plato ${i + 1}`, ventas: 10 }));
+    expect(listaSinCosto(diez, 100.03)).not.toMatch(/y otros/);
+    // Con menos del tope la lista vino entera: un centavo de diferencia es redondeo.
+    expect(listaSinCosto([BROASTER, SALCHIPAPA], 146.01)).toBe(
+      `Broaster medio (${fmtMoney(112)}), Salchipapa (${fmtMoney(34)})`,
+    );
   });
 });

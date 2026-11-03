@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
@@ -17,9 +18,12 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney, isoDia } from "../../lib/format";
+import { rangoParaApi } from "../../lib/rangoApi";
+import { usePalabras } from "../../lib/academia/usePalabras";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
+import { insumosSinStock } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import ElegirArticulo from "./ElegirArticulo";
 import type {
@@ -83,6 +87,20 @@ const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
  */
 const TIPOS_DEL_FORMULARIO: TipoMovimiento[] = ["ENTRADA", "SALIDA"];
 
+/** Lo más que manda `GET /movimientos` sin rango: los últimos 200 (`movimiento.service.ts`). */
+const TOPE_SIN_FECHA = 200;
+
+/**
+ * `?nuevo=entrada` abre el formulario de una ENTRADA al llegar. Es a donde
+ * lleva "Registrar compra" de Insumos en el restaurante (28-oct): la compra se
+ * sigue cargando acá, como siempre, sin tener que buscar el botón. Se saca de
+ * la URL al abrirse: si no, una recarga o un "atrás" después de guardar
+ * volvían a abrir el formulario vacío. Sin el parámetro, la pantalla arranca
+ * como siempre.
+ */
+export const PARAM_NUEVO = "nuevo";
+export const RUTA_REGISTRAR_COMPRA = `/inventario/movimientos?${PARAM_NUEVO}=entrada`;
+
 /**
  * Sólo la entrada suma: salida y ajuste se leen como movimiento negativo.
  *
@@ -96,12 +114,28 @@ function esEntrada(tipo: TipoMovimiento): boolean {
 
 export default function Movimientos() {
   const { incluye } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   // Inventario SÍ incluye depósitos: la mercadería entra ahí antes de
   // repartirse a los locales, así que sus entradas son las que más importan.
   const suc = useSucursales({ incluirDepositos: true });
+  /**
+   * Arranca en HOY, como la app: en un local con movimientos diarios, abrir la
+   * pantalla y ver el histórico entero no sirve — lo que se busca es lo de esta
+   * jornada. Vacío = ver todo.
+   */
+  const [fecha, setFecha] = useState(isoDia(new Date()));
+  /**
+   * Un día se PIDE con su rango (de la medianoche del negocio a la siguiente,
+   * con el offset: `rangoParaApi`), no se recorta en el navegador. Sin rango
+   * el backend manda los últimos 200, y un día anterior a esos 200 decía "no
+   * hay movimientos" aunque los hubiera: una compra vieja no se podía abrir
+   * ni anular desde ningún lado (BUG-insumos-movimientos-2). "Ver todo" sigue
+   * pidiendo los últimos 200, como siempre.
+   */
   const movimientos = useApi(
-    () => api.getMovimientos(suc.sucursalId),
-    [suc.sucursalId],
+    () => api.getMovimientos(suc.sucursalId, fecha ? rangoParaApi({ desde: fecha, hasta: fecha }) : undefined),
+    [suc.sucursalId, fecha],
   );
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
@@ -109,15 +143,27 @@ export default function Movimientos() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<FiltroOrigen>("todos");
-  /**
-   * Arranca en HOY, como la app: en un local con movimientos diarios, abrir la
-   * pantalla y ver el histórico entero no sirve — lo que se busca es lo de esta
-   * jornada. Vacío = ver todo.
-   */
-  const [fecha, setFecha] = useState(isoDia(new Date()));
   const [detalleId, setDetalleId] = useState<number | null>(null);
+  /**
+   * Con qué aviso se abre el detalle que abre el formulario al guardar: "se
+   * creó pero no se pudo aprobar, y por qué" (ver `FormMovimientoCuerpo`).
+   */
+  const [avisoDetalle, setAvisoDetalle] = useState("");
   const [creando, setCreando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
+
+  const [params, setParams] = useSearchParams();
+  const pideEntrada = params.get(PARAM_NUEVO) === "entrada";
+  // Recién con los almacenes cargados: el formulario elige el primero al
+  // montarse, y abierto antes quedaba en "Elegí uno" con el buscador trabado
+  // hasta que alguien eligiera el almacén a mano.
+  useEffect(() => {
+    if (!pideEntrada || almacenes.cargando) return;
+    setCreando(true);
+    const resto = new URLSearchParams(params);
+    resto.delete(PARAM_NUEVO);
+    setParams(resto, { replace: true });
+  }, [pideEntrada, almacenes.cargando, params, setParams]);
 
   const lista = movimientos.datos ?? [];
 
@@ -130,6 +176,9 @@ export default function Movimientos() {
         !contiene(m.descripcion, texto)
       )
         return false;
+      // El día ya viene pedido con su rango; esto queda para un backend que
+      // todavía no lo entiende y manda los últimos 200: ahí se recorta acá,
+      // como siempre.
       if (fecha && isoDia(new Date(m.fecha)) !== fecha) return false;
       if (filtroTipo !== "todos" && m.tipo !== filtroTipo) return false;
       if (filtroEstado !== "todos" && m.estado !== filtroEstado) return false;
@@ -144,25 +193,44 @@ export default function Movimientos() {
   // movimientos" debajo se contradice en la misma pantalla.
   const pendientesVisibles = filtrados.filter((m) => m.estado === "PENDIENTE").length;
 
-  // Lo único que esconde todo es que hoy no se movió nada: decir "probá con
-  // otro texto" cuando nadie escribió nada no explica por qué la lista está
-  // vacía con movimientos en la cabecera.
-  const soloFaltaHoy =
+  // Lo único que esconde todo es que ese día no se movió nada: decir "probá
+  // con otro texto" cuando nadie escribió nada no explica por qué la lista
+  // está vacía con movimientos en la cabecera.
+  const soloFaltaElDia =
     !!fecha &&
     !q.trim() &&
     filtroTipo === "todos" &&
     filtroEstado === "todos" &&
     filtroOrigen === "todos";
+  // "Hoy" sólo si es hoy: con una fecha elegida decía "Hoy no hay
+  // movimientos" de un día de septiembre.
+  const tituloDiaVacio =
+    fecha === isoDia(new Date()) ? "Hoy no hay movimientos" : `No hay movimientos el ${fmtFecha(fecha)}`;
+  // "Ver todo" trae como mucho los últimos 200 (el tope del backend sin
+  // rango): con 200 a la vista no es "en total", y lo más viejo se busca por
+  // su fecha, que sí trae el día entero.
+  const recortadaSinFecha = !fecha && lista.length >= TOPE_SIN_FECHA;
+  const cuantos = `${filtrados.length} ${filtrados.length === 1 ? "movimiento" : "movimientos"}`;
+  const textoCuantos = fecha
+    ? cuantos
+    : recortadaSinFecha
+      ? filtrados.length === lista.length
+        ? `Los últimos ${lista.length} movimientos · para uno más viejo, elegí su fecha`
+        : `${cuantos} entre los últimos ${lista.length} · para uno más viejo, elegí su fecha`
+      : `${cuantos} en total`;
 
   // Sin el circuito de aprobación los movimientos se aprueban al crearse, así
-  // que filtrar por "pendientes" no devolvería nada. Se deja el chip si hay
-  // pendientes viejos, para poder encontrarlos.
+  // que filtrar por "pendientes" no devolvería nada. Se deja el chip si en lo
+  // que se trajo hay pendientes viejos (en «Ver todo», los últimos 200; en un
+  // día, sólo los de ese día) o si está elegido: al pasar de «Ver todo» a un
+  // día el filtro quedaba puesto sin chip a la vista, con «Sin resultados» y
+  // nada para soltarlo.
   const opcionesEstado = useMemo(
     () =>
-      incluye("aprobacion_inventario") || pendientes > 0
+      incluye("aprobacion_inventario") || pendientes > 0 || filtroEstado === "PENDIENTE"
         ? OPC_ESTADO
         : OPC_ESTADO.filter(([k]) => k !== "PENDIENTE"),
-    [incluye, pendientes],
+    [incluye, pendientes, filtroEstado],
   );
 
   // Ajustes y transferencias ya no se cargan: su chip aparece sólo si hay
@@ -223,14 +291,11 @@ export default function Movimientos() {
           >
             {fecha ? "Ver todo" : "Sólo hoy"}
           </button>
-          <span className="text-xs text-texto-3">
-            {filtrados.length} {filtrados.length === 1 ? "movimiento" : "movimientos"}
-            {fecha ? "" : " en total"}
-          </span>
+          <span className="text-xs text-texto-3">{textoCuantos}</span>
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
           <Chips titulo="Tipo" valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
           <Chips titulo="Estado" valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
@@ -244,29 +309,32 @@ export default function Movimientos() {
         <Cargando />
       ) : filtrados.length === 0 ? (
         <div className="card">
+          {/* Con el día pedido por su rango, una lista vacía con fecha es ese
+              día vacío y no "todavía no hay movimientos": eso se sabe recién
+              en "Ver todo". */}
           <Vacio
             icono="swap"
             titulo={
-              !lista.length
+              !lista.length && !fecha
                 ? "Todavía no hay movimientos"
-                : soloFaltaHoy
-                  ? "Hoy no hay movimientos"
+                : soloFaltaElDia
+                  ? tituloDiaVacio
                   : "Sin resultados"
             }
             texto={
-              !lista.length
+              !lista.length && !fecha
                 ? "Registrá la primera entrada o salida de stock."
-                : soloFaltaHoy
+                : soloFaltaElDia
                   ? "Los de otros días están en «Ver todo»."
                   : "Probá con otro texto o quitá los filtros."
             }
             accion={
-              !lista.length ? (
+              !lista.length && !fecha ? (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
                   Nuevo movimiento
                 </Boton>
               ) : (
-                soloFaltaHoy && (
+                soloFaltaElDia && (
                   <Boton variante="soft" onClick={() => setFecha("")}>
                     Ver todo
                   </Boton>
@@ -285,14 +353,25 @@ export default function Movimientos() {
 
       {detalleId !== null && (
         <DetalleMovimiento
+          // Uno por movimiento: el aviso arranca su estado. Si el detalle
+          // cambia de movimiento sin cerrarse (el formulario guardó con otro
+          // abierto debajo: el modal no atrapa el foco y «Nuevo» se alcanza
+          // con el teclado), sin la clave quedaba el estado del anterior y no
+          // el aviso del nuevo.
+          key={detalleId}
           id={detalleId}
-          onClose={() => setDetalleId(null)}
+          aviso={avisoDetalle}
+          onClose={() => {
+            setDetalleId(null);
+            setAvisoDetalle("");
+          }}
           // Un renglón agregado, corregido o quitado refresca la lista de atrás
           // SIN cerrar el detalle: se seguía cargando y había que volver a
           // abrirlo para agregar el siguiente.
           onCambio={() => movimientos.recargar()}
           onCerrarYRecargar={() => {
             setDetalleId(null);
+            setAvisoDetalle("");
             movimientos.recargar();
           }}
           onError={setErrorAccion}
@@ -302,10 +381,23 @@ export default function Movimientos() {
       <FormMovimiento
         abierto={creando}
         almacenes={almacenes.datos ?? []}
-        onClose={() => setCreando(false)}
-        onGuardado={() => {
+        onClose={(quizasCreado) => {
+          setCreando(false);
+          // Un alta quedó sin respuesta y el formulario mandó a fijarse acá si
+          // ya está: con la lista de antes no aparecía aunque se hubiera
+          // creado, y lo natural era cargarlo de nuevo.
+          if (quizasCreado) movimientos.recargar();
+        }}
+        onGuardado={(r) => {
           setCreando(false);
           movimientos.recargar();
+          // Quedó pendiente (con el doble control, o porque aprobar falló): se
+          // abre ESE movimiento para aprobarlo o corregirlo. El formulario ya
+          // no vuelve a crear nada.
+          if (r) {
+            setAvisoDetalle(r.aviso ?? "");
+            setDetalleId(r.id);
+          }
         }}
       />
     </div>
@@ -332,7 +424,7 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-bold text-texto">
-              {m.comprobante ?? `#${m.id}`}
+              {m.comprobante || `#${m.id}`}
             </span>
             <Badge tono={TONO_ESTADO[m.estado]}>{m.estado}</Badge>
             {m.origen && <Badge tono="marca">{m.origen}</Badge>}
@@ -370,12 +462,15 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
 
 function DetalleMovimiento({
   id,
+  aviso,
   onClose,
   onCambio,
   onCerrarYRecargar,
   onError,
 }: {
   id: number;
+  /** Lo primero que dice al abrirse: por qué el recién guardado quedó pendiente. */
+  aviso?: string;
   onClose: () => void;
   /** Cambió un renglón: refresca la lista de atrás sin cerrar el detalle. */
   onCambio: () => void;
@@ -383,7 +478,7 @@ function DetalleMovimiento({
   onCerrarYRecargar: () => void;
   onError: (mensaje: string) => void;
 }) {
-  const { usuario } = useAuth();
+  const { usuario, negocio } = useAuth();
   const mov = useApi(() => api.getMovimiento(id), [id]);
   const [confirmando, setConfirmando] = useState<"aprobar" | "anular" | "eliminar" | null>(
     null,
@@ -395,7 +490,7 @@ function DetalleMovimiento({
    * servidor no lo frene, el stock se movía dos veces.
    */
   const enVuelo = useRef(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(aviso ?? "");
   /** Línea que se está editando, o "nueva" para agregar una. */
   const [editandoLinea, setEditandoLinea] = useState<LineaMovimiento | "nueva" | null>(
     null,
@@ -410,9 +505,14 @@ function DetalleMovimiento({
    * y el documento otra.
    */
   const editable = m?.estado === "PENDIENTE";
-  // Una transferencia la aprueba sólo quien tiene el permiso propio: sin él
-  // el botón terminaba en un 403 (ver `ofreceAprobarMovimiento`).
-  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo);
+  // El extra CONFIRMADO en el plan, sin la falla abierta de `incluye`: con la
+  // lista vacía el backend tampoco lo ve, así que «Aprobar» se ofrece y decide
+  // él (ver `ofreceAprobarMovimiento`).
+  const dobleControl = (negocio?.features ?? []).includes("aprobacion_inventario");
+  // Aprobar, y anular lo aprobado, con la misma regla que el servidor: con el
+  // doble control, a quien sólo mueve inventario el botón le terminaba en un
+  // 403; una transferencia, a quien no tiene su permiso propio.
+  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo, dobleControl);
 
   /** Artículos del almacén con su stock, para el tope de las salidas. */
   const articulosAlmacen = useApi(
@@ -464,7 +564,7 @@ function DetalleMovimiento({
       <Modal
         abierto
         titulo="Detalle del movimiento"
-        subtitulo={m ? (m.comprobante ?? `#${m.id}`) : "Cargando…"}
+        subtitulo={m ? (m.comprobante || `#${m.id}`) : "Cargando…"}
         onClose={onClose}
         ancho="max-w-2xl"
         acciones={
@@ -484,7 +584,9 @@ function DetalleMovimiento({
                 </Boton>
               )}
             </>
-          ) : m?.estado === "APROBADO" ? (
+          ) : m?.estado === "APROBADO" && ofreceAprobar ? (
+            // Anular lo aprobado revierte el stock: el servidor le pide lo
+            // mismo que aprobar, y a quien no puede le daba un 403.
             <Boton
               variante="danger"
               icono="x"
@@ -499,7 +601,17 @@ function DetalleMovimiento({
         {mov.cargando ? (
           <Cargando />
         ) : !m ? (
-          <ErrorMsg>{mov.error || "No se pudo cargar el movimiento"}</ErrorMsg>
+          // El aviso también acá: el movimiento existe aunque no se haya
+          // podido abrir, y sin él "No se pudo cargar" invitaba a cargarlo de
+          // nuevo, que es el duplicado que el aviso viene a evitar. Y con
+          // «Reintentar»: sin él, cuando volvía la señal sólo quedaba cerrar
+          // y buscarlo en una lista que también había fallado.
+          <div className="space-y-3">
+            <ErrorMsg>{error}</ErrorMsg>
+            <ErrorMsg onReintentar={mov.recargar}>
+              {mov.error || "No se pudo cargar el movimiento"}
+            </ErrorMsg>
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-xl bg-primary-50 p-4">
@@ -514,7 +626,7 @@ function DetalleMovimiento({
               </span>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-bold text-texto">
-                  {ETIQUETA_TIPO[m.tipo]} · {m.comprobante ?? `#${m.id}`}
+                  {ETIQUETA_TIPO[m.tipo]} · {m.comprobante || `#${m.id}`}
                 </h3>
                 <p className="text-[13px] text-texto-3">
                   {m.descripcion || "Sin descripción"}
@@ -638,7 +750,9 @@ function DetalleMovimiento({
                   Todavía no tocó el inventario: recién al aprobarlo se mueve el stock de
                   verdad.
                   {!ofreceAprobar &&
-                    " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."}
+                    (m.tipo === "TRANSFERENCIA"
+                      ? " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."
+                      : " Lo aprueba quien tiene el permiso «Aprobar movimientos» (de fábrica, el Administrador y el Encargado).")}
                 </span>
               </div>
             )}
@@ -742,6 +856,7 @@ function FormLineaMovimiento({
   onClose: () => void;
   onGuardado: () => void;
 }) {
+  const { rubro } = useAuth();
   const esEdicion = !!linea;
   const [productoId, setProductoId] = useState(String(linea?.productoId ?? ""));
   const [cantidad, setCantidad] = useState(linea ? String(linea.cantidad) : "");
@@ -752,6 +867,11 @@ function FormLineaMovimiento({
 
   const elegido = articulos.find((a) => String(a.id) === productoId);
   const esSalida = m.tipo === "SALIDA";
+  // Restaurante: el stock de un insumo es la suma de todas sus compras (vender
+  // un plato no lo descuenta), así que no se muestra ni como "en stock" ni
+  // como "Disponible" (ver `insumosSinStock`). El tope de la salida se sigue
+  // validando: es el mismo que aplica el backend al aprobar.
+  const ocultaStock = !!elegido?.esInsumo && insumosSinStock(rubro);
 
   /**
    * Cuánto se puede sacar de este artículo. Descuenta lo que ya comprometen
@@ -830,7 +950,7 @@ function FormLineaMovimiento({
               <span className="min-w-0 flex-1 truncate font-semibold text-texto">
                 {elegido?.nombre ?? linea?.producto}
               </span>
-              {elegido && (
+              {elegido && !ocultaStock && (
                 <span className="shrink-0 text-xs text-texto-3">
                   {fmtCantidad(elegido.stock)} {elegido.unidad} en stock
                 </span>
@@ -867,7 +987,7 @@ function FormLineaMovimiento({
           <Campo
             label="Cantidad"
             hint={
-              esSalida && disponible !== null
+              esSalida && disponible !== null && !ocultaStock
                 ? `Disponible: ${fmtCantidad(disponible)}`
                 : undefined
             }
@@ -957,13 +1077,23 @@ function FormMovimiento({
 }: {
   abierto: boolean;
   almacenes: Almacen[];
-  onClose: () => void;
-  onGuardado: () => void;
+  onClose: (quizasCreado: boolean) => void;
+  onGuardado: (r?: { id: number; aviso?: string }) => void;
 }) {
   // La clave remonta el formulario en cada apertura: un movimiento a medias
   // no debe reaparecer la próxima vez que se abra el modal.
   if (!abierto) return null;
   return <FormMovimientoCuerpo almacenes={almacenes} onClose={onClose} onGuardado={onGuardado} />;
+}
+
+/**
+ * Cantidad × costo de un renglón, o 0 mientras lo tecleado no es un número:
+ * con una letra en el campo, el subtotal y el total decían "Bs NaN" (QA
+ * 29-oct). Guardar lo sigue frenando con su mensaje.
+ */
+function subtotalDe(l: { cantidad: string; costo: string }): number {
+  const n = Number(l.cantidad) * Number(l.costo);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function FormMovimientoCuerpo({
@@ -972,8 +1102,17 @@ function FormMovimientoCuerpo({
   onGuardado,
 }: {
   almacenes: Almacen[];
-  onClose: () => void;
-  onGuardado: () => void;
+  /**
+   * `quizasCreado`: un alta quedó sin respuesta y el movimiento pudo haberse
+   * creado igual (ver `guardar`); la pantalla vuelve a pedir la lista.
+   */
+  onClose: (quizasCreado: boolean) => void;
+  /**
+   * Sin nada: se aprobó y no queda qué hacer. Con un id: quedó PENDIENTE (con
+   * el doble control, o porque aprobar falló y entonces con su `aviso`), y la
+   * pantalla abre ese movimiento.
+   */
+  onGuardado: (r?: { id: number; aviso?: string }) => void;
 }) {
   const { incluye } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
@@ -987,6 +1126,15 @@ function FormMovimientoCuerpo({
   const [lineas, setLineas] = useState<LineaDetalle[]>([]);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  /**
+   * Guardar en curso. `guardando` apaga el botón recién en el render
+   * siguiente: dos clics en el mismo tick entraban los dos y creaban el
+   * movimiento dos veces (como el «Aprobar» del detalle y `FormMercaderia`).
+   * Una vez creado no se suelta: este formulario ya no vuelve a crear.
+   */
+  const enVuelo = useRef(false);
+  /** Un alta quedó sin respuesta: pudo haberse creado igual (ver `guardar`). */
+  const quizasCreado = useRef(false);
 
   // El stock que muestra cada artículo es el del almacén elegido, así que la
   // lista se vuelve a pedir cuando cambia.
@@ -1004,7 +1152,7 @@ function FormMovimientoCuerpo({
     (a) => !lineas.some((l) => l.articuloId === a.id),
   );
 
-  const total = lineas.reduce((acc, l) => acc + Number(l.cantidad) * Number(l.costo), 0);
+  const total = lineas.reduce((acc, l) => acc + subtotalDe(l), 0);
 
   function agregarLinea(art: ArticuloMovimiento) {
     setLineas((ls) => [
@@ -1029,6 +1177,7 @@ function FormMovimientoCuerpo({
   }
 
   async function guardar() {
+    if (enVuelo.current) return;
     setError("");
 
     if (!almacenId) return setError("Elegí un almacén.");
@@ -1082,20 +1231,83 @@ function FormMovimientoCuerpo({
       detalles,
     };
 
+    // El candado va después de validar: un formulario incompleto no tiene
+    // nada que soltar.
+    enVuelo.current = true;
     setGuardando(true);
+    let id: number;
     try {
-      const creado = await api.crearMovimiento(input);
-      // El backend SIEMPRE crea el movimiento pendiente y sólo aprobarlo
-      // mueve el stock. Sin la capacidad de aprobación no habría botón para
-      // hacerlo y la mercadería nunca entraría, así que se aprueba de una:
-      // el negocio que no compró el circuito de dos pasos igual carga stock.
-      if (!conAprobacion) await api.aprobarMovimiento(creado.id);
-      onGuardado();
+      id = (await api.crearMovimiento(input)).id;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar");
-    } finally {
+      // Sólo una respuesta del servidor asegura que no se creó (cabecera y
+      // renglones van en un solo `create`, todo o nada). Sin respuesta
+      // (status 0: el corte de 20 s de `request`, o la red que se cae con el
+      // pedido ya enviado) pudo haberse guardado igual, y el alta no lleva
+      // clave de idempotencia: «Probá de nuevo» invitaba justo al duplicado.
+      // Como la app: antes de volver a guardar, se manda a mirar la lista.
+      // Un 5xx no entra (`quedoEnDuda` sí, pero ahí el reintento va con la
+      // misma clave): es una respuesta, y lo común es el servidor
+      // reiniciándose sin haber recibido nada.
+      const sinRespuesta = (err as { status?: number } | null)?.status === 0;
+      if (sinRespuesta) quizasCreado.current = true;
+      setError(
+        sinRespuesta
+          ? "La respuesta no llegó y puede que se haya guardado igual. Antes de volver a guardar, fijate en Movimientos si ya está."
+          : err instanceof Error
+            ? err.message
+            : "No se pudo guardar",
+      );
+      enVuelo.current = false;
       setGuardando(false);
+      return;
     }
+
+    // Con el doble control queda PENDIENTE a propósito (uno carga y otro
+    // aprueba): se abre para que lo apruebe ahí mismo quien puede.
+    if (conAprobacion) {
+      onGuardado({ id });
+      return;
+    }
+
+    // El backend SIEMPRE crea el movimiento pendiente y sólo aprobarlo
+    // mueve el stock. Sin la capacidad de aprobación no habría botón para
+    // hacerlo y la mercadería nunca entraría, así que se aprueba de una:
+    // el negocio que no compró el circuito de dos pasos igual carga stock.
+    try {
+      await api.aprobarMovimiento(id);
+    } catch (err) {
+      // Ya existe, PENDIENTE. Antes el error quedaba en este formulario con
+      // los renglones cargados, y tocar «Guardar» otra vez creaba OTRO
+      // movimiento (mientras se cargaba la salida la caja vendió de lo mismo
+      // y ya no alcanzaba, o se cortó internet). Se sigue sobre ESE, como el
+      // `quedoPendiente` de farmacia. El motivo va sin su punto final: los de
+      // red ya lo traen y quedaba «…en un momento.. Corregilo».
+      const motivo = (err instanceof Error ? err.message : "error desconocido").replace(/\.\s*$/, "");
+      // Sin respuesta (status 0: el corte de 20 s o la red caída con el pedido
+      // ya enviado) el servidor pudo haberlo aprobado igual: decir «quedó
+      // pendiente, aprobalo» sobre un detalle que muestra APROBADO empujaba a
+      // anularlo o a cargarlo de nuevo. Como el crear de arriba.
+      const sinRespuesta = (err as { status?: number } | null)?.status === 0;
+      onGuardado({
+        id,
+        aviso: sinRespuesta
+          ? "Se guardó, pero no llegó la respuesta al aprobarlo: mirá su estado acá antes de hacer nada. Si dice Pendiente, aprobalo; no lo cargues de nuevo."
+          : `Se guardó como pendiente, pero no se pudo aprobar: ${motivo}. Corregilo acá y aprobalo; no lo cargues de nuevo.`,
+      });
+      return;
+    }
+    onGuardado();
+  }
+
+  /**
+   * Cancelar, la X y Escape. Con el guardado en vuelo no se sale: cerrar no
+   * frena el pedido, y con la red lenta se volvía a abrir «Nuevo» y se
+   * guardaba otro mientras el primero seguía en camino (dos movimientos), o
+   * el error del primero se perdía con el formulario cerrado.
+   */
+  function cerrar() {
+    if (enVuelo.current) return;
+    onClose(quizasCreado.current);
   }
 
   return (
@@ -1111,11 +1323,11 @@ function FormMovimientoCuerpo({
           ? "Nace pendiente: recién al aprobarlo se mueve el stock"
           : "Al guardar se actualiza el stock: una entrada suma y una salida resta"
       }
-      onClose={onClose}
+      onClose={cerrar}
       ancho="max-w-2xl"
       acciones={
         <>
-          <Boton variante="ghost" onClick={onClose}>
+          <Boton variante="ghost" onClick={cerrar} disabled={guardando}>
             Cancelar
           </Boton>
           <Boton icono="save" onClick={guardar} disabled={guardando}>
@@ -1217,7 +1429,7 @@ function FormMovimientoCuerpo({
                         Subtotal
                       </p>
                       <p className="text-sm font-bold text-texto">
-                        {fmtMoney(Number(l.cantidad) * Number(l.costo))}
+                        {fmtMoney(subtotalDe(l))}
                       </p>
                     </div>
                   </div>
