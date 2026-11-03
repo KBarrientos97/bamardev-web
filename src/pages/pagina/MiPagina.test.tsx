@@ -1117,5 +1117,10 @@ describe("Mi página: mapa (PLAN-PAGINA-WEB §3.1)", () => {
     });
     await montar();
     expect(within(previa()).queryByTestId("mapa-pagina")).not.toBeInTheDocument();
+    // Sin mapa a la vista, "Cómo llegar" igual va al punto marcado (03-nov).
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
   });
 });

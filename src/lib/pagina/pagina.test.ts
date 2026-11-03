@@ -241,7 +241,8 @@ describe("vista previa desde el editor", () => {
     // Un backend anterior no manda el interruptor: prendido, como el default.
     expect(conPin(undefined).ubicacion).not.toBeNull();
     expect(conPin(false).ubicacion).toBeNull();
-    expect(conPin(false).mapaUrl).toMatch(/maps\/search/);
+    // 03-nov: con el mapa oculto, "Cómo llegar" sigue yendo al punto marcado.
+    expect(conPin(false).mapaUrl).toBe("https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18");
   });
 });
 

@@ -32,9 +32,9 @@ export function urlMapa(direccion: string | null, ubicacion: Ubicacion | null = 
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
 }
 
-/** El pin de la sucursal, si tiene ubicación y el mapa no está oculto (PLAN-PAGINA-WEB §3.1). */
-function ubicacionDe(s: SucursalEditor, conMapa: boolean): Ubicacion | null {
-  return conMapa && s.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
+/** El punto marcado en la ficha de la sucursal (PLAN-PAGINA-WEB §3.1). */
+function marcadaDe(s: SucursalEditor): Ubicacion | null {
+  return s.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
 }
 
 /**
@@ -158,8 +158,8 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     botones,
     sucursales: e.sucursales
       .filter((s) => s.publicarEnPagina)
-      .map((s) => ({ s, ubicacion: ubicacionDe(s, p.mostrarMapa !== false) }))
-      .map(({ s, ubicacion }) => ({
+      .map((s) => ({ s, marcada: marcadaDe(s) }))
+      .map(({ s, marcada }) => ({
         nombre: s.nombre,
         reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
         direccion: s.direccion,
@@ -167,8 +167,10 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         // Como el backend (`horarioDeSucursal`): el por día si el dueño no lo
         // ocultó; el texto de antes, sólo sin horario por día (02-nov).
         horario: conHorario && !s.horarioSemanal?.length ? s.horarioTexto?.trim() || null : null,
-        mapaUrl: urlMapa(s.direccion, ubicacion),
-        ubicacion,
+        // Como el backend (`mapaDeSucursal`, 03-nov): el pin sólo con el mapa a
+        // la vista; "Cómo llegar" va al punto marcado aunque esté oculto.
+        mapaUrl: urlMapa(s.direccion, marcada),
+        ubicacion: p.mostrarMapa !== false ? marcada : null,
         horarioSemanal: conHorario && s.horarioSemanal?.length ? s.horarioSemanal : null,
         whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
