@@ -654,7 +654,8 @@ export default function PantallaRecibo({
     <div ref={raiz} className="@container flex h-full min-h-0 w-full flex-col">
       {anchoPapel && <HojaAngosta />}
       <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-26rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
-        <div className="mb-4 flex flex-col items-center text-center print:hidden @3xl:mb-0">
+        {/* En su tarjeta (04-nov): suelto sobre el fondo se perdía al lado del ticket. */}
+        <div className="card mb-4 flex flex-col items-center px-5 py-6 text-center print:hidden @3xl:mb-0">
           <span
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
               venta.pendienteSync ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
