@@ -302,6 +302,11 @@ export interface AjustesPagina {
   publicada: boolean;
   bloqueada: boolean;
   motivoBloqueo: string | null;
+  /**
+   * El nombre que muestra la página, aparte del nombre del negocio en el panel
+   * (Derick, 04-nov). null = el del negocio. Un backend anterior no lo manda.
+   */
+  nombrePublico?: string | null;
   descripcion: string | null;
   colorClave: string;
   formaBotones: FormaBotones;
@@ -454,6 +459,7 @@ export type CambiosPagina = Partial<
   Pick<
     AjustesPagina,
     | "publicada"
+    | "nombrePublico"
     | "descripcion"
     | "colorClave"
     | "formaBotones"

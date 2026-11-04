@@ -1289,6 +1289,11 @@ export interface Venta {
    * quién eligió, para que el recibo lo diga.
    */
   pagadorCuotas?: { nombre: string; rol: "ALUMNO" | "TUTOR" } | null;
+  /**
+   * Sólo en el equipo, recién cobrada: el teléfono de quien pagó las cuotas
+   * (el alumno o su tutor), para mandarle el recibo por WhatsApp (04-nov).
+   */
+  telefonoPagador?: string | null;
   /** Sólo en el equipo, recién cobrada: la inscripción de las cuotas, para el enlace del estado de cuenta (E10). */
   inscripcionCuotas?: number | null;
   /**

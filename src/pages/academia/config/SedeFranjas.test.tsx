@@ -376,3 +376,27 @@ describe("ronda 2 · M5 · el uso de cada franja", () => {
   });
 });
 
+describe("franjas de sábado y domingo (Derick, 04-nov)", () => {
+  it("«De sábado y domingo» agrega el intensivo de 4 h y se guarda marcado", async () => {
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "De sábado y domingo" }));
+    });
+    expect(screen.getByLabelText("Desde, franja 3")).toHaveValue("08:00");
+    expect(screen.getByLabelText("Hasta, franja 3")).toHaveValue("12:00");
+    expect(screen.getAllByRole("checkbox", { name: "Sábado y domingo" })[2]).toBeChecked();
+    await guardar();
+    expect(apiAcademia.guardarFranjasSede).toHaveBeenCalledWith(1, [
+      { inicio: "08:00", fin: "10:00" },
+      { inicio: "19:00", fin: "21:00" },
+      { inicio: "08:00", fin: "12:00", finDeSemana: true },
+    ]);
+  });
+
+  it("una franja con grupos no se pasa al fin de semana", async () => {
+    await montar();
+    const [libre, conGrupos] = screen.getAllByRole("checkbox", { name: "Sábado y domingo" });
+    expect(libre).toBeEnabled();
+    expect(conGrupos).toBeDisabled();
+  });
+});

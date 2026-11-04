@@ -6,10 +6,9 @@ import { ApiError } from "../../lib/api";
 import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
 
 /**
- * N3 · Abrir grupo con un inicio pasado (QA ronda 2, N-5; contrato #31):
- * quien configura el instituto puede elegir un inicio que ya pasó y, ante el
- * 400 FECHA_PASADA, confirmar que el grupo ya venía andando; los demás sólo
- * ven inicios futuros y, si igual llega el rechazo, el mensaje sin opción.
+ * N3 · Abrir grupo: el inicio es cualquier fecha de hoy en adelante
+ * (observación de Derick, 04-nov). El día de Ajustes (el 10) es sólo el que
+ * se propone, y se dicta también el domingo.
  */
 
 const sesion = vi.hoisted(() => ({ configura: true, personal: false, organizacion: false }));
@@ -59,13 +58,6 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { apiPersonal } from "../../lib/personal";
 import NuevoGrupo from "./NuevoGrupo";
 
-const fechaPasada = (puedeConfirmar: boolean) =>
-  new ApiError("El grupo no puede empezar antes del 2026-10-10, el inicio del módulo en curso.", 400, {
-    codigo: "FECHA_PASADA",
-    minimo: "2026-10-10",
-    puedeConfirmar,
-  });
-
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -99,58 +91,44 @@ async function montar() {
   return { panel, onCreado };
 }
 
-describe("N3 · Abrir grupo con un inicio pasado", () => {
-  it("quien configura elige un inicio pasado y confirma que el grupo ya venía andando", async () => {
-    vi.mocked(apiAcademia.crearGrupo).mockRejectedValueOnce(fechaPasada(true)).mockResolvedValueOnce(grupoDetalle());
+describe("N3 · Abrir grupo con cualquier fecha de hoy en adelante", () => {
+  it("propone el próximo día de Ajustes y acepta cualquier otro día del mes", async () => {
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValueOnce(grupoDetalle());
     const { panel, onCreado } = await montar();
     const empieza = within(panel).getByLabelText("Empieza el");
-    // El primero sigue siendo el próximo inicio; los pasados van aparte.
-    expect(empieza).toHaveValue("2026-11");
-    expect(within(empieza).getByRole("group", { name: /Ya empezó/ })).toBeInTheDocument();
-    fireEvent.change(empieza, { target: { value: "2026-08" } });
-    expect(within(panel).getByText(/Esa fecha ya pasó: elegila sólo para cargar un grupo que ya estaba en clases/)).toBeInTheDocument();
+    expect(empieza).toHaveAttribute("type", "date");
+    expect(empieza).toHaveValue("2026-11-10");
+    expect(empieza).toHaveAttribute("min", "2026-10-19");
+    fireEvent.change(empieza, { target: { value: "2026-10-25" } });
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
     });
-    expect(apiAcademia.crearGrupo).toHaveBeenCalledTimes(1);
+    expect(apiAcademia.crearGrupo).toHaveBeenCalledWith(expect.objectContaining({ fechaInicio: "2026-10-25" }));
     expect(vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0]).not.toHaveProperty("confirmarInicioPasado");
-    const aviso = within(panel).getByRole("alert");
-    expect(aviso).toHaveTextContent("El 10 de agosto ya pasó.");
-    expect(aviso).toHaveTextContent("El primer inicio posible es el 10 de octubre.");
-    expect(within(panel).getByRole("button", { name: "Abrir grupo" })).toBeDisabled();
-    await act(async () => {
-      fireEvent.click(within(aviso).getByRole("button", { name: "El grupo ya venía andando" }));
-    });
-    expect(apiAcademia.crearGrupo).toHaveBeenLastCalledWith(expect.objectContaining({ fechaInicio: "2026-08-10", confirmarInicioPasado: true }));
     expect(onCreado).toHaveBeenCalled();
   });
 
-  it("'Elegir otra fecha' saca el aviso sin mandar nada", async () => {
-    vi.mocked(apiAcademia.crearGrupo).mockRejectedValueOnce(fechaPasada(true));
+  it("una fecha anterior a hoy no se manda", async () => {
     const { panel } = await montar();
-    fireEvent.change(within(panel).getByLabelText("Empieza el"), { target: { value: "2026-09" } });
+    fireEvent.change(within(panel).getByLabelText("Empieza el"), { target: { value: "2026-09-10" } });
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "Elegir otra fecha" }));
-    expect(within(panel).queryByRole("alert")).not.toBeInTheDocument();
-    expect(apiAcademia.crearGrupo).toHaveBeenCalledTimes(1);
+    expect(apiAcademia.crearGrupo).not.toHaveBeenCalled();
+    expect(within(panel).getByText("La fecha de inicio tiene que ser de hoy en adelante.")).toBeInTheDocument();
   });
 
-  it("sin academia.configurar: sólo inicios futuros, y el rechazo se explica sin opción de confirmar", async () => {
-    sesion.configura = false;
-    vi.mocked(apiAcademia.crearGrupo).mockRejectedValueOnce(fechaPasada(false));
+  it("también se elige el domingo, para los intensivos de fin de semana", async () => {
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValueOnce(grupoDetalle());
     const { panel } = await montar();
-    const empieza = within(panel).getByLabelText("Empieza el");
-    expect(within(empieza).queryByRole("group", { name: /Ya empezó/ })).not.toBeInTheDocument();
-    expect(within(empieza).queryByRole("option", { name: /agosto/ })).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Lunes" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Miércoles" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Viernes" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Domingo" }));
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
     });
-    const aviso = within(panel).getByRole("alert");
-    expect(aviso).toHaveTextContent("El primer inicio posible es el 10 de octubre.");
-    expect(within(aviso).queryByRole("button")).not.toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: "Abrir grupo" })).toBeEnabled();
+    expect(apiAcademia.crearGrupo).toHaveBeenCalledWith(expect.objectContaining({ dias: [0] }));
   });
 });
 

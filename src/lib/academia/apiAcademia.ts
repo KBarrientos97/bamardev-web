@@ -14,6 +14,7 @@ import type {
   CarreraInput,
   CarreraSimpleInput,
   CarritoInscripcion,
+  CompletoMostrador,
   DescuentoInput,
   Docente,
   EditarAlumnoInput,
@@ -87,7 +88,7 @@ export const apiAcademia = {
     request<Sede>(`/academia/sedes/${id}`, { method: "PATCH", body: json(cambios) }),
   franjasSede: (id: number) => request<FranjasDeSede>(`/academia/sedes/${id}/franjas`),
   /** Reemplaza la lista completa de la sede (`[]` la deja sin franjas). */
-  guardarFranjasSede: (id: number, franjas: { inicio: string; fin: string }[]) =>
+  guardarFranjasSede: (id: number, franjas: { inicio: string; fin: string; finDeSemana?: boolean }[]) =>
     request<FranjasDeSede>(`/academia/sedes/${id}/franjas`, { method: "PUT", body: json({ franjas }) }),
   /** 08–10, 10–12, 14–16, 16–18 y 19–21, sin duplicar ni pisar lo que la sede ya tiene. */
   franjasTipicas: (id: number) => request<ResultadoTipicas>(`/academia/sedes/${id}/franjas/tipicas`, { method: "POST" }),
@@ -252,6 +253,12 @@ export const apiAcademia = {
     }),
   carrito: (inscripcionId: number) =>
     request<CarritoInscripcion>(`/academia/inscripciones/${inscripcionId}/carrito`),
+  /**
+   * ¿Le corresponde pasar al pago completo con descuento? (Derick, 04-nov) La
+   * misma regla que la página: sólo pagó un adelanto y el grupo no empezó.
+   */
+  completoMostrador: (inscripcionId: number) =>
+    request<{ completo: CompletoMostrador | null }>(`/academia/pagos-en-linea/completo/${inscripcionId}`),
   cuotasPorCobrar: (q: string, sede?: number | null) =>
     request<{ alumnos: AlumnoPorCobrar[] }>(`/academia/cuotas-por-cobrar${qs({ q: q.trim(), sede })}`),
 

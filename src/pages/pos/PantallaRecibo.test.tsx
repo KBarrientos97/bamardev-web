@@ -800,3 +800,21 @@ describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
     expect(impresos).toEqual([undefined]);
   });
 });
+
+describe("enviar el recibo por WhatsApp (Derick, 04-nov)", () => {
+  it("abre WhatsApp con el chat del cliente y el detalle de la venta", () => {
+    const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
+    dibujar(venta({ clienteTelefono: "71234567" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
+    const url = String(abrir.mock.calls[0][0]);
+    expect(url).toMatch(/^https:\/\/wa\.me\/59171234567\?text=/);
+    expect(decodeURIComponent(url)).toContain("Negocio de prueba");
+    expect(decodeURIComponent(url)).toContain("Pollo entero");
+    abrir.mockRestore();
+  });
+
+  it("una venta que todavía no subió no se manda", () => {
+    dibujar(venta({ pendienteSync: true } as Partial<Venta>));
+    expect(screen.queryByRole("button", { name: "Enviar por WhatsApp" })).not.toBeInTheDocument();
+  });
+});

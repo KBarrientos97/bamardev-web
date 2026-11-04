@@ -15,6 +15,8 @@ import ComandaCocina from "./ComandaCocina";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { CabeceraNegocio, HojaAngosta, QrRecibo } from "./PiezasRecibo";
+import { whatsappDelRecibo } from "../../lib/mensajeRecibo";
+import { abrirWhatsapp } from "../../lib/academia/vista";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -166,18 +168,30 @@ export default function PantallaRecibo({
   const ticketPedido = venta.ticket ?? null;
   const conTicket = !!ticketPedido && !venta.pendienteSync;
 
-  const imprimirYCompartir = incluye("recibo_pdf") && (
+  const imprimirYCompartir = (
     <>
-      {!conTicket && (
-        <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-          Imprimir
+      {incluye("recibo_pdf") && (
+        <>
+          {!conTicket && (
+            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+              Imprimir
+            </Boton>
+          )}
+          {/* Siempre visible: si el equipo no sabe compartir archivos, la
+              imagen se descarga, que en un escritorio es lo más parecido. */}
+          <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
+            {compartiendo ? "Generando…" : "Compartir"}
+          </Boton>
+        </>
+      )}
+      {/* El recibo en texto por WhatsApp (Derick, 04-nov): sin descargar ni
+          adjuntar. No pide `recibo_pdf`: no es el PDF, es un mensaje. Una
+          venta sin internet todavía no tiene comprobante: no se manda. */}
+      {!venta.pendienteSync && (
+        <Boton variante="ghost" icono="phone" onClick={() => abrirWhatsapp(whatsappDelRecibo(venta, negocio?.nombre ?? ""))}>
+          Enviar por WhatsApp
         </Boton>
       )}
-      {/* Siempre visible: si el equipo no sabe compartir archivos, la
-          imagen se descarga, que en un escritorio es lo más parecido. */}
-      <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
-        {compartiendo ? "Generando…" : "Compartir"}
-      </Boton>
     </>
   );
   const historial = (

@@ -59,6 +59,8 @@ import SelectorEstilo from "./SelectorEstilo";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
 const MAX_DESCRIPCION = 160;
+/** El tope del backend para el nombre propio de la página (04-nov). */
+const MAX_NOMBRE_PAGINA = 80;
 
 const mensaje = (e: unknown, defecto = "No se pudo guardar") => (e instanceof Error ? e.message : defecto);
 
@@ -649,6 +651,8 @@ export default function MiPagina() {
   }
 
   const ajustes: AjustesPagina = { ...e.pagina, ...borrador };
+  // Lo que ve el público: el nombre propio de la página o el del negocio (04-nov).
+  const nombreVisible = ajustes.nombrePublico?.trim() || e.negocio.nombre;
   // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9). El
   // rubro sale del editor, como el de la vista previa: con o sin sesión.
   const sede = termino(e.negocio.rubro, "sucursal", sesion?.vocabulario);
@@ -857,7 +861,7 @@ export default function MiPagina() {
     try {
       const corto = await apiPagina.enlaceCorto("COMPARTIR");
       if (typeof navigator.share === "function") {
-        await navigator.share({ title: e.negocio.nombre, url: corto.url }).catch(() => undefined);
+        await navigator.share({ title: nombreVisible, url: corto.url }).catch(() => undefined);
       } else {
         await copiar(corto.url, "Enlace corto copiado");
       }
@@ -1057,7 +1061,7 @@ export default function MiPagina() {
                 />
                 <SelectorLetra
                   valor={ajustes.tipografia}
-                  nombre={e.negocio.nombre}
+                  nombre={nombreVisible}
                   c={c}
                   recomendadas={estilo.letras}
                   onCambio={(t) => cambiar({ tipografia: t })}
@@ -1100,6 +1104,18 @@ export default function MiPagina() {
           </Seccion>
 
           <Seccion titulo="Presentación">
+            <Campo
+              label="Nombre en la página"
+              hint={`Vacío = «${e.negocio.nombre}», el nombre del negocio. Cambiarlo acá no cambia el de tu cuenta ni el de los recibos.`}
+            >
+              <Input
+                aria-label="Nombre en la página"
+                maxLength={MAX_NOMBRE_PAGINA}
+                value={ajustes.nombrePublico ?? ""}
+                onChange={(ev) => cambiar({ nombrePublico: ev.target.value || null })}
+                placeholder={e.negocio.nombre}
+              />
+            </Campo>
             <Campo label="Descripción corta" hint={`${(ajustes.descripcion ?? "").length} de ${MAX_DESCRIPCION} caracteres`}>
               <textarea
                 aria-label="Descripción corta"
@@ -1174,7 +1190,7 @@ export default function MiPagina() {
             pedidosGuardado={e.pagina.pedidosWhatsapp}
             borrador={borrador}
             cambiar={cambiar}
-            negocio={e.negocio.nombre}
+            negocio={nombreVisible}
             rubro={e.negocio.rubro}
             color={vista.color.hex}
             fotoUrl={urlDeImagen(vista.portadaUrl ?? vista.logoUrl)}
@@ -1422,8 +1438,8 @@ export default function MiPagina() {
         abierto={cartel}
         onClose={() => setCartel(false)}
         datos={{
-          nombre: e.negocio.nombre,
-          iniciales: e.negocio.iniciales,
+          nombre: vista.nombre,
+          iniciales: vista.iniciales,
           logoUrl: e.imagenes.logo,
           colorHex: vista.color.hex,
           reservar: vista.reservar,

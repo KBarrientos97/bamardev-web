@@ -304,3 +304,23 @@ describe("privacidad del cliente", () => {
     expect(contactoDe({ ...sinWa, sucursales: [] })).toBeNull();
   });
 });
+
+describe("nombre propio de la página (Derick, 04-nov)", () => {
+  it("sin nombre propio se ve el del negocio, como siempre", () => {
+    const v = vistaDesdeEditor(editor());
+    expect(v.nombre).toBe("Salón Bella Vista");
+    expect(v.iniciales).toBe("SB");
+  });
+
+  it("con nombre propio la vista previa lo muestra, con sus iniciales", () => {
+    const e = editor();
+    const v = vistaDesdeEditor({ ...e, pagina: { ...e.pagina, nombrePublico: "  Instituto Maná Academy " } });
+    expect(v.nombre).toBe("Instituto Maná Academy");
+    expect(v.iniciales).not.toBe("SB");
+  });
+
+  it("vacío o con espacios vuelve al del negocio", () => {
+    const e = editor();
+    expect(vistaDesdeEditor({ ...e, pagina: { ...e.pagina, nombrePublico: "   " } }).nombre).toBe("Salón Bella Vista");
+  });
+});

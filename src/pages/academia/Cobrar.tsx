@@ -16,7 +16,7 @@ import {
   type InicialCobro,
 } from "../../lib/academia/cobroCuotas";
 import { fechaCorta, nombreDe } from "../../lib/academia/formato";
-import type { AlumnoPorCobrar, CarritoInscripcion, Ref } from "../../lib/academia/tipos";
+import type { AlumnoPorCobrar, CarritoInscripcion, CompletoMostrador, Ref } from "../../lib/academia/tipos";
 import { MINIMO_BUSQUEDA, useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { RUTA_CAJA } from "../../lib/academia/vista";
@@ -27,6 +27,8 @@ import { fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
+import { tienePermiso } from "../../lib/permisos";
+import { useAuth } from "../../store/AuthContext";
 import type { PagoInput, Venta } from "../../types";
 import AperturaCaja from "../pos/AperturaCaja";
 import PantallaCobro from "../pos/PantallaCobro";
@@ -79,9 +81,18 @@ function esOtraSede(sede: string | Ref | null | undefined, caja: { id: number | 
  * anulación siguen igual. Por eso pide la caja abierta (sin ella se ofrece
  * abrirla, como el POS) y usa el mismo `clienteRequestId` del POS para que un
  * reintento no cobre dos veces.
+ *
+ * Pago completo con descuento (Derick, 04-nov): a quien sólo pagó un adelanto
+ * y su grupo no empezó, se le ofrece arriba pagar el resto del curso completo,
+ * con el monto que le daría la página. El plan se cambia recién al confirmar
+ * el cobro, justo antes de la venta, y si la venta falla vuelve al de antes:
+ * mirar la opción y no cobrar nunca le cambia nada.
  */
 export default function Cobrar() {
   const p = usePalabras();
+  const { usuario } = useAuth();
+  // Pasar de plan pide lo mismo que «Cambiar de plan» en la ficha.
+  const puedeCambiarPlan = tienePermiso(usuario, "academia.inscribir");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   // D3: si se inscribió sin las fotos y se siguió a cobrar, el aviso viaja en la
@@ -112,6 +123,14 @@ export default function Cobrar() {
   const [monto, setMonto] = useState("");
   const [pagadorId, setPagadorId] = useState<number | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
+  const [completo, setCompleto] = useState<CompletoMostrador | null>(null);
+  const [usarCompleto, setUsarCompleto] = useState(false);
+  /**
+   * El cobro del completo ya armado (plan cambiado y cuotas nuevas): si el
+   * POST de la venta quedó en duda, el reintento manda exactamente lo mismo,
+   * con el mismo id, sin volver a cambiar el plan.
+   */
+  const completoArmado = useRef<{ inscripcionId: number; cobro: CobroCuotas } | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
@@ -130,7 +149,14 @@ export default function Cobrar() {
       setError("");
       setCargando(true);
       try {
-        const carrito = await apiAcademia.carrito(fila.inscripcionId);
+        const [carrito, oferta] = await Promise.all([
+          apiAcademia.carrito(fila.inscripcionId),
+          // Si la pregunta falla, se cobra como siempre: la oferta es un extra.
+          puedeCambiarPlan ? apiAcademia.completoMostrador(fila.inscripcionId).catch(() => null) : Promise.resolve(null),
+        ]);
+        setCompleto(oferta?.completo ?? null);
+        setUsarCompleto(false);
+        completoArmado.current = null;
         // Lo acordado al inscribir vale sólo para la inscripción con la que se entró.
         const acordado = fila.inscripcionId === inicial.inscripcionId ? inicial.monto : undefined;
         setElegido({ fila, carrito });
@@ -153,7 +179,7 @@ export default function Cobrar() {
         setCargando(false);
       }
     },
-    [inicial],
+    [inicial, puedeCambiarPlan],
   );
 
   // Con la inscripción en la mano, directo a sus cuotas (una vez).
@@ -162,7 +188,8 @@ export default function Cobrar() {
     void elegir({ inscripcionId: inicial.inscripcionId, nombre: "", codigo: null, grupo: "", sede: inicial.sede ?? "" });
   }, [inicial, elegir]);
 
-  const montoNum = Math.round(parsearMontoO(monto, NaN) * 100) / 100;
+  const conCompleto = usarCompleto && !!completo;
+  const montoNum = conCompleto ? completo.monto : Math.round(parsearMontoO(monto, NaN) * 100) / 100;
   const tope = elegido ? saldoTotal(elegido.carrito) : 0;
   const montoOk = montoValido(montoNum, tope);
   const reparto = useMemo(
@@ -173,8 +200,87 @@ export default function Cobrar() {
   const sedeGrupo = elegido ? nombreDe(elegido.fila.sede) || null : null;
   const otraSede = elegido ? esOtraSede(elegido.fila.sede, sedeCaja) : false;
 
+  /**
+   * Pasa al plan completo y arma el cobro con las cuotas nuevas. Si el saldo
+   * que queda no es el que se ofreció (otra caja cobró en el medio), vuelve al
+   * plan de antes y no cobra.
+   */
+  async function armarCompleto(oferta: CompletoMostrador): Promise<CobroCuotas | null> {
+    if (!elegido) return null;
+    const id = elegido.fila.inscripcionId;
+    if (completoArmado.current?.inscripcionId === id) return completoArmado.current.cobro;
+    await apiAcademia.cambiarPlan(id, oferta.planPagoId);
+    const nuevo = await apiAcademia.carrito(id);
+    if (saldoTotal(nuevo) !== oferta.monto) {
+      await volverAlPlan(oferta);
+      await elegir(elegido.fila);
+      setError("Lo que debe cambió mientras cobrabas: revisá el monto de nuevo.");
+      return null;
+    }
+    const cobro: CobroCuotas = {
+      inscripcionId: id,
+      alumno: nuevo.alumno,
+      pagadores: nuevo.pagadores,
+      pagadorId,
+      sedeGrupo,
+      otraSede,
+      lineas: cuotasIniciales(nuevo, oferta.monto)
+        .filter((x) => x.elegida)
+        .map((x) => x.linea),
+    };
+    completoArmado.current = { inscripcionId: id, cobro };
+    return cobro;
+  }
+
+  /** Deshace el cambio de plan de un cobro del completo que no se hizo. */
+  async function volverAlPlan(oferta: CompletoMostrador) {
+    completoArmado.current = null;
+    if (!elegido || oferta.planActualId == null) return;
+    try {
+      await apiAcademia.cambiarPlan(elegido.fila.inscripcionId, oferta.planActualId);
+    } catch {
+      // Queda en el plan completo debiendo el resto: se ve en su ficha y se
+      // cambia desde ahí, como cuando se cambiaba a mano.
+    }
+  }
+
+  async function confirmarCompleto(oferta: CompletoMostrador, pagos: PagoInput[]) {
+    if (!elegido) return;
+    if (!enDuda.current && !verificar()) return;
+    setError("");
+    setEnviando(true);
+    let cobro: CobroCuotas | null = null;
+    try {
+      cobro = await armarCompleto(oferta);
+      if (!cobro) return;
+      const detalles = detallesDeCuotas(cobro);
+      const creada = await api.crearVenta({
+        detalles,
+        tipoPedido: "LOCAL",
+        pagos,
+        ...(pagadorId != null ? { clienteId: pagadorId } : {}),
+        clienteRequestId: intento.actual(huellaDeCobro(detalles, "LOCAL")),
+      });
+      intento.registrado();
+      enDuda.current = false;
+      completoArmado.current = null;
+      registrar(creada);
+      setVenta(ventaConCuotas(creada, cobro));
+      setParams({ inscripcion: String(elegido.fila.inscripcionId) }, { replace: true });
+    } catch (err) {
+      enDuda.current = quedoEnDuda(err);
+      // En duda la venta pudo haber entrado: el plan queda y el reintento manda lo mismo.
+      if (cobro && !enDuda.current) await volverAlPlan(oferta);
+      if (manejarError(err)) return;
+      setError(err instanceof Error && err.message ? err.message : "No se pudo registrar el cobro");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   async function confirmar(pagos: PagoInput[]) {
     if (!elegido || !montoOk) return setError("Poné cuánto paga hoy: más que cero y hasta el saldo.");
+    if (conCompleto) return confirmarCompleto(completo, pagos);
     const cobro: CobroCuotas = {
       inscripcionId: elegido.fila.inscripcionId,
       alumno: elegido.carrito.alumno,
@@ -223,6 +329,9 @@ export default function Cobrar() {
 
   function otroCobro() {
     setVenta(null);
+    setCompleto(null);
+    setUsarCompleto(false);
+    completoArmado.current = null;
     setElegido(null);
     setHermanas([]);
     setMonto("");
@@ -277,7 +386,23 @@ export default function Cobrar() {
   const carrito = elegido.carrito;
   const sinCuotas = carrito.lineas.length === 0;
   const subtituloFila = [elegido.fila.codigo, nombreDe(elegido.fila.grupo)].filter(Boolean).join(" · ");
-  const restaHoy = montoOk ? Math.round((tope - montoNum) * 100) / 100 : null;
+  const restaHoy = conCompleto ? 0 : montoOk ? Math.round((tope - montoNum) * 100) / 100 : null;
+
+  // La oferta del completo con descuento, arriba del monto (04-nov).
+  const ofertaCompleto = completo && !sinCuotas && (
+    <div className={`rounded-xl border px-4 py-3 ${usarCompleto ? "border-primary bg-primary-50" : "border-borde bg-white"}`}>
+      <p className="text-sm font-bold text-texto">Pagar el resto del curso completo · {fmtMoney(completo.monto)}</p>
+      <p className="mt-0.5 text-[13px] text-texto-3">
+        En lugar de {fmtMoney(tope)} por cuotas
+        {completo.ahorro ? `: ahorra ${fmtMoney(completo.ahorro)}` : ""}. Pasa al pago completo y queda al día.
+      </p>
+      <div className="mt-2.5">
+        <Boton variante={usarCompleto ? "ghost" : "soft"} onClick={() => setUsarCompleto((v) => !v)} disabled={enviando}>
+          {usarCompleto ? "Cobrar por cuotas" : "Cobrar el completo"}
+        </Boton>
+      </div>
+    </div>
+  );
 
   // Las piezas del detalle van en variables porque se arman distinto según la
   // medida: apiladas dentro del cobro en el celular, en tarjetas a la
@@ -324,11 +449,14 @@ export default function Cobrar() {
         inputMode="decimal"
         step="0.01"
         min="0"
-        value={monto}
+        value={conCompleto ? String(montoNum) : monto}
+        disabled={conCompleto}
         onChange={(e) => setMonto(e.target.value)}
         className={`text-lg font-bold ${montoOk || monto === "" ? "" : "border-danger"}`}
       />
-      {montoOk ? (
+      {conCompleto ? (
+        <p className="text-xs text-texto-3">Pago completo con descuento · queda al día</p>
+      ) : montoOk ? (
         <p className="text-xs text-texto-3">
           Debe {fmtMoney(tope)} en total
           {montoNum < tope ? ` · quedan ${fmtMoney(Math.round((tope - montoNum) * 100) / 100)} de saldo` : " · queda al día"}
@@ -360,7 +488,9 @@ export default function Cobrar() {
 
   /** Lo que se cobra hoy de una cuota, o una raya si el monto no llega a ella. */
   const hoyDe = (linea: (typeof reparto)[number]["linea"], elegida: boolean) =>
-    montoOk && elegida ? (
+    conCompleto ? (
+      <span className="shrink-0 text-xs text-texto-3">en el completo</span>
+    ) : montoOk && elegida ? (
       <span className="shrink-0 text-right">
         <span className="block text-sm font-bold tabular-nums text-texto">{fmtMoney(linea.monto)}</span>
         {linea.monto < linea.saldo && <span className="block text-[11px] text-texto-3">abono</span>}
@@ -389,6 +519,7 @@ export default function Cobrar() {
         <p className="card p-4 text-sm text-texto-3">No tiene cuotas pendientes.</p>
       ) : (
         <>
+          {ofertaCompleto}
           <div className="card space-y-2 p-4">{campoMonto}</div>
 
           <Tarjeta id="t-reparto" titulo="Cómo se reparte" sinRelleno>
@@ -471,6 +602,7 @@ export default function Cobrar() {
             />
           </GrillaKpi>
 
+          {ofertaCompleto}
           <Tarjeta id="t-monto" titulo="Cuánto paga hoy" bajada="Se reparte por vencimiento: primero lo vencido.">
             <div className={`grid gap-x-8 gap-y-5 ${carrito.pagadores.length > 1 ? "md:grid-cols-2" : ""}`}>
               <div className="max-w-sm space-y-2">{campoMonto}</div>

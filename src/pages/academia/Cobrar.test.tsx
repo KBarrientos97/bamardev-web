@@ -21,7 +21,7 @@ vi.mock("../../store/AuthContext", async () => {
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { cuotasPorCobrar: vi.fn(), carrito: vi.fn() } };
+  return { ...real, apiAcademia: { cuotasPorCobrar: vi.fn(), carrito: vi.fn(), completoMostrador: vi.fn(), cambiarPlan: vi.fn() } };
 });
 
 vi.mock("../../lib/api", async (importOriginal) => {
@@ -98,6 +98,8 @@ beforeEach(() => {
     { id: 2, nombre: "QR" },
   ] as never);
   vi.mocked(apiAcademia.carrito).mockResolvedValue(CARRITO);
+  vi.mocked(apiAcademia.completoMostrador).mockResolvedValue({ completo: null });
+  vi.mocked(apiAcademia.cambiarPlan).mockResolvedValue(undefined);
   vi.mocked(apiAcademia.cuotasPorCobrar).mockResolvedValue({
     alumnos: [
       {
@@ -353,3 +355,72 @@ async function montarDeNuevo(ruta: string) {
   cleanup();
   await montar(ruta);
 }
+
+describe("pagar el completo con descuento desde Cobrar (Derick, 04-nov)", () => {
+  // Pagó un adelanto de 300 de un curso de 1.500 por cuotas: debe 1.200, y el
+  // completo (1.350) le deja 1.050.
+  const CON_ADELANTO = {
+    ...CARRITO,
+    lineas: [
+      { productoId: 77, cuotaId: 901, descripcion: "Barbería · Cuota 1/3", saldo: 200, vence: "2026-11-10", vencida: false },
+      { productoId: 77, cuotaId: 902, descripcion: "Barbería · Cuota 2/3", saldo: 500, vence: "2026-12-10", vencida: false },
+      { productoId: 77, cuotaId: 903, descripcion: "Barbería · Cuota 3/3", saldo: 500, vence: "2027-01-10", vencida: false },
+    ],
+  };
+  const COMPLETO = { productoId: 77, cuotaId: 910, descripcion: "Barbería · Pago completo", saldo: 1050, vence: "2026-11-10", vencida: false };
+  const OFERTA = { planPagoId: 21, planActualId: 20, monto: 1050, ahorro: 150 };
+
+  beforeEach(() => {
+    vi.mocked(apiAcademia.carrito).mockResolvedValue(CON_ADELANTO);
+    vi.mocked(apiAcademia.completoMostrador).mockResolvedValue({ completo: OFERTA });
+  });
+
+  it("sin la oferta del backend no aparece nada", async () => {
+    vi.mocked(apiAcademia.completoMostrador).mockResolvedValue({ completo: null });
+    await montar("/academia/cobrar?inscripcion=103");
+    expect(screen.queryByText(/Pagar el resto del curso completo/)).not.toBeInTheDocument();
+  });
+
+  it("mirar la oferta no cambia el plan; cobrarla lo cambia y cobra las cuotas nuevas", async () => {
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 80 } as unknown as Venta);
+    await montar("/academia/cobrar?inscripcion=103");
+    expect(screen.getByText(/Pagar el resto del curso completo · Bs\s1\.050/)).toBeInTheDocument();
+    expect(screen.getByText(/ahorra Bs 150/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar el completo" }));
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("1050");
+    expect(apiAcademia.cambiarPlan).not.toHaveBeenCalled();
+    // Al confirmar: el plan cambia y las cuotas son las del completo.
+    vi.mocked(apiAcademia.carrito).mockResolvedValue({ ...CON_ADELANTO, lineas: [COMPLETO] });
+    await pagarEnEfectivo("1050");
+    expect(apiAcademia.cambiarPlan).toHaveBeenCalledWith(103, 21);
+    const venta = vi.mocked(api.crearVenta).mock.calls[0][0];
+    expect(venta.detalles).toEqual([expect.objectContaining({ cuotaId: 910, precio: 1050 })]);
+    expect(screen.getByText("recibo 80")).toBeInTheDocument();
+  });
+
+  it("si la venta falla, vuelve al plan de antes", async () => {
+    vi.mocked(api.crearVenta).mockRejectedValue(new ApiError("La caja está cerrada", 400));
+    await montar("/academia/cobrar?inscripcion=103");
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar el completo" }));
+    vi.mocked(apiAcademia.carrito).mockResolvedValue({ ...CON_ADELANTO, lineas: [COMPLETO] });
+    await pagarEnEfectivo("1050");
+    expect(vi.mocked(apiAcademia.cambiarPlan).mock.calls).toEqual([
+      [103, 21],
+      [103, 20],
+    ]);
+    expect(screen.getByText("La caja está cerrada")).toBeInTheDocument();
+  });
+
+  it("si después del cambio debe otra cosa, vuelve al plan de antes y no cobra", async () => {
+    await montar("/academia/cobrar?inscripcion=103");
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar el completo" }));
+    vi.mocked(apiAcademia.carrito).mockResolvedValue({ ...CON_ADELANTO, lineas: [{ ...COMPLETO, saldo: 900 }] });
+    await pagarEnEfectivo("1050");
+    expect(api.crearVenta).not.toHaveBeenCalled();
+    expect(vi.mocked(apiAcademia.cambiarPlan).mock.calls).toEqual([
+      [103, 21],
+      [103, 20],
+    ]);
+    expect(screen.getByText("Lo que debe cambió mientras cobrabas: revisá el monto de nuevo.")).toBeInTheDocument();
+  });
+});

@@ -4,8 +4,11 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Input, useAviso } from "../../../co
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { duracionFranja } from "../../../lib/academia/calendario";
 import {
+  claveFila,
+  filaFinDeSemana,
   filaSiguiente,
   filasDeLosDetalles,
+  mismaFila,
   mismasFilas,
   problemasDeLasFilas,
   type FilaFranja,
@@ -30,12 +33,20 @@ import { BotonFila, BotonIcono, Chip, LISTA, Tarjeta } from "../piezas";
  * Las franjas que el instituto cargó antes «para todas las sedes» se ven con
  * su etiqueta; al guardar, el backend las copia a esta sede y desde entonces
  * cada sede maneja las suyas.
+ *
+ * Desde el 04-nov una franja puede ser de sábado y domingo (los intensivos de
+ * 4 h): va en su propio bloque del calendario y no se pisa con las de la semana.
  */
 
 const MAX_FRANJAS = 20;
 
 const aFilas = (d: FranjasDeSede): FilaFranja[] =>
-  d.franjas.map((f) => ({ inicio: f.inicio, fin: f.fin, ...(f.todasLasSedes ? { todasLasSedes: true } : {}) }));
+  d.franjas.map((f) => ({
+    inicio: f.inicio,
+    fin: f.fin,
+    ...(f.finDeSemana ? { finDeSemana: true } : {}),
+    ...(f.todasLasSedes ? { todasLasSedes: true } : {}),
+  }));
 
 /**
  * Cuántos grupos usa cada franja (`inicio-fin`), sacado del calendario de la
@@ -50,7 +61,7 @@ function useGruposPorFranja(sede: number) {
     const uso = new Map<string, number>();
     for (const fila of datos?.filas ?? []) {
       const ids = new Set(fila.celdas.flatMap((c) => c.grupos.map((g) => g.grupoId)));
-      uso.set(`${fila.inicio}-${fila.fin}`, ids.size);
+      uso.set(claveFila(fila), ids.size);
     }
     return { uso, listo: !!datos, fallo: !datos && !!error, cargando, recargar };
   }, [datos, error, cargando, recargar]);
@@ -90,15 +101,15 @@ export default function SedeFranjas({
   const sinGuardar = !mismasFilas(filas, base);
   const hayDeTodas = filas.some((f) => f.todasLasSedes);
 
-  function editar(i: number, campo: "inicio" | "fin", valor: string) {
-    setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, [campo]: valor } : f)));
+  function editar(i: number, cambio: Partial<Pick<FilaFranja, "inicio" | "fin" | "finDeSemana">>) {
+    setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, ...cambio } : f)));
     setMalas(new Set());
     setError("");
     setResumen(null);
   }
 
-  function agregar() {
-    setFilas((prev) => [...prev, filaSiguiente(prev)]);
+  function agregar(deFinDeSemana = false) {
+    setFilas((prev) => [...prev, deFinDeSemana ? filaFinDeSemana(prev) : filaSiguiente(prev)]);
     setMalas(new Set());
     setError("");
     setResumen(null);
@@ -123,7 +134,11 @@ export default function SedeFranjas({
     setGuardando(true);
     setError("");
     setResumen(null);
-    const enviar = () => apiAcademia.guardarFranjasSede(sedeId, mias.map((f) => ({ inicio: f.inicio, fin: f.fin })));
+    const enviar = () =>
+      apiAcademia.guardarFranjasSede(
+        sedeId,
+        mias.map((f) => ({ inicio: f.inicio, fin: f.fin, ...(f.finDeSemana ? { finDeSemana: true } : {}) })),
+      );
     try {
       let r: FranjasDeSede;
       try {
@@ -225,8 +240,11 @@ export default function SedeFranjas({
               {puedeEditar && (
                 <div className="flex flex-wrap gap-2">
                   {botonTipicas}
-                  <BotonFila icono="plus" variante="ghost" onClick={agregar} disabled={guardando}>
+                  <BotonFila icono="plus" variante="ghost" onClick={() => agregar()} disabled={guardando}>
                     Agregar una franja
+                  </BotonFila>
+                  <BotonFila icono="plus" variante="ghost" onClick={() => agregar(true)} disabled={guardando}>
+                    De sábado y domingo
                   </BotonFila>
                 </div>
               )}
@@ -234,11 +252,11 @@ export default function SedeFranjas({
           ) : (
             <ul className={LISTA.lista}>
               {filas.map((f, i) => {
-                const grupos = uso.get(`${f.inicio}-${f.fin}`) ?? 0;
+                const grupos = uso.get(claveFila(f)) ?? 0;
                 const mala = malas.has(i);
                 // Una franja ya guardada sólo se quita si se SABE que no tiene grupos: si no
                 // se pudo cargar el uso (o todavía carga), el tacho queda apagado (M5).
-                const guardada = base.some((b) => b.inicio === f.inicio && b.fin === f.fin);
+                const guardada = base.some((b) => mismaFila(b, f));
                 const sinSaberUso = guardada && !usoListo;
                 return (
                   <li
@@ -254,7 +272,7 @@ export default function SedeFranjas({
                         value={f.inicio}
                         disabled={!puedeEditar}
                         aria-invalid={mala || undefined}
-                        onChange={(e) => editar(i, "inicio", e.target.value)}
+                        onChange={(e) => editar(i, { inicio: e.target.value })}
                       />
                     </label>
                     <span className="text-center text-sm text-texto-3">a</span>
@@ -266,7 +284,7 @@ export default function SedeFranjas({
                         value={f.fin}
                         disabled={!puedeEditar}
                         aria-invalid={mala || undefined}
-                        onChange={(e) => editar(i, "fin", e.target.value)}
+                        onChange={(e) => editar(i, { fin: e.target.value })}
                       />
                     </label>
                     {puedeEditar ? (
@@ -287,6 +305,17 @@ export default function SedeFranjas({
                       {/* La razón a la vista: el `title` no se ve en el celular (B8). */}
                       {puedeEditar && grupos > 0 && <span>· no se puede quitar</span>}
                       {f.todasLasSedes && <Chip tono="azul">De todas las sedes</Chip>}
+                      {/* Una con grupos no cambia de lado: sus grupos quedarían fuera de franja. */}
+                      <label className="ml-auto inline-flex min-h-11 items-center gap-2 sm:min-h-0">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[var(--color-primary-boton)]"
+                          checked={!!f.finDeSemana}
+                          disabled={!puedeEditar || grupos > 0 || sinSaberUso}
+                          onChange={(e) => editar(i, { finDeSemana: e.target.checked || undefined })}
+                        />
+                        Sábado y domingo
+                      </label>
                     </span>
                   </li>
                 );
@@ -332,8 +361,11 @@ export default function SedeFranjas({
                 )}
                 {filas.length > 0 && (
                   <>
-                    <BotonFila icono="plus" variante="ghost" onClick={agregar} disabled={guardando || filas.length >= MAX_FRANJAS}>
+                    <BotonFila icono="plus" variante="ghost" onClick={() => agregar()} disabled={guardando || filas.length >= MAX_FRANJAS}>
                       Agregar franja
+                    </BotonFila>
+                    <BotonFila icono="plus" variante="ghost" onClick={() => agregar(true)} disabled={guardando || filas.length >= MAX_FRANJAS}>
+                      De sábado y domingo
                     </BotonFila>
                     {botonTipicas}
                   </>

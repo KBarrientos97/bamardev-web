@@ -62,6 +62,26 @@ export function inicioDelMes(mes: string, dia: number): string {
   return `${mes}-${String(dia).padStart(2, "0")}`;
 }
 
+/**
+ * `AAAA-MM-DD` + n meses, el mismo día del mes o el último si ese mes no lo
+ * tiene (31-ene + 1 → 28-feb). Es el `sumarMeses` del backend (`reglas.ts`):
+ * con él arma las fechas de cada módulo, y la vista previa tiene que dar lo
+ * mismo.
+ */
+export function sumarMesesFecha(iso: string, n: number): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  const total = a * 12 + (m - 1) + n;
+  const anio = Math.floor(total / 12);
+  const mes = (total % 12) + 1;
+  const dia = Math.min(d, new Date(Date.UTC(anio, mes, 0)).getUTCDate());
+  return `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+/** Hoy en `AAAA-MM-DD`, en la hora del equipo (la del instituto). */
+export function hoyIso(hoy = new Date()): string {
+  return `${mesDe(hoy)}-${String(hoy.getDate()).padStart(2, "0")}`;
+}
+
 /** El día anterior a una fecha `AAAA-MM-DD` (el fin de un módulo es el día antes del inicio del siguiente). */
 export function diaAnterior(iso: string): string {
   const [a, m, d] = iso.split("-").map(Number);
@@ -95,6 +115,18 @@ export function duracionFranja(f: Pick<Franja, "inicio" | "fin">): string {
   return `${Number.isInteger(h) ? h : h.toFixed(1).replace(".", ",")} h`;
 }
 
+/** 0 = domingo, 6 = sábado (como `Date.getDay()`). */
+const FIN_DE_SEMANA = new Set([0, 6]);
+
+/**
+ * Un grupo es de fin de semana si TODOS sus días son sábado o domingo (el
+ * `esDeFinDeSemana` del backend): el de lunes a sábado sigue siendo de entre
+ * semana, y sus franjas son las de siempre.
+ */
+export function esDeFinDeSemana(dias: number[]): boolean {
+  return dias.length > 0 && dias.every((d) => FIN_DE_SEMANA.has(d));
+}
+
 /** Las franjas de una sede (`null` = las que valen para todas), en orden. */
 export function franjasDe(franjas: Franja[] | null | undefined, almacenId: number | null): Franja[] {
   return (franjas ?? [])
@@ -109,10 +141,12 @@ export function franjasDe(franjas: Franja[] | null | undefined, almacenId: numbe
  */
 export function problemasFranjas(franjas: Franja[]): string[] {
   const problemas: string[] = [];
-  const porSede = new Map<number | null, Franja[]>();
+  // Por sede y por lado de la semana: una de sábado no se pisa con una de lunes.
+  const porSede = new Map<string, Franja[]>();
   for (const f of franjas) {
     if (aMinutos(f.fin) <= aMinutos(f.inicio)) problemas.push(`La franja ${f.inicio}–${f.fin} termina antes de empezar.`);
-    porSede.set(f.almacenId, [...(porSede.get(f.almacenId) ?? []), f]);
+    const k = `${f.almacenId}-${!!f.finDeSemana}`;
+    porSede.set(k, [...(porSede.get(k) ?? []), f]);
   }
   for (const lista of porSede.values()) {
     const orden = [...lista].sort((a, b) => aMinutos(a.inicio) - aMinutos(b.inicio));

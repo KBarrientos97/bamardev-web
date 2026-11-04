@@ -84,6 +84,8 @@ export interface Franja {
   almacenId: number | null;
   inicio: string;
   fin: string;
+  /** La de los intensivos de sábado y domingo (04-nov). Ausente = de lunes a viernes. */
+  finDeSemana?: boolean;
 }
 
 // ── Carreras, materias y planes ─────────────────────────────────────────────
@@ -634,7 +636,8 @@ export interface Preinscripcion {
 
 export interface CarritoInscripcion {
   alumno: { id: number; nombre: string };
-  pagadores: { clienteId: number; nombre: string; rol: "ALUMNO" | "TUTOR"; principal: boolean }[];
+  /** `telefono`: para mandarle el recibo por WhatsApp (04-nov). Un backend anterior no lo manda. */
+  pagadores: { clienteId: number; nombre: string; rol: "ALUMNO" | "TUTOR"; principal: boolean; telefono?: string | null }[];
   /** El curso, para decir «Barbería · M2 Degradados» (D6). */
   carrera?: { id: number; nombre: string };
   lineas: {
@@ -647,6 +650,16 @@ export interface CarritoInscripcion {
     /** Lo que cubre la cuota, con su nombre y ordenado (D6). Un backend anterior no lo manda. */
     materias?: { id?: number; orden: number; nombre: string }[];
   }[];
+}
+
+/** Lo que «Cobrar» ofrece cuando le corresponde el pago completo con descuento (04-nov). */
+export interface CompletoMostrador {
+  planPagoId: number;
+  /** El plan de hoy: a él se vuelve si el cobro no se hace. */
+  planActualId: number | null;
+  /** Lo que falta para terminar de pagar el curso completo. */
+  monto: number;
+  ahorro: number | null;
 }
 
 /** Un resultado de la búsqueda del POS (`GET /academia/cuotas-por-cobrar`). */
@@ -804,6 +817,8 @@ export interface SedeInput {
 export interface FranjaDeSede {
   inicio: string;
   fin: string;
+  /** De sábado y domingo (04-nov). Un backend anterior no lo manda. */
+  finDeSemana?: boolean;
   /** Cargada antes "para todas las sedes": al guardar queda copiada a esta sede. */
   todasLasSedes: boolean;
 }
@@ -896,6 +911,12 @@ export interface FilaCalendario {
   fin: string;
   /** false = un grupo que no calza con ninguna franja abrió su propia fila. */
   esFranja: boolean;
+  /**
+   * La fila es del bloque de sábado y domingo (04-nov): una franja de fin de
+   * semana o un grupo que sólo tiene clase esos días. Un backend anterior no
+   * lo manda (todo es de entre semana).
+   */
+  finDeSemana?: boolean;
   celdas: { mes: string; grupos: GrupoEnCalendario[] }[];
 }
 
