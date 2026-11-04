@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import TelevisoresDelLocal from "../tickets/TelevisoresDelLocal";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Boton, Confirmar, ErrorMsg } from "../../components/ui";
@@ -271,6 +272,10 @@ function PestanaPantallas({
           onEliminar={() => setBorrar(true)}
         />
       )}
+      {/* Las TVs conectadas con código: la misma lista que en Tickets y pedidos. */}
+      <div className="max-w-xl">
+        <TelevisoresDelLocal />
+      </div>
       <Confirmar
         abierto={borrar}
         titulo="¿Eliminar esta pantalla?"

@@ -36,14 +36,15 @@ export default function TvTickets() {
   if (!llaveConForma(llave)) {
     return (
       <Mensaje titulo="Este enlace está incompleto">
-        Copialo entero desde <b>Tickets y pedidos → Pantalla de la TV</b>, con el botón Copiar.
+        Copialo entero desde <b>Tickets y pedidos → Enlace de la TV</b>, con el botón Copiar.
       </Mensaje>
     );
   }
   return <PantallaConLlave llave={llave} sucursalId={sucursalDeLaDireccion(params.get("sucursal"))} />;
 }
 
-function PantallaConLlave({ llave, sucursalId }: { llave: string; sucursalId?: number }) {
+/** La TV de tickets con su llave: la del enlace de siempre y la conectada con código en `/tv`. */
+export function PantallaConLlave({ llave, sucursalId }: { llave: string; sucursalId?: number }) {
   const s = usePantallaTickets(llave, sucursalId);
   useMantenerEncendida();
   useAlDia();
@@ -132,7 +133,7 @@ function PantallaConLlave({ llave, sucursalId }: { llave: string; sucursalId?: n
   if (s.fase === "anulada") {
     return (
       <Mensaje titulo="Esta pantalla ya no está habilitada">
-        Generá un enlace nuevo en <b>Tickets y pedidos → Pantalla de la TV</b> y abrilo en este televisor.
+        Generá un enlace nuevo en <b>Tickets y pedidos → Enlace de la TV</b> y abrilo en este televisor.
       </Mensaje>
     );
   }
