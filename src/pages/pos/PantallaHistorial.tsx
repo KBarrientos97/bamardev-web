@@ -20,6 +20,7 @@ import { atajosDeEfectivo } from "../../lib/billetes";
 import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { abiertaDesde } from "./turnoDeCaja";
 import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
@@ -396,7 +397,7 @@ function ResumenTurno({
     <section aria-label="Resumen del turno" className="card hidden p-5 lg:block">
       <p className="text-[12px] font-bold uppercase tracking-wide text-texto-4">Turno</p>
       <p className="mt-1 text-sm text-texto-3">
-        Abierta desde {fmtHora(caja.fechaApertura)}
+        Abierta desde {abiertaDesde(caja.fechaApertura)}
         {caja.almacen ? ` · ${caja.almacen}` : ""}
       </p>
       <p className="mt-4 text-[12px] font-semibold text-texto-3">Vendido</p>

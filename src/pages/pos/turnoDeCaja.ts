@@ -43,6 +43,22 @@ function diasEntre(desde: Date, hasta: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
+/**
+ * Desde cuándo está abierta la caja: "09:59 a. m." si abrió hoy, y con el día
+ * ("vie 31/10 · 09:59 a. m.") si no.
+ *
+ * La cabecera del POS, el cierre y el historial decían sólo la hora: una caja
+ * que nadie cerró el viernes se leía el martes como abierta esa mañana, y la
+ * cajera contaba contra el efectivo esperado de cuatro días creyendo que era
+ * el de su turno (prueba del 4-nov).
+ */
+export function abiertaDesde(apertura: string | null | undefined, ahora: Date = new Date()): string {
+  if (!apertura) return "—";
+  const a = new Date(apertura);
+  if (Number.isNaN(a.getTime())) return "—";
+  return diasEntre(a, ahora) === 0 ? fmtHora(a) : `${DIAS[a.getDay()]} ${diaMes(a)} · ${fmtHora(a)}`;
+}
+
 /** null si falta alguna de las dos fechas o no se puede leer. */
 export function turnoDeCaja(
   apertura: string | null | undefined,
