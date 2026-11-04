@@ -214,6 +214,10 @@ function PestanaPantallas({
 
   return (
     <div className="mt-5 space-y-5">
+      {/* Arriba de todo: debajo del editor quedaba después de la columna de
+          ajustes, a dos pantallas de alto, y no se encontraba dónde conectar
+          la TV con el código (Kevin, 4-nov). */}
+      <TelevisoresDelLocal enFila />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {pantallas.map((p) => (
           <button
@@ -272,10 +276,6 @@ function PestanaPantallas({
           onEliminar={() => setBorrar(true)}
         />
       )}
-      {/* Las TVs conectadas con código: la misma lista que en Tickets y pedidos. */}
-      <div className="max-w-xl">
-        <TelevisoresDelLocal />
-      </div>
       <Confirmar
         abierto={borrar}
         titulo="¿Eliminar esta pantalla?"
@@ -373,7 +373,11 @@ function EditorPantalla({
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
-      <div className="min-w-0">
+      {/* La vista previa acompaña al bajar por los ajustes: la columna de la
+          derecha mide dos pantallas, y al llegar a "Platos" o "Ajustes" la TV
+          se iba para arriba y quedaba un hueco blanco; se tocaba algo sin ver
+          qué cambiaba. Sólo a lo ancho: en una columna taparía los ajustes. */}
+      <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
         <Tarjeta
           titulo={p.nombre}
           accion={
@@ -417,8 +421,8 @@ function EditorPantalla({
             )}
           </div>
           <p className="mt-2 text-[12px] text-texto-3">
-            En el televisor: abrí el enlace y hacé doble clic para verlo en pantalla completa. Si no entra todo, pasa de
-            página solo.
+            En el televisor: conectalo con el código desde «TVs del local», arriba, o abrí el enlace y hacé doble clic
+            para verlo en pantalla completa. Si no entra todo, pasa de página solo.
           </p>
         </Tarjeta>
       </div>

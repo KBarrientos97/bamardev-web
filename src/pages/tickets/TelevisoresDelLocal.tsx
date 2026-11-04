@@ -21,8 +21,12 @@ import { Tarjeta } from "./piezas";
  * Va en Tickets y pedidos y en el Menú digital, con la misma lista: una TV
  * conectada puede pasar de los tickets al menú. Qué se le puede poner lo dice
  * el servidor (`opciones`), según los extras del negocio y los permisos.
+ *
+ * `enFila`: el Menú digital la pone arriba de todo, a lo ancho. Abajo del
+ * editor quedaba después de una columna de ajustes de dos pantallas de alto y
+ * el dueño no encontraba dónde conectar la TV (Kevin, 4-nov).
  */
-export default function TelevisoresDelLocal() {
+export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boolean }) {
   const lista = useApi(() => apiTelevisores.listar(), []);
   const [conectando, setConectando] = useState(false);
   const [cambiando, setCambiando] = useState<TelevisorLocal | null>(null);
@@ -51,8 +55,24 @@ export default function TelevisoresDelLocal() {
     }
   }
 
+  const botonConectar = (
+    <Boton
+      icono="pantalla"
+      variante={tvs.length && !enFila ? "ghost" : "primary"}
+      className={enFila ? "px-3 py-2" : "mt-3 w-full"}
+      onClick={() => {
+        // Las opciones de recién: una TV del menú agregada en esta pantalla
+        // tiene que aparecer para elegirla.
+        lista.recargar();
+        setConectando(true);
+      }}
+    >
+      Conectar una TV
+    </Boton>
+  );
+
   return (
-    <Tarjeta titulo="TVs del local">
+    <Tarjeta titulo="TVs del local" accion={enFila ? botonConectar : undefined}>
       <p className="text-[13px] text-texto-2">
         En el navegador de la TV abrí <b className="font-semibold text-texto">{direccion}</b>: muestra un código.
         Tocá <b className="font-semibold text-texto">Conectar una TV</b> y escribilo acá.
@@ -61,37 +81,30 @@ export default function TelevisoresDelLocal() {
       <ErrorMsg>{error || lista.error}</ErrorMsg>
       <AvisoOk>{aviso}</AvisoOk>
 
-      {tvs.map((tv) => (
-        <div key={tv.id} className="mt-3 flex items-center gap-3 rounded-xl border border-borde p-3">
-          <span
-            className={`h-2.5 w-2.5 shrink-0 rounded-full ${tv.prendida ? "bg-primary-boton" : "bg-slate-300"}`}
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-texto">{tv.nombre}</p>
-            <p className="truncate text-[12px] text-texto-3">
-              {queMuestra(tv)} · {tv.prendida ? "prendida" : "apagada o sin internet"}
-            </p>
+      <div className={enFila && tvs.length ? "mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" : ""}>
+        {tvs.map((tv) => (
+          <div
+            key={tv.id}
+            className={`flex items-center gap-3 rounded-xl border border-borde ${enFila ? "px-3 py-2" : "mt-3 p-3"}`}
+          >
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${tv.prendida ? "bg-primary-boton" : "bg-slate-300"}`}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-texto">{tv.nombre}</p>
+              <p className="truncate text-[12px] text-texto-3">
+                {queMuestra(tv)} · {tv.prendida ? "prendida" : "apagada o sin internet"}
+              </p>
+            </div>
+            <Boton variante="ghost" className="px-3 py-1.5" onClick={() => setCambiando(tv)}>
+              Cambiar
+            </Boton>
           </div>
-          <Boton variante="ghost" className="px-3 py-1.5" onClick={() => setCambiando(tv)}>
-            Cambiar
-          </Boton>
-        </div>
-      ))}
+        ))}
+      </div>
 
-      <Boton
-        icono="pantalla"
-        variante={tvs.length ? "ghost" : "primary"}
-        className="mt-3 w-full"
-        onClick={() => {
-          // Las opciones de recién: una TV del menú agregada en esta pantalla
-          // tiene que aparecer para elegirla.
-          lista.recargar();
-          setConectando(true);
-        }}
-      >
-        Conectar una TV
-      </Boton>
+      {!enFila && botonConectar}
 
       {conectando && (
         <FormTv
