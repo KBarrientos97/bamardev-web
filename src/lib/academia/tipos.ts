@@ -1385,6 +1385,11 @@ export interface OpcionDePago {
   ahorro: number | null;
   etiqueta: string;
   vence: string | null;
+  /**
+   * Sólo el adelanto (04-nov): el estudiante elige cuánto paga, de `monto`
+   * (el mínimo) a éste. Un backend anterior no lo manda: es monto fijo.
+   */
+  montoMaximo?: number;
 }
 
 /** El bloque `pago` del estado de cuenta público (M5). */

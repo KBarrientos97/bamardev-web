@@ -153,6 +153,16 @@ function SubirComprobante({
   const [clave, setClave] = useState<OpcionDePago["clave"]>(pago.opciones[0].clave);
   // Si el servidor ya no ofrece la que estaba elegida (cambió la deuda), la primera.
   const opcion = pago.opciones.find((o) => o.clave === clave) ?? pago.opciones[0];
+  // El adelanto lo elige el estudiante (04-nov), como «Otro monto» del
+  // mostrador: arranca en el mínimo y el servidor vuelve a mirar el rango.
+  const elige = opcion.montoMaximo != null && opcion.montoMaximo > opcion.monto;
+  const [elegido, setElegido] = useState("");
+  const montoElegido = elige && elegido.trim() !== "" ? Number(elegido.replace(",", ".")) : opcion.monto;
+  const montoMal =
+    elige && (!Number.isFinite(montoElegido) || montoElegido < opcion.monto || montoElegido > opcion.montoMaximo!)
+      ? `Elegí un monto de ${bs(opcion.monto)} a ${bs(opcion.montoMaximo!)}.`
+      : "";
+  const aPagar = montoMal ? opcion.monto : Math.round(montoElegido * 100) / 100;
   const [foto, setFoto] = useState<Blob | null>(null);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
@@ -183,12 +193,18 @@ function SubirComprobante({
   }
 
   async function enviar() {
+    if (montoMal) return setError(montoMal);
     if (!foto) return setError("Subí la foto o la captura de tu comprobante.");
     if (siteKey && !captcha) return setError("Completá la verificación anti-robots.");
     setError("");
     setEnviando(true);
     try {
-      await apiAcademiaPublica.subirComprobante(sub, token, { opcion: opcion.clave, ...(siteKey && captcha ? { captcha } : {}) }, foto);
+      await apiAcademiaPublica.subirComprobante(
+        sub,
+        token,
+        { opcion: opcion.clave, ...(elige ? { monto: aPagar } : {}), ...(siteKey && captcha ? { captcha } : {}) },
+        foto,
+      );
       onCambio();
     } catch (e) {
       const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
@@ -239,7 +255,9 @@ function SubirComprobante({
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="text-sm font-bold text-[#111827]">{o.titulo}</span>
-                  <span className="whitespace-nowrap text-base font-bold tabular-nums text-[#111827]">{bs(o.monto)}</span>
+                  <span className="whitespace-nowrap text-base font-bold tabular-nums text-[#111827]">
+                    {o.montoMaximo != null && o.montoMaximo > o.monto ? `desde ${bs(o.monto)}` : bs(o.monto)}
+                  </span>
                 </span>
                 {o.ahorro != null && o.ahorro > 0 && (
                   <span className="mt-1 inline-block rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-[12px] font-semibold text-[#047857]">Ahorrás {bs(o.ahorro)}</span>
@@ -252,11 +270,33 @@ function SubirComprobante({
         })}
       </div>
 
+      {elige && (
+        <label className="block space-y-1.5">
+          <span className="block text-sm font-bold text-[#111827]">¿Cuánto vas a pagar?</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label="Cuánto vas a pagar"
+            value={elegido}
+            placeholder={String(opcion.monto)}
+            onChange={(e) => {
+              setElegido(e.target.value);
+              setError("");
+            }}
+            className="w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base font-bold tabular-nums text-[#111827] outline-none sm:max-w-[220px]"
+            style={{ borderColor: montoMal ? "#DC2626" : undefined }}
+          />
+          <span className={`block text-[12px] ${montoMal ? "text-[#B91C1C]" : "text-[#6B7280]"}`}>
+            {montoMal || `De ${bs(opcion.monto)} a ${bs(opcion.montoMaximo!)}. Lo que pagues se descuenta de tus cuotas.`}
+          </span>
+        </label>
+      )}
+
       {/* Con lugar (tablet o compu), el QR a la izquierda y qué hacer a la derecha. */}
       <div className="space-y-3 border-t border-[#F1F5F9] pt-4 sm:flex sm:items-center sm:gap-5 sm:space-y-0">
         <img src={qr} alt={`QR de ${d.instituto.nombre} para pagar`} className="mx-auto w-full max-w-[240px] rounded-xl border border-[#E5E7EB] sm:mx-0 sm:w-[200px] sm:shrink-0" />
         <div className="space-y-3 sm:flex-1">
-          <p className="text-center text-sm font-semibold text-[#111827] sm:text-left">Escaneá el QR con la app de tu banco y pagá {bs(opcion.monto)}</p>
+          <p className="text-center text-sm font-semibold text-[#111827] sm:text-left">Escaneá el QR con la app de tu banco y pagá {bs(aPagar)}</p>
           <p className="text-center text-[12px] text-[#6B7280] sm:text-left">Pagá justo ese monto: es lo que el instituto va a buscar en su cuenta.</p>
           <a
             href={qr}
@@ -312,7 +352,7 @@ function SubirComprobante({
           className="flex min-h-12 w-full items-center justify-center rounded-xl text-[15px] font-semibold text-white disabled:opacity-60"
           style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
         >
-          {enviando ? "Enviando…" : `Ya pagué ${bs(opcion.monto)}: enviar comprobante`}
+          {enviando ? "Enviando…" : `Ya pagué ${bs(aPagar)}: enviar comprobante`}
         </button>
         <p className="text-center text-[12px] text-[#6B7280]">El instituto lo revisa y te avisa por WhatsApp. Si el pago no figura, tu deuda sigue igual y podés subir otro.</p>
       </div>

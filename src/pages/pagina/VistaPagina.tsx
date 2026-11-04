@@ -613,6 +613,9 @@ export default function VistaPagina({
       colorBoton={c.oscuro}
       radio={radioTarjeta}
       escritorio={escritorio}
+      // Lado a lado sólo en los estilos de columna ancha: Clásico, Postal y
+      // Dulce son una columna angosta también en la compu (04-nov).
+      compacta={!clasico && !["POSTAL", "DULCE"].includes(estilo.clave)}
       urlInscribirme={urlInscribirme}
       urlMiCuenta={urlMiCuenta}
       titulo={
@@ -748,16 +751,27 @@ export default function VistaPagina({
             <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
               {tituloSucursales}
             </TituloSeccion>
-            {mapa}
-            <div
-              style={
-                escritorio && estilo.sucursales === "tarjeta" && !unaSucursal && !angosta
-                  ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
-                  : { display: "flex", flexDirection: "column", gap: estilo.sucursales === "texto" ? 0 : 12 }
-              }
-            >
-              {tarjetasSucursal}
-            </div>
+            {escritorio && unaSucursal && mapa && !angosta ? (
+              // Una sola sede en la compu (04-nov): el mapa y la tarjeta (con el
+              // horario) en una fila, en vez de uno debajo del otro.
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignItems: "start" }}>
+                {mapa}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{tarjetasSucursal}</div>
+              </div>
+            ) : (
+              <>
+                {mapa}
+                <div
+                  style={
+                    escritorio && estilo.sucursales === "tarjeta" && !unaSucursal && !angosta
+                      ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
+                      : { display: "flex", flexDirection: "column", gap: estilo.sucursales === "texto" ? 0 : 12 }
+                  }
+                >
+                  {tarjetasSucursal}
+                </div>
+              </>
+            )}
           </>
         ) : null,
       mapa,
