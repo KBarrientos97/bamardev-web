@@ -21,7 +21,8 @@ import type { PropinaInput } from "../../lib/belleza/apiExtras";
 import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
-import { fmtHora, fmtMoney } from "../../lib/format";
+import { fmtMoney } from "../../lib/format";
+import { abiertaDesde } from "./turnoDeCaja";
 import { aCentavos } from "../../lib/dinero";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
@@ -1165,7 +1166,7 @@ function PuntoDeVenta() {
             </h1>
             <p className="flex items-center gap-1.5 truncate text-xs text-texto-3">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-              Caja abierta {fmtHora(abierta.fechaApertura)} ·{" "}
+              Caja abierta {abiertaDesde(abierta.fechaApertura)} ·{" "}
               {fmtMoney(abierta.montoApertura)}
             </p>
           </div>
