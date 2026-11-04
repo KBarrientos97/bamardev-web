@@ -184,6 +184,25 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     );
   });
 
+  it("Derick, 04-nov: el paso de pago avisa que se puede asegurar el cupo con una parte", async () => {
+    vi.mocked(apiAcademiaPublica.cursos).mockResolvedValue([
+      { ...CURSO, grupos: [CURSO.grupos[0], { ...CURSO.grupos[1], adelantoDesde: 300 }] },
+    ]);
+    await montar();
+    await llenarDatosYSeguir();
+    fireEvent.click(screen.getByRole("button", { name: "Seguir sin fotos" }));
+    expect(screen.getByRole("note")).toHaveTextContent("¿No podés pagar todo ahora? Asegurás tu cupo pagando una parte, desde Bs 300.");
+    expect(screen.getByText("Después de enviar podés pagar desde esta página, todo o una parte, o en el instituto.")).toBeInTheDocument();
+  });
+
+  it("sin adelanto, el paso de pago no lo menciona", async () => {
+    await montar();
+    await llenarDatosYSeguir();
+    fireEvent.click(screen.getByRole("button", { name: "Seguir sin fotos" }));
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.getByText("Después de enviar podés pagar desde esta página o en el instituto.")).toBeInTheDocument();
+  });
+
   it("M4: con algunas fotos, el aviso final nombra sólo las que faltan", async () => {
     await montar();
     await llenarDatosYSeguir();

@@ -27,6 +27,9 @@ export default function ArmadoDulce(x: PiezasArmado) {
   const { p, c, t, escritorio, chico, Principal } = x;
   const alto = escritorio ? 280 : chico ? 150 : 180;
   const lado = chico ? 84 : 96;
+  // Con cursos (04-nov) la columna se ensancha en la compu: el curso y el pago,
+  // y el mapa y la sede, van de a dos por fila y en 640 px no entran.
+  const ancha = escritorio && !!x.cursos;
   return (
     <Raiz x={x}>
       <header>
@@ -93,9 +96,10 @@ export default function ArmadoDulce(x: PiezasArmado) {
         style={{
           ...columna,
           gap: 14,
-          maxWidth: escritorio ? 640 : 480,
+          maxWidth: ancha ? 1000 : escritorio ? 640 : 480,
           margin: "0 auto",
-          padding: escritorio ? "24px 0 40px" : "18px 18px 24px",
+          padding: ancha ? "24px 32px 40px" : escritorio ? "24px 0 40px" : "18px 18px 24px",
+          ...(ancha ? { boxSizing: "border-box" as const, width: "100%" } : {}),
         }}
       >
         {x.anuncio}

@@ -206,6 +206,7 @@ function Formulario({
 
   const curso = cursos.find((x) => x.id === cursoId) ?? cursoInicial;
   const grupo = curso.grupos.find((g) => g.id === grupoId) ?? null;
+  const adelanto = grupo?.adelantoDesde ?? null;
   const modulos = curso.modulos?.length ? curso.modulos : curso.materias;
   const planes = curso.planes ?? [];
   const mesAMes = planes.find((x) => x.generado === "MES_A_MES");
@@ -557,6 +558,11 @@ function Formulario({
                 })}
               </div>
             )}
+            {adelanto != null && (
+              <p role="note" className="rounded-xl bg-[#F9FAFB] px-3.5 py-2.5 text-[13px] text-[#374151]">
+                ¿No podés pagar todo ahora? Asegurás tu cupo pagando una parte, desde <strong className="text-[#111827]">{bs(adelanto)}</strong>.
+              </p>
+            )}
             <CampoP etiqueta="¿Algo que quieras preguntar? (opcional)">
               <textarea value={mensaje} onChange={(e) => setMensaje(e.target.value.slice(0, 500))} rows={2} className={`${INPUT} resize-y`} />
             </CampoP>
@@ -621,7 +627,11 @@ function Formulario({
             )}
           </div>
           <p id="motivo-paso" className="text-center text-[13px] text-[#6B7280]">
-            {paso < 4 ? bloqueo || notaFotos : "Pagás en el instituto: te escribimos por WhatsApp para confirmar tu lugar."}
+            {paso < 4
+              ? bloqueo || notaFotos
+              : adelanto != null
+                ? "Después de enviar podés pagar desde esta página, todo o una parte, o en el instituto."
+                : "Después de enviar podés pagar desde esta página o en el instituto."}
           </p>
         </div>
       </div>

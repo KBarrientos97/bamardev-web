@@ -613,9 +613,10 @@ export default function VistaPagina({
       colorBoton={c.oscuro}
       radio={radioTarjeta}
       escritorio={escritorio}
-      // Lado a lado sólo en los estilos de columna ancha: Clásico, Postal y
-      // Dulce son una columna angosta también en la compu (04-nov).
-      compacta={!clasico && !["POSTAL", "DULCE"].includes(estilo.clave)}
+      // Lado a lado sólo en los estilos de columna ancha: Clásico y Postal son
+      // una columna angosta también en la compu (04-nov). Dulce se ensancha
+      // cuando hay cursos (ArmadoDulce).
+      compacta={!clasico && estilo.clave !== "POSTAL"}
       urlInscribirme={urlInscribirme}
       urlMiCuenta={urlMiCuenta}
       titulo={
@@ -699,8 +700,9 @@ export default function VistaPagina({
     const tituloSucursales = unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`;
     // En las columnas angostas de computadora (la tarjeta de Postal, la columna
     // de Dulce, el panel de Carta junto a la lista) dos tarjetas por fila no
-    // dejan entrar los botones.
-    const angosta = ["POSTAL", "DULCE"].includes(estilo.clave) || (estilo.clave === "CARTA" && !!catalogo);
+    // dejan entrar los botones. Dulce con cursos ya no es angosta (ArmadoDulce).
+    const angosta =
+      estilo.clave === "POSTAL" || (estilo.clave === "DULCE" && !cursos) || (estilo.clave === "CARTA" && !!catalogo);
     const tarjetasSucursal = p.sucursales.map((s, i) => (
       <TarjetaSucursal
         key={`${s.nombre}-${i}`}

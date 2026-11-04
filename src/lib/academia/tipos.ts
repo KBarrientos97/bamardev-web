@@ -1347,6 +1347,11 @@ export interface GrupoPublico {
   horaFin: string;
   fechaInicio: string;
   cuposLibres: number | null;
+  /**
+   * Derick, 04-nov: lo mínimo con que se asegura el cupo pagando una parte
+   * desde la página; null si el instituto no lo ofrece.
+   */
+  adelantoDesde?: number | null;
 }
 
 export interface CursoPublico {
