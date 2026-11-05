@@ -657,6 +657,24 @@ describe("pedidos con número (extra tickets_pedido)", () => {
     expect(comanda.textContent).not.toContain("Bs");
   });
 
+  it("la nota va sólo en la comanda: en el recibo del cliente sobraba", () => {
+    // Kevin, 3-nov: "sin ensalada" es para la cocina.
+    dibujar(conNumero());
+    expect(document.querySelector(".comanda-impresa")).toHaveTextContent("sin ensalada");
+    expect(document.querySelector(".recibo-impreso")).not.toHaveTextContent("sin ensalada");
+  });
+
+  it("sin número no hay comanda y el recibo sigue llevando la nota", () => {
+    dibujar(
+      venta({
+        detalles: [
+          { productoId: 1, producto: "Brasa cuarto", cantidad: 1, precio: 26, subtotal: 26, nota: "sin ensalada", consumo: "LLEVAR" },
+        ],
+      } as Partial<Venta>),
+    );
+    expect(screen.getByText("sin ensalada")).toBeInTheDocument();
+  });
+
   it("el comprobante pasa a llamarse Venta: el ticket es el número de arriba", () => {
     dibujar(conNumero());
     expect(screen.getByText("Venta:").nextElementSibling).toHaveTextContent("T-0007");
@@ -780,5 +798,23 @@ describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
       vi.advanceTimersByTime(1000);
     });
     expect(impresos).toEqual([undefined]);
+  });
+});
+
+describe("enviar el recibo por WhatsApp (Derick, 04-nov)", () => {
+  it("abre WhatsApp con el chat del cliente y el detalle de la venta", () => {
+    const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
+    dibujar(venta({ clienteTelefono: "71234567" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
+    const url = String(abrir.mock.calls[0][0]);
+    expect(url).toMatch(/^https:\/\/wa\.me\/59171234567\?text=/);
+    expect(decodeURIComponent(url)).toContain("Negocio de prueba");
+    expect(decodeURIComponent(url)).toContain("Pollo entero");
+    abrir.mockRestore();
+  });
+
+  it("una venta que todavía no subió no se manda", () => {
+    dibujar(venta({ pendienteSync: true } as Partial<Venta>));
+    expect(screen.queryByRole("button", { name: "Enviar por WhatsApp" })).not.toBeInTheDocument();
   });
 });

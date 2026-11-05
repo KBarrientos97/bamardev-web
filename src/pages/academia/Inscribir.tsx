@@ -212,7 +212,12 @@ export default function Inscribir({
   const [pagaHoy, setPagaHoy] = useState<PagaHoy>("primera");
   const [otroMonto, setOtroMonto] = useState("");
 
-  const [bienvenida, setBienvenida] = useState(true);
+  /**
+   * La inscripción ya hecha (04-nov): el panel muestra «quedó inscrito» con la
+   * bienvenida por WhatsApp como opción y el paso siguiente. Antes WhatsApp se
+   * abría solo al inscribir y sacaba a la recepción de la pantalla.
+   */
+  const [hecha, setHecha] = useState<{ resultado: ResultadoInscripcion; bienvenida: string | null } | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   /**
@@ -285,11 +290,18 @@ export default function Inscribir({
    * Lo que está mal en el adelanto, dicho en el campo mientras se escribe: un
    * -50 dejaba "Paga hoy Bs 0,00" e inscribía igual (QA ronda 2, B-16).
    */
+  /**
+   * El adelanto mínimo del instituto (03-nov): el mismo % que pide la página
+   * para asegurar el cupo, redondeado hacia arriba a Bs enteros. 0 = sin mínimo.
+   */
+  const pctAdelanto = ajustes.datos?.adelantoMinimoPct ?? null;
+  const adelantoMinimo = pctAdelanto && plan ? Math.ceil(Math.round(vista.total * pctAdelanto) / 100) : 0;
   const adelantoMal = (() => {
     if (elegidoHoy !== "otro" || otroMonto.trim() === "") return "";
     const n = Number(otroMonto);
     if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de Bs 0.";
     if (plan && n > vista.total) return `No puede pasar el total (${fmtMoney(vista.total)}).`;
+    if (n < adelantoMinimo) return `El adelanto mínimo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} % del curso).`;
     return "";
   })();
   const sobreTope =
@@ -430,14 +442,16 @@ export default function Inscribir({
             ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
             ...(faltanFotos.length ? { fotosPendientes: true } : {}),
           }, fotos);
-      if (bienvenida) mandarBienvenida(inscripcion.bienvenida);
       // A3: con el check, las fotos quedan aprobadas. Si falla, la inscripción
       // ya está hecha: las fotos siguen "por revisar" y se aprueban después.
       const alumnoId = elegido?.id ?? preinscripcion?.alumno.id ?? inscripcion.alumnoId;
       if (apruebaFotos && pideFotos && fotosRevisadas && faltanFotos.length === 0 && alumnoId != null) {
         await apiAcademia.revisarFotos(alumnoId, { ok: true }).catch(() => undefined);
       }
-      onInscrito({ inscripcion, ...(nombreFinal ? { nombre: nombreFinal } : {}), cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
+      setHecha({
+        resultado: { inscripcion, ...(nombreFinal ? { nombre: nombreFinal } : {}), cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) },
+        bienvenida: urlBienvenida(inscripcion.bienvenida),
+      });
     } catch (e) {
       const codigo = e instanceof ApiError ? e.codigo : undefined;
       if (codigo === CODIGOS_ACADEMIA.FOTOS_REQUERIDAS && e instanceof ApiError) {
@@ -506,16 +520,13 @@ export default function Inscribir({
     }
   }
 
-  /** La bienvenida por wa.me (PA §9): al tutor si lo hay, si no al alumno. */
-  function mandarBienvenida(delBackend: InscripcionDetalle["bienvenida"]) {
+  /** La bienvenida por wa.me (PA §9): al tutor si lo hay, si no al alumno. null = no hay a quién. */
+  function urlBienvenida(delBackend: InscripcionDetalle["bienvenida"]): string | null {
     // La arma el backend (con el tutor que tiene guardado aunque acá no se
     // haya cargado): si la manda, va esa; `null` es que no hay a quién.
-    if (delBackend !== undefined) {
-      if (delBackend?.url) abrirWhatsapp(delBackend.url);
-      return;
-    }
+    if (delBackend !== undefined) return delBackend?.url ?? null;
     const telefono = esMenor ? tutor.telefono : preinscripcion?.alumno.telefono ?? elegido?.telefono ?? nuevo.telefono;
-    if (!telefono || !grupo) return;
+    if (!telefono || !grupo) return null;
     const delAlumno = nombreFinal.split(",").pop()?.trim().split(" ")[0] ?? "";
     const cuando = `el ${fechaCorta(grupo.fechaInicio)}, ${horarioGrupo(grupo)}, en ${nombreDe(grupo.sede)}`;
     // Al tutor se le habla del estudiante, no como si fuera él quien empieza
@@ -523,8 +534,7 @@ export default function Inscribir({
     const texto = esMenor
       ? `Hola ${tutor.nombre.trim()}, ${delAlumno} ya está inscrito/a en ${nombreDe(grupo.carrera)}. Empieza ${cuando}.`
       : `Hola ${delAlumno}, ¡bienvenido/a a ${nombreDe(grupo.carrera)}! Empezás ${cuando}.`;
-    const url = enlaceWhatsApp(telefono, texto);
-    if (url) abrirWhatsapp(url);
+    return enlaceWhatsApp(telefono, texto) || null;
   }
 
   const primera = vista.cuotas[0]?.monto ?? 0;
@@ -543,6 +553,21 @@ export default function Inscribir({
   const alTutor = esMenor || !!preinscripcion?.alumno.menor;
   const tutorListo = !esMenor || (!!tutor.nombre.trim() && !!tutor.telefono.trim()) || !!preinscripcion?.tutor;
   const datosListos = !!preinscripcion || !!elegido || (!!nuevo.ci.trim() && !!nuevo.apellidos.trim() && !!nuevo.nombres.trim());
+
+  if (hecha)
+    return (
+      <InscripcionHecha
+        nombre={hecha.resultado.nombre ?? ""}
+        grupo={grupo ? `${nombreDe(grupo.carrera)} · ${horarioGrupo(grupo)}` : null}
+        alTutor={alTutor}
+        bienvenida={hecha.bienvenida}
+        montoHoy={hecha.resultado.cobrar ? (hecha.resultado.montoHoy ?? 0) : null}
+        // Cerrar con la X también termina: la inscripción ya está hecha y
+        // quien abrió el panel tiene que enterarse, aunque no se siga a cobrar.
+        onCerrar={() => onInscrito({ ...hecha.resultado, cobrar: false })}
+        onSeguir={() => onInscrito(hecha.resultado)}
+      />
+    );
 
   return (
     // Sin cerrar con el clic en el velo (ronda 2, R6): en escritorio cubre media
@@ -827,7 +852,10 @@ export default function Inscribir({
                   </Campo>
                 </div>
               )}
-              <p className="text-xs text-texto-4">Si deja un adelanto, el resto queda como saldo.</p>
+              <p className="text-xs text-texto-4">
+                Si deja un adelanto, el resto queda como saldo.
+                {adelantoMinimo > 0 && ` El mínimo para asegurar el cupo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} %).`}
+              </p>
             </section>
           )}
           </Paso>
@@ -1028,11 +1056,7 @@ export default function Inscribir({
             </section>
           ) : (
           /* En escritorio, la bienvenida a la izquierda y los botones a la derecha (el principal al final); en el celular, uno debajo del otro. */
-          <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-            <label className="flex min-h-11 items-center gap-2 text-[13px] text-texto-2 lg:min-h-0">
-              <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
-              Enviar bienvenida por WhatsApp{alTutor ? " al tutor" : ""}
-            </label>
+          <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-end lg:gap-4">
             <div className="flex flex-col gap-2 lg:flex-row-reverse lg:items-center">
               {/* Sin las 3 fotos (D3) los botones siguen activos: al tocarlos se pregunta si se inscribe igual. */}
               <Boton className="min-h-11 w-full lg:w-auto lg:min-w-[240px]" disabled={enviando} onClick={() => void enviar(true)}>
@@ -1059,6 +1083,77 @@ type ExtraEnvio = { sobreCupo?: boolean; sinFotos?: boolean; firma?: { username:
  * salvo que el que inscribe ya autorice con PIN; 4 a 6 dígitos), pero en
  * línea: ése es un diálogo y acá quedaba encima de la pantalla del alta.
  */
+/**
+ * La inscripción ya hecha (04-nov): «quedó inscrito», la bienvenida por
+ * WhatsApp como un botón (se abre sólo si la recepción lo toca) y el paso
+ * siguiente: cobrar lo que se eligió o terminar.
+ */
+function InscripcionHecha({
+  nombre,
+  grupo,
+  alTutor,
+  bienvenida,
+  montoHoy,
+  onCerrar,
+  onSeguir,
+}: {
+  nombre: string;
+  grupo: string | null;
+  alTutor: boolean;
+  bienvenida: string | null;
+  /** null = se inscribió sin cobrar. */
+  montoHoy: number | null;
+  onCerrar: () => void;
+  onSeguir: () => void;
+}) {
+  const [enviada, setEnviada] = useState(false);
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30">
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Inscripción lista"
+        className="flex h-full w-full flex-col bg-white shadow-2xl sm:max-w-[440px] sm:border-l sm:border-borde"
+      >
+        <header className="flex items-center justify-end border-b border-borde-soft px-4 py-3.5 sm:px-5">
+          <BotonIcono icono="close" etiqueta="Cerrar" onClick={onCerrar} />
+        </header>
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 bg-muted/40 px-5 py-8">
+          <div className="card w-full max-w-sm space-y-4 p-6 text-center">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+              <Icon name="check" size={24} />
+            </span>
+            <div>
+              <p className="text-lg font-bold text-texto">{nombre ? `${nombre} quedó inscrito/a` : "Quedó inscrito/a"}</p>
+              {grupo && <p className="mt-1 text-[13px] text-texto-3">{grupo}</p>}
+            </div>
+            <div className="space-y-2">
+              <Boton className="min-h-11 w-full" onClick={onSeguir}>
+                {montoHoy == null ? "Listo" : montoHoy > 0 ? `Cobrar ${fmtMoney(montoHoy)}` : "Ir a cobrar"}
+              </Boton>
+              {bienvenida ? (
+                <Boton
+                  variante="ghost"
+                  icono="phone"
+                  className="min-h-11 w-full"
+                  onClick={() => {
+                    abrirWhatsapp(bienvenida);
+                    setEnviada(true);
+                  }}
+                >
+                  {enviada ? "Volver a abrir WhatsApp" : `Enviar bienvenida por WhatsApp${alTutor ? " al tutor" : ""}`}
+                </Boton>
+              ) : (
+                <p className="text-[13px] text-texto-3">No tiene un WhatsApp cargado para mandarle la bienvenida.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function PinEnLinea({ onCancelar, onFirmar }: { onCancelar: () => void; onFirmar: (f: { username: string; pin: string }) => void }) {
   const { usuario: actual } = useAuth();
   const pideUsuario = !tienePermiso(actual, "autorizar.pin");

@@ -15,6 +15,8 @@ import ComandaCocina from "./ComandaCocina";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { CabeceraNegocio, HojaAngosta, QrRecibo } from "./PiezasRecibo";
+import { whatsappDelRecibo } from "../../lib/mensajeRecibo";
+import { abrirWhatsapp } from "../../lib/academia/vista";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -166,18 +168,30 @@ export default function PantallaRecibo({
   const ticketPedido = venta.ticket ?? null;
   const conTicket = !!ticketPedido && !venta.pendienteSync;
 
-  const imprimirYCompartir = incluye("recibo_pdf") && (
+  const imprimirYCompartir = (
     <>
-      {!conTicket && (
-        <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-          Imprimir
+      {incluye("recibo_pdf") && (
+        <>
+          {!conTicket && (
+            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+              Imprimir
+            </Boton>
+          )}
+          {/* Siempre visible: si el equipo no sabe compartir archivos, la
+              imagen se descarga, que en un escritorio es lo más parecido. */}
+          <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
+            {compartiendo ? "Generando…" : "Compartir"}
+          </Boton>
+        </>
+      )}
+      {/* El recibo en texto por WhatsApp (Derick, 04-nov): sin descargar ni
+          adjuntar. No pide `recibo_pdf`: no es el PDF, es un mensaje. Una
+          venta sin internet todavía no tiene comprobante: no se manda. */}
+      {!venta.pendienteSync && (
+        <Boton variante="ghost" icono="phone" onClick={() => abrirWhatsapp(whatsappDelRecibo(venta, negocio?.nombre ?? ""))}>
+          Enviar por WhatsApp
         </Boton>
       )}
-      {/* Siempre visible: si el equipo no sabe compartir archivos, la
-          imagen se descarga, que en un escritorio es lo más parecido. */}
-      <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
-        {compartiendo ? "Generando…" : "Compartir"}
-      </Boton>
     </>
   );
   const historial = (
@@ -365,7 +379,7 @@ export default function PantallaRecibo({
                   {g.consumo === "MESA" ? "EN MESA" : "PARA LLEVAR"}
                 </p>
                 {g.lineas.map((d, i) => (
-                  <LineaTicket key={i} linea={d} mostrarConsumo={false} />
+                  <LineaTicket key={i} linea={d} mostrarConsumo={false} conNota={false} />
                 ))}
               </div>
             ))
@@ -375,6 +389,7 @@ export default function PantallaRecibo({
                 linea={d}
                 mostrarConsumo={mostrarConsumo}
                 cuota={cuotaDeLinea(venta, d.cuotaId)}
+                conNota={!conTicket}
               />
             ))}
       </div>
@@ -639,7 +654,8 @@ export default function PantallaRecibo({
     <div ref={raiz} className="@container flex h-full min-h-0 w-full flex-col">
       {anchoPapel && <HojaAngosta />}
       <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-26rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
-        <div className="mb-4 flex flex-col items-center text-center print:hidden @3xl:mb-0">
+        {/* En su tarjeta (04-nov): suelto sobre el fondo se perdía al lado del ticket. */}
+        <div className="card mb-4 flex flex-col items-center px-5 py-6 text-center print:hidden @3xl:mb-0">
           <span
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
               venta.pendienteSync ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
@@ -782,6 +798,7 @@ function LineaTicket({
   linea,
   mostrarConsumo,
   cuota,
+  conNota = true,
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
   mostrarConsumo: boolean;
@@ -791,6 +808,12 @@ function LineaTicket({
    * («Cuota 2/2 · Barbería»).
    */
   cuota?: { concepto: string; modulos?: string };
+  /**
+   * Con número de pedido la nota ("sin fideo", "pecho") va sólo en la comanda:
+   * es para la cocina, y en el recibo del cliente sobraba (Kevin, 3-nov). Sin
+   * número no hay comanda y el recibo la sigue llevando, como siempre.
+   */
+  conNota?: boolean;
 }) {
   const enMesa = linea.consumo === "MESA";
   return (
@@ -817,7 +840,7 @@ function LineaTicket({
           <span className="shrink-0">− {fmtMoney(linea.descuento)}</span>
         </div>
       )}
-      {linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
+      {conNota && linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
       {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
           trae. Una venta sin profesional ni paquetes no lo trae y el ticket
           de siempre no cambia. */}

@@ -35,7 +35,7 @@ import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
 import ListaProductosVendidos from "./ListaProductosVendidos";
 import { textoProductos, textoUnidades } from "./productosVendidos";
-import { turnoDeCaja } from "./turnoDeCaja";
+import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
 
 /**
  * La fila del billar en el arqueo, con el signo en el valor. El número es un
@@ -209,7 +209,7 @@ export default function PantallaCierre({
         <div>
           <h1 className="text-[15px] font-bold text-texto">Cierre de caja</h1>
           <p className="text-xs text-texto-3">
-            Abierta desde {fmtHora(caja.fechaApertura)}
+            Abierta desde {abiertaDesde(caja.fechaApertura)}
           </p>
         </div>
       </div>

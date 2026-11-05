@@ -151,6 +151,37 @@ describe("M5 · Pagar desde la página", () => {
     expect(screen.queryByRole("button", { name: /enviar comprobante/ })).not.toBeInTheDocument();
   });
 
+  it("una parte para asegurar el cupo: el estudiante elige cuánto, del mínimo al total (04-nov)", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({
+      ...PREINSCRITO,
+      pago: {
+        ...PREINSCRITO.pago,
+        opciones: [
+          ...PREINSCRITO.pago.opciones,
+          { clave: "ADELANTO", titulo: "Pagar una parte para asegurar mi cupo", detalle: "Elegís cuánto", monto: 300, montoMaximo: 1500, ahorro: null, etiqueta: "Adelanto", vence: null },
+        ],
+      },
+    });
+    vi.mocked(apiAcademiaPublica.subirComprobante).mockResolvedValue({ ok: true, monto: 700, etiqueta: "Adelanto" });
+    await montar();
+    fireEvent.click(screen.getByRole("radio", { name: /Pagar una parte.*desde Bs 300/ }));
+    const campo = screen.getByLabelText("Cuánto vas a pagar");
+    // Arranca en el mínimo.
+    expect(screen.getByRole("button", { name: /Ya pagué Bs 300/ })).toBeInTheDocument();
+    fireEvent.change(campo, { target: { value: "100" } });
+    expect(screen.getByText(/Elegí un monto de Bs 300 a Bs 1\.500/)).toBeInTheDocument();
+    fireEvent.change(campo, { target: { value: "700" } });
+    expect(screen.getByText(/y pagá Bs 700$/)).toBeInTheDocument();
+    const archivo = new File(["x"], "captura.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Foto o captura del comprobante"), { target: { files: [archivo] } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Ya pagué Bs 700/ }));
+    });
+    expect(vi.mocked(apiAcademiaPublica.subirComprobante).mock.calls[0][2]).toEqual({ opcion: "ADELANTO", monto: 700 });
+  });
+
   it("sin la foto no se manda nada", async () => {
     vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(PREINSCRITO);
     await montar();

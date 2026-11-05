@@ -12,6 +12,8 @@ import { useSalonPublico } from "./useSalonPublico";
 const TvTickets = lazy(() => import("./TvTickets"));
 /** Las TVs del menú digital (`/tv/menu/<llave>/<n>`). */
 const TvMenu = lazy(() => import("./TvMenu"));
+/** Una TV del restaurante conectada con código (`/tv`), sin enlace largo. */
+const TvConectar = lazy(() => import("./TvConectar"));
 
 /**
  * La TV del salón del billar SIN sesión (§7.11): `/tv/billar/<llave>`, con
@@ -31,6 +33,15 @@ const TvMenu = lazy(() => import("./TvMenu"));
 export default function RutasTv() {
   return (
     <Routes>
+      {/* `/tv` a secas: la TV muestra un código y se conecta desde el celular. */}
+      <Route
+        index
+        element={
+          <Suspense fallback={<div className="min-h-dvh bg-[#1A1210]" />}>
+            <TvConectar />
+          </Suspense>
+        }
+      />
       <Route path="billar/:llave" element={<TvBillar />} />
       {/* La TV de tickets del restaurante: aparte, para que una no baje la otra. */}
       <Route

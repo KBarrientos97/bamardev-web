@@ -613,6 +613,10 @@ export default function VistaPagina({
       colorBoton={c.oscuro}
       radio={radioTarjeta}
       escritorio={escritorio}
+      // Lado a lado sólo en los estilos de columna ancha: Clásico y Postal son
+      // una columna angosta también en la compu (04-nov). Dulce se ensancha
+      // cuando hay cursos (ArmadoDulce).
+      compacta={!clasico && estilo.clave !== "POSTAL"}
       urlInscribirme={urlInscribirme}
       urlMiCuenta={urlMiCuenta}
       titulo={
@@ -696,8 +700,9 @@ export default function VistaPagina({
     const tituloSucursales = unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`;
     // En las columnas angostas de computadora (la tarjeta de Postal, la columna
     // de Dulce, el panel de Carta junto a la lista) dos tarjetas por fila no
-    // dejan entrar los botones.
-    const angosta = ["POSTAL", "DULCE"].includes(estilo.clave) || (estilo.clave === "CARTA" && !!catalogo);
+    // dejan entrar los botones. Dulce con cursos ya no es angosta (ArmadoDulce).
+    const angosta =
+      estilo.clave === "POSTAL" || (estilo.clave === "DULCE" && !cursos) || (estilo.clave === "CARTA" && !!catalogo);
     const tarjetasSucursal = p.sucursales.map((s, i) => (
       <TarjetaSucursal
         key={`${s.nombre}-${i}`}
@@ -748,16 +753,27 @@ export default function VistaPagina({
             <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
               {tituloSucursales}
             </TituloSeccion>
-            {mapa}
-            <div
-              style={
-                escritorio && estilo.sucursales === "tarjeta" && !unaSucursal && !angosta
-                  ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
-                  : { display: "flex", flexDirection: "column", gap: estilo.sucursales === "texto" ? 0 : 12 }
-              }
-            >
-              {tarjetasSucursal}
-            </div>
+            {escritorio && unaSucursal && mapa && !angosta ? (
+              // Una sola sede en la compu (04-nov): el mapa y la tarjeta (con el
+              // horario) en una fila, en vez de uno debajo del otro.
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, alignItems: "start" }}>
+                {mapa}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{tarjetasSucursal}</div>
+              </div>
+            ) : (
+              <>
+                {mapa}
+                <div
+                  style={
+                    escritorio && estilo.sucursales === "tarjeta" && !unaSucursal && !angosta
+                      ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
+                      : { display: "flex", flexDirection: "column", gap: estilo.sucursales === "texto" ? 0 : 12 }
+                  }
+                >
+                  {tarjetasSucursal}
+                </div>
+              </>
+            )}
           </>
         ) : null,
       mapa,

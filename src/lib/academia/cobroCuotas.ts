@@ -137,6 +137,7 @@ export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
     ...venta,
     ...(detalles ? { detalles } : {}),
     pagadorCuotas: pagador && pagador.rol === "TUTOR" ? { nombre: pagador.nombre, rol: pagador.rol } : null,
+    telefonoPagador: pagador?.telefono ?? null,
     inscripcionCuotas: cobro.inscripcionId,
   };
 }

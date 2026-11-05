@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
@@ -134,10 +134,12 @@ export default function Calendario() {
    * fuera de sus franjas (QA ronda 2, B-07).
    */
   const abrirHueco = (fila: FilaCalendario, mes: string) => {
-    const base = { inicio: fila.inicio, fin: fila.fin, mes, esFranja: fila.esFranja };
+    const base = { inicio: fila.inicio, fin: fila.fin, mes, esFranja: fila.esFranja, ...(fila.finDeSemana ? { finDeSemana: true } : {}) };
     const propia = sede.sucursalId ?? usuario?.sucursalId ?? null;
     if (propia != null || !sede.elegir) return setHueco({ ...base, sede: propia });
-    const iguales = fila.esFranja ? (ajustes.datos?.franjas ?? []).filter((f) => f.inicio === fila.inicio && f.fin === fila.fin) : [];
+    const iguales = fila.esFranja
+      ? (ajustes.datos?.franjas ?? []).filter((f) => f.inicio === fila.inicio && f.fin === fila.fin && !!f.finDeSemana === !!fila.finDeSemana)
+      : [];
     const deTodas = iguales.some((f) => f.almacenId == null);
     const ids = [...new Set(iguales.map((f) => f.almacenId).filter((x): x is number => x != null))];
     if (!deTodas && ids.length === 1) return setHueco({ ...base, sede: ids[0] });
@@ -466,6 +468,20 @@ function TarjetaGrupo({
   );
 }
 
+const claveFilaCal = (f: FilaCalendario) => `${f.inicio}-${f.fin}-${f.esFranja}${f.finDeSemana ? "-fds" : ""}`;
+
+/**
+ * Las filas vienen en dos bloques (04-nov): de lunes a viernes y de sábado y
+ * domingo, donde caen los intensivos. El título sólo hace falta si hay filas
+ * de fin de semana: un instituto que no da clases ese día ve todo como antes.
+ */
+function bloqueNuevo(filas: FilaCalendario[], i: number): boolean {
+  if (!filas.some((f) => f.finDeSemana)) return false;
+  return i === 0 || !!filas[i].finDeSemana !== !!filas[i - 1].finDeSemana;
+}
+
+const tituloBloque = (f: FilaCalendario) => (f.finDeSemana ? "Sábado y domingo" : "Lunes a viernes");
+
 function Grilla({
   meses,
   filas,
@@ -510,8 +526,16 @@ function Grilla({
             </div>
           ))}
         </div>
-        {filas.map((fila) => (
-          <div key={`${fila.inicio}-${fila.fin}-${fila.esFranja}`} role="row" className="grid border-b border-borde-soft last:border-b-0" style={{ gridTemplateColumns: columnas }}>
+        {filas.map((fila, i) => (
+          <Fragment key={claveFilaCal(fila)}>
+          {bloqueNuevo(filas, i) && (
+            <div role="row" className="border-b border-borde-soft bg-muted/60">
+              <span role="rowheader" className="sticky left-0 block px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-texto-3 sm:pl-5">
+                {tituloBloque(fila)}
+              </span>
+            </div>
+          )}
+          <div role="row" className="grid border-b border-borde-soft last:border-b-0" style={{ gridTemplateColumns: columnas }}>
             <div role="rowheader" className="sticky left-0 z-10 bg-white px-4 py-3 sm:pl-5">
               <span className="block text-sm font-bold tabular-nums text-texto">{fila.inicio}</span>
               <span className="block text-xs tabular-nums text-texto-3">a {fila.fin}</span>
@@ -531,7 +555,7 @@ function Grilla({
                     <button
                       type="button"
                       title="Abrir grupo aquí"
-                      aria-label={`Abrir grupo aquí: ${fila.inicio} a ${fila.fin}, ${nombreMes(mes)}`}
+                      aria-label={`Abrir grupo aquí: ${fila.inicio} a ${fila.fin}${fila.finDeSemana ? " de sábado y domingo" : ""}, ${nombreMes(mes)}`}
                       onClick={() => onHueco(fila, mes)}
                       className={`group flex min-h-[72px] w-full items-center justify-center gap-1.5 rounded-lg text-xs font-semibold ${CLASE_HUECO}`}
                     >
@@ -544,6 +568,7 @@ function Grilla({
               );
             })}
           </div>
+          </Fragment>
         ))}
       </div>
     </div>
@@ -596,12 +621,13 @@ function VistaCelular({
   const p = usePalabras();
   return (
     <div className="divide-y divide-borde-soft">
-      {filas.map((fila) => {
+      {filas.map((fila, i) => {
         const grupos = (fila.celdas.find((c) => c.mes === mes)?.grupos ?? []).filter(pasa);
-        const rango = `${fila.inicio} a ${fila.fin}`;
+        const rango = `${fila.inicio} a ${fila.fin}${fila.finDeSemana ? " de sábado y domingo" : ""}`;
         return (
-          <section key={`${fila.inicio}-${fila.fin}-${fila.esFranja}`} aria-label={rango} className="px-4 py-3">
-            <h2 className="mb-2 text-[13px] font-bold tabular-nums text-texto">{rango}</h2>
+          <section key={claveFilaCal(fila)} aria-label={rango} className="px-4 py-3">
+            {bloqueNuevo(filas, i) && <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-texto-3">{tituloBloque(fila)}</p>}
+            <h2 className="mb-2 text-[13px] font-bold tabular-nums text-texto">{fila.inicio} a {fila.fin}</h2>
             <div className="space-y-2">
               {grupos.map((g) => (
                 <button

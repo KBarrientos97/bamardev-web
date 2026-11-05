@@ -10,6 +10,7 @@ import type {
   SucursalEditor,
 } from "./tipos";
 import { numeroInternacional } from "./whatsapp";
+import { iniciales } from "../format";
 
 /** El `wa.me` del WhatsApp de una sucursal, como lo arma el backend. */
 function urlWhatsappSucursal(numero: string | null | undefined): string | null {
@@ -128,13 +129,15 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
   const redes = visibles.filter((x) => x.formato !== "BOTON" && x.id !== destacado?.id).map(publico);
   const anuncioVigente = !!p.anuncioTexto?.trim() && (!p.anuncioHasta || p.anuncioHasta >= hoy);
   const descripcion = p.descripcion?.trim() || null;
+  // El nombre propio de la página, si lo tiene (el `nombreEnPagina` del backend).
+  const propio = p.nombrePublico?.trim() || null;
   return {
     subdominio: e.subdominio ?? "",
-    nombre: e.negocio.nombre,
+    nombre: propio ?? e.negocio.nombre,
     rubro: e.negocio.rubroNombre ?? "",
     // La clave, para hablar como el rubro ("Nuestras sedes" en un instituto).
     rubroClave: e.negocio.rubro,
-    iniciales: e.negocio.iniciales,
+    iniciales: propio ? iniciales(propio) : e.negocio.iniciales,
     descripcion,
     color: { clave: muestra?.clave ?? "VERDE", hex: muestra?.hex ?? "#0C7A55" },
     formaBotones: p.formaBotones,

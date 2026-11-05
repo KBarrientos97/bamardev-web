@@ -96,6 +96,10 @@ describe("D3 · convertir sin las fotos", () => {
       fireEvent.click(within(within(dialogo).getByRole("region", { name: "Faltan fotos" })).getByRole("button", { name: "Inscribir sin fotos" }));
     });
     expect(apiAcademia.convertir).toHaveBeenCalledWith(44, expect.objectContaining({ fotosPendientes: true }), {});
+    // Inscribir muestra «quedó inscrito» (04-nov) y avisa al tocar «Listo».
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Inscripción lista" })).getByRole("button", { name: "Listo" }));
+    });
     expect(screen.getByText(/Ortiz Rocha, Thiago quedó inscrito\. Quedó con las fotos pendientes \(carnet de adelante y carnet de atrás\)/)).toBeInTheDocument();
   });
 });

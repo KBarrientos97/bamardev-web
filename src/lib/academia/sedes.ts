@@ -13,18 +13,34 @@ export interface FilaFranja {
   fin: string;
   /** Venía "de todas las sedes": al guardar queda copiada a esta sede. */
   todasLasSedes?: boolean;
+  /** De sábado y domingo (04-nov): no se pisa con las de entre semana. */
+  finDeSemana?: boolean;
 }
+
+/** Misma franja: mismo horario y mismo lado de la semana. */
+export const mismaFila = (a: FilaFranja, b: FilaFranja) => a.inicio === b.inicio && a.fin === b.fin && !!a.finDeSemana === !!b.finDeSemana;
+
+/** La clave con la que el calendario cuenta los grupos de cada franja. */
+export const claveFila = (f: { inicio: string; fin: string; finDeSemana?: boolean }) => `${f.inicio}-${f.fin}${f.finDeSemana ? "-fds" : ""}`;
 
 const aMin = (h: string): number | null => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(h);
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
 
-/** El orden en que el backend numera las franjas: por inicio y, si empatan, por fin. */
+/**
+ * El orden en que el backend numera las franjas (`ordenarFranjas`): las de
+ * entre semana antes que las de fin de semana, por inicio y, si empatan, por fin.
+ */
 function ordenIndices(filas: FilaFranja[]): number[] {
   return filas
     .map((_, i) => i)
-    .sort((x, y) => (aMin(filas[x].inicio) ?? 0) - (aMin(filas[y].inicio) ?? 0) || (aMin(filas[x].fin) ?? 0) - (aMin(filas[y].fin) ?? 0));
+    .sort(
+      (x, y) =>
+        Number(!!filas[x].finDeSemana) - Number(!!filas[y].finDeSemana) ||
+        (aMin(filas[x].inicio) ?? 0) - (aMin(filas[y].inicio) ?? 0) ||
+        (aMin(filas[x].fin) ?? 0) - (aMin(filas[y].fin) ?? 0),
+    );
 }
 
 export interface ProblemasFranjas {
@@ -57,7 +73,7 @@ export function problemasDeLasFilas(filas: FilaFranja[]): ProblemasFranjas {
   for (let k = 1; k < orden.length; k++) {
     const ant = filas[orden[k - 1]];
     const sig = filas[orden[k]];
-    if (aMin(sig.inicio)! < aMin(ant.fin)!) {
+    if (!!ant.finDeSemana === !!sig.finDeSemana && aMin(sig.inicio)! < aMin(ant.fin)!) {
       marcadas.add(orden[k - 1]);
       marcadas.add(orden[k]);
       mensajes.push(`Las franjas ${ant.inicio}–${ant.fin} y ${sig.inicio}–${sig.fin} se pisan.`);
@@ -90,9 +106,12 @@ export function filasDeLosDetalles(detalles: string[], filas: FilaFranja[]): Set
   return marcadas;
 }
 
-/** La franja que sigue a la última, de 2 horas ("Agregar franja"). */
+/**
+ * La franja que sigue a la última de entre semana, de 2 horas ("Agregar
+ * franja"). Las de fin de semana tienen su botón (`filaFinDeSemana`).
+ */
 export function filaSiguiente(filas: FilaFranja[]): FilaFranja {
-  const ultima = [...filas].sort((x, y) => (aMin(x.fin) ?? 0) - (aMin(y.fin) ?? 0)).at(-1);
+  const ultima = [...filas.filter((f) => !f.finDeSemana)].sort((x, y) => (aMin(x.fin) ?? 0) - (aMin(y.fin) ?? 0)).at(-1);
   let inicio = ultima && aMin(ultima.fin) != null ? ultima.fin : "08:00";
   // Si la última ya termina a las 23:30 no queda lugar después: 23:30–23:30 no sirve (al
   // guardar decía "tiene que empezar antes de terminar"). Se propone la franja de la
@@ -103,9 +122,22 @@ export function filaSiguiente(filas: FilaFranja[]): FilaFranja {
   return { inicio: hh(aMin(inicio) ?? 480), fin: hh(fin) };
 }
 
+/**
+ * La primera franja de fin de semana: el intensivo de 4 horas de la mañana,
+ * que es lo común (Derick, 04-nov); la siguiente arranca donde termina la
+ * última de fin de semana.
+ */
+export function filaFinDeSemana(filas: FilaFranja[]): FilaFranja {
+  const ultima = [...filas.filter((f) => f.finDeSemana)].sort((x, y) => (aMin(x.fin) ?? 0) - (aMin(y.fin) ?? 0)).at(-1);
+  const inicio = ultima && aMin(ultima.fin) != null && (aMin(ultima.fin) ?? 0) < 23 * 60 + 30 ? aMin(ultima.fin)! : 8 * 60;
+  const fin = Math.min(inicio + 240, 23 * 60 + 30);
+  const hh = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+  return { inicio: hh(inicio), fin: hh(fin), finDeSemana: true };
+}
+
 /** ¿Son las mismas franjas (en el mismo orden)? Para saber si hay algo sin guardar. */
 export function mismasFilas(a: FilaFranja[], b: FilaFranja[]): boolean {
-  return a.length === b.length && a.every((f, i) => f.inicio === b[i].inicio && f.fin === b[i].fin);
+  return a.length === b.length && a.every((f, i) => mismaFila(f, b[i]));
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;

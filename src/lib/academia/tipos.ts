@@ -72,12 +72,20 @@ export interface AjustesAcademia {
    */
   primerosPasosOcultos?: boolean;
   primerosPasosVistos?: boolean;
+  /**
+   * 03-nov: el % mínimo del curso que asegura el cupo con un adelanto (en la
+   * página y en "Otro monto" del inscribir). null = sin adelanto en la página.
+   * Ausente en un backend anterior.
+   */
+  adelantoMinimoPct?: number | null;
 }
 
 export interface Franja {
   almacenId: number | null;
   inicio: string;
   fin: string;
+  /** La de los intensivos de sábado y domingo (04-nov). Ausente = de lunes a viernes. */
+  finDeSemana?: boolean;
 }
 
 // ── Carreras, materias y planes ─────────────────────────────────────────────
@@ -628,7 +636,8 @@ export interface Preinscripcion {
 
 export interface CarritoInscripcion {
   alumno: { id: number; nombre: string };
-  pagadores: { clienteId: number; nombre: string; rol: "ALUMNO" | "TUTOR"; principal: boolean }[];
+  /** `telefono`: para mandarle el recibo por WhatsApp (04-nov). Un backend anterior no lo manda. */
+  pagadores: { clienteId: number; nombre: string; rol: "ALUMNO" | "TUTOR"; principal: boolean; telefono?: string | null }[];
   /** El curso, para decir «Barbería · M2 Degradados» (D6). */
   carrera?: { id: number; nombre: string };
   lineas: {
@@ -641,6 +650,16 @@ export interface CarritoInscripcion {
     /** Lo que cubre la cuota, con su nombre y ordenado (D6). Un backend anterior no lo manda. */
     materias?: { id?: number; orden: number; nombre: string }[];
   }[];
+}
+
+/** Lo que «Cobrar» ofrece cuando le corresponde el pago completo con descuento (04-nov). */
+export interface CompletoMostrador {
+  planPagoId: number;
+  /** El plan de hoy: a él se vuelve si el cobro no se hace. */
+  planActualId: number | null;
+  /** Lo que falta para terminar de pagar el curso completo. */
+  monto: number;
+  ahorro: number | null;
 }
 
 /** Un resultado de la búsqueda del POS (`GET /academia/cuotas-por-cobrar`). */
@@ -798,6 +817,8 @@ export interface SedeInput {
 export interface FranjaDeSede {
   inicio: string;
   fin: string;
+  /** De sábado y domingo (04-nov). Un backend anterior no lo manda. */
+  finDeSemana?: boolean;
   /** Cargada antes "para todas las sedes": al guardar queda copiada a esta sede. */
   todasLasSedes: boolean;
 }
@@ -890,6 +911,12 @@ export interface FilaCalendario {
   fin: string;
   /** false = un grupo que no calza con ninguna franja abrió su propia fila. */
   esFranja: boolean;
+  /**
+   * La fila es del bloque de sábado y domingo (04-nov): una franja de fin de
+   * semana o un grupo que sólo tiene clase esos días. Un backend anterior no
+   * lo manda (todo es de entre semana).
+   */
+  finDeSemana?: boolean;
   celdas: { mes: string; grupos: GrupoEnCalendario[] }[];
 }
 
@@ -1320,6 +1347,11 @@ export interface GrupoPublico {
   horaFin: string;
   fechaInicio: string;
   cuposLibres: number | null;
+  /**
+   * Derick, 04-nov: lo mínimo con que se asegura el cupo pagando una parte
+   * desde la página; null si el instituto no lo ofrece.
+   */
+  adelantoDesde?: number | null;
 }
 
 export interface CursoPublico {
@@ -1342,9 +1374,15 @@ export interface CursoPublico {
 /** Cómo se cobra desde la página (M5): el QR del banco, el QR fijo o nada en línea. */
 export type ModoDeCobro = "AUTOMATIZADO" | "FIJO" | "NINGUNO";
 
+/**
+ * Qué paga: todo, la próxima cuota o (03-nov, sólo preinscritos) el adelanto
+ * mínimo que asegura el cupo, a cuenta del primer mes.
+ */
+export type OpcionPagoClave = "COMPLETO" | "CUOTA" | "ADELANTO";
+
 /** Una cosa que el estudiante puede pagar ahora: el monto lo calcula el servidor (M5). */
 export interface OpcionDePago {
-  clave: "COMPLETO" | "CUOTA";
+  clave: OpcionPagoClave;
   titulo: string;
   detalle: string;
   monto: number;
@@ -1352,6 +1390,11 @@ export interface OpcionDePago {
   ahorro: number | null;
   etiqueta: string;
   vence: string | null;
+  /**
+   * Sólo el adelanto (04-nov): el estudiante elige cuánto paga, de `monto`
+   * (el mínimo) a éste. Un backend anterior no lo manda: es monto fijo.
+   */
+  montoMaximo?: number;
 }
 
 /** El bloque `pago` del estado de cuenta público (M5). */
@@ -1401,7 +1444,7 @@ export type EstadoPagoEnLinea = "POR_REVISAR" | "APROBADO" | "RECHAZADO";
 export interface PagoEnLinea {
   id: number;
   estado: EstadoPagoEnLinea;
-  opcion: "COMPLETO" | "CUOTA";
+  opcion: OpcionPagoClave;
   etiqueta: string;
   monto: number;
   creadoEn: string;
@@ -1420,9 +1463,14 @@ export interface PagoEnLinea {
 
 export interface PreinscripcionInput {
   grupoId: number;
-  nombres: string;
-  apellidos: string;
-  telefono: string;
+  /**
+   * Derick, 04-nov: el carnet ya es de un estudiante (`apiAcademiaPublica.carnet`):
+   * no viajan los datos, la ficha que ya existe es la que vale.
+   */
+  conocido?: boolean;
+  nombres?: string;
+  apellidos?: string;
+  telefono?: string;
   fechaNacimiento?: string;
   edad?: number;
   tutor?: { nombre: string; telefono: string };
@@ -1443,4 +1491,9 @@ export type FotosInscripcion = Partial<Record<TipoFoto, Blob>>;
 export interface PreinscripcionEnviada {
   ok: true;
   grupo: { nombre: string; sede: string; fechaInicio: string; direccion: string | null };
+  /**
+   * Derick, 04-nov: el enlace de pago de esa inscripción, para pagar en la
+   * misma pantalla (un backend anterior no lo manda).
+   */
+  token?: string | null;
 }

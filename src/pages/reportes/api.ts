@@ -587,7 +587,26 @@ export const apiReportes = {
     const { desde, hasta } = rangoParaApi({ desde: r.desde, hasta: r.hasta });
     return request<ClasesAcademiaApi>(`/academia/reportes/clases${qs({ desde, hasta, sede: r.sucursalId })}`);
   },
+  /** Academia: lo cobrado por clases menos los gastos (04-nov), con el mismo rango que el de clases. */
+  resultadoAcademia: (r: RangoReporte) => {
+    const { desde, hasta } = rangoParaApi({ desde: r.desde, hasta: r.hasta });
+    return request<ResultadoAcademiaApi>(`/academia/reportes/resultado${qs({ desde, hasta, sede: r.sucursalId })}`);
+  },
 };
+
+/**
+ * «Resultado de la academia» (Derick, 04-nov): lo cobrado por clases menos los
+ * gastos del período, por categoría (`GET /academia/reportes/resultado`).
+ */
+export interface ResultadoAcademiaApi {
+  desde: string;
+  hasta: string;
+  sede: number | null;
+  ingresos: number;
+  gastos: number;
+  categorias: { codigo: string; nombre: string; monto: number; cantidad: number }[];
+  resultado: number;
+}
 
 /** Un número que viene en 0..100 → fracción. Null sigue null. */
 export function fraccion(pct0a100: number | null | undefined): number | null {

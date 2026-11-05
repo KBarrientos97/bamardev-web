@@ -58,6 +58,7 @@ const RENTABILIDAD = { capacidad: "reportes_rentabilidad", permiso: "reportes.re
 const v = {
   ventas: lazy(() => import("./vistas/Ventas")),
   resultado: lazy(() => import("./vistas/EstadoResultado")),
+  resultadoAcademia: lazy(() => import("./vistas/ResultadoAcademia")),
   equilibrio: lazy(() => import("./vistas/PuntoEquilibrio")),
   metodos: lazy(() => import("./vistas/MetodosPago")),
   creditos: lazy(() => import("./vistas/CreditosReporte")),
@@ -107,6 +108,20 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
       // siempre falla.
       seccion: "gastos",
       vista: v.resultado,
+    },
+    {
+      id: "resultado-academia",
+      titulo: "Resultado de la academia",
+      descripcion: "Lo cobrado por clases menos los gastos",
+      icono: "birrete",
+      tono: "verde",
+      grupo: "plata",
+      ...RENTABILIDAD,
+      seccion: "gastos",
+      // Derick, 04-nov: la academia sola, sin lo que vende la tienda del mismo
+      // local, para repartir con el socio de la academia.
+      soloEnRubro: (r) => r === "ACADEMIA",
+      vista: v.resultadoAcademia,
     },
     {
       id: "equilibrio",

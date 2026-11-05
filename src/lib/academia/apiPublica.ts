@@ -4,6 +4,7 @@ import type {
   EstadoCuentaPublico,
   FotosInscripcion,
   InscripcionDeMiCuenta,
+  OpcionPagoClave,
   PreinscripcionEnviada,
   PreinscripcionInput,
 } from "./tipos";
@@ -95,6 +96,15 @@ export const apiAcademiaPublica = {
       body: formularioConFotos(input, fotos),
     }),
   /**
+   * Derick, 04-nov: si el carnet ya es de un estudiante, su nombre de pila
+   * (para saludarlo y no pedirle los datos otra vez); si no, null.
+   */
+  carnet: (subdominio: string, input: { ci: string; captcha?: string }) =>
+    pedir<{ nombre: string | null }>(`/publico/academia/${sub(subdominio)}/carnet`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /**
    * M5 · «Pagar mi inscripción»: sólo el carnet (desde el 03-nov). Si es de
    * alguien con algo vigente, el enlace de cada inscripción; si no, siempre el
    * mismo 404 (la página no cuenta quién estudia ahí).
@@ -108,7 +118,7 @@ export const apiAcademiaPublica = {
    * M5: el comprobante del QR fijo. El monto no viaja: el servidor lo calcula
    * a partir de la opción elegida. Multipart: `datos` y la foto en `comprobante`.
    */
-  subirComprobante: (subdominio: string, token: string, input: { opcion: "COMPLETO" | "CUOTA"; captcha?: string }, foto: Blob) => {
+  subirComprobante: (subdominio: string, token: string, input: { opcion: OpcionPagoClave; monto?: number; captcha?: string }, foto: Blob) => {
     const f = new FormData();
     f.append("datos", JSON.stringify(input));
     f.append("comprobante", foto, `comprobante.${foto.type === "image/jpeg" ? "jpg" : "webp"}`);

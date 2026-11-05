@@ -12,7 +12,7 @@ import {
   MAYORIA_DE_EDAD,
   problemaFechaNacimiento,
 } from "../../lib/academia/formato";
-import type { CursoPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
+import type { CursoPublico, EstadoCuentaPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
 import { urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
@@ -22,6 +22,7 @@ import { siteKeyTurnstile } from "../../lib/turnstile";
 import { Icon } from "../../components/Icon";
 import CapturaFotos from "../academia/CapturaFotos";
 import { NoDisponible } from "./PaginaPublica";
+import PagoEnLineaPublico from "./PagoEnLineaPublico";
 import { MarcaBamarDev } from "./VistaPagina";
 
 type Paso = 1 | 2 | 3 | 4;
@@ -83,9 +84,14 @@ function hoyLocal(): string {
  * es menor); las 3 fotos (opcionales acá, M4), con la cámara del celular; y cómo
  * quiere pagar (mes a mes o pago completo, con lo que ahorra).
  *
- * No se paga en este formulario: queda preinscrito, y el pago (desde la
- * página con «Pagar mi inscripción», o en el instituto) es lo que asegura el
- * lugar (M5). Un grupo lleno ya no recibe preinscripciones: no se puede elegir.
+ * Queda preinscrito, y el pago es lo que asegura el lugar (M5). Desde el
+ * 04-nov (Derick) se paga en la misma pantalla final, con el QR de cobro del
+ * instituto; sin QR, en el instituto o después con «Pagar mi inscripción». Un
+ * grupo lleno ya no recibe preinscripciones: no se puede elegir.
+ *
+ * El carnet va primero: si ya es de un estudiante, lo saluda por el nombre y
+ * no le pide los datos ni las fotos (la ficha que ya existe no se toca desde
+ * acá, así que escribirlos era para nada).
  */
 export default function InscribirmePagina() {
   const { subdominio = "", grupoId } = useParams();
@@ -140,6 +146,7 @@ export default function InscribirmePagina() {
           {enviada ? (
             <Enviada
               {...enviada}
+              sub={sub}
               color={c.oscuro}
               whatsapp={enlaceWhatsapp(pagina)?.url ?? null}
               urlPagina={urlPaginaDe(sub)}
@@ -203,9 +210,18 @@ function Formulario({
   const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  // El carnet ya revisado (para no preguntar de nuevo) y, si es de un
+  // estudiante, su nombre de pila. El captcha de esa pregunta es otro: el
+  // token de Turnstile se gasta en un pedido.
+  const [carnetVisto, setCarnetVisto] = useState<string | null>(null);
+  const [conocido, setConocido] = useState<string | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [captchaCarnet, setCaptchaCarnet] = useState<string | null>(null);
+  const [vueltaCaptchaCarnet, setVueltaCaptchaCarnet] = useState(0);
 
   const curso = cursos.find((x) => x.id === cursoId) ?? cursoInicial;
   const grupo = curso.grupos.find((g) => g.id === grupoId) ?? null;
+  const adelanto = grupo?.adelantoDesde ?? null;
   const modulos = curso.modulos?.length ? curso.modulos : curso.materias;
   const planes = curso.planes ?? [];
   const mesAMes = planes.find((x) => x.generado === "MES_A_MES");
@@ -217,6 +233,8 @@ function Formulario({
   const edad = fechaMal ? null : edadDe(datos.fechaNacimiento);
   const esMenor = pideTutor || (edad != null && edad < MAYORIA_DE_EDAD);
   const faltanFotos = fotosQueFaltan(fotos);
+  const visto = carnetVisto != null && carnetVisto === datos.ci.trim();
+  const esConocido = visto && conocido != null;
 
   /** Lo que no deja seguir en cada paso, dicho en una línea. */
   function motivo(p: Paso): string {
@@ -226,6 +244,11 @@ function Formulario({
       return grupo.cuposLibres === 0 ? "Ese grupo está lleno, comunicate con la academia o elegí otro horario" : "";
     }
     if (p === 2) {
+      if (!visto) {
+        if (!datos.ci.trim()) return "Falta tu carnet";
+        return siteKey && !captchaCarnet ? "Falta completar la verificación anti-robots" : "";
+      }
+      if (esConocido) return "";
       const f: string[] = [];
       if (!datos.ci.trim()) f.push("tu carnet");
       if (!datos.apellidos.trim() || !datos.nombres.trim()) f.push("tu nombre y apellidos");
@@ -245,12 +268,43 @@ function Formulario({
   const bloqueo = motivo(paso);
   const notaFotos = paso === 3 && faltanFotos.length ? `${textoFaltanFotos(faltanFotos.length)}. Podés seguir sin ${faltanFotos.length === 1 ? "ella" : "ellas"}.` : "";
 
+  /** ¿El carnet ya es de un estudiante? Si falla, sigue como alguien nuevo. */
+  async function revisarCarnet() {
+    const ci = datos.ci.trim();
+    setError("");
+    setBuscando(true);
+    try {
+      const r = await apiAcademiaPublica.carnet(sub, { ci, ...(siteKey && captchaCarnet ? { captcha: captchaCarnet } : {}) });
+      setConocido(r.nombre);
+    } catch {
+      setConocido(null);
+    } finally {
+      setCarnetVisto(ci);
+      setBuscando(false);
+      if (siteKey) {
+        setCaptchaCarnet(null);
+        setVueltaCaptchaCarnet((v) => v + 1);
+      }
+    }
+  }
+
   async function enviar() {
     if (bloqueo) return setError(`${bloqueo}.`);
     setError("");
     setEnviando(true);
     try {
-      const r = await apiAcademiaPublica.preinscribir(
+      const base = {
+        grupoId: grupoId!,
+        ci: datos.ci.trim(),
+        ciExpedido: datos.ciExpedido,
+        ...(plan ? { planPagoId: plan.id } : {}),
+        ...(mensaje.trim() ? { mensaje: mensaje.trim() } : {}),
+        privacidad: true as const,
+        ...(siteKey && captcha ? { captcha } : {}),
+      };
+      const r = esConocido
+        ? await apiAcademiaPublica.preinscribir(sub, { ...base, conocido: true })
+        : await apiAcademiaPublica.preinscribir(
         sub,
         {
           grupoId: grupoId!,
@@ -271,17 +325,23 @@ function Formulario({
       );
       const primerPago = plan?.generado === "COMPLETO" ? (curso.precioCompleto ?? null) : (curso.precioModulo ?? null);
       onEnviada({
-        nombre: datos.nombres.trim().split(" ")[0],
+        nombre: esConocido ? conocido! : datos.nombres.trim().split(" ")[0],
         r,
         curso,
         grupo,
         forma: plan ? (plan.generado === "MES_A_MES" ? "Mes a mes" : plan.generado === "COMPLETO" ? "Pago completo" : plan.nombre) : null,
         primerPago,
-        sinFotos: faltanFotos,
+        // Las fotos de un estudiante que ya existe las tiene la recepción.
+        sinFotos: esConocido ? [] : faltanFotos,
       });
     } catch (e) {
       const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
-      if (codigo === "TUTOR_REQUERIDO") {
+      if (codigo === "CARNET_NO_REGISTRADO") {
+        // Lo dieron de baja mientras completaba: que escriba sus datos.
+        setConocido(null);
+        setPaso(2);
+        setError(e instanceof Error ? e.message : "Completá tus datos.");
+      } else if (codigo === "TUTOR_REQUERIDO") {
         setPideTutor(true);
         setPaso(2);
         setError("Sos menor de edad: completá los datos de tu madre, padre o tutor.");
@@ -422,7 +482,9 @@ function Formulario({
           <div className="space-y-4">
             <div>
               <h1 className="text-xl font-bold text-[#111827]">Tus datos</h1>
-              <p className="text-[13px] text-[#6B7280]">Como figuran en tu carnet.</p>
+              <p className="text-[13px] text-[#6B7280]">
+                {visto ? "Como figuran en tu carnet." : "Empezá por tu carnet: si ya estudiaste acá, no hace falta que escribas todo de nuevo."}
+              </p>
             </div>
             <div className="grid grid-cols-[1fr_90px] gap-3">
               <CampoP etiqueta="Carnet de identidad">
@@ -436,6 +498,20 @@ function Formulario({
                 </select>
               </CampoP>
             </div>
+            {!visto && siteKey && <Captcha key={`carnet-${vueltaCaptchaCarnet}`} siteKey={siteKey} onToken={setCaptchaCarnet} />}
+            {esConocido && (
+              <div role="status" className="flex items-start gap-3 rounded-xl border p-4" style={{ borderColor: color, background: tinte(color) }}>
+                <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white" style={{ background: color }}>
+                  <Icon name="check" size={18} />
+                </span>
+                <span className="min-w-0 space-y-0.5">
+                  <span className="block text-sm font-bold text-[#111827]">Hola, {conocido}: ya tenemos tus datos</span>
+                  <span className="block text-[13px] text-[#4B5563]">No hace falta que los escribas de nuevo. Si cambió algo, avisanos cuando vengas.</span>
+                </span>
+              </div>
+            )}
+            {visto && !esConocido && (
+              <>
             <CampoP etiqueta="Apellidos">
               <input value={datos.apellidos} onChange={(e) => setDatos({ ...datos, apellidos: e.target.value })} autoComplete="family-name" className={INPUT} />
             </CampoP>
@@ -481,6 +557,8 @@ function Formulario({
                   <input value={tutor.telefono} onChange={(e) => setTutor({ ...tutor, telefono: e.target.value })} inputMode="tel" className={INPUT} />
                 </CampoP>
               </fieldset>
+            )}
+              </>
             )}
           </div>
         )}
@@ -557,6 +635,11 @@ function Formulario({
                 })}
               </div>
             )}
+            {adelanto != null && (
+              <p role="note" className="rounded-xl bg-[#F9FAFB] px-3.5 py-2.5 text-[13px] text-[#374151]">
+                ¿No podés pagar todo ahora? Asegurás tu cupo pagando una parte, desde <strong className="text-[#111827]">{bs(adelanto)}</strong>.
+              </p>
+            )}
             <CampoP etiqueta="¿Algo que quieras preguntar? (opcional)">
               <textarea value={mensaje} onChange={(e) => setMensaje(e.target.value.slice(0, 500))} rows={2} className={`${INPUT} resize-y`} />
             </CampoP>
@@ -587,7 +670,8 @@ function Formulario({
                 type="button"
                 onClick={() => {
                   setError("");
-                  setPaso((paso - 1) as Paso);
+                  // Un estudiante conocido no pasó por las fotos.
+                  setPaso((paso === 4 && esConocido ? 2 : paso - 1) as Paso);
                 }}
                 className="rounded-xl border border-[#D1D5DB] bg-white px-4 py-3.5 text-[15px] font-semibold text-[#374151] hover:bg-[#F9FAFB]"
               >
@@ -597,16 +681,17 @@ function Formulario({
             {paso < 4 ? (
               <button
                 type="button"
-                disabled={!!bloqueo}
+                disabled={!!bloqueo || buscando}
                 aria-describedby="motivo-paso"
                 onClick={() => {
                   setError("");
-                  setPaso((paso + 1) as Paso);
+                  if (paso === 2 && !visto) return void revisarCarnet();
+                  setPaso((paso === 2 && esConocido ? 4 : paso + 1) as Paso);
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50"
                 style={boton}
               >
-                {paso === 3 && faltanFotos.length === 3 ? "Seguir sin fotos" : "Siguiente"}
+                {buscando ? "Buscando…" : paso === 3 && faltanFotos.length === 3 ? "Seguir sin fotos" : "Siguiente"}
               </button>
             ) : (
               <button
@@ -621,7 +706,11 @@ function Formulario({
             )}
           </div>
           <p id="motivo-paso" className="text-center text-[13px] text-[#6B7280]">
-            {paso < 4 ? bloqueo || notaFotos : "Pagás en el instituto: te escribimos por WhatsApp para confirmar tu lugar."}
+            {paso < 4
+              ? bloqueo || notaFotos
+              : adelanto != null
+                ? "Después de enviar podés pagar desde esta página, todo o una parte, o en el instituto."
+                : "Después de enviar podés pagar desde esta página o en el instituto."}
           </p>
         </div>
       </div>
@@ -629,7 +718,32 @@ function Formulario({
   );
 }
 
+/**
+ * Derick, 04-nov: el estado de cuenta de la inscripción recién enviada, para
+ * cobrarla en la misma pantalla. null mientras carga, o si no se pudo (un
+ * backend anterior sin `token`, o la red): entonces queda lo de siempre.
+ */
+function useEstadoDeLaInscripcion(sub: string, token: string | null | undefined) {
+  const [d, setD] = useState<EstadoCuentaPublico | null>(null);
+  const [listo, setListo] = useState(!token);
+  const [vuelta, setVuelta] = useState(0);
+  useEffect(() => {
+    if (!token) return;
+    let vivo = true;
+    apiAcademiaPublica
+      .estadoCuenta(sub, token)
+      .then((r) => vivo && setD(r))
+      .catch(() => vivo && setD(null))
+      .finally(() => vivo && setListo(true));
+    return () => {
+      vivo = false;
+    };
+  }, [sub, token, vuelta]);
+  return { d, listo, recargar: () => setVuelta((v) => v + 1) };
+}
+
 function Enviada({
+  sub,
   nombre,
   r,
   curso,
@@ -642,6 +756,7 @@ function Enviada({
   urlPagina,
   urlMiCuenta,
 }: {
+  sub: string;
   nombre: string;
   r: PreinscripcionEnviada;
   curso: CursoPublico;
@@ -655,6 +770,11 @@ function Enviada({
   urlMiCuenta: string;
 }) {
   const n = (curso.modulos?.length ? curso.modulos : curso.materias).length;
+  const estado = useEstadoDeLaInscripcion(sub, r.token);
+  const d = estado.d;
+  // Con el QR de cobro del instituto se paga acá mismo; si no, como siempre
+  // (en la sede, o después con «Pagar mi inscripción»).
+  const pagaAca = !!d && (!!d.pago.enRevision || (d.pago.modo === "FIJO" && !!d.qr && d.pago.opciones.length > 0));
   return (
     <div className="space-y-5 p-5">
       <div className="text-center">
@@ -684,7 +804,11 @@ function Enviada({
         </Fila>
         {forma && <Fila etiqueta="Forma de pago">{forma}</Fila>}
       </dl>
-      {primerPago != null && (
+      {!estado.listo ? (
+        <div aria-busy="true" className="h-24 rounded-xl bg-[#F9FAFB]" />
+      ) : pagaAca && d && r.token ? (
+        <PagoEnLineaPublico d={d} sub={sub} token={r.token} color={color} whatsapp={whatsapp} onCambio={estado.recargar} />
+      ) : primerPago != null && (
         <section
           aria-label="Tu primer pago"
           className="space-y-1.5 rounded-xl border-2 p-4 text-sm"
@@ -711,13 +835,15 @@ function Enviada({
       )}
       <p className="text-[13px] text-[#4B5563]">Cuando estés inscrito te mandamos por WhatsApp el enlace a tu estado de cuenta: ahí ves siempre lo que pagaste y lo que falta.</p>
       <div className="flex flex-col gap-2">
-        <a
-          href={urlMiCuenta}
-          className="rounded-xl py-3.5 text-center text-[15px] font-semibold text-white"
-          style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
-        >
-          Pagar mi inscripción
-        </a>
+        {!pagaAca && (
+          <a
+            href={urlMiCuenta}
+            className="rounded-xl py-3.5 text-center text-[15px] font-semibold text-white"
+            style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
+          >
+            Pagar mi inscripción
+          </a>
+        )}
         {whatsapp && (
           <a
             href={whatsapp}

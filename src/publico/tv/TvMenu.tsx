@@ -99,9 +99,32 @@ function Selector() {
 function TvMenu() {
   const { llave = "", numero = "" } = useParams();
   const [params] = useSearchParams();
-  const n = Number(numero);
-  const sucursalId = sucursalDeLaDireccion(params.get("sucursal"));
-  const vistaPrevia = params.get("vista") === "previa";
+  return (
+    <PantallaMenuTv
+      llave={llave}
+      numero={Number(numero)}
+      sucursalId={sucursalDeLaDireccion(params.get("sucursal"))}
+      vistaPrevia={params.get("vista") === "previa"}
+    />
+  );
+}
+
+/**
+ * Una TV del menú con su llave y su número: la del enlace de siempre y la que
+ * se conectó con código en `/tv` (TvConectar), que la abre con la llave que
+ * le da el servidor.
+ */
+export function PantallaMenuTv({
+  llave,
+  numero: n,
+  sucursalId,
+  vistaPrevia = false,
+}: {
+  llave: string;
+  numero: number;
+  sucursalId?: number;
+  vistaPrevia?: boolean;
+}) {
   const [datos, setDatos] = useState<MenuPublicoApi | null>(null);
   const [fase, setFase] = useState<FaseTv>("cargando");
   const [pagina, setPagina] = useState(0);

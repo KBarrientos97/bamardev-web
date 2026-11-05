@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conteosDeSede, datosQueFaltan, filaSiguiente, filasDeLosDetalles, mismasFilas, problemasDeLasFilas } from "./sedes";
+import { conteosDeSede, datosQueFaltan, filaFinDeSemana, filaSiguiente, filasDeLosDetalles, mismasFilas, problemasDeLasFilas } from "./sedes";
 
 describe("C5 · validar las franjas de una sede antes de mandarlas", () => {
   it("una lista bien armada no tiene problemas", () => {
@@ -89,5 +89,34 @@ describe("C4 · textos chicos de la sede", () => {
     const lunes = [{ dia: 1, desde: "08:00", hasta: "12:00" }];
     expect(datosQueFaltan({ direccion: "A", telefono: "1", horarioSemanal: lunes, horarioAtencion: null })).toEqual([]);
     expect(datosQueFaltan({ direccion: "A", telefono: "1", horarioSemanal: [], horarioAtencion: " " })).toEqual(["el horario de atención"]);
+  });
+});
+
+describe("franjas de sábado y domingo (Derick, 04-nov)", () => {
+  it("una de fin de semana no se pisa con las de entre semana, pero sí con otra de fin de semana", () => {
+    expect(
+      problemasDeLasFilas([
+        { inicio: "08:00", fin: "10:00" },
+        { inicio: "08:00", fin: "12:00", finDeSemana: true },
+      ]).mensajes,
+    ).toEqual([]);
+    const r = problemasDeLasFilas([
+      { inicio: "08:00", fin: "10:00" },
+      { inicio: "08:00", fin: "12:00", finDeSemana: true },
+      { inicio: "11:00", fin: "13:00", finDeSemana: true },
+    ]);
+    expect(r.mensajes).toEqual(["Las franjas 08:00–12:00 y 11:00–13:00 se pisan."]);
+    expect([...r.filas].sort()).toEqual([1, 2]);
+  });
+
+  it("la primera de fin de semana es de 08:00 a 12:00 y la siguiente arranca donde termina la anterior", () => {
+    expect(filaFinDeSemana([{ inicio: "19:00", fin: "21:00" }])).toEqual({ inicio: "08:00", fin: "12:00", finDeSemana: true });
+    expect(filaFinDeSemana([{ inicio: "08:00", fin: "12:00", finDeSemana: true }])).toEqual({ inicio: "12:00", fin: "16:00", finDeSemana: true });
+    // "Agregar franja" sigue a la última de entre semana, no a la de 4 h del sábado.
+    expect(filaSiguiente([{ inicio: "08:00", fin: "10:00" }, { inicio: "14:00", fin: "18:00", finDeSemana: true }])).toEqual({ inicio: "10:00", fin: "12:00" });
+  });
+
+  it("cambiar de lado es un cambio sin guardar", () => {
+    expect(mismasFilas([{ inicio: "08:00", fin: "12:00" }], [{ inicio: "08:00", fin: "12:00", finDeSemana: true }])).toBe(false);
   });
 });

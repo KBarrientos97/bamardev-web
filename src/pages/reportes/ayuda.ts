@@ -68,6 +68,14 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
             incluye: ["Lo fiado: ya es una venta, aunque la plata no haya entrado.", "Las mermas (lo vencido o dañado), al costo."],
             noIncluye: ["Las compras del período: comprar para tres meses no hunde este mes, el costo entra cuando se vende.", ANULADAS],
           };
+    case "resultado-academia":
+      return {
+        queMuestra: "Lo que dejó la academia sola en el período: lo cobrado por clases menos los gastos.",
+        deDonde:
+          "Suma las cuotas cobradas en el período y les resta los gastos cargados en Gastos con fecha del período, pagados o no, por categoría. Es el mismo cobrado por clases del Estado de resultado.",
+        incluye: ["Los sueldos docentes pagados de la planilla: ya son un gasto de Sueldos."],
+        noIncluye: [ANULADAS, "Lo que se vende en la tienda y su costo: eso está en el Estado de resultado."],
+      };
     case "equilibrio":
       return {
         queMuestra: "Cuánto tenés que vender en el período para cubrir los gastos fijos y no perder.",

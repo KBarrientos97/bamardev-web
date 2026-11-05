@@ -27,6 +27,7 @@ import {
 } from "../../types/tickets";
 import { PestanasTickets, SiNo, Segmentado, Tarjeta } from "./piezas";
 import AccesoDespacho from "./AccesoDespacho";
+import TelevisoresDelLocal from "./TelevisoresDelLocal";
 import { tienePermiso } from "../../lib/permisos";
 import { LienzoTv, TableroTv, type DatosTableroTv } from "./TableroTv";
 import { entregados, listos, preparando, useTableroTickets } from "./useTableroTickets";
@@ -188,6 +189,9 @@ function PestanaPedidos({
           se escala) y la pantalla quedaba enorme y cortada a la derecha. */}
       <aside className="min-w-0 space-y-4">
         <Tarjeta titulo="Vista previa de la TV">{vistaPrevia}</Tarjeta>
+        {/* Primero el código: con la TV colgada arriba es lo más fácil. El
+            enlace queda para la compu enchufada a la TV. */}
+        <TelevisoresDelLocal />
         <EnlaceTv />
         <Tarjeta titulo="Despacho">
           <p className="text-[13px] text-texto-2">
@@ -357,7 +361,7 @@ function EnlaceTv() {
   };
 
   return (
-    <Tarjeta titulo="Pantalla de la TV">
+    <Tarjeta titulo="Enlace de la TV">
       {error && <ErrorMsg>{error}</ErrorMsg>}
       {llave === undefined ? (
         <p className="text-[13px] text-texto-3">Cargando…</p>
@@ -396,7 +400,7 @@ function EnlaceTv() {
       <Confirmar
         abierto={confirmar}
         titulo="¿Generar otro enlace?"
-        texto="Todas las pantallas del local dejan de andar en el momento: la de tickets y las del menú digital, que usan la misma llave. Hay que abrir el enlace nuevo en cada una. Sirve si el enlace se compartió con quien no debía."
+        texto="Las pantallas abiertas con el enlace dejan de andar en el momento: la de tickets y las del menú digital, que usan la misma llave. Hay que abrir el enlace nuevo en cada una. Las TVs conectadas con código siguen andando. Sirve si el enlace se compartió con quien no debía."
         etiquetaOk="Generar otro"
         peligroso
         procesando={generando}

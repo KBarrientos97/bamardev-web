@@ -188,7 +188,7 @@ describe("N1 · Calendario", () => {
     await act(async () => {});
     const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
     expect(within(panel).getByText("Hueco libre de 11:00–13:00 desde diciembre")).toBeInTheDocument();
-    expect(within(panel).getByLabelText("Empieza el")).toHaveValue("2026-12");
+    expect(within(panel).getByLabelText("Empieza el")).toHaveValue("2026-12-10");
     expect(within(panel).getByLabelText("Franja horaria")).toHaveValue("11:00-13:00");
   });
 
@@ -214,10 +214,10 @@ describe("N1 · Calendario", () => {
     await act(async () => {});
     const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
     const empieza = within(panel).getByLabelText("Empieza el");
-    expect(empieza).toHaveValue("2026-11");
-    // El admin (configura) lo tiene sólo aparte, para un grupo que ya venía en clases (N-5).
-    expect(within(within(empieza).getByRole("group", { name: /Ya empezó/ })).getByRole("option", { name: /10 de octubre/ })).toBeInTheDocument();
-    expect(within(panel).getByText(/El 10 de octubre ya pasó: el primer inicio posible es el 10 de noviembre/)).toBeInTheDocument();
+    expect(empieza).toHaveValue("2026-11-10");
+    // Desde el 04-nov el inicio es libre, pero nunca antes de hoy.
+    expect(empieza).toHaveAttribute("min", "2026-10-18");
+    expect(within(panel).getByText(/El 10 de octubre ya pasó: se propone el 10 de noviembre/)).toBeInTheDocument();
   });
 });
 
@@ -481,3 +481,56 @@ describe("ronda 2 · R8 · «Inscribir sin cobrar» avisa que quedó inscrito", 
   });
 });
 
+describe("los intensivos de sábado y domingo van en su bloque (Derick, 04-nov)", () => {
+  const CON_FDS: TCalendario = {
+    ...CAL,
+    filas: [
+      ...CAL.filas,
+      {
+        inicio: "08:00",
+        fin: "12:00",
+        esFranja: true,
+        finDeSemana: true,
+        celdas: [{ mes: "2026-11", grupos: [tarjeta({ grupoId: 9, dias: [6], modulo: { orden: 1, nombre: "Fundamentos", total: 3 } })] }],
+      },
+    ],
+  };
+
+  it("con filas de fin de semana, la grilla separa «Lunes a viernes» de «Sábado y domingo»", async () => {
+    vi.mocked(apiAcademia.calendario).mockResolvedValue(CON_FDS);
+    await montar();
+    const titulos = screen.getAllByRole("rowheader").map((h) => h.textContent);
+    expect(titulos[0]).toBe("Lunes a viernes");
+    expect(titulos).toContain("Sábado y domingo");
+    // El bloque de fin de semana va después de todas las de la semana.
+    expect(titulos.indexOf("Sábado y domingo")).toBeGreaterThan(titulos.findIndex((t) => t?.startsWith("11:00")));
+  });
+
+  it("sin filas de fin de semana no aparece ningún título de bloque", async () => {
+    await montar();
+    expect(screen.queryByText("Lunes a viernes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sábado y domingo")).not.toBeInTheDocument();
+  });
+
+  it("el hueco de sábado y domingo abre Abrir grupo con el sábado elegido y su franja", async () => {
+    vi.mocked(apiAcademia.calendario).mockResolvedValue(CON_FDS);
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(
+      ajustesDePrueba({
+        franjas: [
+          { almacenId: null, inicio: "09:00", fin: "11:00" },
+          { almacenId: null, inicio: "08:00", fin: "12:00", finDeSemana: true },
+        ],
+      }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 08:00 a 12:00 de sábado y domingo, diciembre" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
+    expect(within(panel).getByRole("button", { name: "Sábado" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(panel).getByRole("button", { name: "Lunes" })).toHaveAttribute("aria-pressed", "false");
+    const franja = within(panel).getByLabelText("Franja horaria");
+    expect(franja).toHaveValue("08:00-12:00");
+    // Con sólo el sábado no se ofrecen las franjas de la semana.
+    expect(within(franja).queryByRole("option", { name: "09:00–11:00" })).not.toBeInTheDocument();
+  });
+});

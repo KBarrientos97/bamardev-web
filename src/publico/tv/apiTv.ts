@@ -65,15 +65,16 @@ export class ErrorTv extends Error {
   }
 }
 
-async function pedir<T>(ruta: string, cancelar?: AbortSignal): Promise<T> {
+async function pedir<T>(ruta: string, cancelar?: AbortSignal, method: "GET" | "POST" = "GET"): Promise<T> {
   const corte = new AbortController();
   const alarma = setTimeout(() => corte.abort(), TIMEOUT_MS);
   const alCancelar = () => corte.abort();
   cancelar?.addEventListener("abort", alCancelar);
   let res: Response;
   try {
-    // Sin cabeceras: un GET simple no dispara el OPTIONS previo de CORS.
-    res = await fetch(`${BASE}${ruta}`, { signal: corte.signal, cache: "no-store" });
+    // Sin cabeceras ni cuerpo: un GET o un POST simple no dispara el OPTIONS
+    // previo de CORS.
+    res = await fetch(`${BASE}${ruta}`, { method, signal: corte.signal, cache: "no-store" });
   } catch {
     throw new ErrorTv(
       typeof navigator !== "undefined" && navigator.onLine === false
@@ -98,7 +99,29 @@ async function pedir<T>(ruta: string, cancelar?: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Una TV de `/tv` que espera que la conecten: el código que muestra. */
+export interface TvEsperando {
+  estado: "ESPERANDO";
+  codigo: string;
+  venceEn: number;
+}
+
+/** Una TV ya conectada: qué pantalla de las de siempre abrir, y con qué llave. */
+export interface TvConectada {
+  estado: "CONECTADA";
+  nombre: string | null;
+  muestra: "TICKETS" | "MENU";
+  menu: number | null;
+  sucursalId: number | null;
+  llave: string;
+}
+
 export const apiTv = {
+  /** Una TV recién prendida en `/tv`: su secreto (lo guarda ella) y su código. */
+  televisorNuevo: () => pedir<TvEsperando & { secreto: string }>("/publico/televisores", undefined, "POST"),
+  /** Qué hace la TV: esperar con su código o mostrar una pantalla. 404 = la desconectaron. */
+  televisor: (secreto: string, cancelar?: AbortSignal) =>
+    pedir<TvEsperando | TvConectada>(`/publico/televisores/${encodeURIComponent(secreto)}`, cancelar),
   salon: (llave: string, sucursalId?: number, cancelar?: AbortSignal) =>
     pedir<SalonPublicoApi>(
       `/publico/billar/salon/${encodeURIComponent(llave)}${sucursalId != null ? `?sucursalId=${sucursalId}` : ""}`,

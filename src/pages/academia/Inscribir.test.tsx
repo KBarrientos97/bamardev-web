@@ -48,6 +48,18 @@ import Inscribir from "./Inscribir";
 
 const onInscrito = vi.fn();
 
+/**
+ * Inscribir ya no termina solo (04-nov): muestra «quedó inscrito» con la
+ * bienvenida como opción, y avisa a quien lo abrió al tocar «Listo» o «Cobrar».
+ */
+async function seguir() {
+  const lista = screen.queryByRole("dialog", { name: "Inscripción lista" });
+  if (!lista) return;
+  await act(async () => {
+    fireEvent.click(within(lista).getByRole("button", { name: /^(Listo|Cobrar|Ir a cobrar)/ }));
+  });
+}
+
 async function montar() {
   render(
     <MemoryRouter>
@@ -122,6 +134,12 @@ describe("E5 · inscribir", () => {
       grupoId: 7,
       planPagoId: 2,
     }, {});
+    // Inscribir ya no abre WhatsApp solo (04-nov): la bienvenida es un botón.
+    expect(window.open).not.toHaveBeenCalled();
+    expect(onInscrito).not.toHaveBeenCalled();
+    const lista = screen.getByRole("dialog", { name: "Inscripción lista" });
+    fireEvent.click(within(lista).getByRole("button", { name: "Enviar bienvenida por WhatsApp al tutor" }));
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: false }));
     // La bienvenida va al tutor y le habla del estudiante (QA ronda 2, B-19).
     const url = vi.mocked(window.open).mock.calls[0][0] as string;
@@ -141,14 +159,23 @@ describe("E5 · inscribir", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
+    const lista = screen.getByRole("dialog", { name: "Inscripción lista" });
+    fireEvent.click(within(lista).getByRole("button", { name: /Enviar bienvenida por WhatsApp/ }));
     expect(window.open).toHaveBeenCalledWith("https://wa.me/59171234567?text=Hola%20Rosa", "_blank", "noopener,noreferrer");
+  });
 
-    vi.mocked(window.open).mockClear();
+  it("con la bienvenida en null no hay botón de WhatsApp: lo dice", async () => {
     vi.mocked(apiAcademia.inscribir).mockResolvedValueOnce({ id: 556, bienvenida: null } as never);
+    await montar();
+    await cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     fireEvent.change(within(panel()).getByLabelText("Teléfono (opcional)"), { target: { value: "71234567" } });
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
+    const lista = screen.getByRole("dialog", { name: "Inscripción lista" });
+    expect(within(lista).queryByRole("button", { name: /WhatsApp/ })).not.toBeInTheDocument();
+    expect(within(lista).getByText("No tiene un WhatsApp cargado para mandarle la bienvenida.")).toBeInTheDocument();
     expect(window.open).not.toHaveBeenCalled();
   });
 
@@ -178,6 +205,7 @@ describe("E5 · inscribir", () => {
       {},
     );
     // Paga hoy todo lo que queda del pago completo con la beca.
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 680 }));
   });
 
@@ -199,6 +227,7 @@ describe("E5 · inscribir", () => {
       fireEvent.click(within(confirmar).getByRole("button", { name: "Inscribir igual" }));
     });
     expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(expect.objectContaining({ confirmarSobreCupo: true }), {});
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 556 }, cobrar: false }));
   });
 
@@ -254,6 +283,7 @@ describe("E5 · inscribir", () => {
       }),
       {},
     );
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 557 }, cobrar: false }));
   });
 
@@ -548,6 +578,7 @@ describe("E5 · inscribir", () => {
       tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "Madre" },
       confirmarSobreCupo: true,
     }, {});
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 600 }, cobrar: false }));
   });
 
@@ -571,7 +602,17 @@ describe("E5 · inscribir", () => {
       </MemoryRouter>,
     );
     await act(async () => {});
-    expect(within(panel()).getByRole("checkbox", { name: "Enviar bienvenida por WhatsApp al tutor" })).toBeChecked();
+    // El backend arma la bienvenida con el tutor que trajo la preinscripción.
+    vi.mocked(apiAcademia.convertir).mockResolvedValueOnce({
+      id: 600,
+      bienvenida: { telefono: "70011223", aTutor: true, texto: "Hola Ramiro", url: "https://wa.me/59170011223?text=Hola%20Ramiro" },
+    } as never);
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    const lista = screen.getByRole("dialog", { name: "Inscripción lista" });
+    expect(within(lista).getByRole("button", { name: "Enviar bienvenida por WhatsApp al tutor" })).toBeInTheDocument();
   });
 
   it("paga hoy: la primera cuota por defecto, o un adelanto que llega al POS", async () => {
@@ -585,6 +626,7 @@ describe("E5 · inscribir", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?300/ }));
     });
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 300 }));
   });
 });
@@ -619,7 +661,29 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
     });
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 100 }));
+  });
+
+  it("con un adelanto mínimo en los ajustes, el mostrador no cobra menos (03-nov)", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: false, adelantoMinimoPct: 20 }));
+    await montar();
+    await cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
+    // 20 % de Bs 1.500.
+    expect(within(panel()).getByText(/El mínimo para asegurar el cupo es Bs\s?300/)).toBeInTheDocument();
+    const monto = within(panel()).getByLabelText("Monto del adelanto (Bs)");
+    fireEvent.change(monto, { target: { value: "200" } });
+    expect(within(panel()).getByText(/El adelanto mínimo es Bs\s?300,00 \(20 % del curso\)\./)).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+    fireEvent.change(monto, { target: { value: "300" } });
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    });
+    await seguir();
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ cobrar: true, montoHoy: 300 }));
   });
 
   it("un descuento en Bs mayor que el curso se marca y no inscribe", async () => {
@@ -669,7 +733,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
-    expect(within(panel()).queryByRole("region", { name: "Faltan fotos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Faltan fotos" })).not.toBeInTheDocument();
     const [pedido, fotos] = vi.mocked(apiAcademia.inscribir).mock.calls[0];
     expect(Object.keys(fotos!).sort()).toEqual(["CI_ANVERSO", "CI_REVERSO", "FOTO"]);
     expect(pedido).not.toHaveProperty("fotosPendientes");
@@ -710,6 +774,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
     const [pedido, fotos] = vi.mocked(apiAcademia.inscribir).mock.calls[0];
     expect(pedido).toMatchObject({ fotosPendientes: true });
     expect(Object.keys(fotos!)).toEqual(["FOTO"]);
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith({
       inscripcion: { id: 555, fotosPendientes: true, fotosFaltan: ["CI_ANVERSO", "CI_REVERSO"] },
       nombre: "Céspedes Molina, Joaquín",
@@ -727,7 +792,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
-    expect(within(panel()).queryByRole("region", { name: "Faltan fotos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Faltan fotos" })).not.toBeInTheDocument();
     expect(vi.mocked(apiAcademia.inscribir).mock.calls[0][0]).not.toHaveProperty("fotosPendientes");
   });
 
@@ -786,6 +851,7 @@ describe("A2 · inscribir en menos pasos", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?750/ }));
     });
+    await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 750 }));
   });
 });
@@ -820,6 +886,7 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
     expect(apiAcademia.revisarFotos).toHaveBeenCalledWith(61, { ok: true });
+    await seguir();
     expect(onInscrito).toHaveBeenCalled();
   });
 

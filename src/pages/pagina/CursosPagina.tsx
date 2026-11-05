@@ -38,6 +38,7 @@ export default function CursosPagina({
   urlInscribirme,
   urlMiCuenta,
   escritorio,
+  compacta = false,
 }: {
   cursos: CursoPublico[];
   t: TonosPagina;
@@ -51,9 +52,26 @@ export default function CursosPagina({
   /** «Pagar mi inscripción» (M5). Sin esto (la vista previa) no se dibuja. */
   urlMiCuenta?: string;
   escritorio: boolean;
+  /**
+   * Hay lugar a lo ancho (computadora y un estilo de una columna ancha): con
+   * un solo curso, «Pagar mi inscripción» va a su lado y no debajo, con media
+   * fila vacía al costado del curso (04-nov).
+   */
+  compacta?: boolean;
 }) {
   const visibles = cursos.filter((c) => c.grupos.length > 0 || c.desde != null);
   if (!visibles.length) return null;
+  if (compacta && escritorio && visibles.length === 1 && urlMiCuenta) {
+    return (
+      <section aria-label="Cursos" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {titulo}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "stretch" }}>
+          <TarjetaCurso c={visibles[0]} t={t} colorBoton={colorBoton} radio={radio} urlInscribirme={urlInscribirme} />
+          <SeccionPagar url={urlMiCuenta} t={t} colorBoton={colorBoton} radio={radio} escritorio={escritorio} enColumna />
+        </div>
+      </section>
+    );
+  }
   return (
     <section aria-label="Cursos" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {titulo}
@@ -85,13 +103,18 @@ function SeccionPagar({
   colorBoton,
   radio,
   escritorio,
+  enColumna = false,
 }: {
   url: string;
   t: TonosPagina;
   colorBoton: string;
   radio: CSSProperties["borderRadius"];
   escritorio: boolean;
+  /** Al lado del curso (04-nov): media fila, así que los pasos y el botón van uno debajo del otro. */
+  enColumna?: boolean;
 }) {
+  // En la columna, el armado del celular pero con el aire de la compu.
+  const fila = escritorio && !enColumna;
   const pasos = ["Entrá con tu carnet", "Elegí qué pagar", "Pagá con QR y subí el comprobante"];
   return (
     <div
@@ -100,7 +123,10 @@ function SeccionPagar({
       // La misma tarjeta que las de curso (fondo, borde, sombra y radio del
       // estilo), sin franja de color: el dueño la quería igual a las demás.
       style={{
-        marginTop: 8,
+        marginTop: enColumna ? 0 : 8,
+        display: enColumna ? "flex" : undefined,
+        flexDirection: enColumna ? "column" : undefined,
+        justifyContent: enColumna ? "center" : undefined,
         background: t.tarjeta,
         border: t.borde ? `1px solid ${t.borde}` : undefined,
         boxShadow: t.sombra ?? undefined,
@@ -112,9 +138,9 @@ function SeccionPagar({
         style={{
           padding: escritorio ? "22px 26px" : 18,
           display: "flex",
-          flexDirection: escritorio ? "row" : "column",
-          alignItems: escritorio ? "center" : "stretch",
-          gap: escritorio ? 28 : 16,
+          flexDirection: fila ? "row" : "column",
+          alignItems: fila ? "center" : "stretch",
+          gap: fila ? 28 : 16,
         }}
       >
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flex: 1, minWidth: 0 }}>
@@ -145,9 +171,9 @@ function SeccionPagar({
                 padding: 0,
                 listStyle: "none",
                 display: "flex",
-                flexDirection: escritorio ? "row" : "column",
+                flexDirection: fila ? "row" : "column",
                 flexWrap: "wrap",
-                gap: escritorio ? "6px 18px" : 6,
+                gap: fila ? "6px 18px" : 6,
               }}
             >
               {pasos.map((p, i) => (
@@ -188,7 +214,7 @@ function SeccionPagar({
             color: "#ffffff",
             fontWeight: 600,
             fontSize: 15,
-            padding: escritorio ? "13px 24px" : "13px 0",
+            padding: fila ? "13px 24px" : "13px 0",
             borderRadius: 12,
             textDecoration: "none",
             boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)",

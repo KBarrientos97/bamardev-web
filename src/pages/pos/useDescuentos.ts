@@ -35,7 +35,23 @@ export interface Descuentos {
   recotizar: () => void;
 }
 
-const ESPERA_MS = 350;
+const ESPERA_MS = 250;
+
+/**
+ * Los locales (por almacén: cada uno es de un solo negocio) donde la última
+ * cotización no encontró ningún descuento. Ahí el carrito no espera al
+ * servidor: Kevin (3-nov) veía "Calculando descuentos…" y "Cobrar" apagado
+ * con cada plato que tocaba, en un negocio sin una sola promoción.
+ *
+ * Vive fuera del hook para que la venta siguiente, o volver al POS, no
+ * tengan que aprenderlo otra vez.
+ */
+const sinDescuentos = new Set<string>();
+
+/** Para los tests: arrancar sin saber nada de ningún local. */
+export function olvidarLocalesSinDescuentos() {
+  sinDescuentos.clear();
+}
 
 /** Una línea por artículo, como la manda la cotización. */
 function clave(detalles: DetalleVentaInput[], cupones: string[], clienteId: number | null, citaId: number | null) {
@@ -65,6 +81,9 @@ export function useDescuentos(opc: {
   const [error, setError] = useState("");
   const [vuelta, setVuelta] = useState(0);
   const pedido = useRef(0);
+  const local = String(almacenId ?? "");
+  const [localSinDescuentos, setLocalSinDescuentos] = useState(() => sinDescuentos.has(local));
+  useEffect(() => setLocalSinDescuentos(sinDescuentos.has(local)), [local]);
 
   const actual = useMemo(
     () => clave(detalles, cupones, clienteId, citaId),
@@ -104,6 +123,15 @@ export function useDescuentos(opc: {
           setCotizacion(c);
           setClaveCotizada(actual);
           setError("");
+          // Sólo se aprende con un carrito pelado: sin cupones ni cliente, que
+          // pueden ser la razón de que no haya salido nada.
+          if (c.aplicadas.length > 0) {
+            sinDescuentos.delete(local);
+            setLocalSinDescuentos(false);
+          } else if (cupones.length === 0 && clienteId == null && citaId == null) {
+            sinDescuentos.add(local);
+            setLocalSinDescuentos(true);
+          }
         })
         .catch((e: unknown) => {
           if (mio !== pedido.current) return;
@@ -122,7 +150,18 @@ export function useDescuentos(opc: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activo, actual, almacenId, vuelta]);
 
-  const vigente = activo && claveCotizada === actual && !cargando;
+  /** La cotización que hay es la de este carrito. */
+  const cotizada = activo && claveCotizada === actual && !cargando;
+  /**
+   * En un local sin descuentos el carrito no espera: el total es el de
+   * siempre y se puede cobrar mientras la cotización corre de fondo. Sigue
+   * siendo seguro: la venta va con "no espero ningún descuento" y, si en el
+   * medio apareció una promoción, el backend la frena con un 409 y la
+   * cotización nueva (`exigirLoEsperado`), igual que si cambiara cualquiera.
+   */
+  const optimista =
+    activo && !cotizada && localSinDescuentos && cupones.length === 0 && clienteId == null && citaId == null;
+  const vigente = cotizada || optimista;
 
   const agregarCupon = useCallback((codigo: string) => {
     const limpio = codigo.toUpperCase().replace(/[\s-]+/g, "").trim();
@@ -142,15 +181,20 @@ export function useDescuentos(opc: {
   const recotizar = useCallback(() => setVuelta((v) => v + 1), []);
 
   const total = useCallback(
-    (bruto: number) => (activo && vigente && cotizacion ? cotizacion.total : bruto),
-    [activo, vigente, cotizacion],
+    // Con la cotización de otro carrito (el de antes del último toque) va el
+    // bruto: su neto sería de otra cuenta.
+    (bruto: number) => (cotizada && cotizacion ? cotizacion.total : bruto),
+    [cotizada, cotizacion],
   );
 
   const extraVenta = useCallback((): Pick<
     VentaInput,
     "cupones" | "descuentosEsperados" | "clienteId"
   > => {
-    if (!activo || !vigente || !cotizacion) {
+    if (!cotizada || !cotizacion) {
+      // `[]` y no nada: así el backend corre el motor y confirma que no hay
+      // descuento. Sin el campo, la venta saldría sin preguntar.
+      if (optimista) return { descuentosEsperados: [] };
       return clienteId != null && activo ? { clienteId } : {};
     }
     // Sólo los cupones que se aplicaron: uno descartado (vencido, bajo el
@@ -162,7 +206,7 @@ export function useDescuentos(opc: {
       ...(validos.length ? { cupones: validos } : {}),
       ...(clienteId != null ? { clienteId } : {}),
     };
-  }, [activo, vigente, cotizacion, cupones, clienteId]);
+  }, [activo, cotizada, optimista, cotizacion, cupones, clienteId]);
 
   return {
     activo,
@@ -173,8 +217,10 @@ export function useDescuentos(opc: {
     clienteId,
     setClienteId,
     cotizacion: activo ? cotizacion : null,
-    cargando: activo && cargando,
-    error: activo ? error : "",
+    // La cotización de fondo no se anuncia ni frena "Cobrar"; si falla, la
+    // venta igual la confirma el backend.
+    cargando: activo && cargando && !optimista,
+    error: activo && !optimista ? error : "",
     total,
     extraVenta,
     vigente,

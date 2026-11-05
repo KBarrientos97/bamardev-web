@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fmtHora } from "../../lib/format";
-import { turnoDeCaja } from "./turnoDeCaja";
+import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
 
 /** En la hora de este equipo, como la muestra la pantalla. */
 const local = (mes: number, dia: number, h: number, min: number) => new Date(2026, mes - 1, dia, h, min).toISOString();
@@ -42,5 +42,29 @@ describe("turnoDeCaja: el turno fechado en las dos puntas (CAJA-4)", () => {
     expect(turnoDeCaja(local(10, 28, 12, 0), null)).toBeNull();
     expect(turnoDeCaja(undefined, local(10, 28, 12, 0))).toBeNull();
     expect(turnoDeCaja("no es fecha", local(10, 28, 12, 0))).toBeNull();
+  });
+});
+
+describe("abiertaDesde: la cabecera de la caja dice el día si no es de hoy", () => {
+  it("abierta hoy, sólo la hora", () => {
+    const a = local(11, 4, 9, 59);
+    expect(abiertaDesde(a, new Date(2026, 10, 4, 15, 0))).toBe(fmtHora(a));
+  });
+
+  it("abierta otro día, con el día y la fecha", () => {
+    // La prueba del 4-nov: una caja del sábado decía «Abierta desde 09:59» y
+    // se leía como abierta esa mañana; el esperado era el de cinco días.
+    const a = local(10, 31, 9, 59);
+    expect(abiertaDesde(a, new Date(2026, 10, 4, 15, 0))).toBe(`sáb 31/10 · ${fmtHora(a)}`);
+  });
+
+  it("anoche a las 23:50 ya es otro día, aunque hayan pasado minutos", () => {
+    const a = local(11, 3, 23, 50);
+    expect(abiertaDesde(a, new Date(2026, 10, 4, 0, 10))).toBe(`mar 03/11 · ${fmtHora(a)}`);
+  });
+
+  it("sin fecha o ilegible, una raya", () => {
+    expect(abiertaDesde(null)).toBe("—");
+    expect(abiertaDesde("no es fecha")).toBe("—");
   });
 });
