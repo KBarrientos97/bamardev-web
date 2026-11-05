@@ -1463,9 +1463,14 @@ export interface PagoEnLinea {
 
 export interface PreinscripcionInput {
   grupoId: number;
-  nombres: string;
-  apellidos: string;
-  telefono: string;
+  /**
+   * Derick, 04-nov: el carnet ya es de un estudiante (`apiAcademiaPublica.carnet`):
+   * no viajan los datos, la ficha que ya existe es la que vale.
+   */
+  conocido?: boolean;
+  nombres?: string;
+  apellidos?: string;
+  telefono?: string;
   fechaNacimiento?: string;
   edad?: number;
   tutor?: { nombre: string; telefono: string };
@@ -1486,4 +1491,9 @@ export type FotosInscripcion = Partial<Record<TipoFoto, Blob>>;
 export interface PreinscripcionEnviada {
   ok: true;
   grupo: { nombre: string; sede: string; fechaInicio: string; direccion: string | null };
+  /**
+   * Derick, 04-nov: el enlace de pago de esa inscripción, para pagar en la
+   * misma pantalla (un backend anterior no lo manda).
+   */
+  token?: string | null;
 }

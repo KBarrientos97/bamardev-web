@@ -29,7 +29,7 @@ vi.mock("../../lib/pagina/usePaginaPublica", () => ({
 
 vi.mock("../../lib/academia/apiPublica", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiPublica")>();
-  return { ...real, apiAcademiaPublica: { cursos: vi.fn(), preinscribir: vi.fn() } };
+  return { ...real, apiAcademiaPublica: { cursos: vi.fn(), preinscribir: vi.fn(), carnet: vi.fn(), estadoCuenta: vi.fn() } };
 });
 
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
@@ -74,10 +74,18 @@ async function montar(grupo = 22) {
   await act(async () => {});
 }
 
+/** El carnet va primero (Derick, 04-nov): «Siguiente» pregunta si ya es de un estudiante. */
+async function revisarCarnet() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   paginaMock.error = null;
   vi.mocked(apiAcademiaPublica.cursos).mockResolvedValue([CURSO]);
+  vi.mocked(apiAcademiaPublica.carnet).mockResolvedValue({ nombre: null });
   vi.mocked(apiAcademiaPublica.preinscribir).mockResolvedValue({
     ok: true,
     grupo: { nombre: "Barbería · Sáb 08:00", sede: "Norte", fechaInicio: "2026-11-08", direccion: "Av. Banzer, 4.º anillo" },
@@ -100,6 +108,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     // Paso 2: los datos como en el carnet; menor → tutor.
     expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
+    await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Rojas Lima" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Thiago" } });
     fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2011-03-12" } });
@@ -155,6 +164,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
   async function llenarDatosYSeguir() {
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
+    await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
@@ -227,6 +237,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
+    await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
@@ -260,6 +271,7 @@ describe("L4 · la fecha de nacimiento (28-oct)", () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
+    await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Rojas Lima" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Thiago" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
@@ -326,6 +338,7 @@ describe("M5 · un grupo lleno ya no recibe preinscripciones", () => {
   async function llenarDatosYSeguirM5() {
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
+    await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
@@ -339,6 +352,7 @@ describe("la fecha de nacimiento es opcional (03-nov)", () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
+    await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
@@ -355,4 +369,92 @@ describe("la fecha de nacimiento es opcional (03-nov)", () => {
     expect(input).not.toHaveProperty("edad");
     expect(screen.getByRole("heading", { name: "¡Listo, Ana!" })).toBeInTheDocument();
   });
+});
+
+describe("Derick, 04-nov · el carnet conocido y el pago en la misma inscripción", () => {
+  it("con el carnet de un estudiante saluda, no pide los datos ni las fotos y manda sólo el carnet", async () => {
+    vi.mocked(apiAcademiaPublica.carnet).mockResolvedValue({ nombre: "Thiago" });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(screen.queryByLabelText("Apellidos")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
+    await revisarCarnet();
+    expect(vi.mocked(apiAcademiaPublica.carnet).mock.calls[0]).toEqual(["horizonte", { ci: "14550221" }]);
+    expect(screen.getByRole("status")).toHaveTextContent("Hola, Thiago: ya tenemos tus datos");
+    expect(screen.queryByLabelText("Apellidos")).not.toBeInTheDocument();
+    // Sin las fotos: directo a cómo pagar.
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(screen.getByRole("heading", { name: "¿Cómo querés pagar?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar inscripción" }));
+    });
+    const [, input, fotos] = vi.mocked(apiAcademiaPublica.preinscribir).mock.calls[0];
+    expect(input).toEqual({ grupoId: 22, ci: "14550221", ciExpedido: "SC", planPagoId: 1, privacidad: true, conocido: true });
+    expect(fotos).toBeUndefined();
+    expect(screen.getByRole("heading", { name: "¡Listo, Thiago!" })).toBeInTheDocument();
+  });
+
+  it("si cambia el carnet, vuelve a preguntar; un carnet nuevo pide los datos", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "999" } });
+    await revisarCarnet();
+    expect(screen.getByLabelText("Apellidos")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "9990" } });
+    expect(screen.queryByLabelText("Apellidos")).not.toBeInTheDocument();
+  });
+
+  it("con el QR del instituto se paga en la pantalla final, sin ir a otro enlace", async () => {
+    vi.mocked(apiAcademiaPublica.preinscribir).mockResolvedValue({
+      ok: true,
+      grupo: { nombre: "Barbería · Sáb 08:00", sede: "Norte", fechaInicio: "2026-11-08", direccion: null },
+      token: "K7Q2abcdef12",
+    });
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({
+      instituto: { nombre: "CCTP Horizonte", logoUrl: null, telefono: "70000000" },
+      alumno: { nombres: "Ana" },
+      curso: "Barbería y Peluquería",
+      grupo: { nombre: "Barbería · Sáb 08:00", sede: "Norte" },
+      cuotas: [],
+      proxima: null,
+      saldoTotal: 0,
+      qr: { tipo: "FIJO", imagenUrl: "https://cdn.test/qr.png" },
+      pago: {
+        estado: "PREINSCRITA",
+        modo: "FIJO",
+        grupoLleno: false,
+        opciones: [
+          { clave: "COMPLETO", titulo: "Pagar el curso completo", detalle: "Un solo pago", monto: 1350, ahorro: 150, etiqueta: "Pago completo", vence: null },
+          { clave: "CUOTA", titulo: "Pagar el primer mes", detalle: "Asegura tu cupo", monto: 500, ahorro: null, etiqueta: "Primer mes", vence: null },
+          { clave: "ADELANTO", titulo: "Pagar una parte para asegurar mi cupo", detalle: "Elegís cuánto", monto: 300, montoMaximo: 1500, ahorro: null, etiqueta: "Adelanto", vence: null },
+        ],
+        enRevision: null,
+        rechazado: null,
+      },
+    });
+    await montar();
+    await llenarDatosYSeguirFinal();
+    expect(vi.mocked(apiAcademiaPublica.estadoCuenta)).toHaveBeenCalledWith("horizonte", "K7Q2abcdef12");
+    expect(screen.getByRole("radio", { name: /Pagar una parte para asegurar mi cupo/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /QR de CCTP Horizonte/ })).toHaveAttribute("src", "https://cdn.test/qr.png");
+    expect(screen.queryByRole("link", { name: "Pagar mi inscripción" })).not.toBeInTheDocument();
+  });
+
+  async function llenarDatosYSeguirFinal() {
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
+    await revisarCarnet();
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
+    fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Seguir sin fotos" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar inscripción" }));
+    });
+    await act(async () => {});
+  }
 });

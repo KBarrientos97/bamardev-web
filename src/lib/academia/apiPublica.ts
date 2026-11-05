@@ -96,6 +96,15 @@ export const apiAcademiaPublica = {
       body: formularioConFotos(input, fotos),
     }),
   /**
+   * Derick, 04-nov: si el carnet ya es de un estudiante, su nombre de pila
+   * (para saludarlo y no pedirle los datos otra vez); si no, null.
+   */
+  carnet: (subdominio: string, input: { ci: string; captcha?: string }) =>
+    pedir<{ nombre: string | null }>(`/publico/academia/${sub(subdominio)}/carnet`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /**
    * M5 · «Pagar mi inscripción»: sólo el carnet (desde el 03-nov). Si es de
    * alguien con algo vigente, el enlace de cada inscripción; si no, siempre el
    * mismo 404 (la página no cuenta quién estudia ahí).
