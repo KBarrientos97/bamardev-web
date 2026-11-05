@@ -14,9 +14,12 @@ import { useApi } from "../lib/useApi";
  * qué cuenta entra la plata. La apertura lo sigue mostrando (a la cajera, sin
  * botones).
  *
- * La cajera no lo puede cambiar a propósito (decisión del 16-oct): el sistema
+ * La cajera no lo puede cambiar de fábrica (decisión del 16-oct): el sistema
  * no distingue el QR que le pasó el dueño del de su cuenta personal, y con el
- * suyo los cobros por QR irían a ella y figurarían "cobrados por QR".
+ * suyo los cobros por QR irían a ella y figurarían "cobrados por QR". El
+ * administrador se lo puede dar en Roles («QR de cobro», 4-nov), y entonces
+ * ve esta pantalla y el botón de la apertura: por eso el texto de abajo no
+ * dice "sólo vos", que a ella le mentiría.
  */
 export default function QrDeCobro() {
   const info = useApi(() => api.qrCobro(), []);
@@ -41,8 +44,9 @@ export default function QrDeCobro() {
       <section className="card space-y-2.5 p-4 text-[13px] text-texto-2">
         <h2 className="text-sm font-bold text-texto">Para que la plata llegue a tu cuenta</h2>
         <p>
-          Sólo vos lo podés subir o cambiar: si una cajera pudiera poner el suyo, los cobros por QR irían a su cuenta y
-          el sistema igual diría «cobrado por QR».
+          Lo sube o lo cambia el administrador y quien tenga el permiso «QR de cobro» en Roles. Es uno para todas las
+          cajas: si una cajera con el permiso pone el suyo, los cobros por QR de todos irán a su cuenta y el sistema
+          igual dirá «cobrado por QR».
         </p>
         <p>
           Al escanearlo, la app del banco del cliente muestra a nombre de quién va la plata: tiene que decir el nombre de

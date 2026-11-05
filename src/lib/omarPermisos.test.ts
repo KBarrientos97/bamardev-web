@@ -132,9 +132,14 @@ const HOY = {
         // Desde el 02-nov, la ficha única de sus sucursales (dirección,
         // ubicación y horario): el dueño decidió que es para todos los rubros
         // y sin flag del panel, así que Omar también la ve.
+        // Desde el 04-nov, el QR de cobro (pedido de Kevin): el administrador
+        // que nunca abre caja no tenía dónde cargarlo, y con él Finanzas
+        // vuelve a tener dos hijos y se dibuja como carpeta.
         items: [
           "Usuarios /usuarios",
-          "Cuentas por cobrar /creditos",
+          "Finanzas /creditos",
+          "  Cuentas por cobrar /creditos",
+          "  QR de cobro /configuracion/qr-cobro",
           "Reportes /reportes",
           "Datos de las sucursales /configuracion/sucursales",
         ],
@@ -172,6 +177,7 @@ const HOY = {
           "Finanzas /creditos",
           "  Cuentas por cobrar /creditos",
           "  Gastos operativos /gastos",
+          "  QR de cobro /configuracion/qr-cobro",
           "Reportes /reportes",
           // Lo que se arma una vez, abajo.
           "Mesas del salón /mesas",
@@ -205,12 +211,14 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
 
   it("la división por tema (11-oct) cambia de lugar las pantallas, no cuáles ve", () => {
     // Lo único que se suma desde el 06-oct es Almacenes (15-oct, pedido de
-    // Kevin) y la ficha de Sucursales (02-nov, para todos los rubros).
+    // Kevin), la ficha de Sucursales (02-nov, para todos los rubros) y el QR
+    // de cobro (04-nov, pedido de Kevin).
     const SUCURSALES = "Datos de las sucursales /configuracion/sucursales";
+    const QR = "QR de cobro /configuracion/qr-cobro";
     expect(pantallas("ADMIN", OMAR)).toEqual(
-      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES].sort(),
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR].sort(),
     );
-    expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES].sort());
+    expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR].sort());
   });
 
   it("los permisos nuevos sólo le suman la pantalla de Roles, al lado de Usuarios", () => {
@@ -227,7 +235,9 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
                 "Equipo /usuarios",
                 "  Usuarios /usuarios",
                 "  Roles /roles",
-                "Cuentas por cobrar /creditos",
+                "Finanzas /creditos",
+                "  Cuentas por cobrar /creditos",
+                "  QR de cobro /configuracion/qr-cobro",
                 "Reportes /reportes",
                 "Datos de las sucursales /configuracion/sucursales",
               ],
