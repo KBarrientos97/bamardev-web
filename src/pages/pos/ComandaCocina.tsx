@@ -1,6 +1,8 @@
 import { fmtCantidad, fmtHora } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
 import type { Venta } from "../../types";
+import type { TamanoLetra } from "../../types/menuDigital";
+import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 
 /**
  * La comanda de cocina de un pedido con número (extra `tickets_pedido`): el
@@ -22,12 +24,19 @@ export default function ComandaCocina({
   numero,
   negocio,
   minutos = 0,
+  tamano,
 }: {
   venta: Venta;
   numero: number;
   negocio: string;
   /** El tiempo estimado de Configuración del recibo: la cocina sabe para cuándo. 0, no sale. */
   minutos?: number;
+  /**
+   * La letra de la comanda (Configuración del recibo), aparte de la del
+   * recibo: la cocina lee de lejos y puede querer la grande aunque la caja
+   * ahorre rollo con la chica. Sin diseño del recibo, la de siempre.
+   */
+  tamano?: TamanoLetra | null;
 }) {
   const detalles = venta.detalles ?? [];
   const grupos = [
@@ -37,7 +46,10 @@ export default function ComandaCocina({
   const unidades = detalles.reduce((s, d) => s + d.cantidad, 0);
 
   return (
-    <article className="comanda-impresa card mx-auto max-w-[320px] p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none">
+    <article
+      className="papel-letra comanda-impresa card mx-auto max-w-[320px] p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none"
+      style={estiloLetra(tamano)}
+    >
       <header className="text-center">
         <p className="text-[10px] font-bold tracking-[0.3em] text-texto-3">COMANDA · COCINA</p>
         {negocio && <p className="text-sm font-bold text-texto">{negocio}</p>}

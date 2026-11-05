@@ -179,6 +179,19 @@ input[type="number"] {
   );
 }
 
+/* La letra del papel (Configuración del recibo: Chica, Normal o Grande), en
+   la pantalla y en la impresión por igual, así la vista previa es lo que sale.
+   Con `zoom` en cada pieza y no achicando cada texto: se achican también los
+   espacios, el recuadro del número y el QR, que es lo que ahorra rollo, y el
+   ancho no se toca (lo de adentro sigue llenando el rollo, sólo entra más por
+   renglón). En las piezas y no en el `article`: zoom en el papel entero
+   angostaba también la tarjeta de la pantalla. La escala la pone
+   `estiloLetra` (lib/menuDigital/letraRecibo); sin ella, 1 y el papel de
+   siempre. */
+.papel-letra > * {
+  zoom: var(--escala-letra, 1);
+}
+
 /*
  * Impresión del ticket — rollo de 80 mm, igual que la app.
  *

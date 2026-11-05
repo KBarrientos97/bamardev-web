@@ -81,11 +81,21 @@ export interface MenuPublicoApi {
   platos: Omit<PlatoMenu, "categoria" | "enMenu" | "agotadoHoy">[];
 }
 
+/** Chica, Normal o Grande: cuánto achica cada una está en `ESCALA_LETRA` (lib/menuDigital/letraRecibo). */
+export type TamanoLetra = "s" | "m" | "l";
+
 /** El diseño del recibo (`menu-digital/ajustes-recibo.ts` del backend). */
 export interface AjustesRecibo {
   ancho: number;
   logo: boolean;
   tamanoLogo: "s" | "m" | "l";
+  /**
+   * La letra del recibo y la de la comanda, cada una por su lado: la caja
+   * quiere ahorrar rollo y la cocina leer de lejos. "l" es como salía el
+   * papel hasta el 5-nov.
+   */
+  tamanoLetra: TamanoLetra;
+  tamanoLetraComanda: TamanoLetra;
   nombre: boolean;
   lema: string;
   direccion: string;
@@ -110,6 +120,8 @@ export const RECIBO_DE_FABRICA: AjustesRecibo = {
   ancho: 80,
   logo: true,
   tamanoLogo: "s",
+  tamanoLetra: "m",
+  tamanoLetraComanda: "m",
   nombre: true,
   lema: "",
   direccion: "",

@@ -14,7 +14,8 @@ import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 import ComandaCocina from "./ComandaCocina";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
-import { CabeceraNegocio, HojaAngosta, QrRecibo } from "./PiezasRecibo";
+import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
+import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, QrRecibo } from "./PiezasRecibo";
 import { whatsappDelRecibo } from "../../lib/mensajeRecibo";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 
@@ -306,10 +307,14 @@ export default function PantallaRecibo({
     <article
       id={conTicket ? undefined : "area-impresion"}
       ref={ticket}
-      className={`card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "recibo-impreso print:max-w-none print:p-0" : ""}`}
-      // El rollo de 58 mm (Configuración del recibo): el ticket se angosta
-      // al imprimir (index.css lee la variable) y también en la pantalla.
-      style={!conTicket && anchoPapel ? ({ "--ancho-ticket": anchoPapel.ticket } as CSSProperties) : undefined}
+      className={`papel-letra card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "recibo-impreso print:max-w-none print:p-0" : ""}`}
+      // La letra elegida en Configuración del recibo (`papel-letra`). Y el
+      // rollo de 58 mm: el ticket se angosta al imprimir (index.css lee la
+      // variable) y también en la pantalla.
+      style={{
+        ...estiloLetra(r?.tamanoLetra),
+        ...(!conTicket && anchoPapel ? ({ "--ancho-ticket": anchoPapel.ticket } as CSSProperties) : {}),
+      }}
     >
       {r ? (
         <CabeceraNegocio r={r} logo={conf?.logo ?? null} nombre={negocio?.nombre ?? "BamarDev"} />
@@ -321,16 +326,7 @@ export default function PantallaRecibo({
         </header>
       )}
 
-      {/* El número que el cliente espera oír: grande y en su recuadro, lo
-          primero que se ve del papel. */}
-      {conTicket && (
-        <div className="mx-auto mb-2 w-fit rounded-lg border-2 border-texto px-4 py-1 text-center">
-          <p className="text-[10px] font-bold tracking-[0.3em] text-texto-3">TICKET N°</p>
-          <p className="font-mono text-[44px] font-black leading-none tracking-tight text-texto">
-            {numeroTicket(ticketPedido!.numero)}
-          </p>
-        </div>
-      )}
+      {conTicket && <NumeroDelRecibo numero={ticketPedido!.numero} />}
 
       {/* Cabecera en filas etiquetadas, como en la app: el número de ticket
           queda siempre en el mismo lugar y el cliente lo encuentra solo. */}
@@ -432,8 +428,12 @@ export default function PantallaRecibo({
       )}
 
       {/* Sin "Método de pago y cambio" (Configuración del recibo) el bloque
-          no sale; el método igual queda en la cabecera ("Pago:"). */}
-      <dl className={`mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm ${r && !r.pagoYCambio ? "hidden" : ""}`}>
+          no sale; el método igual queda en la cabecera ("Pago:").
+
+          En la letra de la cabecera y no en la del Subtotal: son datos del
+          cobro como "Pago:", y en el papel salían más grandes que los platos
+          (Kevin, 5-nov, con el ticket impreso marcado en rojo). */}
+      <dl className={`mt-2 space-y-0.5 border-t border-dashed border-borde pt-2 text-xs ${r && !r.pagoYCambio ? "hidden" : ""}`}>
         <div className="flex justify-between text-texto-2">
           <dt>Método de pago</dt>
           <dd className="font-bold text-texto">{metodo}</dd>
@@ -635,6 +635,7 @@ export default function PantallaRecibo({
                   numero={numero}
                   negocio={negocio?.nombre ?? ""}
                   minutos={r?.minutosEstimados ?? 0}
+                  tamano={r?.tamanoLetraComanda}
                 />
               </section>
             </div>
