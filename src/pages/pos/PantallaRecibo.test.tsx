@@ -689,6 +689,54 @@ describe("pedidos con número (extra tickets_pedido)", () => {
   });
 });
 
+describe("la letra y el logo del papel (Configuración del recibo, 5-nov)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+  });
+
+  const conNumero = () =>
+    venta({
+      ticket: { numero: 72, estado: "PREPARANDO" },
+      detalles: [
+        { productoId: 1, producto: "Brasa cuarto", cantidad: 1, precio: 26, subtotal: 26, nota: null, consumo: "LLEVAR" },
+      ],
+    } as Partial<Venta>);
+
+  it("el logo lleva su alto fijo, no un tope que la impresión borra", () => {
+    // index.css, al imprimir, le pone `max-height: none !important` a todo el
+    // papel (por los comprobantes que viven en un modal). Con el alto como
+    // tope, el logo "Chico" salía de 58 mm, casi del ancho del rollo.
+    disenoRecibo.valor = {
+      recibo: { ...RECIBO_DE_FABRICA, tamanoLogo: "s", tamanoLetra: "s" },
+      logo: "/pantallas/logo/abc",
+    };
+    dibujar(conNumero());
+    const logo = document.querySelector<HTMLImageElement>(".recibo-impreso img")!;
+    expect(logo.style.maxHeight).toBe("");
+    // 44 px a la vista: la letra chica (0,75) achica el papel, no el logo.
+    expect(parseFloat(logo.style.height) * 0.75).toBeCloseTo(44);
+  });
+
+  it("cada papel sale con su letra", () => {
+    disenoRecibo.valor = {
+      recibo: { ...RECIBO_DE_FABRICA, tamanoLetra: "s", tamanoLetraComanda: "l" },
+      logo: null,
+    };
+    dibujar(conNumero());
+    expect(document.querySelector<HTMLElement>(".recibo-impreso")!.style.getPropertyValue("--escala-letra")).toBe("0.75");
+    // Grande es el papel de siempre: sin escala.
+    expect(document.querySelector<HTMLElement>(".comanda-impresa")!.style.getPropertyValue("--escala-letra")).toBe("");
+  });
+
+  it("sin diseño del recibo (un negocio sin pantallas), el papel no cambia de letra", () => {
+    dibujar(venta());
+    expect(document.getElementById("area-impresion")!.style.getPropertyValue("--escala-letra")).toBe("");
+  });
+});
+
 describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
   // La caja y la cocina pueden tener cada una su impresora: Configuración
   // deja elegir el recibo, la comanda, o los dos juntos o por separado.

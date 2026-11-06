@@ -1,4 +1,4 @@
-import type { AjustesRecibo, EditorMenu, PantallaMenu, PlatoMenu } from "../types/menuDigital";
+import { RECIBO_DE_FABRICA, type AjustesRecibo, type EditorMenu, type PantallaMenu, type PlatoMenu } from "../types/menuDigital";
 import { request } from "./api";
 
 /**
@@ -8,6 +8,13 @@ import { request } from "./api";
 
 /** Una ruta pública del API (foto, logo) como URL para un `<img>`: la misma regla que la TV. */
 export { urlPublica as urlApi } from "../publico/tv/apiTv";
+
+/**
+ * Lo que el servidor todavía no manda, de fábrica. Un campo nuevo del recibo
+ * (la letra, 5-nov) llega a la web antes que al backend de QA o de PROD: sin
+ * esto el papel salía con `undefined` en vez de con la letra Normal.
+ */
+const conLoQueFalta = (r: AjustesRecibo): AjustesRecibo => ({ ...RECIBO_DE_FABRICA, ...r });
 
 const conArchivo = (archivo: Blob, nombre: string) => {
   const f = new FormData();
@@ -27,9 +34,15 @@ export const apiMenuDigital = {
     request<PlatoMenu>(`/menu-digital/platos/${id}/foto`, { method: "POST", body: conArchivo(archivo, "plato.webp") }),
   quitarFoto: (id: number) => request<PlatoMenu>(`/menu-digital/platos/${id}/foto`, { method: "DELETE" }),
 
-  recibo: () => request<{ recibo: AjustesRecibo; logo: string | null }>("/pantallas/recibo"),
+  recibo: () =>
+    request<{ recibo: AjustesRecibo; logo: string | null }>("/pantallas/recibo").then((x) => ({
+      ...x,
+      recibo: conLoQueFalta(x.recibo),
+    })),
   guardarRecibo: (recibo: Partial<AjustesRecibo>) =>
-    request<AjustesRecibo>("/pantallas/recibo", { method: "PATCH", body: JSON.stringify({ recibo }) }),
+    request<AjustesRecibo>("/pantallas/recibo", { method: "PATCH", body: JSON.stringify({ recibo }) }).then(
+      conLoQueFalta,
+    ),
   subirLogo: (archivo: Blob) =>
     request<{ logo: string }>("/pantallas/logo", { method: "POST", body: conArchivo(archivo, "logo.webp") }),
   quitarLogo: () => request<{ logo: null }>("/pantallas/logo", { method: "DELETE" }),

@@ -4,14 +4,14 @@ import { Boton, Confirmar, ErrorMsg } from "../../components/ui";
 import { apiMenuDigital, urlApi } from "../../lib/apiMenuDigital";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
+import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { olvidarReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { prepararImagen } from "../../lib/pagina/imagen";
-import { numeroTicket } from "../../lib/tickets/llamado";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
-import { RECIBO_DE_FABRICA, type AjustesRecibo } from "../../types/menuDigital";
+import { RECIBO_DE_FABRICA, type AjustesRecibo, type TamanoLetra } from "../../types/menuDigital";
 import ComandaCocina from "../pos/ComandaCocina";
-import { CabeceraNegocio, HojaAngosta, QrRecibo } from "../pos/PiezasRecibo";
+import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, QrRecibo } from "../pos/PiezasRecibo";
 import { PestanasTickets, Segmentado, SiNo, Tarjeta } from "../tickets/piezas";
 
 /**
@@ -24,10 +24,19 @@ import { PestanasTickets, Segmentado, SiNo, Tarjeta } from "../tickets/piezas";
  * la caja los toma en la venta siguiente.
  */
 type Pestana = "recibo" | "logo";
+type Papel = "recibo" | "comanda";
+
+const OPCIONES_LETRA: { valor: TamanoLetra; texto: string }[] = [
+  { valor: "s", texto: "Chica" },
+  { valor: "m", texto: "Normal" },
+  { valor: "l", texto: "Grande" },
+];
 
 export default function ConfigRecibo() {
   const { negocio } = useAuth();
   const [pestana, setPestana] = useState<Pestana>("recibo");
+  /** El papel de la vista previa: cambiar la letra de uno lo muestra. */
+  const [papel, setPapel] = useState<Papel>("recibo");
   const [r, setR] = useState<AjustesRecibo>(RECIBO_DE_FABRICA);
   const [logo, setLogo] = useState<string | null>(null);
   const [cargado, setCargado] = useState(false);
@@ -124,12 +133,12 @@ export default function ConfigRecibo() {
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_400px]">
           <div className="min-w-0 space-y-4">
             {pestana === "recibo" ? (
-              <AjustesDelRecibo r={r} cambiar={cambiar} guardado={guardado} />
+              <AjustesDelRecibo r={r} cambiar={cambiar} guardado={guardado} verPapel={setPapel} />
             ) : (
               <LogoYDatos r={r} cambiar={cambiar} logo={logo} onLogo={alCambiarLogo} guardado={guardado} />
             )}
           </div>
-          <VistaPrevia r={r} logo={logo} negocio={negocio?.nombre ?? "Tu negocio"} />
+          <VistaPrevia r={r} logo={logo} negocio={negocio?.nombre ?? "Tu negocio"} papel={papel} onPapel={setPapel} />
         </div>
       </div>
     </div>
@@ -142,10 +151,12 @@ function AjustesDelRecibo({
   r,
   cambiar,
   guardado,
+  verPapel,
 }: {
   r: AjustesRecibo;
   cambiar: (p: Partial<AjustesRecibo>) => void;
   guardado: "" | "guardando" | "guardado" | "error";
+  verPapel: (p: Papel) => void;
 }) {
   return (
     <>
@@ -159,6 +170,31 @@ function AjustesDelRecibo({
               { valor: 58, texto: "58 mm" },
               { valor: 80, texto: "80 mm" },
             ]}
+          />
+        </Fila>
+        {/* Cada papel con su letra (Kevin, 5-nov): el recibo salía más grande
+            en el papel que en la pantalla y gastaba rollo. Al cambiar una, la
+            vista previa pasa a ese papel, para ver el cambio. */}
+        <Fila etiqueta="Letra del recibo" detalle="Más chica, menos papel">
+          <Segmentado
+            etiqueta="Letra del recibo"
+            valor={r.tamanoLetra}
+            onCambiar={(v) => {
+              cambiar({ tamanoLetra: v });
+              verPapel("recibo");
+            }}
+            opciones={OPCIONES_LETRA}
+          />
+        </Fila>
+        <Fila etiqueta="Letra de la comanda" detalle="La que lee la cocina">
+          <Segmentado
+            etiqueta="Letra de la comanda"
+            valor={r.tamanoLetraComanda}
+            onCambiar={(v) => {
+              cambiar({ tamanoLetraComanda: v });
+              verPapel("comanda");
+            }}
+            opciones={OPCIONES_LETRA}
           />
         </Fila>
         {/* Cada papel por su lado (Kevin, 29-oct): la caja y la cocina pueden
@@ -214,7 +250,10 @@ function AjustesDelRecibo({
           <Segmentado
             etiqueta="Tamaño del logo"
             valor={r.tamanoLogo}
-            onCambiar={(v) => cambiar({ tamanoLogo: v })}
+            onCambiar={(v) => {
+              cambiar({ tamanoLogo: v });
+              verPapel("recibo");
+            }}
             opciones={[
               { valor: "s", texto: "Chico" },
               { valor: "m", texto: "Medio" },
@@ -425,8 +464,19 @@ const VENTA_EJEMPLO = {
   ],
 } as unknown as Venta;
 
-function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | null; negocio: string }) {
-  const [papel, setPapel] = useState<"recibo" | "comanda">("recibo");
+function VistaPrevia({
+  r,
+  logo,
+  negocio,
+  papel,
+  onPapel,
+}: {
+  r: AjustesRecibo;
+  logo: string | null;
+  negocio: string;
+  papel: Papel;
+  onPapel: (p: Papel) => void;
+}) {
   const angosto = r.ancho === 58;
   const grupos = [
     { titulo: "EN MESA", lineas: (VENTA_EJEMPLO.detalles ?? []).filter((d) => d.consumo === "MESA") },
@@ -436,10 +486,10 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
     <aside className="lg:sticky lg:top-4 lg:self-start">
       <div className="rounded-3xl bg-muted p-4">
         <div className="mb-3 flex justify-center">
-          <Segmentado<"recibo" | "comanda">
+          <Segmentado<Papel>
             etiqueta="Qué papel"
             valor={papel}
-            onCambiar={setPapel}
+            onCambiar={onPapel}
             opciones={[
               { valor: "recibo", texto: "Recibo del cliente" },
               { valor: "comanda", texto: "Comanda de cocina" },
@@ -451,12 +501,12 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
         {angosto && <HojaAngosta />}
         <div id="area-impresion" style={angosto ? ({ "--ancho-ticket": "48mm" } as CSSProperties) : undefined}>
           {papel === "recibo" ? (
-            <article className={`card mx-auto p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none ${angosto ? "max-w-[250px]" : "max-w-[320px]"}`}>
+            <article
+              className={`papel-letra card mx-auto p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none ${angosto ? "max-w-[250px]" : "max-w-[320px]"}`}
+              style={estiloLetra(r.tamanoLetra)}
+            >
               <CabeceraNegocio r={r} logo={logo} nombre={negocio} />
-              <div className="mx-auto mb-2 w-fit rounded-lg border-2 border-texto px-4 py-1 text-center">
-                <p className="text-[10px] font-bold tracking-[0.3em] text-texto-3">TICKET N°</p>
-                <p className="font-mono text-[44px] font-black leading-none tracking-tight text-texto">{numeroTicket(84)}</p>
-              </div>
+              <NumeroDelRecibo numero={84} />
               <dl className="border-t border-dashed border-borde pt-2 text-xs">
                 <Dato etiqueta="Venta:" valor="V-000009" />
                 <Dato etiqueta="Fecha:" valor={fmtFechaHora(VENTA_EJEMPLO.fecha)} />
@@ -482,15 +532,21 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
                   </div>
                 ))}
               </div>
+              {/* Con el Subtotal, como el recibo de la caja: sin él la vista
+                  previa salía más corta que el papel de verdad. */}
               <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
+                <div className="flex justify-between text-texto-2">
+                  <dt>Subtotal</dt>
+                  <dd>{fmtMoney(123)}</dd>
+                </div>
                 <div className="flex justify-between border-t border-borde pt-1 text-base font-extrabold text-texto">
                   <dt>TOTAL</dt>
                   <dd>{fmtMoney(123)}</dd>
                 </div>
-                {r.totalEnLetras && <p className="text-[11px] italic text-texto-2">{totalEnLetras(123)}</p>}
+                {r.totalEnLetras && <p className="text-[11px] italic leading-snug text-texto-2">{totalEnLetras(123)}</p>}
               </dl>
               {r.pagoYCambio && (
-                <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
+                <dl className="mt-2 space-y-0.5 border-t border-dashed border-borde pt-2 text-xs">
                   <Linea etiqueta="Método de pago" valor="Efectivo" />
                   <Linea etiqueta="Efectivo recibido" valor={fmtMoney(150)} />
                   <Linea etiqueta="Cambio entregado" valor={fmtMoney(27)} />
@@ -503,7 +559,13 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
               </div>
             </article>
           ) : (
-            <ComandaCocina venta={VENTA_EJEMPLO} numero={84} negocio={negocio} minutos={r.minutosEstimados} />
+            <ComandaCocina
+              venta={VENTA_EJEMPLO}
+              numero={84}
+              negocio={negocio}
+              minutos={r.minutosEstimados}
+              tamano={r.tamanoLetraComanda}
+            />
           )}
         </div>
         <Boton variante="ghost" icono="printer" className="mt-3 w-full" onClick={() => window.print()}>
@@ -511,6 +573,16 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
         </Boton>
         <p className="mt-2 text-center text-[12px] text-texto-3">
           Vista previa con datos de ejemplo. Todo se imprime en negro sobre blanco.
+        </p>
+        {/* La letra de acá es la del papel sólo si Chrome no reescala: su
+            «Escala» multiplica todo lo de la página, y con «Márgenes» en
+            Ninguno el ticket arranca en el borde del rollo, donde muchas
+            térmicas no llegan a imprimir (los primeros tickets de prueba
+            salieron cortados a la izquierda). Predeterminado usa los 4 mm de
+            la @page de index.html. */}
+        <p className="mt-1 text-center text-[12px] text-texto-3">
+          Si sale más grande, más chico o cortado: en la ventana de impresión dejá «Escala» y «Márgenes» en
+          Predeterminado.
         </p>
       </div>
     </aside>

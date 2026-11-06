@@ -260,6 +260,39 @@ describe("Configuración del recibo", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Comanda de cocina" }));
     expect(screen.getByText("COMANDA · COCINA")).toBeInTheDocument();
   });
+
+  it("la letra de cada papel: sin la del servidor sale Normal, y cambiarla la guarda y la muestra", async () => {
+    // El recibo simulado no trae la letra, como el backend de QA o de PROD el
+    // día que la web sale antes: sin el de fábrica no quedaba ninguna marcada
+    // y el papel se dibujaba con `undefined`.
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+    const recibo = screen.getByRole("radiogroup", { name: "Letra del recibo" });
+    const comanda = screen.getByRole("radiogroup", { name: "Letra de la comanda" });
+    expect(within(recibo).getByRole("radio", { name: "Normal" })).toHaveAttribute("aria-checked", "true");
+    expect(within(comanda).getByRole("radio", { name: "Normal" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(within(recibo).getByRole("radio", { name: "Chica" }));
+    // Tocar la de la comanda pasa la vista previa a la comanda.
+    fireEvent.click(within(comanda).getByRole("radio", { name: "Grande" }));
+    expect(screen.getByText("COMANDA · COCINA")).toBeInTheDocument();
+
+    await waitFor(
+      () => expect(request).toHaveBeenCalledWith("/pantallas/recibo", expect.objectContaining({ method: "PATCH" })),
+      { timeout: 3000 },
+    );
+    const guardado = request.mock.calls.find(
+      ([ruta, op]) => ruta === "/pantallas/recibo" && (op as RequestInit | undefined)?.method === "PATCH",
+    )!;
+    const { recibo: cuerpo } = JSON.parse((guardado[1] as RequestInit).body as string);
+    expect(cuerpo.tamanoLetra).toBe("s");
+    expect(cuerpo.tamanoLetraComanda).toBe("l");
+  });
 });
 
 describe("Tickets y pedidos", () => {

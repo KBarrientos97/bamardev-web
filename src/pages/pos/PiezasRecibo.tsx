@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { urlApi } from "../../lib/apiMenuDigital";
+import { escalaLetra } from "../../lib/menuDigital/letraRecibo";
 import { svgDeQr, textoEnlace } from "../../lib/pagina/qr";
+import { numeroTicket } from "../../lib/tickets/llamado";
 import type { AjustesRecibo } from "../../types/menuDigital";
 
 /**
  * Piezas del recibo de un negocio con las pantallas del local (Configuración
- * del recibo): la cabecera con el logo y los datos del negocio, y el recuadro
- * del QR con el tiempo estimado. Las usan el recibo de la caja y la vista
+ * del recibo): la cabecera con el logo y los datos del negocio, el número de
+ * ticket y el recuadro del QR con el tiempo estimado (la letra de cada papel,
+ * en `lib/menuDigital/letraRecibo`). Las usan el recibo de la caja y la vista
  * previa de Configuración, para que lo que se diseña sea lo que sale.
  */
 
@@ -32,11 +35,22 @@ export function CabeceraNegocio({ r, logo, nombre }: { r: AjustesRecibo; logo: s
         // En blanco y negro y con más contraste al imprimir: una térmica no
         // tiene grises, y el logo en color salía como una mancha (el driver
         // le hace la trama solo).
+        //
+        // Con `height` y no `maxHeight`: index.css, al imprimir, le saca el
+        // tope de alto a todo lo del papel (por los comprobantes que viven en
+        // un modal), y el logo salía a su tamaño natural, casi del ancho del
+        // rollo, con "Chico" elegido (Kevin, 5-nov). Y dividido por la escala
+        // de la letra: el logo tiene su propio tamaño, y con la letra chica
+        // no tiene que achicarse también.
         <img
           src={urlApi(logo!)}
           alt=""
           className="mx-auto mb-1 object-contain grayscale contrast-125"
-          style={{ maxHeight: ALTO_LOGO[r.tamanoLogo], maxWidth: "80%" }}
+          style={{
+            height: ALTO_LOGO[r.tamanoLogo] / escalaLetra(r.tamanoLetra),
+            width: "auto",
+            maxWidth: "80%",
+          }}
         />
       )}
       {(!conLogo || r.nombre) && <h2 className="text-base font-bold text-texto">{nombre}</h2>}
@@ -44,6 +58,23 @@ export function CabeceraNegocio({ r, logo, nombre }: { r: AjustesRecibo; logo: s
       {contacto && <p className="mt-0.5 text-[11px] text-texto-2">{contacto}</p>}
       {r.nit && <p className="text-[11px] text-texto-2">NIT: {r.nit}</p>}
     </header>
+  );
+}
+
+/**
+ * El número que el cliente espera oír, en su recuadro: lo primero que se ve
+ * del papel. Desde el 5-nov en 36 px (eran 44) y con menos aire: el recuadro
+ * se comía casi dos centímetros de rollo, y el número para cantar en grande
+ * ya está en la pantalla de la caja y en la TV.
+ */
+export function NumeroDelRecibo({ numero }: { numero: number }) {
+  return (
+    <div className="mx-auto mb-1.5 w-fit rounded-lg border-2 border-texto px-3 py-0.5 text-center">
+      <p className="text-[9px] font-bold tracking-[0.3em] text-texto-3">TICKET N°</p>
+      <p className="font-mono text-[36px] font-black leading-none tracking-tight text-texto">
+        {numeroTicket(numero)}
+      </p>
+    </div>
   );
 }
 
