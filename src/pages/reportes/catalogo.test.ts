@@ -153,3 +153,26 @@ describe("cada reporte explica cómo se calcula (L5)", () => {
     expect(ayudaDeReporte("top-productos", "ACADEMIA")!.noIncluye?.join(" ")).toMatch(/cuotas/);
   });
 });
+
+describe("Ventas y ganancia (6-nov, como la app)", () => {
+  const ve = (ctx: ContextoCatalogo) => ids(ctx).flatMap(([, f]) => f).includes("ventas-ganancia");
+
+  it("está en Productos, debajo de Top, para el dueño", () => {
+    const productos = gruposVisibles(dueno("RESTAURANTE")).find((g) => g.id === "productos");
+    const lista = productos?.fichas.map((f) => f.id) ?? [];
+    expect(lista.indexOf("ventas-ganancia")).toBe(lista.indexOf("top-productos") + 1);
+  });
+
+  it("pide operación Y rentabilidad: toda la pantalla es costo", () => {
+    // El encargado con "Rentabilidad" apagada no la ve, aunque vea Top productos.
+    expect(ve(dueno("RESTAURANTE", { permisos: ["reportes.ver", "reportes.operacion"] }))).toBe(false);
+    expect(ve(dueno("RESTAURANTE", { permisos: ["reportes.ver", "reportes.rentabilidad"] }))).toBe(false);
+    // Un plan sin el nivel de rentabilidad tampoco: el backend no le daría los costos.
+    expect(ve(dueno("RESTAURANTE", { incluye: (c) => c !== "reportes_rentabilidad" }))).toBe(false);
+    expect(ve(dueno("RESTAURANTE"))).toBe(true);
+  });
+
+  it("tiene su «Cómo se calcula»", () => {
+    expect(ayudaDeReporte("ventas-ganancia", "RESTAURANTE")?.incluye?.join(" ")).toMatch(/pollos/);
+  });
+});

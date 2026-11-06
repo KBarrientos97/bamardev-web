@@ -35,6 +35,13 @@ export interface FichaReporte {
   capacidad?: Capacidad;
   /** El permiso del rol que pide el endpoint (`reportes.operacion`…). */
   permiso?: string;
+  /**
+   * Un segundo nivel y permiso que hacen falta además del primero. Ventas y
+   * ganancia pide operación (su endpoint) Y rentabilidad (toda la pantalla es
+   * costo, lo que el dueño le esconde al encargado al apagarla), igual que en
+   * la app.
+   */
+  ademas?: { capacidad: Capacidad; permiso: string };
   /** Una feature que además pide el endpoint (`fiado`). */
   feature?: Feature;
   /** Una sección que hace falta poder ver (el resultado lee los gastos). */
@@ -78,6 +85,7 @@ const v = {
   retencion: lazy(() => import("./vistas/agenda/VistasAgenda").then((m) => ({ default: m.Retencion }))),
   margenServicios: lazy(() => import("./vistas/agenda/MargenServicios")),
   top: lazy(() => import("./vistas/TopProductos")),
+  ventasGanancia: lazy(() => import("./vistas/VentasGanancia")),
   lentos: lazy(() => import("./vistas/ProductosLentos")),
   categorias: lazy(() => import("./vistas/Categorias")),
   horas: lazy(() => import("./vistas/HorasDias")),
@@ -227,6 +235,8 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
 
     // ── Productos ──
     { id: "top-productos", titulo: `Top ${p}`, descripcion: "Más vendidos y más rentables", icono: "trendingUp", tono: "verde", grupo: "productos", ...OPERACION, vista: v.top },
+    // El cuaderno del dueño (app 5-nov, web 6-nov): debajo de Top, donde está en la app.
+    { id: "ventas-ganancia", titulo: "Ventas y ganancia", descripcion: "Cantidad, total, costo y ganancia", icono: "chart", tono: "verde", grupo: "productos", ...OPERACION, ademas: RENTABILIDAD, vista: v.ventasGanancia },
     { id: "productos-lentos", titulo: `${capital(p)} lentos`, descripcion: "Lo que no se está vendiendo", icono: "trendingDown", tono: "rosa", grupo: "productos", ...RENTABILIDAD, vista: v.lentos },
     { id: "categorias", titulo: "Categorías", descripcion: "Ventas y margen por categoría", icono: "grid", tono: "azul", grupo: "productos", ...OPERACION, vista: v.categorias },
 
@@ -274,6 +284,7 @@ export function esVisible(f: FichaReporte, ctx: ContextoCatalogo): boolean {
   if (f.fueraDeRubro && ctx.rubro && (f.fueraDeRubro as string[]).includes(ctx.rubro)) return false;
   if (f.capacidad && !ctx.incluye(f.capacidad)) return false;
   if (f.permiso && !ctx.permisos?.includes(f.permiso)) return false;
+  if (f.ademas && (!ctx.incluye(f.ademas.capacidad) || !ctx.permisos?.includes(f.ademas.permiso))) return false;
   if (f.feature && !tieneFeature(ctx.features, f.feature)) return false;
   if (f.seccion && !ctx.puede(f.seccion)) return false;
   return true;

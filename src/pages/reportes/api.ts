@@ -130,6 +130,14 @@ export interface TopProductoApi {
   unidades: number;
   /** Entero 0..100. */
   margenPct: number;
+  /** Presas de pollo por unidad (6-nov): sólo en lo que lleva pollo. Ver `lib/pollos`. */
+  presas?: number;
+}
+
+/** Quien cobró ventas en el período: el filtro de cajero de Ventas y ganancia. */
+export interface VendedorApi {
+  id: number;
+  nombre: string;
 }
 
 export interface CategoriaApi {
@@ -529,7 +537,11 @@ export const apiReportes = {
   resumen: (r: RangoReporte, ant?: RangoReporte) => api.reporte<ResumenApi>("resumen", r, anterior(ant)),
   financiero: (r: RangoReporte, ant?: RangoReporte) => api.reporte<FinancieroApi>("financiero", r, anterior(ant)),
   insumos: (r: RangoReporte, ant?: RangoReporte) => api.reporte<InsumosApi>("insumos", r, anterior(ant)),
-  topProductos: (r: RangoReporte) => api.reporte<TopProductoApi[]>("top-productos", r),
+  /** `usuarioId`: sólo lo que cobró ese cajero (Ventas y ganancia); sin él, todo. */
+  topProductos: (r: RangoReporte, usuarioId?: number) =>
+    api.reporte<TopProductoApi[]>("top-productos", r, usuarioId ? { usuarioId } : {}),
+  /** Quiénes cobraron en el período (el desplegable de cajeros). */
+  vendedores: (r: RangoReporte) => api.reporte<VendedorApi[]>("vendedores", r),
   categorias: (r: RangoReporte) => api.reporte<CategoriaApi[]>("categorias", r),
   horas: (r: RangoReporte) => api.reporte<HorasApi>("horas", r),
   lentos: (r: RangoReporte) => api.reporte<LentosApi>("productos-lentos", r),

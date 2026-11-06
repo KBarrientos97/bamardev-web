@@ -2,8 +2,10 @@ import { useState } from "react";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
+import { textoPollos } from "../../lib/pollos";
 import type { ReporteCierreProductos } from "../../types";
 import {
+  presasDelTurno,
   redondearCantidad,
   renglonesVisibles,
   renglonVendido,
@@ -40,14 +42,18 @@ import {
 export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierreProductos; limite?: number }) {
   const { tiempo, productos } = separarTiempoDeMesa(d);
   const hayProductos = productos.lineas > 0;
+  // Cuántos pollos salieron (6-nov): sólo si algún artículo tiene sus presas
+  // cargadas. En los demás negocios no hay renglón, ni un "0 pollos".
+  const pollos = textoPollos(presasDelTurno(productos));
   return (
     <div className="@container space-y-3">
       {(tiempo || hayProductos) && (
         <div className="divide-y divide-borde rounded-xl bg-muted text-[13px]">
-          {tiempo && <Resumen icono="clock" texto={`Tiempo de mesa · ${textoMesasCobradas(tiempo.mesas)}`} total={tiempo.total} />}
+          {tiempo && <Resumen icono="clock" texto={`Tiempo de mesa · ${textoMesasCobradas(tiempo.mesas)}`} valor={fmtMoney(tiempo.total)} />}
           {hayProductos && (
-            <Resumen texto={`${textoUnidades(productos.unidades)} · ${textoProductos(productos.lineas)}`} total={productos.total} />
+            <Resumen texto={`${textoUnidades(productos.unidades)} · ${textoProductos(productos.lineas)}`} valor={fmtMoney(productos.total)} />
           )}
+          {pollos && <Resumen icono="cubiertos" texto="Pollos que salieron" valor={pollos} />}
         </div>
       )}
       {hayProductos ? (
@@ -80,14 +86,14 @@ export function ListaDeProductos({ renglones, limite }: { renglones: RenglonVend
   return (
     <div className="@container space-y-3">
       <div className="rounded-xl bg-muted text-[13px]">
-        <Resumen texto={`${textoUnidades(unidades)} · ${textoProductos(renglones.length)}`} total={total} />
+        <Resumen texto={`${textoUnidades(unidades)} · ${textoProductos(renglones.length)}`} valor={fmtMoney(total)} />
       </div>
       <TablaDeProductos limite={limite} grupos={[{ clave: "todos", unidades, total, renglones }]} />
     </div>
   );
 }
 
-function Resumen({ icono, texto, total }: { icono?: NombreIcono; texto: string; total: number }) {
+function Resumen({ icono, texto, valor }: { icono?: NombreIcono; texto: string; valor: string }) {
   return (
     <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
       <span className="flex min-w-0 items-center gap-1.5 text-texto-2">
@@ -98,7 +104,7 @@ function Resumen({ icono, texto, total }: { icono?: NombreIcono; texto: string; 
         )}
         <span>{texto}</span>
       </span>
-      <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(total)}</span>
+      <span className="shrink-0 font-bold tabular-nums text-texto">{valor}</span>
     </div>
   );
 }

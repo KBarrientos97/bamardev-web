@@ -432,6 +432,11 @@ export interface Producto extends FichaFarmaceutica {
   ubicacion?: string | null;
   /** Agenda fase 3: paquete de sesiones (se vende a un cliente con ficha). */
   esPaquete?: boolean;
+  /**
+   * Restaurante (6-nov): presas de pollo por unidad, 8 el entero, 4 el medio,
+   * 2 el cuarto, 1 la presa. Sólo viene si el artículo lleva pollo.
+   */
+  presasPollo?: number;
 }
 
 /**
@@ -496,6 +501,8 @@ export interface ProductoInput {
   condicionVenta?: CondicionVenta;
   manejaLote?: boolean;
   controlado?: boolean;
+  /** Restaurante: presas de pollo por unidad; `null` lo saca. Sólo lo manda el restaurante. */
+  presasPollo?: number | null;
 }
 
 // ── Inventario ──────────────────────────────────────────────────────────────
@@ -2243,6 +2250,8 @@ export interface ReporteCierreProductos {
        * el promedio y no se muestra como precio, aunque multiplique justo.
        */
       variosPrecios?: boolean;
+      /** Presas de pollo por unidad (6-nov): sólo en lo que lleva pollo. Ver `lib/pollos`. */
+      presas?: number;
     }[];
   }[];
   unidades: number;
