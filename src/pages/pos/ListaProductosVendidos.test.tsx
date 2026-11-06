@@ -201,33 +201,3 @@ describe("la lista sin categorías (lo pedido en las mesas abiertas)", () => {
     expect(screen.getByText("1 u · varios precios")).toBeInTheDocument();
   });
 });
-
-describe("los pollos que salieron en el turno (6-nov)", () => {
-  // Kevin: "1 pollo entero se saca 8 presas… cuántos pollos van". Con las
-  // presas cargadas en cada artículo, la lista lo dice en un renglón.
-  const POLLERIA: ReporteCierreProductos = {
-    unidades: 17,
-    total: 1038,
-    lineas: 3,
-    categorias: [
-      {
-        nombre: "POLLOS",
-        unidades: 15,
-        total: 1008,
-        items: [item(1, "Brasa económico", 10, 18, { presas: 1 }), item(2, "Brasa entero", 5, 165.6, { presas: 8 })],
-      },
-      { nombre: "BEBIDAS", unidades: 2, total: 30, items: [item(3, "Coca Cola 1.5L", 2, 15)] },
-    ],
-  };
-
-  it("10 presas sueltas y 5 enteros son 6 pollos y 2 presas", () => {
-    render(<ListaProductosVendidos d={POLLERIA} />);
-    expect(screen.getByText("Pollos que salieron")).toBeInTheDocument();
-    expect(screen.getByText("6 pollos y 2 presas")).toBeInTheDocument();
-  });
-
-  it("un turno sin nada con presas no tiene el renglón (ni «0 pollos»)", () => {
-    render(<ListaProductosVendidos d={RESTAURANTE} />);
-    expect(screen.queryByText("Pollos que salieron")).toBeNull();
-  });
-});

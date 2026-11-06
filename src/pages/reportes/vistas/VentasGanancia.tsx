@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Boton, Select } from "../../../components/ui";
 import { fmtCantidad, fmtMoney, isoDia } from "../../../lib/format";
 import { bajarPdf } from "../../../lib/pdf/tablaPdf";
-import { textoPollos, textoPollosCorto } from "../../../lib/pollos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { apiReportes, type VendedorApi } from "../api";
@@ -29,8 +28,7 @@ import {
  *
  * Arriba, el cajero (6-nov, Kevin: "así como filtramos por fecha, a su lado
  * otro campo con los cajeros"): quien COBRÓ la venta, el mismo "Cajero" del
- * historial de Ventas. Con los pollos, si algún artículo tiene sus presas
- * cargadas.
+ * historial de Ventas.
  */
 export default function VentasGanancia() {
   const { rango, periodo, sucursalNombre } = useReporte();
@@ -151,10 +149,9 @@ function BotonPdf({ armar }: { armar: () => Parameters<typeof bajarPdf>[1] }) {
 
 function Cuaderno({ datos, avisa }: { datos: Datos; avisa: boolean }) {
   const perdida = enPerdida(datos);
-  const pollos = textoPollos(datos.presas);
   return (
     <>
-      <div className={`grid gap-3 ${pollos ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-3"}`}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <KpiR etiqueta="Vendido" valor={fmtMoney(datos.total)} />
         <KpiR etiqueta="Costo" valor={fmtMoney(datos.costo)} />
         <KpiR
@@ -162,7 +159,6 @@ function Cuaderno({ datos, avisa }: { datos: Datos; avisa: boolean }) {
           valor={textoGanancia(datos)}
           tono={perdida ? "alerta" : "marca"}
         />
-        {pollos && <KpiR etiqueta="Pollos" valor={pollos} pie={`${fmtCantidad(datos.presas)} presas`} />}
       </div>
 
       {avisa && datos.ventasSinCosto > 0 && (
@@ -179,12 +175,6 @@ function Cuaderno({ datos, avisa }: { datos: Datos; avisa: boolean }) {
           Los montos son antes de promos y cupones: es lo vendido a precio de lista, así que puede dar más que lo
           cobrado. La ganancia es antes de gastos: el alquiler y los sueldos se restan en Finanzas.
         </p>
-        {datos.conPollos && (
-          <p className="mt-1.5">
-            Los pollos salen de las presas de cada artículo (un pollo son 8 presas). Se cargan en Artículos, en
-            «Presas de pollo».
-          </p>
-        )}
       </Nota>
     </>
   );
@@ -195,7 +185,6 @@ function Cuaderno({ datos, avisa }: { datos: Datos; avisa: boolean }) {
  * nombres fija: si no, al llegar a la ganancia ya no se ve de qué producto es.
  */
 function Tabla({ datos }: { datos: Datos }) {
-  const conPollos = datos.conPollos;
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[34rem] border-separate border-spacing-0 text-[13px] tabular-nums">
@@ -203,7 +192,6 @@ function Tabla({ datos }: { datos: Datos }) {
           <tr className="text-[11px] font-bold uppercase tracking-wider text-texto-3">
             <th className="sticky left-0 z-10 bg-card px-4 py-3 text-left">Producto</th>
             <th className="px-3 py-3 text-right">Cant.</th>
-            {conPollos && <th className="px-3 py-3 text-right">Pollos</th>}
             <th className="px-3 py-3 text-right">Total</th>
             <th className="px-3 py-3 text-right">Costo</th>
             <th className="px-4 py-3 text-right">Ganancia</th>
@@ -211,11 +199,11 @@ function Tabla({ datos }: { datos: Datos }) {
         </thead>
         <tbody>
           {datos.categorias.map((c) => (
-            <Grupo key={c.nombre} nombre={c.nombre} cifras={c} conPollos={conPollos}>
+            <Grupo key={c.nombre} nombre={c.nombre} cifras={c}>
               {c.productos.map((p, i) => (
                 <tr key={`${p.nombre}-${i}`}>
                   <td className="sticky left-0 z-10 bg-card px-4 py-2 text-texto">{p.nombre}</td>
-                  <Celdas c={p} conPollos={conPollos} esProducto />
+                  <Celdas c={p} esProducto />
                 </tr>
               ))}
             </Grupo>
@@ -224,7 +212,7 @@ function Tabla({ datos }: { datos: Datos }) {
         <tfoot>
           <tr className="font-extrabold">
             <td className="sticky left-0 z-10 border-t border-borde bg-card px-4 py-3 text-texto">TOTAL</td>
-            <Celdas c={datos} conPollos={conPollos} fuerte borde />
+            <Celdas c={datos} fuerte borde />
           </tr>
         </tfoot>
       </table>
@@ -232,14 +220,14 @@ function Tabla({ datos }: { datos: Datos }) {
   );
 }
 
-function Grupo({ nombre, cifras, conPollos, children }: { nombre: string; cifras: CifrasGanancia; conPollos: boolean; children: ReactNode }) {
+function Grupo({ nombre, cifras, children }: { nombre: string; cifras: CifrasGanancia; children: ReactNode }) {
   return (
     <>
       <tr className="font-bold text-primary-700">
         <td className="sticky left-0 z-10 border-b border-borde bg-card px-4 pb-1.5 pt-3 text-[12px] uppercase tracking-wider">
           {nombre}
         </td>
-        <Celdas c={cifras} conPollos={conPollos} grupo />
+        <Celdas c={cifras} grupo />
       </tr>
       {children}
     </>
@@ -249,14 +237,12 @@ function Grupo({ nombre, cifras, conPollos, children }: { nombre: string; cifras
 /** Las cifras de un renglón. Un producto sin costo dice "Sin costo" y su ganancia va en gris, no en verde. */
 function Celdas({
   c,
-  conPollos,
   esProducto = false,
   grupo = false,
   fuerte = false,
   borde = false,
 }: {
   c: CifrasGanancia;
-  conPollos: boolean;
   esProducto?: boolean;
   grupo?: boolean;
   fuerte?: boolean;
@@ -269,11 +255,6 @@ function Celdas({
   return (
     <>
       <td className={`${base} ${grupo ? "" : cifra}`}>{fmtCantidad(c.unidades)}</td>
-      {conPollos && (
-        <td className={`${base} ${c.presas > 0 ? (grupo ? "" : cifra) : "text-texto-3"}`} title={textoPollos(c.presas) ?? undefined}>
-          {textoPollosCorto(c.presas)}
-        </td>
-      )}
       <td className={`${base} ${cifra}`}>{fmtMoney(c.total)}</td>
       <td className={`${base} ${sc ? "font-normal text-texto-3" : cifra}`}>{sc ? "Sin costo" : fmtMoney(c.costo)}</td>
       <td className={`${base} px-4 ${perdida ? "text-rose-700" : sc ? "font-normal text-texto-3" : cifra}`}>

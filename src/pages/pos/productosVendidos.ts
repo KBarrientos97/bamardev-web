@@ -1,7 +1,6 @@
 import { aCentavos, esCero } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
 import type { DocumentoPdf } from "../../lib/pdf/tablaPdf";
-import { presasVendidas, textoPollos } from "../../lib/pollos";
 import type { ReporteCierreProductos } from "../../types";
 
 /**
@@ -151,15 +150,6 @@ export function renglonesVisibles(porGrupo: number[], limite?: number): { visibl
 }
 
 /**
- * Las presas de pollo que salieron en el turno (6-nov): cantidad × presas de
- * cada artículo que las tiene cargadas. 0 si no se vendió nada con pollo. Ver
- * `lib/pollos`.
- */
-export function presasDelTurno(d: ReporteCierreProductos): number {
-  return presasVendidas(d.categorias.flatMap((c) => c.items));
-}
-
-/**
  * El PDF de Productos vendidos, igual al de la app (5-nov): la tabla con las
  * categorías y sus subtotales, cada producto con su unitario abajo, el TOTAL
  * VENDIDO y la nota de que no es lo que hay en el cajón. Reemplaza al CSV, que
@@ -169,12 +159,11 @@ export function documentoProductosVendidos(
   d: ReporteCierreProductos,
   o: { negocio?: string | null; subtitulo: string },
 ): DocumentoPdf {
-  const pollos = textoPollos(presasDelTurno(d));
   return {
     titulo: "Productos vendidos",
     negocio: o.negocio,
     subtitulo: o.subtitulo,
-    resumen: [textoProductos(d.lineas), textoUnidades(d.unidades), ...(pollos ? [pollos] : [])].join(" · "),
+    resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}`,
     columnas: ["PRODUCTO", "CANT.", "TOTAL"],
     grupos: d.categorias.map((c) => ({
       titulo: c.nombre,

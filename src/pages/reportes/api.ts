@@ -130,8 +130,6 @@ export interface TopProductoApi {
   unidades: number;
   /** Entero 0..100. */
   margenPct: number;
-  /** Presas de pollo por unidad (6-nov): sólo en lo que lleva pollo. Ver `lib/pollos`. */
-  presas?: number;
 }
 
 /** Quien cobró ventas en el período: el filtro de cajero de Ventas y ganancia. */

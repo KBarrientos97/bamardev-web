@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto } from "../../types";
 
 /**
@@ -617,48 +617,5 @@ describe("BUG-catalogo-4: un margen que no se puede calcular no se muestra", () 
   it("vender por debajo del costo se muestra en negativo: es un dato, no un error", async () => {
     await verDetalle(producto({ precio: 50, costo: 60 }));
     expect(screen.getByText("-20%")).toBeInTheDocument();
-  });
-});
-
-describe("presas de pollo (6-nov): para contar los pollos que salieron", () => {
-  afterEach(() => {
-    sesion.rubro = "RESTAURANTE";
-  });
-
-  it("el restaurante las elige al crear y viajan con el artículo", async () => {
-    sesion.rubro = "RESTAURANTE";
-    await abrirAltaCon();
-    llenar({ nombre: "Brasa cuarto", precio: "26" });
-    const presas = screen.getByRole("radiogroup", { name: "Presas de pollo" });
-    expect(within(presas).getByRole("radio", { name: "Ninguna" })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(within(presas).getByRole("radio", { name: "Cuarto (2)" }));
-    await guardar();
-    expect(crearProducto).toHaveBeenCalledWith(expect.objectContaining({ presasPollo: 2 }));
-  });
-
-  it("«Ninguna» viaja como null: es lo que se las saca a un plato que tenía", async () => {
-    sesion.rubro = "RESTAURANTE";
-    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
-    getProductos.mockResolvedValue([producto({ nombre: "Brasa medio", presasPollo: 4, unidadMedida: { id: 1, nombre: "Unidad" } })]);
-    render(<Productos />);
-    fireEvent.click(await screen.findByText("Brasa medio"));
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-    });
-    const presas = screen.getByRole("radiogroup", { name: "Presas de pollo" });
-    expect(within(presas).getByRole("radio", { name: "Medio (4)" })).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(within(presas).getByRole("radio", { name: "Ninguna" }));
-    await guardar();
-    expect(actualizarProducto).toHaveBeenCalledWith(1, expect.objectContaining({ presasPollo: null }));
-  });
-
-  it("otro rubro no las ve ni las manda: editar desde ahí no le borra las presas a nadie", async () => {
-    sesion.rubro = "MINIMARKET";
-    await abrirAltaCon();
-    expect(screen.queryByRole("radiogroup", { name: "Presas de pollo" })).toBeNull();
-    llenar({ nombre: "Gaseosa", precio: "10" });
-    await guardar();
-    expect(crearProducto).toHaveBeenCalledWith(expect.not.objectContaining({ presasPollo: expect.anything() }));
-    expect(crearProducto.mock.calls[0][0]).not.toHaveProperty("presasPollo");
   });
 });

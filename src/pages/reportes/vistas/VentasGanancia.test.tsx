@@ -9,8 +9,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 /**
  * Ventas y ganancia en la web (6-nov): la pantalla de la app, con el filtro de
- * cajero al lado del período y los pollos cuando los artículos tienen sus
- * presas.
+ * cajero al lado del período.
  */
 
 const reporte = vi.hoisted(() => vi.fn());
@@ -28,22 +27,21 @@ vi.mock("../../../store/AuthContext", () => ({
   }),
 }));
 
-const prod = (nombre: string, categoria: string, ingresos: number, utilidad: number, unidades: number, presas?: number): TopProductoApi => ({
+const prod = (nombre: string, categoria: string, ingresos: number, utilidad: number, unidades: number): TopProductoApi => ({
   nombre,
   categoria,
   ingresos,
   utilidad,
   unidades,
   margenPct: 0,
-  ...(presas ? { presas } : {}),
 });
 
 const TODOS: TopProductoApi[] = [
-  prod("Brasa entero", "POLLOS", 560, 185, 5, 8),
-  prod("Brasa económico", "POLLOS", 180, 50, 10, 1),
+  prod("Brasa entero", "POLLOS", 560, 185, 5),
+  prod("Brasa económico", "POLLOS", 180, 50, 10),
   prod("Coca Cola 1.5L", "BEBIDAS", 30, 16, 2),
 ];
-const DE_ANA: TopProductoApi[] = [prod("Brasa económico", "POLLOS", 36, 10, 2, 1)];
+const DE_ANA: TopProductoApi[] = [prod("Brasa económico", "POLLOS", 36, 10, 2)];
 const CAJEROS: VendedorApi[] = [
   { id: 7, nombre: "Ana" },
   { id: 9, nombre: "Beto" },
@@ -93,22 +91,18 @@ describe("Ventas y ganancia (web)", () => {
     expect(screen.getAllByText("Ganancia").length).toBeGreaterThan(0);
   });
 
-  it("cuenta los pollos: 5 enteros y 10 presas son 6 pollos y 2 presas", async () => {
+  it("la tabla lleva las cuatro columnas del cuaderno, sin la de pollos", async () => {
+    // Las presas se sacaron el 6-nov (Kevin: "quitá todo lo de las presas").
     responder(() => TODOS);
     mostrar();
-    expect(await screen.findByText("6 pollos y 2 presas")).toBeTruthy();
-    const tabla = screen.getByRole("table");
-    expect(within(tabla).getByRole("columnheader", { name: "Pollos" })).toBeTruthy();
-    // El económico: 10 presas = 1 pollo y 2 presas (el ejemplo de Kevin).
-    expect(within(tabla).getByText("1 y 2 pr.")).toBeTruthy();
-  });
-
-  it("sin presas cargadas no hay columna ni tarjeta de pollos", async () => {
-    responder(() => TODOS.map(({ presas: _p, ...r }) => r));
-    mostrar();
     const tabla = await screen.findByRole("table");
-    expect(within(tabla).queryByRole("columnheader", { name: "Pollos" })).toBeNull();
-    expect(screen.queryByText(/pollos? y/)).toBeNull();
+    expect(within(tabla).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
+      "Producto",
+      "Cant.",
+      "Total",
+      "Costo",
+      "Ganancia",
+    ]);
   });
 
   it("elegir un cajero vuelve a pedir el reporte con lo que cobró él", async () => {

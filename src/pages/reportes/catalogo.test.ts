@@ -173,6 +173,6 @@ describe("Ventas y ganancia (6-nov, como la app)", () => {
   });
 
   it("tiene su «Cómo se calcula»", () => {
-    expect(ayudaDeReporte("ventas-ganancia", "RESTAURANTE")?.incluye?.join(" ")).toMatch(/pollos/);
+    expect(ayudaDeReporte("ventas-ganancia", "RESTAURANTE")?.queMuestra).toMatch(/cajero/);
   });
 });

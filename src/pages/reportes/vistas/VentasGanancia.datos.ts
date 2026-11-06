@@ -2,7 +2,6 @@ import { aCentavos, esCero, esPositivo, TOLERANCIA } from "../../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../../lib/format";
 import type { CeldaPdf, DocumentoPdf } from "../../../lib/pdf/tablaPdf";
 import type { HojaNueva } from "../../../lib/planilla";
-import { presasVendidas, textoPollos, textoPollosCorto } from "../../../lib/pollos";
 import { esBelleza, esBillar } from "../../../lib/rubro";
 import type { TopProductoApi } from "../api";
 import { hoja } from "../contexto";
@@ -25,19 +24,14 @@ import { plural } from "../formato";
  *    En un negocio con descuentos da más que la caja; la pantalla lo dice.
  *  - La ganancia real del negocio: acá no se restan alquiler ni sueldos. Eso
  *    es el Estado de resultado.
- *
- * Los pollos (6-nov): con las presas de cada artículo, cuántos pollos salieron
- * por producto, por categoría y en total. Ver `lib/pollos`.
  */
 
-/** Las cuatro columnas del cuaderno, más las presas: las mismas en un producto, una categoría y el total. */
+/** Las cuatro columnas del cuaderno: las mismas en un producto, una categoría y el total. */
 export interface CifrasGanancia {
   unidades: number;
   total: number;
   costo: number;
   ganancia: number;
-  /** Presas de pollo que salieron (no por unidad: ya multiplicadas). 0 = no lleva pollo. */
-  presas: number;
 }
 
 export interface ProductoGanancia extends CifrasGanancia {
@@ -56,8 +50,6 @@ export interface VentasGanancia extends CifrasGanancia {
   productos: number;
   /** Lo vendido de productos sin costo cargado (no se resta de nada: ver `sinCosto`). */
   ventasSinCosto: number;
-  /** Algún producto lleva pollo: la tabla suma la columna POLLOS. */
-  conPollos: boolean;
 }
 
 /** Las cantidades son piezas o kilos, no plata: a milésimas, sin el ruido de sumar decimales. */
@@ -70,7 +62,6 @@ function sumar(xs: CifrasGanancia[]): CifrasGanancia {
     total: sumarPlata(xs.map((x) => x.total)),
     costo: sumarPlata(xs.map((x) => x.costo)),
     ganancia: sumarPlata(xs.map((x) => x.ganancia)),
-    presas: xs.reduce((a, x) => a + x.presas, 0),
   };
 }
 
@@ -106,7 +97,6 @@ export function armarVentasGanancia(top: TopProductoApi[]): VentasGanancia {
       // costo de la ficha porque el real puede venir de los lotes.
       costo: aCentavos(t.ingresos - t.utilidad),
       ganancia: t.utilidad,
-      presas: presasVendidas([{ cantidad: t.unidades, presas: t.presas }]),
     };
     const lista = porCategoria.get(t.categoria) ?? [];
     lista.push(p);
@@ -123,7 +113,6 @@ export function armarVentasGanancia(top: TopProductoApi[]): VentasGanancia {
     ...sumar(categorias),
     productos: todos.length,
     ventasSinCosto: sumarPlata(todos.filter(sinCosto).map((p) => p.total)),
-    conPollos: todos.some((p) => p.presas > 0),
   };
 }
 
@@ -141,11 +130,9 @@ export function textoGanancia(c: Pick<CifrasGanancia, "ganancia">): string {
   return fmtMoney(Math.abs(c.ganancia));
 }
 
-/** "9 productos · 32 unidades · 12 pollos y 3 presas · Ganancia Bs 431,00", el renglón del PDF. */
+/** "9 productos · 32 unidades · Ganancia Bs 431,00", el renglón del PDF. */
 export function resumenVentasGanancia(v: VentasGanancia, cajero?: string | null): string {
   const partes = [plural(v.productos, "producto", "productos"), `${fmtCantidad(v.unidades)} unidades`];
-  const pollos = textoPollos(v.presas);
-  if (pollos) partes.push(pollos);
   partes.push(`${enPerdida(v) ? "Pérdida" : "Ganancia"} ${textoGanancia(v)}`);
   if (cajero) partes.push(`Cajero: ${cajero}`);
   return partes.join(" · ");
@@ -163,20 +150,16 @@ export function hojaVentasGanancia(v: VentasGanancia, cajero?: string | null): H
     ["Categoría", (f) => f.categoria],
     ["Producto", (f) => f.nombre],
     ["Cantidad", (f) => f.c.unidades],
-  ];
-  if (v.conPollos) columnas.push(["Pollos", (f) => (f.c.presas > 0 ? textoPollos(f.c.presas) : null)]);
-  columnas.push(
     ["Total (Bs)", (f) => f.c.total],
     ["Costo (Bs)", (f) => f.c.costo],
     ["Ganancia (Bs)", (f) => f.c.ganancia],
     ["Nota", (f) => f.nota],
-  );
+  ];
   const h = hoja<Fila>("Ventas y ganancia", columnas, filas);
   h.filas.push([], [
     null,
     "TOTAL",
     v.unidades,
-    ...(v.conPollos ? [textoPollos(v.presas)] : []),
     v.total,
     v.costo,
     v.ganancia,
@@ -185,7 +168,7 @@ export function hojaVentasGanancia(v: VentasGanancia, cajero?: string | null): H
   return h;
 }
 
-/** El PDF, igual al de la app: PRODUCTO · CANT. · [POLLOS] · TOTAL · COSTO · GANANCIA. */
+/** El PDF, igual al de la app: PRODUCTO · CANT. · TOTAL · COSTO · GANANCIA. */
 export function documentoVentasGanancia(
   v: VentasGanancia,
   o: { negocio?: string | null; subtitulo: string; cajero?: string | null },
@@ -194,7 +177,6 @@ export function documentoVentasGanancia(
     const sc = esProducto && sinCosto(c);
     return [
       { texto: fmtCantidad(c.unidades) },
-      ...(v.conPollos ? [{ texto: c.presas > 0 ? textoPollosCorto(c.presas) : "—", tono: c.presas > 0 ? ("normal" as const) : ("apagado" as const) }] : []),
       { texto: fmtMoney(c.total) },
       sc ? { texto: "Sin costo", tono: "apagado" } : { texto: fmtMoney(c.costo) },
       {
@@ -208,7 +190,7 @@ export function documentoVentasGanancia(
     negocio: o.negocio,
     subtitulo: o.subtitulo,
     resumen: resumenVentasGanancia(v, o.cajero),
-    columnas: ["PRODUCTO", "CANT.", ...(v.conPollos ? ["POLLOS"] : []), "TOTAL", "COSTO", "GANANCIA"],
+    columnas: ["PRODUCTO", "CANT.", "TOTAL", "COSTO", "GANANCIA"],
     grupos: v.categorias.map((c) => ({
       titulo: c.nombre,
       celdas: celdas(c, false),
@@ -219,7 +201,6 @@ export function documentoVentasGanancia(
     total: { etiqueta: "TOTAL", celdas: celdas(v, false) },
     notas: [
       "Los montos son antes de promos y cupones: es lo vendido a precio de lista, así que puede dar más que lo cobrado. La ganancia es antes de gastos: el alquiler y los sueldos se restan en Finanzas.",
-      ...(v.conPollos ? ["Los pollos salen de las presas de cada artículo: un pollo son 8 presas."] : []),
     ],
   };
 }

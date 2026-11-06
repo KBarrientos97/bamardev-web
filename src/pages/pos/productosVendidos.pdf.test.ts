@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReporteCierreProductos } from "../../types";
-import { documentoProductosVendidos, presasDelTurno } from "./productosVendidos";
+import { documentoProductosVendidos } from "./productosVendidos";
 
 /**
  * El PDF de Productos vendidos (6-nov, como la app desde el 5-nov): reemplaza
@@ -17,8 +17,8 @@ const TURNO: ReporteCierreProductos = {
       unidades: 10,
       total: 304,
       items: [
-        { productoId: 1, nombre: "Brasa medio", cantidad: 4, precio: 56, total: 224, presas: 4 },
-        { productoId: 2, nombre: "Brasa cuarto", cantidad: 6, precio: 13.33, total: 80, variosPrecios: true, presas: 2 },
+        { productoId: 1, nombre: "Brasa medio", cantidad: 4, precio: 56, total: 224 },
+        { productoId: 2, nombre: "Brasa cuarto", cantidad: 6, precio: 13.33, total: 80, variosPrecios: true },
       ],
     },
     { nombre: "BEBIDAS", unidades: 2, total: 30, items: [{ productoId: 3, nombre: "Coca Cola 1.5L", cantidad: 2, precio: 15, total: 30 }] },
@@ -38,18 +38,7 @@ describe("el PDF de Productos vendidos", () => {
     expect(doc.notas?.[0]).toMatch(/no lo que hay en el cajón/);
   });
 
-  it("el renglón de arriba suma los pollos cuando hay presas", () => {
-    // 4 medios (16 presas) + 6 cuartos (12) = 28 presas = 3 pollos y 4 presas.
-    expect(presasDelTurno(TURNO)).toBe(28);
-    const doc = documentoProductosVendidos(TURNO, { subtitulo: "Turno #12" });
-    expect(doc.resumen).toBe("3 productos · 12 unidades · 3 pollos y 4 presas");
-  });
-
-  it("sin presas, el renglón es el de siempre", () => {
-    const sin: ReporteCierreProductos = {
-      ...TURNO,
-      categorias: TURNO.categorias.map((c) => ({ ...c, items: c.items.map(({ presas: _p, ...i }) => i) })),
-    };
-    expect(documentoProductosVendidos(sin, { subtitulo: "Turno #12" }).resumen).toBe("3 productos · 12 unidades");
+  it("el renglón de arriba dice los productos y las unidades", () => {
+    expect(documentoProductosVendidos(TURNO, { subtitulo: "Turno #12" }).resumen).toBe("3 productos · 12 unidades");
   });
 });

@@ -16,7 +16,6 @@ const prod = (
   ingresos: number,
   utilidad: number,
   unidades: number,
-  presas?: number,
 ): TopProductoApi => ({
   nombre,
   categoria,
@@ -24,15 +23,14 @@ const prod = (
   utilidad,
   unidades,
   margenPct: 0,
-  ...(presas ? { presas } : {}),
 });
 
 /** La pollería de las fotos de Kevin (6-nov), como la manda `top-productos`. */
 const POLLERIA: TopProductoApi[] = [
-  prod("Brasa entero", "POLLOS", 560, 185, 5, 8),
-  prod("Brasa medio", "POLLOS", 336, 114, 6, 4),
-  prod("Brasa cuarto", "POLLOS", 208, 88, 8, 2),
-  prod("Brasa económico", "POLLOS", 180, 50, 10, 1),
+  prod("Brasa entero", "POLLOS", 560, 185, 5),
+  prod("Brasa medio", "POLLOS", 336, 114, 6),
+  prod("Brasa cuarto", "POLLOS", 208, 88, 8),
+  prod("Brasa económico", "POLLOS", 180, 50, 10),
   prod("Coca Cola 1.5L", "BEBIDAS", 30, 16, 2),
   prod("cerveza paceña 500ml", "CERVEZA", 15, 8, 1),
 ];
@@ -60,39 +58,27 @@ describe("Ventas y ganancia: el cuaderno del dueño", () => {
     expect(v.productos).toBe(6);
   });
 
-  it("cuenta los pollos: 90 presas son 11 pollos y 2 presas", () => {
-    // 5×8 + 6×4 + 8×2 + 10×1 = 40 + 24 + 16 + 10 = 90 presas = 11 pollos y 2.
+  it("el PDF y el Excel llevan las cuatro columnas del cuaderno", () => {
     const v = armarVentasGanancia(POLLERIA);
-    expect(v.categorias[0].presas).toBe(90);
-    expect(v.presas).toBe(90);
-    expect(v.conPollos).toBe(true);
-    // La gaseosa no lleva pollo.
-    expect(v.categorias[1].presas).toBe(0);
-    expect(resumenVentasGanancia(v)).toContain("11 pollos y 2 presas");
-  });
-
-  it("sin presas cargadas no hay columna de pollos ni «0 pollos» en ningún lado", () => {
-    // Lo que ve cualquier negocio que no cargó presas: igual que en la app.
-    const v = armarVentasGanancia(POLLERIA.map(({ presas: _p, ...resto }) => resto));
-    expect(v.conPollos).toBe(false);
-    expect(resumenVentasGanancia(v)).not.toMatch(/pollo/);
-    const doc = documentoVentasGanancia(v, { subtitulo: "Este mes" });
+    const doc = documentoVentasGanancia(v, { subtitulo: "Este mes", cajero: "Ana" });
     expect(doc.columnas).toEqual(["PRODUCTO", "CANT.", "TOTAL", "COSTO", "GANANCIA"]);
-    expect(hojaVentasGanancia(v).filas[0]).not.toContain("Pollos");
-  });
-
-  it("con pollos el PDF suma la columna POLLOS", () => {
-    const doc = documentoVentasGanancia(armarVentasGanancia(POLLERIA), { subtitulo: "Este mes", cajero: "Ana" });
-    expect(doc.columnas).toEqual(["PRODUCTO", "CANT.", "POLLOS", "TOTAL", "COSTO", "GANANCIA"]);
     const economico = doc.grupos[0].filas.find((f) => f.nombre === "Brasa económico")!;
-    expect(economico.celdas[1].texto).toBe("1 y 2 pr.");
-    expect(doc.total.celdas[1].texto).toBe("11 y 2 pr.");
+    expect(economico.celdas.map((c) => c.texto)).toEqual(["10", "Bs 180,00", "Bs 130,00", "Bs 50,00"]);
     // El cajero elegido queda escrito: un PDF de un solo cajero no se lee como el del local.
-    expect(doc.resumen).toContain("Cajero: Ana");
+    expect(doc.resumen).toBe("6 productos · 32 unidades · Ganancia Bs 461,00 · Cajero: Ana");
+    expect(hojaVentasGanancia(v).filas[0]).toEqual([
+      "Categoría",
+      "Producto",
+      "Cantidad",
+      "Total (Bs)",
+      "Costo (Bs)",
+      "Ganancia (Bs)",
+      "Nota",
+    ]);
   });
 
   it("un producto sin costo cargado dice «Sin costo» y la cuenta no cambia", () => {
-    const v = armarVentasGanancia([prod("Ají de fideo", "PLATOS", 100, 100, 5), prod("Brasa cuarto", "POLLOS", 52, 22, 2, 2)]);
+    const v = armarVentasGanancia([prod("Ají de fideo", "PLATOS", 100, 100, 5), prod("Brasa cuarto", "POLLOS", 52, 22, 2)]);
     const aji = v.categorias.flatMap((c) => c.productos).find((p) => p.nombre === "Ají de fideo")!;
     expect(sinCosto(aji)).toBe(true);
     expect(v.ventasSinCosto).toBe(100);

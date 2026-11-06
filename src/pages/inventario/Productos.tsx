@@ -32,7 +32,6 @@ import { usePalabras } from "../../lib/academia/usePalabras";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
-import { Segmentado } from "../tickets/piezas";
 import { actualizarConCombo } from "./edicionCombo";
 import type {
   Categoria,
@@ -91,23 +90,6 @@ const CONDICIONES: Record<
  * (un corte, una manicura), no un "Elaborado" de cocina (QA DIA-17d). Los
  * demás rubros, Omar incluido, siguen con la etiqueta de siempre.
  */
-/**
- * Las presas de un plato de la pollería: Ninguna, una presa, el cuarto, el
- * medio y el entero (un pollo = 8 presas, `lib/pollos`). Si el artículo trae
- * otro número (un combo de dos pollos cargado desde la app) se suma a la
- * lista, para que el control no diga "Ninguna" con 16 guardadas.
- */
-function opcionesPresas(actual: number): { valor: number; texto: string }[] {
-  const base = [
-    { valor: 0, texto: "Ninguna" },
-    { valor: 1, texto: "1 presa" },
-    { valor: 2, texto: "Cuarto (2)" },
-    { valor: 4, texto: "Medio (4)" },
-    { valor: 8, texto: "Entero (8)" },
-  ];
-  return base.some((o) => o.valor === actual) ? base : [...base, { valor: actual, texto: `${actual} presas` }];
-}
-
 function etiquetaTipo(t: TipoProducto, rubro: string | null | undefined): string {
   return t === "SERVICIO" && esBelleza(rubro) ? "Servicio" : TIPOS[t].label;
 }
@@ -1034,10 +1016,6 @@ function FormProductoCuerpo({
   // cambiar el precio desde la web le borraria el icono puesto en la app.
   const [icono, setIcono] = useState<string | null>(producto?.icono ?? null);
   const [eligiendoIcono, setEligiendoIcono] = useState(false);
-  // Presas de pollo (6-nov): sólo el restaurante las ve y las manda. En otro
-  // rubro no viajan, así editar desde ahí no le borra las presas a nadie.
-  const conPresas = rubro === "RESTAURANTE";
-  const [presasPollo, setPresasPollo] = useState<number>(producto?.presasPollo ?? 0);
   const [componentes, setComponentes] = useState<LineaCombo[]>(
     () =>
       producto?.componentes.map((c) => ({
@@ -1165,8 +1143,6 @@ function FormProductoCuerpo({
       // aunque el usuario no lo haya tocado, con el valor que ya tenía, para
       // que editar el precio desde la web no borre lo elegido en la app.
       icono: icono ?? "",
-      // "Ninguna" viaja como null: es lo que las saca si el plato tenía.
-      ...(conPresas ? { presasPollo: presasPollo > 0 ? presasPollo : null } : {}),
       ...(categoriaId ? { categoriaId: Number(categoriaId) } : {}),
       ...(esCombo
         ? {
@@ -1405,26 +1381,6 @@ function FormProductoCuerpo({
             </Campo>
           )}
         </div>
-
-        {/* Con un div y no con `Campo`: `Campo` es un <label>, y tocar su texto
-            marcaba el primer botón de adentro ("Ninguna") sin querer. */}
-        {conPresas && (
-          <div>
-            <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Presas de pollo</p>
-            {/* Cinco opciones no entran en un celular angosto: se desliza. */}
-            <div className="max-w-full overflow-x-auto">
-              <Segmentado<number>
-                etiqueta="Presas de pollo"
-                valor={presasPollo}
-                onCambiar={setPresasPollo}
-                opciones={opcionesPresas(presasPollo)}
-              />
-            </div>
-            <p className="mt-1 text-xs text-texto-4">
-              Para contar cuántos pollos salieron en Ventas y ganancia y en el cierre. Un pollo son 8 presas.
-            </p>
-          </div>
-        )}
 
         {conStock && (
           <div className={`grid gap-3 ${conFicha ? "" : "sm:grid-cols-2"}`}>

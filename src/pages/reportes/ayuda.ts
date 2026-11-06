@@ -195,7 +195,6 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
       return {
         queMuestra: `Cuánto se vendió de cada uno de los ${p}, cuánto costó y cuánto dejó, por categoría y con el total. Se puede ver lo de un solo cajero.`,
         deDonde: "La misma cuenta que Top productos: cada línea vendida en el período, en bruto (antes de las promociones), menos su costo. El cajero es quien cobró la venta.",
-        incluye: ["Los pollos, si los artículos tienen cargadas sus presas: cantidad × presas, y cada 8 presas un pollo."],
         noIncluye: [
           ANULADAS,
           "Los gastos: el alquiler y los sueldos se restan en el Estado de resultado.",
