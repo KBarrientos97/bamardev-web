@@ -511,6 +511,50 @@ describe("CAJA-6: en el restaurante las filas del cajón suman el esperado", () 
   });
 });
 
+describe("F-23: en el instituto las filas del cajón suman el esperado (videos, 07-nov)", () => {
+  beforeEach(() => {
+    sesion.rubro = "ACADEMIA";
+  });
+
+  it("una cuota de 150 pagada con 200 y otra de 300 por QR: fondo 100 + 150 = 250", async () => {
+    // El formato de siempre mostraba "Cambio entregado Bs -50" sin restarlo
+    // del esperado, y el QR dentro de "Ventas" como si estuviera en el cajón.
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        cantidadVentas: 2,
+        totalVentas: 450,
+        porFormaPago: [
+          { nombre: "Efectivo", monto: 150 },
+          { nombre: "QR", monto: 300 },
+        ],
+        efectivo: 150,
+        cambioEntregado: 50,
+        saldoEsperado: 250,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas).toEqual([
+      ["Fondo de apertura", 100],
+      ["Ventas en efectivo", 150],
+    ]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(250);
+    expect(screen.getByText(/Recibido Bs.200,00 · cambio entregado Bs.50,00/)).toBeInTheDocument();
+    expect(screen.queryByText("Cambio entregado")).not.toBeInTheDocument();
+    // El QR, arriba y como información.
+    expect(filasDelTurno().map(([e]) => e)).toEqual(["Ventas (2)", "Efectivo", "QR"]);
+  });
+
+  it("el comprobante lleva lo cobrado por forma de pago y el esperado con el que se contó", () => {
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
+    const vendido = within(screen.getByRole("region", { name: "Ventas del turno" }));
+    expect(vendido.getByText("QR").nextElementSibling).toHaveTextContent("Bs 70,00");
+    const cajon = within(screen.getByRole("region", { name: "Efectivo en caja" }));
+    expect(cajon.getByText("Efectivo esperado en caja").nextElementSibling).toHaveTextContent("Bs 440,00");
+    expect(cajon.getByText("Faltante Bs 2,00")).toBeInTheDocument();
+  });
+});
+
 describe("farmacia (y los demás rubros) sigue con el cierre de siempre", () => {
   it("mismo orden, mismas filas y mismos rótulos de siempre", async () => {
     sesion.rubro = "FARMACIA";

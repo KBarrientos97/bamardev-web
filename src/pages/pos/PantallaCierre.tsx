@@ -596,12 +596,16 @@ function Fila({
  *   130" contra un esperado de 150, que era el correcto. Hasta acá quedaba con
  *   el formato de siempre "para Omar", pero Omar no usa la web (sólo la app),
  *   y la app ya muestra sólo las filas que suman el esperado.
+ * - El instituto (F-23, videos de la recepción, 07-nov): el mismo error. Su
+ *   recepción cobra cuotas en efectivo con vuelto y por QR, y el formato de
+ *   siempre mostraba "Cambio entregado −X" sin que entrara en la cuenta, con
+ *   el QR dentro de "Ventas" como si estuviera en el cajón.
  *
- * Farmacia, el instituto y los demás rubros siguen con el formato de siempre:
- * nadie revisó todavía su cierre con este criterio.
+ * Farmacia y los demás rubros siguen con el formato de siempre: nadie revisó
+ * todavía su cierre con este criterio.
  */
 function enDosBloques(rubro: string | undefined): boolean {
-  return esBelleza(rubro) || esBillar(rubro) || rubro === "RESTAURANTE";
+  return esBelleza(rubro) || esBillar(rubro) || rubro === "RESTAURANTE" || rubro === "ACADEMIA";
 }
 
 /**
@@ -893,11 +897,13 @@ function AvisoCitas({
  * fechas son las de la caja que devolvió el servidor.
  *
  * En el billar sólo SUMA: lo que ya mostraba (el fondo, lo contado, la
- * diferencia y la nota) sigue igual. Los demás rubros ven el de siempre.
+ * diferencia y la nota) sigue igual. El instituto (F-23, 07-nov) cierra en
+ * dos bloques como ellos, y su papel tiene que decir lo mismo que la pantalla
+ * con la que se contó. Los demás rubros ven el de siempre.
  */
 export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void }) {
   const { rubro, usuario } = useAuth();
-  if (rubro === "RESTAURANTE" || esBillar(rubro)) {
+  if (rubro === "RESTAURANTE" || esBillar(rubro) || rubro === "ACADEMIA") {
     return (
       <ComprobanteCompleto
         caja={caja}
