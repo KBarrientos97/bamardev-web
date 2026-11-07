@@ -27,6 +27,8 @@ const sesion = vi.hoisted(() => ({
   conAgenda: false,
   /** Permisos que se le sacan a la plantilla CAJERO. */
   sinPermisos: [] as string[],
+  /** Secciones que no se ven (como «Cuentas por cobrar» en el instituto). */
+  sinSecciones: [] as string[],
   /** Plan Emprendedor: sin cupo en todos los casos de siempre. */
   cupo: undefined as import("../../types").CupoEstado | undefined,
   actualizarCupo: vi.fn(),
@@ -47,7 +49,7 @@ vi.mock("../../store/AuthContext", async () => {
       },
       rubro: sesion.conAgenda ? "PELUQUERIA" : "RESTAURANTE",
       incluye: () => true,
-      puede: (s: string) => (s === "hoy" ? sesion.conAgenda : true),
+      puede: (s: string) => (s === "hoy" ? sesion.conAgenda : !sesion.sinSecciones.includes(s)),
       cupo: sesion.cupo,
       licencia: null,
       actualizarCupo: sesion.actualizarCupo,
@@ -244,6 +246,7 @@ beforeEach(() => {
   sesion.features = [];
   sesion.conAgenda = false;
   sesion.sinPermisos = [];
+  sesion.sinSecciones = [];
   sesion.cupo = undefined;
 });
 
@@ -459,6 +462,21 @@ describe("cobrar una cita", () => {
     // desde el 18-oct el backend responde 403 a esa venta.
     sesion.features = ["pos", "caja", "agenda", "propinas", "fiado"];
     sesion.sinPermisos = ["credito.otorgar"];
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByRole("button", { name: "pagar 230 con propina" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "fiar con propina" })).not.toBeInTheDocument();
+  });
+
+  it("sin «Cuentas por cobrar» (el instituto) no se ofrece fiar: ese fiado no se podría cobrar (videos, 07-nov)", async () => {
+    // La Recepción de la academia tiene `credito.otorgar` y el plan trae
+    // fiado, pero la pantalla de créditos está fuera de su rubro.
+    sesion.features = ["pos", "caja", "agenda", "propinas", "fiado"];
+    sesion.sinSecciones = ["creditos"];
     vi.mocked(api.getProductos).mockResolvedValue([
       servicio(189, "Corte de dama", 80),
       servicio(190, "Tinte raíz", 150),
