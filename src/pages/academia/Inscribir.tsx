@@ -294,15 +294,28 @@ export default function Inscribir({
   /**
    * El adelanto mínimo del instituto (03-nov): el mismo % que pide la página
    * para asegurar el cupo, redondeado hacia arriba a Bs enteros. 0 = sin mínimo.
+   * Desde el 07-nov puede ser un monto fijo en Bs, que manda sobre el % (la
+   * regla del backend); si no es menos que el total del curso no se exige,
+   * porque no habría adelanto posible entre el mínimo y el total.
    */
-  const pctAdelanto = ajustes.datos?.adelantoMinimoPct ?? null;
-  const adelantoMinimo = pctAdelanto && plan ? Math.ceil(Math.round(vista.total * pctAdelanto) / 100) : 0;
+  const bsAdelanto = ajustes.datos?.adelantoMinimoBs ?? null;
+  const pctAdelanto = bsAdelanto ? null : (ajustes.datos?.adelantoMinimoPct ?? null);
+  const adelantoMinimo = !plan
+    ? 0
+    : bsAdelanto
+      ? bsAdelanto < vista.total
+        ? bsAdelanto
+        : 0
+      : pctAdelanto
+        ? Math.ceil(Math.round(vista.total * pctAdelanto) / 100)
+        : 0;
   const adelantoMal = (() => {
     if (elegidoHoy !== "otro" || otroMonto.trim() === "") return "";
     const n = Number(otroMonto);
     if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de Bs 0.";
     if (plan && n > vista.total) return `No puede pasar el total (${fmtMoney(vista.total)}).`;
-    if (n < adelantoMinimo) return `El adelanto mínimo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} % del curso).`;
+    if (n < adelantoMinimo)
+      return `El adelanto mínimo es ${fmtMoney(adelantoMinimo)}${pctAdelanto ? ` (${pctAdelanto} % del curso)` : ""}.`;
     return "";
   })();
   const sobreTope =
@@ -857,7 +870,7 @@ export default function Inscribir({
               )}
               <p className="text-xs text-texto-4">
                 Si deja un adelanto, el resto queda como saldo.
-                {adelantoMinimo > 0 && ` El mínimo para asegurar el cupo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} %).`}
+                {adelantoMinimo > 0 && ` El mínimo para asegurar el cupo es ${fmtMoney(adelantoMinimo)}${pctAdelanto ? ` (${pctAdelanto} %)` : ""}.`}
               </p>
             </section>
           )}

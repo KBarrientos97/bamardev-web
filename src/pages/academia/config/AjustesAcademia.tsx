@@ -9,7 +9,7 @@ import type { AjustesAcademia as Ajustes, Carrera } from "../../../lib/academia/
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-import { BotonFila, Interruptor, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
+import { BotonFila, Interruptor, PaginaAcademia, SeccionAjuste, Segmentos, TABLA } from "../piezas";
 import { InscripcionEnLinea } from "./InscripcionEnLinea";
 
 /**
@@ -30,6 +30,9 @@ import { InscripcionEnLinea } from "./InscripcionEnLinea";
 
 type Estado = "listo" | "guardando" | "guardado" | "error";
 
+/** Cómo se pide el adelanto mínimo (07-nov): un % del curso o un monto fijo en Bs. */
+type ModoAdelanto = "PCT" | "BS";
+
 export default function AjustesAcademia() {
   const p = usePalabras();
   const carga = useApi(() => apiAcademia.ajustes(), []);
@@ -45,6 +48,11 @@ export default function AjustesAcademia() {
    * abran desde ahora sí, y el cambio se hacía con sólo salir del campo.
    */
   const [cambioDia, setCambioDia] = useState<{ n: number; volver: () => void } | null>(null);
+  /**
+   * La opción elegida del adelanto mínimo. null = la que tenga valor guardado:
+   * se deriva de los ajustes porque llegan después del primer render.
+   */
+  const [modoElegido, setModoElegido] = useState<ModoAdelanto | null>(null);
 
   useEffect(() => {
     if (carga.datos) setA(carga.datos);
@@ -97,13 +105,18 @@ export default function AjustesAcademia() {
     }
   }
 
-  /** Un número al soltar el campo: vacío o fuera de rango no se manda. */
+  /**
+   * Un número al soltar el campo: vacío o fuera de rango no se manda. `junto`
+   * viaja con el valor cuando se guarda uno: el adelanto en Bs lleva el % en
+   * null y al revés, para que nunca queden los dos (07-nov).
+   */
   const numero = (
     k: keyof Ajustes,
     min: number,
     max: number,
     opcional = false,
     confirmar?: (n: number, volver: () => void) => void,
+    junto: Partial<Ajustes> = {},
   ) => ({
     defaultValue: a[k] == null ? "" : String(a[k]),
     onBlur: (e: FocusEvent<HTMLInputElement>) => {
@@ -125,15 +138,25 @@ export default function AjustesAcademia() {
       }
       // Un valor válido borra el reproche del anterior inválido.
       setError("");
-      if (n === a[k]) return;
+      const cambiaJunto = Object.entries(junto).some(([j, v]) => a[j as keyof Ajustes] !== v);
+      if (n === a[k] && !cambiaJunto) return;
       if (confirmar) {
         // El campo muestra lo tecleado hasta que se confirme; si se cancela, vuelve.
         confirmar(n, () => volver(false));
         return;
       }
-      void guardar({ [k]: n } as Partial<Ajustes>).then(volver);
+      void guardar({ [k]: n, ...junto } as Partial<Ajustes>).then(volver);
     },
   });
+
+  // El monto fijo sólo se ofrece si el backend ya lo conoce; si no, queda el % solo.
+  const conAdelantoBs = a.adelantoMinimoBs !== undefined;
+  const modoAdelanto: ModoAdelanto = conAdelantoBs ? (modoElegido ?? (a.adelantoMinimoBs != null ? "BS" : "PCT")) : "PCT";
+  // Al cambiar de opción el campo nuevo arranca vacío y lo guardado sigue valiendo hasta poner otro valor: se avisa.
+  const sigueValiendo =
+    modoAdelanto === "BS"
+      ? a.adelantoMinimoBs == null && a.adelantoMinimoPct != null && `${a.adelantoMinimoPct} % del ${p.carrera}`
+      : a.adelantoMinimoPct == null && a.adelantoMinimoBs != null && fmtMoney(a.adelantoMinimoBs);
 
   return (
     <PaginaAcademia ancho="max-w-5xl">
@@ -270,14 +293,59 @@ export default function AjustesAcademia() {
               <Input type="number" inputMode="numeric" className="sm:max-w-[140px]" {...numero("diasEspera", 0, 60)} />
             </Campo>
           )}
-          {/* 03-nov: el adelanto que asegura el cupo. Sólo si el backend ya lo conoce. */}
+          {/*
+            03-nov: el adelanto que asegura el cupo. Sólo si el backend ya lo conoce.
+            07-nov: también como monto fijo en Bs; el selector va fuera del <label>
+            de Campo para que tocar el campo no apriete una opción.
+          */}
           {a.adelantoMinimoPct !== undefined && (
-            <Campo
-              label="Adelanto mínimo para asegurar el cupo (%)"
-              hint={`La página ofrece pagar este % del ${p.carrera} a cuenta del primer mes, y el mostrador no cobra un adelanto menor. Vacío = la página no lo ofrece.`}
-            >
-              <Input type="number" inputMode="numeric" className="sm:max-w-[140px]" {...numero("adelantoMinimoPct", 1, 99, true)} />
-            </Campo>
+            <div className="space-y-2">
+              <p className="text-[13px] font-semibold text-texto-2">Adelanto mínimo para asegurar el cupo</p>
+              {conAdelantoBs && (
+                <div className="sm:max-w-sm">
+                  <Segmentos<ModoAdelanto>
+                    etiqueta="Cómo se pide el adelanto mínimo"
+                    valor={modoAdelanto}
+                    onChange={(m) => {
+                      setError("");
+                      setModoElegido(m);
+                    }}
+                    opciones={[
+                      ["PCT", `Porcentaje del ${p.carrera}`],
+                      ["BS", "Monto fijo (Bs)"],
+                    ]}
+                  />
+                </div>
+              )}
+              {modoAdelanto === "BS" ? (
+                <Campo label="Monto mínimo (Bs)" hint={`El mismo en todos los ${p.carreras}. Vacío = no se ofrece adelanto.`}>
+                  <Input
+                    key="BS"
+                    type="number"
+                    inputMode="numeric"
+                    className="sm:max-w-[140px]"
+                    {...numero("adelantoMinimoBs", 1, 100000, true, undefined, { adelantoMinimoPct: null })}
+                  />
+                </Campo>
+              ) : (
+                <Campo label={`Porcentaje del ${p.carrera} (%)`} hint={`Depende del precio de cada ${p.carrera}. Vacío = no se ofrece adelanto.`}>
+                  <Input
+                    key="PCT"
+                    type="number"
+                    inputMode="numeric"
+                    className="sm:max-w-[140px]"
+                    {...numero("adelantoMinimoPct", 1, 99, true, undefined, conAdelantoBs ? { adelantoMinimoBs: null } : {})}
+                  />
+                </Campo>
+              )}
+              {sigueValiendo && (
+                <p className="text-xs font-semibold text-texto-3">Hasta que lo cambies sigue valiendo el de antes: {sigueValiendo}.</p>
+              )}
+              <p className="text-xs text-texto-4">
+                La página lo ofrece a cuenta del primer mes, sólo si es menos que la primera cuota y hay un QR de cobro cargado. El
+                mostrador no cobra un adelanto menor.
+              </p>
+            </div>
           )}
         </div>
       </SeccionAjuste>

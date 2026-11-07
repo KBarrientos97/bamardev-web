@@ -44,6 +44,7 @@ import {
   PaginaAcademia,
   ResumenPanel,
   SeccionPanel,
+  Segmentos,
   TABLA,
   Tarjeta,
 } from "../piezas";
@@ -285,42 +286,6 @@ function modoDocenteDe(c: Carrera): PagoDocenteModo {
 /** Cuántos módulos activos tiene el curso: el precio mes a mes es eso por el precio de cada uno. */
 function modulosActivos(c: Carrera): number {
   return c.materias.filter((m) => m.activa).length;
-}
-
-/**
- * Dos opciones excluyentes como un control segmentado: el pago completo por %
- * o por precio final (A4) y el pago al docente (A5). Alto de pulgar en el
- * celular, y el texto parte en dos renglones si no entra.
- */
-function Segmentos<T extends string>({
-  etiqueta,
-  valor,
-  opciones,
-  onChange,
-}: {
-  etiqueta: string;
-  valor: T;
-  opciones: [T, string][];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div role="radiogroup" aria-label={etiqueta} className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-      {opciones.map(([k, label]) => (
-        <button
-          key={k}
-          type="button"
-          role="radio"
-          aria-checked={valor === k}
-          onClick={() => onChange(k)}
-          className={`min-h-11 rounded-lg px-2.5 py-1.5 text-center text-[13px] font-semibold leading-tight transition-colors sm:min-h-9 ${
-            valor === k ? "bg-white text-texto shadow-sm ring-1 ring-borde" : "text-texto-3 hover:text-texto"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 /** Las columnas de la lista en escritorio: el encabezado y cada fila las comparten. */

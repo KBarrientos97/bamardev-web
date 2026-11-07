@@ -587,6 +587,43 @@ export function Interruptor({
 }
 
 /**
+ * Dos opciones excluyentes como un control segmentado: el pago completo por %
+ * o por precio final (A4), el pago al docente (A5) y el adelanto mínimo por %
+ * o en Bs (07-nov, en Ajustes; por eso vive acá y no en Cursos). Alto de
+ * pulgar en el celular, y el texto parte en dos renglones si no entra.
+ */
+export function Segmentos<T extends string>({
+  etiqueta,
+  valor,
+  opciones,
+  onChange,
+}: {
+  etiqueta: string;
+  valor: T;
+  opciones: [T, string][];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={etiqueta} className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+      {opciones.map(([k, label]) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={valor === k}
+          onClick={() => onChange(k)}
+          className={`min-h-11 rounded-lg px-2.5 py-1.5 text-center text-[13px] font-semibold leading-tight transition-colors sm:min-h-9 ${
+            valor === k ? "bg-white text-texto shadow-sm ring-1 ring-borde" : "text-texto-3 hover:text-texto"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Una sección de los ajustes: el título y para qué sirve a la izquierda, lo
  * que se toca a la derecha. En el celular, uno debajo del otro.
  */
