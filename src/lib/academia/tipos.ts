@@ -78,6 +78,13 @@ export interface AjustesAcademia {
    * Ausente en un backend anterior.
    */
   adelantoMinimoPct?: number | null;
+  /**
+   * 07-nov: el adelanto mínimo como monto fijo, en Bs enteros (1 a 100.000),
+   * el mismo en todos los cursos. Si tiene valor manda sobre el % (el backend
+   * lo resuelve así) y al guardar uno el otro va en null, para que nunca
+   * queden los dos. Ausente en un backend anterior: sólo existe el %.
+   */
+  adelantoMinimoBs?: number | null;
 }
 
 export interface Franja {
@@ -645,6 +652,8 @@ export interface CarritoInscripcion {
     cuotaId: number;
     descripcion: string;
     saldo: number;
+    /** Lo ya abonado a la cuota: dice si el completo es «el curso» o «el resto». Un backend anterior no lo manda. */
+    pagado?: number;
     vence: string;
     vencida: boolean;
     /** Lo que cubre la cuota, con su nombre y ordenado (D6). Un backend anterior no lo manda. */

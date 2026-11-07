@@ -157,10 +157,21 @@ export function Tarjeta({
 
 /* ───────────────────────── Indicadores ───────────────────────── */
 
-/** La grilla de indicadores: 2 por fila en el celular, hasta 4 en escritorio. */
+/**
+ * La grilla de indicadores: 2 por fila cuando el espacio es angosto, hasta 4
+ * cuando entra. Se mide el ancho de la grilla (@container), no el de la
+ * pantalla: lo que la achica en la compu es el panel lateral (en Cobranza, a
+ * 1280 px con el panel abierto quedan ~580 px y con 4 por fila los montos se
+ * cortaban, "Bs 1.35…"). Los cortes dejan a cada tarjeta ~125 px para el
+ * número, lo que pide "Bs 12.350,00" con la letra chica de KpiTarjeta.
+ */
 export function GrillaKpi({ children, columnas = 4 }: { children: ReactNode; columnas?: 2 | 3 | 4 }) {
-  const lg = columnas === 2 ? "" : columnas === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4";
-  return <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${lg}`}>{children}</div>;
+  const anchas = columnas === 2 ? "" : columnas === 3 ? "@xl:grid-cols-3" : "@2xl:grid-cols-4";
+  return (
+    <div className="@container">
+      <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${anchas}`}>{children}</div>
+    </div>
+  );
 }
 
 const TONO_KPI = {
@@ -204,7 +215,12 @@ export function KpiTarjeta({
           </span>
         )}
       </span>
-      <span className={`mt-1.5 block truncate text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${TONO_KPI[tono]}`}>{valor}</span>
+      {/* Sin truncate: un monto cortado ("Bs 1.35…") es plata que no se lee. La
+          letra sigue el ancho de ESTA tarjeta (@container de la tarjeta), no el
+          de la pantalla, y si ni así entra baja de renglón en vez de cortarse. */}
+      <span className={`mt-1.5 block text-xl font-bold tabular-nums tracking-tight break-words @[9rem]:text-2xl ${TONO_KPI[tono]}`}>
+        {valor}
+      </span>
       {pie && <span className="mt-0.5 block text-xs text-texto-3">{pie}</span>}
     </>
   );
@@ -215,7 +231,7 @@ export function KpiTarjeta({
         onClick={onClick}
         aria-pressed={seleccionado}
         aria-label={etiquetaAria}
-        className={`card min-w-0 p-4 text-left transition-[box-shadow,border-color] hover:border-primary-200 hover:shadow-md ${
+        className={`card @container min-w-0 p-4 text-left transition-[box-shadow,border-color] hover:border-primary-200 hover:shadow-md ${
           seleccionado ? "border-primary ring-2 ring-primary-100" : ""
         }`}
       >
@@ -223,7 +239,7 @@ export function KpiTarjeta({
       </button>
     );
   }
-  return <div className="card min-w-0 p-4">{contenido}</div>;
+  return <div className="card @container min-w-0 p-4">{contenido}</div>;
 }
 
 /* ───────────────────────── Tablas ───────────────────────── */
@@ -566,6 +582,43 @@ export function Interruptor({
           style={{ left: activo ? 18 : 2 }}
         />
       </button>
+    </div>
+  );
+}
+
+/**
+ * Dos opciones excluyentes como un control segmentado: el pago completo por %
+ * o por precio final (A4), el pago al docente (A5) y el adelanto mínimo por %
+ * o en Bs (07-nov, en Ajustes; por eso vive acá y no en Cursos). Alto de
+ * pulgar en el celular, y el texto parte en dos renglones si no entra.
+ */
+export function Segmentos<T extends string>({
+  etiqueta,
+  valor,
+  opciones,
+  onChange,
+}: {
+  etiqueta: string;
+  valor: T;
+  opciones: [T, string][];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={etiqueta} className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+      {opciones.map(([k, label]) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={valor === k}
+          onClick={() => onChange(k)}
+          className={`min-h-11 rounded-lg px-2.5 py-1.5 text-center text-[13px] font-semibold leading-tight transition-colors sm:min-h-9 ${
+            valor === k ? "bg-white text-texto shadow-sm ring-1 ring-borde" : "text-texto-3 hover:text-texto"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { ApiError } from "../../lib/api";
 import { esDatoViejo, esReintentable, mensajeDelBackend } from "../../lib/academia/errores";
 import {
+  etiquetaParentesco,
   EXPEDIDOS,
   fechaCorta,
   horarioGrupo,
@@ -360,7 +361,7 @@ export default function FichaAlumno() {
                           {t.principal && a.tutores.length > 1 && <Chip tono="marca">principal</Chip>}
                         </p>
                         <p className="text-[13px] text-texto-3">
-                          {t.parentesco}
+                          {etiquetaParentesco(t.parentesco)}
                           {t.telefono ? ` · ${t.telefono}` : ""}
                           {t.ci ? ` · CI ${t.ci}` : ""}
                         </p>
@@ -831,7 +832,7 @@ function AgregarTutor({
   onCerrar: () => void;
   onAgregar: (t: { nombre: string; telefono: string; parentesco: string; principal: boolean }) => void;
 }) {
-  const [t, setT] = useState({ nombre: "", telefono: "", parentesco: "Madre", principal: true });
+  const [t, setT] = useState({ nombre: "", telefono: "", parentesco: "MADRE", principal: true });
   const [error, setError] = useState("");
   return (
     <Modal
@@ -863,7 +864,9 @@ function AgregarTutor({
           <Campo label="Parentesco">
             <Select value={t.parentesco} onChange={(e) => setT({ ...t, parentesco: e.target.value })}>
               {PARENTESCOS.map((x) => (
-                <option key={x}>{x}</option>
+                <option key={x.valor} value={x.valor}>
+                  {x.etiqueta}
+                </option>
               ))}
             </Select>
           </Campo>

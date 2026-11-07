@@ -130,7 +130,7 @@ describe("E5 · inscribir", () => {
         nombres: "Joaquín",
         fechaNacimiento: "2011-03-12",
       },
-      tutor: { nombre: "Rosa Molina", telefono: "71234567", parentesco: "Madre" },
+      tutor: { nombre: "Rosa Molina", telefono: "71234567", parentesco: "MADRE" },
       grupoId: 7,
       planPagoId: 2,
     }, {});
@@ -575,7 +575,7 @@ describe("E5 · inscribir", () => {
     });
     expect(apiAcademia.convertir).toHaveBeenLastCalledWith(44, {
       planPagoId: 1,
-      tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "Madre" },
+      tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "MADRE" },
       confirmarSobreCupo: true,
     }, {});
     await seguir();
@@ -684,6 +684,28 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
     });
     await seguir();
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ cobrar: true, montoHoy: 300 }));
+  });
+
+  it("con el adelanto mínimo como monto fijo, el mostrador pide ese monto y no habla de % (07-nov)", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(
+      ajustesDePrueba({ fotosObligatorias: false, adelantoMinimoPct: null, adelantoMinimoBs: 250 }),
+    );
+    await montar();
+    await cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
+    expect(within(panel()).getByText(/El mínimo para asegurar el cupo es Bs\s?250(,00)?\.$/)).toBeInTheDocument();
+    const monto = within(panel()).getByLabelText("Monto del adelanto (Bs)");
+    fireEvent.change(monto, { target: { value: "200" } });
+    expect(within(panel()).getByText(/^El adelanto mínimo es Bs\s?250,00\.$/)).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+    fireEvent.change(monto, { target: { value: "250" } });
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    });
+    await seguir();
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ cobrar: true, montoHoy: 250 }));
   });
 
   it("un descuento en Bs mayor que el curso se marca y no inscribe", async () => {

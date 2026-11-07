@@ -34,7 +34,7 @@ import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
 import ListaProductosVendidos from "./ListaProductosVendidos";
-import { textoProductos, textoUnidades } from "./productosVendidos";
+import { documentoProductosVendidos, textoProductos, textoUnidades } from "./productosVendidos";
 import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
 
 /**
@@ -596,12 +596,16 @@ function Fila({
  *   130" contra un esperado de 150, que era el correcto. Hasta acá quedaba con
  *   el formato de siempre "para Omar", pero Omar no usa la web (sólo la app),
  *   y la app ya muestra sólo las filas que suman el esperado.
+ * - El instituto (F-23, videos de la recepción, 07-nov): el mismo error. Su
+ *   recepción cobra cuotas en efectivo con vuelto y por QR, y el formato de
+ *   siempre mostraba "Cambio entregado −X" sin que entrara en la cuenta, con
+ *   el QR dentro de "Ventas" como si estuviera en el cajón.
  *
- * Farmacia, el instituto y los demás rubros siguen con el formato de siempre:
- * nadie revisó todavía su cierre con este criterio.
+ * Farmacia y los demás rubros siguen con el formato de siempre: nadie revisó
+ * todavía su cierre con este criterio.
  */
 function enDosBloques(rubro: string | undefined): boolean {
-  return esBelleza(rubro) || esBillar(rubro) || rubro === "RESTAURANTE";
+  return esBelleza(rubro) || esBillar(rubro) || rubro === "RESTAURANTE" || rubro === "ACADEMIA";
 }
 
 /**
@@ -893,11 +897,13 @@ function AvisoCitas({
  * fechas son las de la caja que devolvió el servidor.
  *
  * En el billar sólo SUMA: lo que ya mostraba (el fondo, lo contado, la
- * diferencia y la nota) sigue igual. Los demás rubros ven el de siempre.
+ * diferencia y la nota) sigue igual. El instituto (F-23, 07-nov) cierra en
+ * dos bloques como ellos, y su papel tiene que decir lo mismo que la pantalla
+ * con la que se contó. Los demás rubros ven el de siempre.
  */
 export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void }) {
   const { rubro, usuario } = useAuth();
-  if (rubro === "RESTAURANTE" || esBillar(rubro)) {
+  if (rubro === "RESTAURANTE" || esBillar(rubro) || rubro === "ACADEMIA") {
     return (
       <ComprobanteCompleto
         caja={caja}
@@ -1112,45 +1118,30 @@ export function ProductosDelTurno({
   const cargando = !productos && remoto.cargando;
   const error = productos ? null : remoto.error;
 
-  /** Una fila por producto, con su categoría, para que la planilla se pueda ordenar. */
-  function exportar() {
-    if (!d) return;
-    const filas = d.categorias.flatMap((c) =>
-      c.items.map((i) => ({
-        Categoria: c.nombre,
-        Producto: i.nombre,
-        Cantidad: i.cantidad,
-        Precio: i.precio,
-        Total: i.total,
-      })),
-    );
-    if (filas.length === 0) return;
+  const { negocio } = useAuth();
+  const [armando, setArmando] = useState(false);
+  const [errorPdf, setErrorPdf] = useState(false);
 
-    const cols = ["Categoria", "Producto", "Cantidad", "Precio", "Total"];
-    const esc = (v: unknown) => {
-      const t = v === null || v === undefined ? "" : String(v);
-      // Coma decimal para que Excel es-BO sume la columna, y apóstrofe si la
-      // celda arranca como fórmula (ver bajarCsv en Reportes).
-      const num = typeof v === "number" ? String(v).replace(".", ",") : t;
-      const seguro =
-        num.length > 0 && "=+@-".includes(num[0]) && !/^-?[\d.,]+$/.test(num)
-          ? `'${num}`
-          : num;
-      return `"${seguro.replace(/"/g, '""')}"`;
-    };
-    const csv = [
-      cols.map(esc).join(";"),
-      ...filas.map((f) => cols.map((c) => esc(f[c as keyof typeof f])).join(";")),
-    ].join("\r\n");
-
-    const url = URL.createObjectURL(
-      new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `productos-turno-${cajaId}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  /**
+   * El PDF de lo vendido (6-nov, como la app desde el 5-nov): el CSV se abría
+   * en el celular con la fila entera en una celda y los montos leídos como
+   * horas. Un toque a la vez: armarlo tarda un instante.
+   */
+  async function exportar() {
+    if (!d || armando) return;
+    setArmando(true);
+    setErrorPdf(false);
+    try {
+      const { bajarPdf } = await import("../../lib/pdf/tablaPdf");
+      await bajarPdf(
+        `productos-vendidos-turno-${cajaId}.pdf`,
+        documentoProductosVendidos(d, { negocio: negocio?.nombre, subtitulo: `Turno #${cajaId}` }),
+      );
+    } catch {
+      setErrorPdf(true);
+    } finally {
+      setArmando(false);
+    }
   }
 
   return (
@@ -1161,14 +1152,15 @@ export function ProductosDelTurno({
       onClose={onClose}
       acciones={
         d && d.lineas > 0 ? (
-          <Boton variante="ghost" icono="download" onClick={exportar}>
-            Exportar
+          <Boton variante="ghost" icono="download" onClick={exportar} disabled={armando}>
+            {armando ? "Armando el PDF…" : "Exportar PDF"}
           </Boton>
         ) : undefined
       }
     >
       <div className="space-y-3">
         <ErrorMsg>{error}</ErrorMsg>
+        {errorPdf && <ErrorMsg>No se pudo armar el PDF. Probá de nuevo.</ErrorMsg>}
         {/* Con error, sólo el error: "no se vendió nada" sería falso. */}
         {cargando ? (
           <Cargando />

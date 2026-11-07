@@ -17,6 +17,7 @@ import {
   nombreDe,
   datosDeLaBusqueda,
   nombresDe,
+  etiquetaParentesco,
   PARENTESCOS,
   problemaFechaNacimiento,
   textoCubre,
@@ -122,7 +123,7 @@ export default function Inscribir({
     alumnoInicial ? { id: alumnoInicial.id, nombre: alumnoInicial.nombre } : null,
   );
   const [nuevo, setNuevo] = useState({ ci: "", ciExpedido: "SC", apellidos: "", nombres: "", fechaNacimiento: "", telefono: "" });
-  const [tutor, setTutor] = useState({ nombre: "", parentesco: "Madre", telefono: "" });
+  const [tutor, setTutor] = useState({ nombre: "", parentesco: "MADRE", telefono: "" });
   /** El backend dijo que es menor y no tiene tutor: el bloque aparece aunque no lo supiéramos. */
   const [pideTutor, setPideTutor] = useState(false);
   /**
@@ -293,15 +294,28 @@ export default function Inscribir({
   /**
    * El adelanto mínimo del instituto (03-nov): el mismo % que pide la página
    * para asegurar el cupo, redondeado hacia arriba a Bs enteros. 0 = sin mínimo.
+   * Desde el 07-nov puede ser un monto fijo en Bs, que manda sobre el % (la
+   * regla del backend); si no es menos que el total del curso no se exige,
+   * porque no habría adelanto posible entre el mínimo y el total.
    */
-  const pctAdelanto = ajustes.datos?.adelantoMinimoPct ?? null;
-  const adelantoMinimo = pctAdelanto && plan ? Math.ceil(Math.round(vista.total * pctAdelanto) / 100) : 0;
+  const bsAdelanto = ajustes.datos?.adelantoMinimoBs ?? null;
+  const pctAdelanto = bsAdelanto ? null : (ajustes.datos?.adelantoMinimoPct ?? null);
+  const adelantoMinimo = !plan
+    ? 0
+    : bsAdelanto
+      ? bsAdelanto < vista.total
+        ? bsAdelanto
+        : 0
+      : pctAdelanto
+        ? Math.ceil(Math.round(vista.total * pctAdelanto) / 100)
+        : 0;
   const adelantoMal = (() => {
     if (elegidoHoy !== "otro" || otroMonto.trim() === "") return "";
     const n = Number(otroMonto);
     if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de Bs 0.";
     if (plan && n > vista.total) return `No puede pasar el total (${fmtMoney(vista.total)}).`;
-    if (n < adelantoMinimo) return `El adelanto mínimo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} % del curso).`;
+    if (n < adelantoMinimo)
+      return `El adelanto mínimo es ${fmtMoney(adelantoMinimo)}${pctAdelanto ? ` (${pctAdelanto} % del curso)` : ""}.`;
     return "";
   })();
   const sobreTope =
@@ -354,7 +368,7 @@ export default function Inscribir({
   // adulto quedaba con «Tutor · obligatorio» y se mandaba un tutor que no tiene.
   useEffect(() => {
     setPideTutor(false);
-    setTutor({ nombre: "", parentesco: "Madre", telefono: "" });
+    setTutor({ nombre: "", parentesco: "MADRE", telefono: "" });
   }, [elegido]);
 
   // L2: el celular buscado entró como teléfono del estudiante; si la fecha dice
@@ -717,7 +731,9 @@ export default function Inscribir({
                   <Campo label="Parentesco">
                     <Select value={tutor.parentesco} onChange={(e) => setTutor({ ...tutor, parentesco: e.target.value })}>
                       {PARENTESCOS.map((x) => (
-                        <option key={x}>{x}</option>
+                        <option key={x.valor} value={x.valor}>
+                          {x.etiqueta}
+                        </option>
                       ))}
                     </Select>
                   </Campo>
@@ -854,7 +870,7 @@ export default function Inscribir({
               )}
               <p className="text-xs text-texto-4">
                 Si deja un adelanto, el resto queda como saldo.
-                {adelantoMinimo > 0 && ` El mínimo para asegurar el cupo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} %).`}
+                {adelantoMinimo > 0 && ` El mínimo para asegurar el cupo es ${fmtMoney(adelantoMinimo)}${pctAdelanto ? ` (${pctAdelanto} %)` : ""}.`}
               </p>
             </section>
           )}
@@ -949,7 +965,7 @@ export default function Inscribir({
             <ul aria-label="Requisitos" className="space-y-1.5 text-[13px]">
               {/* UX 2b: hasta que estén, dice que faltan (decía "Datos completos" en naranja). */}
               <Requisito ok={datosListos} texto={datosListos ? "Datos completos" : "Faltan los datos"} />
-              {esMenor && <Requisito ok={tutorListo} texto={tutor.nombre.trim() ? `Tutor: ${tutor.nombre.trim()} (${tutor.parentesco.toLowerCase()})` : "Tutor"} />}
+              {esMenor && <Requisito ok={tutorListo} texto={tutor.nombre.trim() ? `Tutor: ${tutor.nombre.trim()} (${etiquetaParentesco(tutor.parentesco).toLowerCase()})` : "Tutor"} />}
               {pideFotos && (
                 <Requisito ok={faltanFotos.length === 0} texto={faltanFotos.length === 0 ? "Las 3 fotos" : `Fotos: ${3 - faltanFotos.length} de 3 · quedan pendientes`} />
               )}

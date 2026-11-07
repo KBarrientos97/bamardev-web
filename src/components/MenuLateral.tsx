@@ -117,6 +117,9 @@ export default function MenuLateral({
   // la navegación scrollea y recortaría cualquier cosa que se asome por el
   // costado.
   const [tip, setTip] = useState<{ texto: string; top: number; left: number } | null>(null);
+  // "Más opciones" arranca plegado: el pie del menú es un solo renglón.
+  const [masAbierto, setMasAbierto] = useState(false);
+  const botonMas = useRef<HTMLButtonElement>(null);
   const mostrarTip = (texto: string) =>
     compacta
       ? {
@@ -403,169 +406,254 @@ export default function MenuLateral({
       .map((n) => nodoCompacto(n, padres.get(n) ?? null));
   };
 
+  // "Más opciones" (el dueño, 07-nov): lo de la cuenta de quien está sentado
+  // —instalar, avisos, tutoriales, ayuda, la clave y salir— va detrás de un
+  // solo botón al pie. Sueltos debajo de los bloques eran hasta seis renglones
+  // que se leían como pantallas del negocio y alargaban el menú.
+  const panelMas = `${uid}-mas-opciones`;
+  const enMas = pathname === "/notificaciones" || pathname === "/tutoriales";
+  const elegir = (accion: () => void) => {
+    setTip(null);
+    setMasAbierto(false);
+    accion();
+  };
+  const claseOpcion = (activa: boolean, peligrosa = false) =>
+    [
+      "flex w-full items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors disabled:opacity-60",
+      foco,
+      compacta ? "justify-center px-0" : "px-3",
+      activa
+        ? "bg-barra-activo text-barra-texto"
+        : peligrosa
+          ? "text-barra-texto-2 hover:bg-danger hover:text-white"
+          : "text-barra-texto-2 hover:bg-white/10 hover:text-barra-texto",
+    ].join(" ");
+
   return (
     <nav
       ref={navRef}
       aria-label="Menú principal"
       onKeyDown={teclas}
-      onScroll={() => setTip(null)}
-      className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden p-3"
+      className="flex min-h-0 flex-1 flex-col"
     >
-      {bloques.map((b, i) => {
-        const rotulo = `${uid}-bloque-${b.bloque}`;
-        return (
-          <div
-            key={b.bloque}
-            className={
-              i === 0 ? "" : compacta ? "mt-2 border-t border-white/15 pt-2" : "mt-4"
-            }
-          >
-            {conTitulos && !compacta && (
-              <p
-                id={rotulo}
-                className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-barra-texto-2"
-              >
-                {TITULO_BLOQUE[b.bloque]}
-              </p>
-            )}
-            <ul
-              aria-labelledby={conTitulos && !compacta ? rotulo : undefined}
-              className="flex flex-col gap-0.5"
+      <div
+        onScroll={() => setTip(null)}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3"
+      >
+        {bloques.map((b, i) => {
+          const rotulo = `${uid}-bloque-${b.bloque}`;
+          return (
+            <div
+              key={b.bloque}
+              className={
+                i === 0 ? "" : compacta ? "mt-2 border-t border-white/15 pt-2" : "mt-4"
+              }
             >
-              {compacta ? compactos(b.nodos) : b.nodos.map((n) => nodo(n, null))}
-            </ul>
+              {conTitulos && !compacta && (
+                <p
+                  id={rotulo}
+                  className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-barra-texto-2"
+                >
+                  {TITULO_BLOQUE[b.bloque]}
+                </p>
+              )}
+              <ul
+                aria-labelledby={conTitulos && !compacta ? rotulo : undefined}
+                className="flex flex-col gap-0.5"
+              >
+                {compacta ? compactos(b.nodos) : b.nodos.map((n) => nodo(n, null))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Fuera del scroll: el botón queda siempre a la vista al pie, aunque
+          el menú sea largo (Inventario desplegado, el instituto), y lo que
+          despliega se abre HACIA ARRIBA, achicando la lista de pantallas en
+          vez de salirse por abajo de la pantalla del celular. */}
+      <div
+        onKeyDown={(e) => {
+          // Escape pliega "Más opciones" y no cierra además el cajón del
+          // celular: ese Escape lo escucha el Layout en el documento.
+          if (e.key !== "Escape" || !masAbierto) return;
+          e.stopPropagation();
+          setMasAbierto(false);
+          botonMas.current?.focus();
+        }}
+        className="shrink-0 border-t border-white/15 px-3 pb-3 pt-2"
+      >
+        {/* Cerrado queda `inert`, como los grupos: sus opciones no se
+            alcanzan con Tab ni con las flechas, ni las lee el lector. */}
+        <div
+          id={panelMas}
+          inert={!masAbierto}
+          aria-hidden={masAbierto ? undefined : true}
+          className={[
+            "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+            masAbierto ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+          ].join(" ")}
+        >
+          <div className="min-h-0 overflow-hidden">
+            {/* Tope de alto: en un celular apaisado las seis opciones no
+                entran, y que se corte "Cerrar sesión" es lo peor que puede
+                pasar acá. */}
+            <div className="flex max-h-[45dvh] flex-col gap-0.5 overflow-y-auto pb-1">
+              {onInstalar && (
+                <button
+                  type="button"
+                  onClick={() => elegir(onInstalar)}
+                  aria-label={compacta ? textoInstalar() : undefined}
+                  data-fila=""
+                  data-nav-id="instalar"
+                  {...mostrarTip(textoInstalar())}
+                  className={claseOpcion(false)}
+                >
+                  <Icon name="download" size={19} />
+                  {!compacta && <span>{textoInstalar()}</span>}
+                </button>
+              )}
+
+              {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol.
+                  Es un link y no un botón: es una pantalla. */}
+              <Link
+                to="/notificaciones"
+                onClick={() => elegir(onNavegar)}
+                aria-label={compacta ? "Notificaciones" : undefined}
+                aria-current={pathname === "/notificaciones" ? "page" : undefined}
+                data-fila=""
+                data-nav-id="notificaciones"
+                {...mostrarTip("Notificaciones")}
+                className={claseOpcion(pathname === "/notificaciones")}
+              >
+                <Icon name="bell" size={19} />
+                {!compacta && <span>Notificaciones</span>}
+              </Link>
+
+              <Link
+                to="/tutoriales"
+                onClick={() => elegir(onNavegar)}
+                aria-label={compacta ? "Tutoriales" : undefined}
+                aria-current={pathname === "/tutoriales" ? "page" : undefined}
+                data-fila=""
+                data-nav-id="tutoriales"
+                {...mostrarTip("Tutoriales")}
+                className={claseOpcion(pathname === "/tutoriales")}
+              >
+                <Icon name="video" size={19} />
+                {!compacta && <span>Tutoriales</span>}
+              </Link>
+
+              {onAyuda && (
+                <button
+                  type="button"
+                  onClick={() => elegir(onAyuda)}
+                  aria-label={compacta ? "Ayuda" : undefined}
+                  data-fila=""
+                  data-nav-id="ayuda"
+                  {...mostrarTip("Ayuda")}
+                  className={claseOpcion(false)}
+                >
+                  <Icon name="pregunta" size={19} />
+                  {!compacta && <span>Ayuda</span>}
+                </button>
+              )}
+
+              {/* Cambiar la propia clave no depende de administrar usuarios
+                  (API-12), salvo en el instituto (ver el Layout). */}
+              {onCambiarPassword && (
+                <button
+                  type="button"
+                  onClick={() => elegir(onCambiarPassword)}
+                  aria-label={compacta ? "Cambiar mi contraseña" : undefined}
+                  data-fila=""
+                  data-nav-id="mi-password"
+                  {...mostrarTip("Cambiar mi contraseña")}
+                  className={claseOpcion(false)}
+                >
+                  <Icon name="lock" size={19} />
+                  {!compacta && <span>Cambiar mi contraseña</span>}
+                </button>
+              )}
+
+              <div className="my-1 border-t border-white/15" />
+
+              {/* No pliega el panel: mientras se pregunta por la caja el
+                  renglón dice "Revisando tu caja…", y plegado no se vería. */}
+              <button
+                type="button"
+                onClick={() => {
+                  setTip(null);
+                  if (onCerrarSesion) onCerrarSesion();
+                  else logout();
+                }}
+                disabled={cerrandoSesion}
+                aria-busy={cerrandoSesion || undefined}
+                aria-label={compacta ? "Cerrar sesión" : undefined}
+                data-fila=""
+                data-nav-id="salir"
+                {...mostrarTip("Cerrar sesión")}
+                className={claseOpcion(false, true)}
+              >
+                <Icon name="logout" size={19} />
+                {/* Mientras se pregunta por la caja lo dice: con el wifi lento
+                    son unos segundos, y un botón quieto se vuelve a tocar. */}
+                {!compacta && <span>{cerrandoSesion ? "Revisando tu caja…" : "Cerrar sesión"}</span>}
+              </button>
+
+              {/* Qué versión tiene este equipo: para comparar con la publicada
+                  cuando alguien dice "a mí no me aparece" (21-oct). */}
+              {!compacta && (
+                <p className="px-3 pt-1 text-[11px] text-barra-texto-2 opacity-70" title={VERSION_APP}>
+                  Versión {versionLegible()}
+                </p>
+              )}
+            </div>
           </div>
-        );
-      })}
+        </div>
 
-      <div className="my-2 border-t border-white/15" />
-
-      {/* Lo de la cuenta de quien está sentado, para cualquier rol: cambiar
-          la propia clave no depende de administrar usuarios (API-12). */}
-      {onInstalar && (
         <button
+          ref={botonMas}
           type="button"
           onClick={() => {
             setTip(null);
-            onInstalar();
+            setMasAbierto((v) => !v);
           }}
-          aria-label={compacta ? textoInstalar() : undefined}
+          aria-expanded={masAbierto}
+          aria-controls={panelMas}
+          aria-label={compacta ? "Más opciones" : undefined}
           data-fila=""
-          data-nav-id="instalar"
-          {...mostrarTip(textoInstalar())}
+          data-nav-id="mas-opciones"
+          {...mostrarTip("Más opciones")}
           className={[
-            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
+            "flex w-full items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
             foco,
             compacta ? "justify-center px-0" : "px-3",
+            // Parado en Notificaciones o Tutoriales con el panel plegado, el
+            // botón se enciende como el grupo que contiene la pantalla: si
+            // no, el menú no diría dónde se está.
+            masAbierto || enMas
+              ? "bg-barra-activo text-barra-texto"
+              : "text-barra-texto-2 hover:bg-white/10 hover:text-barra-texto",
           ].join(" ")}
         >
-          <Icon name="download" size={19} />
-          {!compacta && <span>{textoInstalar()}</span>}
+          <Icon name="masH" size={19} />
+          {!compacta && (
+            <>
+              <span className="min-w-0 flex-1 text-left">Más opciones</span>
+              {/* Abre hacia arriba: la flecha apunta para donde sale. */}
+              <Icon
+                name="chevronRight"
+                size={16}
+                className={[
+                  "shrink-0 transition-transform duration-200 motion-reduce:transition-none",
+                  masAbierto ? "rotate-90" : "-rotate-90",
+                ].join(" ")}
+              />
+            </>
+          )}
         </button>
-      )}
-
-      {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como
-          la contraseña. Es un link y no un botón: es una pantalla. */}
-      <Link
-        to="/notificaciones"
-        onClick={() => {
-          setTip(null);
-          onNavegar();
-        }}
-        aria-label={compacta ? "Notificaciones" : undefined}
-        aria-current={pathname === "/notificaciones" ? "page" : undefined}
-        data-fila=""
-        data-nav-id="notificaciones"
-        {...mostrarTip("Notificaciones")}
-        className={[
-          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
-          foco,
-          compacta ? "justify-center px-0" : "px-3",
-          pathname === "/notificaciones"
-            ? "bg-barra-activo text-barra-texto"
-            : "text-barra-texto-2 hover:bg-white/10 hover:text-barra-texto",
-        ].join(" ")}
-      >
-        <Icon name="bell" size={19} />
-        {!compacta && <span>Notificaciones</span>}
-      </Link>
-
-      {onAyuda && (
-        <button
-          type="button"
-          onClick={() => {
-            setTip(null);
-            onAyuda();
-          }}
-          aria-label={compacta ? "Ayuda" : undefined}
-          data-fila=""
-          data-nav-id="ayuda"
-          {...mostrarTip("Ayuda")}
-          className={[
-            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
-            foco,
-            compacta ? "justify-center px-0" : "px-3",
-          ].join(" ")}
-        >
-          <Icon name="pregunta" size={19} />
-          {!compacta && <span>Ayuda</span>}
-        </button>
-      )}
-
-      {onCambiarPassword && (
-        <button
-          type="button"
-          onClick={() => {
-            setTip(null);
-            onCambiarPassword();
-          }}
-          aria-label={compacta ? "Cambiar mi contraseña" : undefined}
-          data-fila=""
-          data-nav-id="mi-password"
-          {...mostrarTip("Cambiar mi contraseña")}
-          className={[
-            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
-            foco,
-            compacta ? "justify-center px-0" : "px-3",
-          ].join(" ")}
-        >
-          <Icon name="lock" size={19} />
-          {!compacta && <span>Cambiar mi contraseña</span>}
-        </button>
-      )}
-
-      <button
-        type="button"
-        onClick={() => {
-          setTip(null);
-          if (onCerrarSesion) onCerrarSesion();
-          else logout();
-        }}
-        disabled={cerrandoSesion}
-        aria-busy={cerrandoSesion || undefined}
-        aria-label={compacta ? "Cerrar sesión" : undefined}
-        data-fila=""
-        data-nav-id="salir"
-        {...mostrarTip("Cerrar sesión")}
-        className={[
-          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white disabled:opacity-60",
-          foco,
-          compacta ? "justify-center px-0" : "px-3",
-        ].join(" ")}
-      >
-        <Icon name="logout" size={19} />
-        {/* Mientras se pregunta por la caja lo dice: con el wifi lento son
-            unos segundos, y un botón quieto se vuelve a tocar. */}
-        {!compacta && <span>{cerrandoSesion ? "Revisando tu caja…" : "Cerrar sesión"}</span>}
-      </button>
-
-      {/* Qué versión tiene este equipo: para comparar con la publicada cuando
-          alguien dice "a mí no me aparece" (21-oct). */}
-      {!compacta && (
-        <p className="px-3 pt-1 text-[11px] text-barra-texto-2 opacity-70" title={VERSION_APP}>
-          Versión {versionLegible()}
-        </p>
-      )}
+      </div>
 
       {compacta && tip && (
         <div

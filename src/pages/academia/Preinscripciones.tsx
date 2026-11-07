@@ -8,7 +8,7 @@ import { AvisoOk, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/u
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { EVENTO_PREINSCRIPCIONES } from "../../lib/academia/contadorPreinscripciones";
 import { avisoFotosPendientes, NOMBRE_FOTO, textoFaltanFotos } from "../../lib/academia/fotos";
-import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
+import { etiquetaParentesco, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import { TIPOS_FOTO, type Preinscripcion, type TipoFoto } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
@@ -253,7 +253,7 @@ function FilaInscripcion({
         </p>
         <p className="text-[13px] text-texto-3">
           {[
-            s.alumno.menor ? `menor · tutor: ${s.tutor ? `${s.tutor.nombre}${s.tutor.parentesco ? ` (${s.tutor.parentesco})` : ""}` : "sin cargar"}` : null,
+            s.alumno.menor ? `menor · tutor: ${s.tutor ? `${s.tutor.nombre}${s.tutor.parentesco ? ` (${etiquetaParentesco(s.tutor.parentesco)})` : ""}` : "sin cargar"}` : null,
             s.alumno.menor && s.tutor?.telefono ? s.tutor.telefono : s.alumno.telefono,
             tiempoRelativo(s.preinscritaEn).toLowerCase(),
           ]

@@ -290,8 +290,29 @@ export function limitesFechaNacimiento(hoy = new Date()): { min: string; max: st
 /** Los departamentos donde se expide el CI, como los pide el formulario. */
 export const EXPEDIDOS = ["SC", "LP", "CB", "OR", "PT", "CH", "TJ", "BE", "PD"] as const;
 
-/** Parentescos a mano para el tutor. */
-export const PARENTESCOS = ["Madre", "Padre", "Tutor/a", "Abuelo/a", "Hermano/a", "Otro"] as const;
+/**
+ * Los parentescos del tutor: los cuatro que acepta el backend (`PARENTESCOS`
+ * de academia.dto.ts), con su nombre en castellano. Se ofrecían también
+ * «Tutor/a», «Abuelo/a» y «Hermano/a», y el backend los rechazaba con un 400
+ * (videos de la recepción, 07-nov): un abuelo o un hermano va como «Otro».
+ */
+export const PARENTESCOS = [
+  { valor: "MADRE", etiqueta: "Madre" },
+  { valor: "PADRE", etiqueta: "Padre" },
+  { valor: "TUTOR_LEGAL", etiqueta: "Tutor legal" },
+  { valor: "OTRO", etiqueta: "Otro" },
+] as const;
+
+/**
+ * El parentesco como se lee: el backend lo guarda en mayúsculas («MADRE»). Lo
+ * que no es uno de los cuatro (un dato viejo, cargado a mano) se muestra tal
+ * cual, para no esconderlo.
+ */
+export function etiquetaParentesco(valor: string | null | undefined): string {
+  if (!valor) return "";
+  const p = PARENTESCOS.find((x) => x.valor === valor.trim().toUpperCase());
+  return p ? p.etiqueta : valor;
+}
 
 /**
  * El calendario del plan con el descuento repartido entre las cuotas, a la

@@ -362,7 +362,7 @@ describe("pagar el completo con descuento desde Cobrar (Derick, 04-nov)", () => 
   const CON_ADELANTO = {
     ...CARRITO,
     lineas: [
-      { productoId: 77, cuotaId: 901, descripcion: "Barbería · Cuota 1/3", saldo: 200, vence: "2026-11-10", vencida: false },
+      { productoId: 77, cuotaId: 901, descripcion: "Barbería · Cuota 1/3", saldo: 200, pagado: 300, vence: "2026-11-10", vencida: false },
       { productoId: 77, cuotaId: 902, descripcion: "Barbería · Cuota 2/3", saldo: 500, vence: "2026-12-10", vencida: false },
       { productoId: 77, cuotaId: 903, descripcion: "Barbería · Cuota 3/3", saldo: 500, vence: "2027-01-10", vencida: false },
     ],
@@ -379,6 +379,18 @@ describe("pagar el completo con descuento desde Cobrar (Derick, 04-nov)", () => 
     vi.mocked(apiAcademia.completoMostrador).mockResolvedValue({ completo: null });
     await montar("/academia/cobrar?inscripcion=103");
     expect(screen.queryByText(/Pagar el resto del curso completo/)).not.toBeInTheDocument();
+  });
+
+  it("sin nada abonado ofrece «el curso completo», no «el resto» (videos, 07-nov)", async () => {
+    // Recién inscrito, sin un peso pagado: las tres cuotas enteras.
+    vi.mocked(apiAcademia.carrito).mockResolvedValue({
+      ...CARRITO,
+      lineas: CON_ADELANTO.lineas.map((l) => ({ ...l, saldo: 500, pagado: 0 })),
+    });
+    vi.mocked(apiAcademia.completoMostrador).mockResolvedValue({ completo: { ...OFERTA, monto: 1350 } });
+    await montar("/academia/cobrar?inscripcion=103");
+    expect(screen.getByText(/^Pagar el curso completo · Bs\s1\.350/)).toBeInTheDocument();
+    expect(screen.queryByText(/resto del curso/)).not.toBeInTheDocument();
   });
 
   it("mirar la oferta no cambia el plan; cobrarla lo cambia y cobra las cuotas nuevas", async () => {

@@ -356,8 +356,9 @@ describe("en la app: el «Cerrar sesión» del menú pasa por el aviso", () => {
     vi.mocked(api.cajaActual).mockResolvedValue(CAJA_ABIERTA);
     app();
     const menu = screen.getByRole("navigation");
+    fireEvent.click(within(menu).getByRole("button", { name: "Más opciones" }));
     await act(async () => {
-      fireEvent.click(within(menu).getByText("Cerrar sesión"));
+      fireEvent.click(within(menu).getByRole("button", { name: "Cerrar sesión" }));
     });
     expect(sesion.logout).not.toHaveBeenCalled();
     // Dentro del menú quedaba encerrado en el cajón del celular, que se mueve
@@ -368,8 +369,10 @@ describe("en la app: el «Cerrar sesión» del menú pasa por el aviso", () => {
   it("billar: sale con un toque, como siempre", async () => {
     sesion.rubro = "BILLAR";
     app();
+    const menu = within(screen.getByRole("navigation"));
+    fireEvent.click(menu.getByRole("button", { name: "Más opciones" }));
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("navigation")).getByText("Cerrar sesión"));
+      fireEvent.click(menu.getByRole("button", { name: "Cerrar sesión" }));
     });
     expect(api.cajaActual).not.toHaveBeenCalled();
     expect(sesion.logout).toHaveBeenCalledTimes(1);

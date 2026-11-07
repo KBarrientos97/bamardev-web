@@ -1,5 +1,6 @@
 import { aCentavos, esCero } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
+import type { DocumentoPdf } from "../../lib/pdf/tablaPdf";
 import type { ReporteCierreProductos } from "../../types";
 
 /**
@@ -146,4 +147,42 @@ export function renglonesVisibles(porGrupo: number[], limite?: number): { visibl
     return v;
   });
   return { visibles, ocultos: total - limite };
+}
+
+/**
+ * El PDF de Productos vendidos, igual al de la app (5-nov): la tabla con las
+ * categorías y sus subtotales, cada producto con su unitario abajo, el TOTAL
+ * VENDIDO y la nota de que no es lo que hay en el cajón. Reemplaza al CSV, que
+ * en el celular se abría con la fila entera en una celda.
+ */
+export function documentoProductosVendidos(
+  d: ReporteCierreProductos,
+  o: { negocio?: string | null; subtitulo: string },
+): DocumentoPdf {
+  return {
+    titulo: "Productos vendidos",
+    negocio: o.negocio,
+    subtitulo: o.subtitulo,
+    resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}`,
+    columnas: ["PRODUCTO", "CANT.", "TOTAL"],
+    grupos: d.categorias.map((c) => ({
+      titulo: c.nombre,
+      celdas: [
+        { texto: fmtCantidad(c.unidades), tono: "apagado" },
+        { texto: fmtMoney(c.total) },
+      ],
+      filas: c.items.map((i) => {
+        const precio = precioQueMultiplica(i);
+        return {
+          nombre: i.nombre,
+          detalle: precio == null ? "varios precios" : `${fmtMoney(precio)} c/u`,
+          celdas: [{ texto: fmtCantidad(i.cantidad) }, { texto: fmtMoney(i.total) }],
+        };
+      }),
+    })),
+    total: { etiqueta: "TOTAL VENDIDO", celdas: [{ texto: "" }, { texto: fmtMoney(d.total) }] },
+    notas: [
+      "Es lo vendido en el turno, no lo que hay en el cajón. Un crédito cobrado hoy tampoco suma acá: ese producto ya se vendió antes.",
+    ],
+  };
 }

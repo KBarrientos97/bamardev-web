@@ -1032,10 +1032,13 @@ function PuntoDeVenta() {
         // cobrando una mesa está vacío. Una venta en 0 (todo con paquete) no
         // tiene nada que fiar. Y con el permiso de fiar, no sólo la feature:
         // el dueño se lo puede sacar al cajero, y el backend responde 403
-        // desde el 18-oct (antes lo dejaba pasar igual).
+        // desde el 18-oct (antes lo dejaba pasar igual). Y sólo donde se ve
+        // «Cuentas por cobrar»: en el instituto está oculta a propósito (lo
+        // que se debe son cuotas), y un fiado hecho ahí no se podría cobrar.
         onCredito={
           tieneFeature(negocio?.features, "fiado") &&
           tienePermiso(usuario, "credito.otorgar") &&
+          puede("creditos") &&
           !datosEntrega &&
           !mesaCobrando &&
           totalCarrito > 0

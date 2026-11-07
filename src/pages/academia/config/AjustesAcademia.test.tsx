@@ -366,3 +366,86 @@ describe("C7 · la tarjeta «Inscripción en línea» en Ajustes", () => {
     expect(screen.getByRole("switch", { name: "Recibir inscripciones desde la página" })).toHaveAttribute("aria-checked", "true");
   });
 });
+
+describe("07-nov · el adelanto mínimo por % o como monto fijo en Bs", () => {
+  const opcion = (nombre: RegExp) => within(screen.getByRole("radiogroup", { name: "Cómo se pide el adelanto mínimo" })).getByRole("radio", { name: nombre });
+
+  it("sin nada guardado arranca en porcentaje, vacío como antes", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: null, adelantoMinimoBs: null }));
+    await montar();
+    expect(opcion(/Porcentaje del curso/)).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText(/^Porcentaje del curso \(%\)/)).toHaveValue("");
+    expect(screen.getByText(/Depende del precio de cada curso/)).toBeInTheDocument();
+    expect(screen.getByText(/sólo si es menos que la primera cuota y hay un QR de cobro cargado/)).toBeInTheDocument();
+  });
+
+  it("elegir monto fijo y guardar manda el monto y el % en null", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: 20, adelantoMinimoBs: null }));
+    await montar();
+    fireEvent.click(opcion(/Monto fijo/));
+    const monto = screen.getByLabelText(/^Monto mínimo \(Bs\)/);
+    expect(monto).toHaveValue("");
+    expect(screen.getByText(/El mismo en todos los cursos/)).toBeInTheDocument();
+    // Mientras no se ponga el monto, lo guardado sigue valiendo y se dice.
+    expect(screen.getByText(/sigue valiendo el de antes: 20 % del curso/)).toBeInTheDocument();
+    fireEvent.change(monto, { target: { value: "100" } });
+    fireEvent.blur(monto);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ adelantoMinimoBs: 100, adelantoMinimoPct: null });
+    expect(screen.queryByText(/sigue valiendo/)).toBeNull();
+  });
+
+  it("arranca en monto fijo si viene guardado", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: null, adelantoMinimoBs: 150 }));
+    await montar();
+    expect(opcion(/Monto fijo/)).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText(/^Monto mínimo \(Bs\)/)).toHaveValue("150");
+    expect(screen.queryByLabelText(/^Porcentaje del curso \(%\)/)).toBeNull();
+  });
+
+  it("volver a porcentaje manda el % y el monto en null", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: null, adelantoMinimoBs: 150 }));
+    await montar();
+    fireEvent.click(opcion(/Porcentaje del curso/));
+    const pct = screen.getByLabelText(/^Porcentaje del curso \(%\)/);
+    expect(pct).toHaveValue("");
+    fireEvent.change(pct, { target: { value: "25" } });
+    fireEvent.blur(pct);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ adelantoMinimoPct: 25, adelantoMinimoBs: null });
+  });
+
+  it("un monto fuera de 1..100.000 no se manda", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: null, adelantoMinimoBs: 150 }));
+    await montar();
+    const monto = screen.getByLabelText(/^Monto mínimo \(Bs\)/);
+    fireEvent.change(monto, { target: { value: "0" } });
+    fireEvent.blur(monto);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
+    expect(screen.getByText("El valor tiene que estar entre 1 y 100000.")).toBeInTheDocument();
+    expect(monto).toHaveValue("150");
+  });
+
+  it("vaciar el monto lo borra: no se ofrece adelanto", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: null, adelantoMinimoBs: 150 }));
+    await montar();
+    const monto = screen.getByLabelText(/^Monto mínimo \(Bs\)/);
+    fireEvent.change(monto, { target: { value: "" } });
+    fireEvent.blur(monto);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ adelantoMinimoBs: null });
+  });
+
+  it("con un backend que no conoce el monto fijo queda sólo el %, sin selector y sin mandar el monto", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ adelantoMinimoPct: 20 }));
+    await montar();
+    expect(screen.queryByRole("radiogroup", { name: "Cómo se pide el adelanto mínimo" })).toBeNull();
+    const pct = screen.getByLabelText(/^Porcentaje del curso \(%\)/);
+    expect(pct).toHaveValue("20");
+    fireEvent.change(pct, { target: { value: "30" } });
+    fireEvent.blur(pct);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ adelantoMinimoPct: 30 });
+  });
+});

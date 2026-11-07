@@ -244,6 +244,18 @@ export function saldoTotal(carrito: CarritoInscripcion): number {
 }
 
 /**
+ * El título de la oferta del completo en «Cobrar», con la regla del servidor
+ * (`opcionesDePago`, que el endpoint del mostrador no manda): si ya abonó algo
+ * es «el resto», si no, el curso entero. El carrito alcanza para saberlo
+ * porque la oferta sólo existe sin cuotas PAGADAS, así que todo lo abonado
+ * está en cuotas que todavía tienen saldo. Sin `pagado` (backend anterior) se
+ * toma como nada abonado.
+ */
+export function tituloCompleto(carrito: CarritoInscripcion): string {
+  return carrito.lineas.some((l) => (l.pagado ?? 0) > 0) ? "Pagar el resto del curso completo" : "Pagar el curso completo";
+}
+
+/**
  * El monto que se propone: lo acordado al inscribir (sin pasar el saldo) o,
  * si no hay, lo vencido; si nada venció, la primera cuota. Es lo mismo que
  * marcaba "Módulos por cobrar" en el POS.

@@ -26,7 +26,9 @@ vi.mock("../../store/AuthContext", async () => {
       usuario: { id: 1, username: "caja", rol: "CAJERO", ...permisosDe("CAJERO") },
       rubro: "RESTAURANTE",
       incluye: () => true,
-      puede: () => false,
+      // El cajero del restaurante con fiado ve «Cuentas por cobrar»: sin ella
+      // el POS no ofrece fiar (el instituto, 07-nov).
+      puede: (s: string) => s === "creditos",
       cupo: undefined,
       licencia: null,
       actualizarCupo: vi.fn(),

@@ -63,8 +63,19 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
           // Los íconos de instalar los baja el celular una vez; no van guardados.
           // El mapa de la página (maplibre, ~1 MB) tampoco: lo baja sólo quien
-          // abre un mapa, no cada cajero al instalar la app.
-          globIgnores: ['**/pwa-*', '**/apple-touch-icon*', '**/logo-marca.png', '**/push-sw.js', '**/maplibre-gl*'],
+          // abre un mapa, no cada cajero al instalar la app. Lo mismo el PDF
+          // (jsPDF y los dos opcionales que trae, ~600 KB, 6-nov): lo baja
+          // quien exporta, no todos al instalar.
+          globIgnores: [
+            '**/pwa-*',
+            '**/apple-touch-icon*',
+            '**/logo-marca.png',
+            '**/push-sw.js',
+            '**/maplibre-gl*',
+            '**/jspdf*',
+            '**/html2canvas*',
+            '**/purify.es*',
+          ],
           // Las notificaciones push (FCM): el mismo SW las recibe y las
           // muestra; ver public/push-sw.js. Un solo SW para toda la app.
           // El pedazo grande de la app pasa los 2 MB del default de Workbox.

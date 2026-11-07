@@ -191,6 +191,16 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
         deDonde: `Suma cada línea vendida en el período, en bruto (antes de las promociones), y le resta su costo: el cargado en cada ${palabraProductos(rubro, false)} o, si salió de un lote, lo que costó ese lote.`,
         noIncluye: [ANULADAS, ...(academia ? ["Las cuotas de los cursos: lo cobrado por clases está en el Estado de resultado."] : [])],
       };
+    case "ventas-ganancia":
+      return {
+        queMuestra: `Cuánto se vendió de cada uno de los ${p}, cuánto costó y cuánto dejó, por categoría y con el total. Se puede ver lo de un solo cajero.`,
+        deDonde: "La misma cuenta que Top productos: cada línea vendida en el período, en bruto (antes de las promociones), menos su costo. El cajero es quien cobró la venta.",
+        noIncluye: [
+          ANULADAS,
+          "Los gastos: el alquiler y los sueldos se restan en el Estado de resultado.",
+          ...(academia ? ["Las cuotas de los cursos: lo cobrado por clases está en el Estado de resultado."] : []),
+        ],
+      };
     case "productos-lentos":
       return {
         queMuestra: `Los ${p} que casi no se venden y cuánta plata tienen parada en el estante.`,

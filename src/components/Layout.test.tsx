@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,7 @@ vi.mock("../store/AuthContext", async () => {
 });
 
 import { fechaNegocio } from "../lib/agenda/horaAgenda";
+import { reiniciarEstadoPwa, type EventoInstalar } from "../lib/pwa/pwa";
 import { CUPO_ILIMITADO, cupoEmprendedor } from "../test/cupoFixtures";
 import Layout from "./Layout";
 
@@ -69,6 +70,12 @@ function abrir(ruta: string) {
   render(arbol(ruta));
   // La barra de escritorio; el cajón del celular sólo existe abierto.
   return within(screen.getByRole("navigation"));
+}
+
+/** Despliega "Más opciones", al pie de la barra (07-nov). */
+function abrirMas(nav: ReturnType<typeof abrir>) {
+  fireEvent.click(nav.getByRole("button", { name: "Más opciones" }));
+  return nav;
 }
 
 beforeEach(() => {
@@ -434,7 +441,7 @@ describe("la cuenta de quien está sentado (API-12)", () => {
   it("«Cambiar mi contraseña» está en el menú, para cualquier rol, y abre el formulario", () => {
     sesion.rol = "CAJERO";
     sesion.rubro = "RESTAURANTE";
-    const nav = abrir("/pos");
+    const nav = abrirMas(abrir("/pos"));
     fireEvent.click(nav.getByRole("button", { name: "Cambiar mi contraseña" }));
     const dialogo = screen.getByRole("dialog", { name: "Cambiar mi contraseña" });
     expect(within(dialogo).getByLabelText("Contraseña actual")).toBeInTheDocument();
@@ -446,25 +453,124 @@ describe("la cuenta de quien está sentado (API-12)", () => {
     sesion.rol = "CAJERO";
     sesion.rubro = "ACADEMIA";
     sesion.features = ["pos", "caja", "academia"];
-    const nav = abrir("/pos");
+    const nav = abrirMas(abrir("/pos"));
     // La recepción no ve «Mi negocio»…
     expect(nav.queryByRole("link", { name: "Mi negocio" })).toBeNull();
-    // …y sus avisos siguen a mano, una sola vez, al pie de la barra.
+    // …y sus avisos siguen a mano, una sola vez, en «Más opciones».
     expect(nav.getAllByRole("link", { name: "Notificaciones" })).toHaveLength(1);
     expect(nav.getByRole("link", { name: "Notificaciones" }).dataset.navId).toBe("notificaciones");
   });
 
-  it("en el instituto «Cambiar mi contraseña» sólo sale con permiso de usuarios: al resto se la cambia el administrador (M6)", () => {
+  it("en el instituto «Cambiar mi contraseña» le sale también a la recepción (07-nov; antes sólo a quien administra usuarios)", () => {
     sesion.rubro = "ACADEMIA";
     sesion.features = ["pos", "caja", "academia", "usuarios"];
     sesion.rol = "CAJERO";
     const { unmount } = render(arbol("/pos"));
-    expect(within(screen.getByRole("navigation")).queryByRole("button", { name: "Cambiar mi contraseña" })).toBeNull();
+    const recepcion = abrirMas(within(screen.getByRole("navigation")));
+    expect(recepcion.getByRole("link", { name: "Tutoriales" })).toBeInTheDocument();
+    fireEvent.click(recepcion.getByRole("button", { name: "Cambiar mi contraseña" }));
+    expect(screen.getByRole("dialog", { name: "Cambiar mi contraseña" })).toBeInTheDocument();
     unmount();
     sesion.rol = "ADMIN";
-    const nav = abrir("/pos");
+    const nav = abrirMas(abrir("/pos"));
     fireEvent.click(nav.getByRole("button", { name: "Cambiar mi contraseña" }));
     expect(screen.getByRole("dialog", { name: "Cambiar mi contraseña" })).toBeInTheDocument();
+  });
+});
+
+describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
+  const opciones = (nav: ReturnType<typeof abrir>) =>
+    Array.from(document.getElementById(nav.getByRole("button", { name: "Más opciones" }).getAttribute("aria-controls")!)!.querySelectorAll("[data-nav-id]")).map(
+      (el) => el.textContent,
+    );
+
+  beforeEach(() => {
+    sesion.rubro = "ACADEMIA";
+    sesion.rol = "CAJERO";
+    sesion.features = ["pos", "caja", "academia"];
+  });
+
+  it("arranca plegado: un solo botón, y sus opciones no se alcanzan", () => {
+    const nav = abrir("/pos");
+    const boton = nav.getByRole("button", { name: "Más opciones" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById(boton.getAttribute("aria-controls")!)).toHaveAttribute("inert");
+    // Ni con el lector de pantalla: plegado no existe.
+    expect(nav.queryByRole("link", { name: "Notificaciones" })).toBeNull();
+    expect(nav.queryByRole("link", { name: "Tutoriales" })).toBeNull();
+    expect(nav.queryByRole("button", { name: "Cerrar sesión" })).toBeNull();
+  });
+
+  it("al tocarlo despliega Instalar, Notificaciones, Tutoriales, Cambiar mi contraseña y Cerrar sesión, en ese orden", () => {
+    // Que el navegador ofrezca instalar: sin eso "Instalar" no sale, como antes.
+    reiniciarEstadoPwa({
+      instalable: Object.assign(new Event("beforeinstallprompt"), {
+        prompt: () => Promise.resolve(),
+        userChoice: Promise.resolve({ outcome: "accepted" as const }),
+      }) as EventoInstalar,
+    });
+    try {
+      const nav = abrirMas(abrir("/pos"));
+      expect(nav.getByRole("button", { name: "Más opciones" })).toHaveAttribute("aria-expanded", "true");
+      expect(opciones(nav)).toEqual(["Instalar", "Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
+      expect(nav.getByRole("link", { name: "Tutoriales" })).toHaveAttribute("href", "/tutoriales");
+      expect(nav.getByRole("link", { name: "Notificaciones" })).toHaveAttribute("href", "/notificaciones");
+    } finally {
+      reiniciarEstadoPwa();
+    }
+  });
+
+  it("sin poder instalar no ofrece Instalar", () => {
+    const nav = abrirMas(abrir("/pos"));
+    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
+  });
+
+  it("en los demás rubros también, con lo de la cuenta que les toca", () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.rol = "ADMIN";
+    sesion.features = [];
+    const nav = abrirMas(abrir("/pos"));
+    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
+  });
+
+  it("elegir Tutoriales lleva a la pantalla y pliega el panel; el botón queda encendido", () => {
+    const nav = abrirMas(abrir("/pos"));
+    fireEvent.click(nav.getByRole("link", { name: "Tutoriales" }));
+    const boton = nav.getByRole("button", { name: "Más opciones" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(boton.className).toContain("bg-barra-activo");
+  });
+
+  it("se vuelve a plegar con el mismo botón o con Escape, y el foco vuelve al botón", () => {
+    const nav = abrirMas(abrir("/pos"));
+    const boton = nav.getByRole("button", { name: "Más opciones" });
+    fireEvent.click(boton);
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(boton);
+    const tutoriales = nav.getByRole("link", { name: "Tutoriales" });
+    act(() => tutoriales.focus());
+    fireEvent.keyDown(tutoriales, { key: "Escape" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(boton).toHaveFocus();
+  });
+
+  it("con teclado: la flecha arriba desde el botón sube a «Cerrar sesión»", () => {
+    const nav = abrirMas(abrir("/pos"));
+    const boton = nav.getByRole("button", { name: "Más opciones" });
+    act(() => boton.focus());
+    fireEvent.keyDown(boton, { key: "ArrowUp" });
+    expect(nav.getByRole("button", { name: "Cerrar sesión" })).toHaveFocus();
+  });
+
+  it("en la barra de sólo íconos es un ícono con su nombre", () => {
+    localStorage.setItem("bamardev.sidebar.colapsada", "1");
+    const nav = abrir("/pos");
+    const boton = nav.getByRole("button", { name: "Más opciones" });
+    fireEvent.focus(boton);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Más opciones");
+    fireEvent.click(boton);
+    expect(nav.getByRole("link", { name: "Tutoriales" })).toBeInTheDocument();
   });
 });
 
