@@ -132,6 +132,20 @@ describe("N7 · cobranza", () => {
     expect(screen.getAllByText("sin recordar").length).toBeGreaterThan(0);
   });
 
+  it("los montos de los indicadores no se cortan: la grilla mide su contenedor y el número no lleva truncate", async () => {
+    // Con el panel lateral abierto a 1280 px quedaban "Bs 1.35…": el corte de
+    // columnas era por el ancho de la pantalla, que el panel no cambia.
+    await montar();
+    const filtros = screen.getByRole("group", { name: "Filtrar deudas" });
+    const grilla = filtros.querySelector(".grid");
+    expect(grilla?.className).toMatch(/@2xl:grid-cols-4/);
+    expect(grilla?.className).not.toMatch(/(^|\s)lg:grid-cols/);
+    expect(grilla?.parentElement?.className).toMatch(/@container/);
+    const monto = within(filtros).getByText(/^Bs\s?4\.320,00$/);
+    expect(monto.className).not.toMatch(/truncate/);
+    expect(monto.closest("button")?.className).toMatch(/@container/);
+  });
+
   it("U4: sin chips de antigüedad ni selector de curso", async () => {
     // Con 2 cursos antes aparecía el selector; ahora no se pide ni la lista de cursos.
     vi.mocked(apiAcademia.carreras).mockResolvedValue([

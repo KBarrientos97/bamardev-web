@@ -157,10 +157,21 @@ export function Tarjeta({
 
 /* ───────────────────────── Indicadores ───────────────────────── */
 
-/** La grilla de indicadores: 2 por fila en el celular, hasta 4 en escritorio. */
+/**
+ * La grilla de indicadores: 2 por fila cuando el espacio es angosto, hasta 4
+ * cuando entra. Se mide el ancho de la grilla (@container), no el de la
+ * pantalla: lo que la achica en la compu es el panel lateral (en Cobranza, a
+ * 1280 px con el panel abierto quedan ~580 px y con 4 por fila los montos se
+ * cortaban, "Bs 1.35…"). Los cortes dejan a cada tarjeta ~125 px para el
+ * número, lo que pide "Bs 12.350,00" con la letra chica de KpiTarjeta.
+ */
 export function GrillaKpi({ children, columnas = 4 }: { children: ReactNode; columnas?: 2 | 3 | 4 }) {
-  const lg = columnas === 2 ? "" : columnas === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4";
-  return <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${lg}`}>{children}</div>;
+  const anchas = columnas === 2 ? "" : columnas === 3 ? "@xl:grid-cols-3" : "@2xl:grid-cols-4";
+  return (
+    <div className="@container">
+      <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${anchas}`}>{children}</div>
+    </div>
+  );
 }
 
 const TONO_KPI = {
@@ -204,7 +215,12 @@ export function KpiTarjeta({
           </span>
         )}
       </span>
-      <span className={`mt-1.5 block truncate text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${TONO_KPI[tono]}`}>{valor}</span>
+      {/* Sin truncate: un monto cortado ("Bs 1.35…") es plata que no se lee. La
+          letra sigue el ancho de ESTA tarjeta (@container de la tarjeta), no el
+          de la pantalla, y si ni así entra baja de renglón en vez de cortarse. */}
+      <span className={`mt-1.5 block text-xl font-bold tabular-nums tracking-tight break-words @[9rem]:text-2xl ${TONO_KPI[tono]}`}>
+        {valor}
+      </span>
       {pie && <span className="mt-0.5 block text-xs text-texto-3">{pie}</span>}
     </>
   );
@@ -215,7 +231,7 @@ export function KpiTarjeta({
         onClick={onClick}
         aria-pressed={seleccionado}
         aria-label={etiquetaAria}
-        className={`card min-w-0 p-4 text-left transition-[box-shadow,border-color] hover:border-primary-200 hover:shadow-md ${
+        className={`card @container min-w-0 p-4 text-left transition-[box-shadow,border-color] hover:border-primary-200 hover:shadow-md ${
           seleccionado ? "border-primary ring-2 ring-primary-100" : ""
         }`}
       >
@@ -223,7 +239,7 @@ export function KpiTarjeta({
       </button>
     );
   }
-  return <div className="card min-w-0 p-4">{contenido}</div>;
+  return <div className="card @container min-w-0 p-4">{contenido}</div>;
 }
 
 /* ───────────────────────── Tablas ───────────────────────── */
