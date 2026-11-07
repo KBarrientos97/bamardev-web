@@ -645,6 +645,8 @@ export interface CarritoInscripcion {
     cuotaId: number;
     descripcion: string;
     saldo: number;
+    /** Lo ya abonado a la cuota: dice si el completo es «el curso» o «el resto». Un backend anterior no lo manda. */
+    pagado?: number;
     vence: string;
     vencida: boolean;
     /** Lo que cubre la cuota, con su nombre y ordenado (D6). Un backend anterior no lo manda. */

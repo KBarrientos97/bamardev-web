@@ -11,6 +11,7 @@ import {
   montoValido,
   pagadorPorDefecto,
   saldoTotal,
+  tituloCompleto,
   ventaConCuotas,
   type CobroCuotas,
   type InicialCobro,
@@ -83,7 +84,7 @@ function esOtraSede(sede: string | Ref | null | undefined, caja: { id: number | 
  * reintento no cobre dos veces.
  *
  * Pago completo con descuento (Derick, 04-nov): a quien sólo pagó un adelanto
- * y su grupo no empezó, se le ofrece arriba pagar el resto del curso completo,
+ * y su grupo no empezó, se le ofrece arriba pagar el curso completo (o el resto),
  * con el monto que le daría la página. El plan se cambia recién al confirmar
  * el cobro, justo antes de la venta, y si la venta falla vuelve al de antes:
  * mirar la opción y no cobrar nunca le cambia nada.
@@ -391,7 +392,9 @@ export default function Cobrar() {
   // La oferta del completo con descuento, arriba del monto (04-nov).
   const ofertaCompleto = completo && !sinCuotas && (
     <div className={`rounded-xl border px-4 py-3 ${usarCompleto ? "border-primary bg-primary-50" : "border-borde bg-white"}`}>
-      <p className="text-sm font-bold text-texto">Pagar el resto del curso completo · {fmtMoney(completo.monto)}</p>
+      <p className="text-sm font-bold text-texto">
+        {tituloCompleto(carrito)} · {fmtMoney(completo.monto)}
+      </p>
       <p className="mt-0.5 text-[13px] text-texto-3">
         En lugar de {fmtMoney(tope)} por cuotas
         {completo.ahorro ? `: ahorra ${fmtMoney(completo.ahorro)}` : ""}. Pasa al pago completo y queda al día.
