@@ -66,6 +66,7 @@ import { ActualizarAlNavegar, useRecargarSiQuedoVieja } from "./lib/pwa/actualiz
 const QrDeCobro = lazy(() => import("./pages/QrDeCobro"));
 // De la cuenta, para cualquiera: trae Firebase sólo cuando se activa.
 const Notificaciones = lazy(() => import("./pages/Notificaciones"));
+const Tutoriales = lazy(() => import("./pages/Tutoriales"));
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
 const MiAsistente = lazy(() => import("./pages/pagina/MiAsistente"));
@@ -412,6 +413,16 @@ function Rutas() {
           element={
             <Suspense fallback={null}>
               <Notificaciones />
+            </Suspense>
+          }
+        />
+        {/* Sin `Protegida`, como los avisos: aprender a usar el sistema no
+            depende de un permiso. Qué videos ve, lo decide el rubro. */}
+        <Route
+          path="/tutoriales"
+          element={
+            <Suspense fallback={null}>
+              <Tutoriales />
             </Suspense>
           }
         />

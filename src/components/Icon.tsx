@@ -427,6 +427,13 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   play: <polygon points="6 3 20 12 6 21 6 3" />,
+  // Tutoriales: una pantalla con el triángulo de reproducir.
+  video: (
+    <>
+      <rect x="2" y="4" width="20" height="16" rx="3" />
+      <polygon points="10 9 15 12 10 15 10 9" />
+    </>
+  ),
   relojArena: (
     <>
       <path d="M5 22h14" />

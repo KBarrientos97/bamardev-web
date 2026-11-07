@@ -703,6 +703,8 @@ const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/academia\/cobranza\/cobrar\/?$/, "Cobrar a estudiante"],
   // Es de la cuenta y no del negocio: va abajo, con "Cambiar mi contraseña".
   [/^\/notificaciones\/?$/, "Notificaciones"],
+  // Lo mismo: se llega desde "Más opciones", al pie de la barra.
+  [/^\/tutoriales\/?$/, "Tutoriales"],
 ];
 
 /** Título de la barra móvil. */
