@@ -461,14 +461,15 @@ describe("la cuenta de quien está sentado (API-12)", () => {
     expect(nav.getByRole("link", { name: "Notificaciones" }).dataset.navId).toBe("notificaciones");
   });
 
-  it("en el instituto «Cambiar mi contraseña» sólo sale con permiso de usuarios: al resto se la cambia el administrador (M6)", () => {
+  it("en el instituto «Cambiar mi contraseña» le sale también a la recepción (07-nov; antes sólo a quien administra usuarios)", () => {
     sesion.rubro = "ACADEMIA";
     sesion.features = ["pos", "caja", "academia", "usuarios"];
     sesion.rol = "CAJERO";
     const { unmount } = render(arbol("/pos"));
     const recepcion = abrirMas(within(screen.getByRole("navigation")));
     expect(recepcion.getByRole("link", { name: "Tutoriales" })).toBeInTheDocument();
-    expect(recepcion.queryByRole("button", { name: "Cambiar mi contraseña" })).toBeNull();
+    fireEvent.click(recepcion.getByRole("button", { name: "Cambiar mi contraseña" }));
+    expect(screen.getByRole("dialog", { name: "Cambiar mi contraseña" })).toBeInTheDocument();
     unmount();
     sesion.rol = "ADMIN";
     const nav = abrirMas(abrir("/pos"));
@@ -500,7 +501,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     expect(nav.queryByRole("button", { name: "Cerrar sesión" })).toBeNull();
   });
 
-  it("al tocarlo despliega Instalar, Notificaciones, Tutoriales y Cerrar sesión, en ese orden", () => {
+  it("al tocarlo despliega Instalar, Notificaciones, Tutoriales, Cambiar mi contraseña y Cerrar sesión, en ese orden", () => {
     // Que el navegador ofrezca instalar: sin eso "Instalar" no sale, como antes.
     reiniciarEstadoPwa({
       instalable: Object.assign(new Event("beforeinstallprompt"), {
@@ -511,7 +512,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     try {
       const nav = abrirMas(abrir("/pos"));
       expect(nav.getByRole("button", { name: "Más opciones" })).toHaveAttribute("aria-expanded", "true");
-      expect(opciones(nav)).toEqual(["Instalar", "Notificaciones", "Tutoriales", "Cerrar sesión"]);
+      expect(opciones(nav)).toEqual(["Instalar", "Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
       expect(nav.getByRole("link", { name: "Tutoriales" })).toHaveAttribute("href", "/tutoriales");
       expect(nav.getByRole("link", { name: "Notificaciones" })).toHaveAttribute("href", "/notificaciones");
     } finally {
@@ -521,7 +522,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
 
   it("sin poder instalar no ofrece Instalar", () => {
     const nav = abrirMas(abrir("/pos"));
-    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cerrar sesión"]);
+    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
   });
 
   it("en los demás rubros también, con lo de la cuenta que les toca", () => {
