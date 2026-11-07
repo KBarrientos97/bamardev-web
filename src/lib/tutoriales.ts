@@ -36,6 +36,69 @@ export const TUTORIALES: Tutorial[] = [
     descripcion:
       "Entrar con el nombre del instituto, tu usuario y tu contraseña; conocer tu menú; abrir la caja con el cambio con el que arrancás y marcar la llegada del docente.",
   },
+  {
+    id: "iHqDfGDvHtE",
+    orden: 2,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Inscribir en el mostrador",
+    descripcion:
+      "Buscar al alumno por su carnet, cargar su ficha y las tres fotos, elegir el grupo y el plan, inscribir y cobrar el primer mes, y mandarle el recibo por WhatsApp.",
+  },
+  {
+    id: "YyDaYN6VacA",
+    orden: 3,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Menores y becas",
+    descripcion:
+      "Un menor necesita un tutor y los mensajes le llegan a él; cobrar sólo una parte con «Otro monto»; aplicar una beca que autoriza el administrador con su PIN.",
+  },
+  {
+    id: "8xX_y2uaT4Q",
+    orden: 4,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Cobrar una cuota",
+    descripcion:
+      "Cobrar desde Cobranza una parte en efectivo y el resto por QR, confirmando cuando el pago llegó; y ofrecer el curso completo con descuento a quien dejó un adelanto.",
+  },
+  {
+    id: "MuM1MQdC_n4",
+    orden: 5,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Inscripciones de la página",
+    descripcion:
+      "La bandeja de Inscripciones online: escribirle por WhatsApp, «Cobrar e inscribir» con todo ya cargado y descartar con su motivo a quien ya no viene.",
+  },
+  {
+    id: "HUsVKSOTa2I",
+    orden: 6,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Recordar a los que deben",
+    descripcion:
+      "Lo vencido, lo que vence pronto y los abonos a medias; mandar el recordatorio con el QR por WhatsApp (al tutor si es menor) y a varios a la vez.",
+  },
+  {
+    id: "fm-ROfOKdMQ",
+    orden: 7,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Vender un producto",
+    descripcion:
+      "Buscar los productos en el punto de venta, cobrar en efectivo con el cambio que calcula el sistema y mandar el recibo por WhatsApp. La venta entra en tu caja.",
+  },
+  {
+    id: "2FvsPNp2evA",
+    orden: 8,
+    seccion: "Recepción de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Cerrar la caja",
+    descripcion:
+      "Cuánto tendría que haber en el cajón (lo del QR no va ahí), contar el efectivo billete por billete, anotar qué pasó si no cuadra y cerrar la caja.",
+  },
 ];
 
 /** Los que le tocan a este negocio. Sin rubro (sesión vieja) sólo los generales. */
