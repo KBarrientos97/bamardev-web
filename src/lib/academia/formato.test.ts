@@ -4,6 +4,7 @@ import {
   datosDeLaBusqueda,
   diasTexto,
   edadDe,
+  etiquetaParentesco,
   fechaCorta,
   fechaFinSugerida,
   horarioGrupo,
@@ -11,6 +12,7 @@ import {
   nombreAlumno,
   nombreDe,
   nombresDe,
+  PARENTESCOS,
   problemaFechaNacimiento,
   problemasDelPlan,
   textoCubre,
@@ -296,5 +298,21 @@ describe("D6 · los módulos de una cuota con su nombre", () => {
     expect(textoModulosDeCuota({ materiaOrdenes: [2], materias: [{ orden: 2, nombre: "Degradados" }] })).toBe("M2 Degradados");
     expect(textoModulosDeCuota({ materiaOrdenes: [2, 3] })).toBe("M2–M3");
     expect(textoModulosDeCuota({ materiaOrdenes: [2, 3], materias: [] })).toBe("M2–M3");
+  });
+});
+
+describe("parentescos del tutor: los cuatro del backend (videos, 07-nov)", () => {
+  it("se ofrecen sólo los valores que acepta el DTO, con su nombre en castellano", () => {
+    // «Tutor/a», «Abuelo/a» y «Hermano/a» el backend los rechazaba con 400.
+    expect(PARENTESCOS.map((p) => p.valor)).toEqual(["MADRE", "PADRE", "TUTOR_LEGAL", "OTRO"]);
+    expect(PARENTESCOS.map((p) => p.etiqueta)).toEqual(["Madre", "Padre", "Tutor legal", "Otro"]);
+  });
+
+  it("lo guardado en mayúsculas se lee con su nombre; lo desconocido, tal cual", () => {
+    expect(etiquetaParentesco("MADRE")).toBe("Madre");
+    expect(etiquetaParentesco("TUTOR_LEGAL")).toBe("Tutor legal");
+    expect(etiquetaParentesco("Padre")).toBe("Padre");
+    expect(etiquetaParentesco("Abuela")).toBe("Abuela");
+    expect(etiquetaParentesco(null)).toBe("");
   });
 });

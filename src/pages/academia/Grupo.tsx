@@ -8,7 +8,7 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe } from "../../lib/academia/calendario";
 import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
 import { avisoFotosPendientes, avisoInscripcionHecha } from "../../lib/academia/fotos";
-import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
+import { etiquetaParentesco, fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import { useChoques } from "../../lib/academia/choques";
 import type { AlumnoDelGrupo, ConsultaChoques, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
@@ -754,7 +754,7 @@ function PanelAlumno({
                   <div className="flex justify-between gap-3">
                     <dt className="text-texto-3">Tutor</dt>
                     <dd className="min-w-0 text-right text-texto">
-                      {tutor.nombre} ({tutor.parentesco}){tutor.telefono ? ` · ${tutor.telefono}` : ""}
+                      {tutor.nombre} ({etiquetaParentesco(tutor.parentesco)}){tutor.telefono ? ` · ${tutor.telefono}` : ""}
                     </dd>
                   </div>
                 )}

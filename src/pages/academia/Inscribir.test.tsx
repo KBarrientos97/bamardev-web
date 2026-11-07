@@ -130,7 +130,7 @@ describe("E5 · inscribir", () => {
         nombres: "Joaquín",
         fechaNacimiento: "2011-03-12",
       },
-      tutor: { nombre: "Rosa Molina", telefono: "71234567", parentesco: "Madre" },
+      tutor: { nombre: "Rosa Molina", telefono: "71234567", parentesco: "MADRE" },
       grupoId: 7,
       planPagoId: 2,
     }, {});
@@ -575,7 +575,7 @@ describe("E5 · inscribir", () => {
     });
     expect(apiAcademia.convertir).toHaveBeenLastCalledWith(44, {
       planPagoId: 1,
-      tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "Madre" },
+      tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "MADRE" },
       confirmarSobreCupo: true,
     }, {});
     await seguir();

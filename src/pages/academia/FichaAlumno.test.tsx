@@ -20,7 +20,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { alumno: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), recordatorio: vi.fn(), subirFoto: vi.fn(), retirar: vi.fn(), cambiarPlan: vi.fn(), grupo: vi.fn() },
+    apiAcademia: { alumno: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), recordatorio: vi.fn(), subirFoto: vi.fn(), retirar: vi.fn(), cambiarPlan: vi.fn(), grupo: vi.fn(), agregarTutor: vi.fn() },
   };
 });
 
@@ -204,5 +204,36 @@ describe("E6 · rechazos con código (auditoría de octubre)", () => {
     });
     expect(screen.getByText(mensaje)).toBeInTheDocument();
     expect(vi.mocked(apiAcademia.alumno).mock.calls.length).toBeGreaterThan(pedidas);
+  });
+});
+
+describe("el parentesco del tutor (videos de la recepción, 07-nov)", () => {
+  it("se lee con su nombre, no con el valor del backend («MADRE · 70011224»)", async () => {
+    vi.mocked(apiAcademia.alumno).mockResolvedValue({
+      ...fichaCamila(),
+      fotos: FOTOS,
+      tutores: [{ id: 1, clienteId: 90, nombre: "Rosa Molina", telefono: "70011224", parentesco: "MADRE", principal: true }],
+    });
+    await montar();
+    const tutores = within(screen.getByText("Rosa Molina").closest("li")!);
+    expect(tutores.getByText(/^Madre · 70011224/)).toBeInTheDocument();
+    expect(screen.queryByText(/MADRE/)).not.toBeInTheDocument();
+  });
+
+  it("«Agregar tutor» ofrece los cuatro del backend y manda su valor", async () => {
+    vi.mocked(apiAcademia.agregarTutor).mockResolvedValue({} as never);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Más acciones del estudiante/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Agregar tutor" }));
+    const modal = within(screen.getByRole("dialog", { name: "Agregar tutor" }));
+    const select = modal.getByLabelText("Parentesco");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Madre", "Padre", "Tutor legal", "Otro"]);
+    fireEvent.change(modal.getByLabelText("Nombre"), { target: { value: "Julio Céspedes" } });
+    fireEvent.change(modal.getByLabelText("WhatsApp"), { target: { value: "71234567" } });
+    fireEvent.change(select, { target: { value: "TUTOR_LEGAL" } });
+    await act(async () => {
+      fireEvent.click(modal.getByRole("button", { name: /Agregar/ }));
+    });
+    expect(apiAcademia.agregarTutor).toHaveBeenCalledWith(52, expect.objectContaining({ parentesco: "TUTOR_LEGAL" }));
   });
 });
