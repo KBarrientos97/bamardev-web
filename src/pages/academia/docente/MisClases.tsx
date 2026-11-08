@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { Cargando, Confirmar, ErrorMsg } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
-import { cuandoEs, ventanaLlegada } from "../../../lib/academia/calendario";
+import { cuandoEs, minutosDeAtraso, ventanaLlegada } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
 import type { ClaseDelDia, LlegadaRegistrada, ProximaClase } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
@@ -94,7 +94,8 @@ function Clase({ c, onLlegada }: { c: ClaseDelDia; onLlegada: () => void }) {
   const [temprano, setTemprano] = useState<{ minutosAntes: number | null } | null>(null);
   const [errorLlegada, setErrorLlegada] = useState("");
   const llegadaEn = c.llegadaEn ?? registrada?.llegadaEn ?? null;
-  const atraso = (c.llegadaEn ? c.atrasoMin : registrada?.atrasoMin) ?? 0;
+  // Sólo pasada la tolerancia (lo dice el servidor): dentro de ella es a horario.
+  const atraso = c.llegadaEn ? minutosDeAtraso(c) : registrada ? minutosDeAtraso(registrada) : 0;
 
   async function marcarLlegada(confirmarTemprano = false) {
     setMarcando(true);

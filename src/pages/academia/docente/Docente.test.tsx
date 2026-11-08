@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaseDelDia, ListaDeClase, LlegadaRegistrada } from "../../../lib/academia/tipos";
 import { fmtHora } from "../../../lib/format";
@@ -223,6 +223,35 @@ describe("D7 · el «Llegué» del docente en Mis clases", () => {
     expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
   });
 
+  it("revisión 08-nov: dentro de la tolerancia es llegar a horario (sin «min de atraso»); pasada, los minutos", async () => {
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 3, conAtraso: false, toleranciaMin: 10 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(/Llegaste a las/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/atraso/);
+    cleanup();
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 12, conAtraso: true, toleranciaMin: 10 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(/12 min de atraso/)).toBeInTheDocument();
+  });
+
+  it("revisión 08-nov: el «Llegué» dentro de la tolerancia tampoco dice atraso", async () => {
+    vi.mocked(apiAcademia.llegada).mockResolvedValue({ ...REGISTRADA, atrasoMin: 3, conAtraso: false });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    expect(screen.getByText(/Llegaste a las/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/atraso/);
+  });
+
   it("sin el permiso asistencia.llegadas no hay botón", async () => {
     quien.permisos = ["academia.ver", "asistencia.registrar", "notas.registrar"];
     await montar();
@@ -336,6 +365,115 @@ describe("N6 · Pasar lista", () => {
   it("sin grupo y con una sola clase hoy, abre esa", async () => {
     await montar("/academia/lista");
     expect(apiAcademia.lista).toHaveBeenCalledWith(7, undefined);
+  });
+});
+
+describe("revisión 08-nov · Pasar lista avisa antes de perder lo marcado", () => {
+  /** Dónde quedó la app (para ver si salió o se quedó). */
+  let ubicacion = "";
+  function Ubicacion() {
+    const l = useLocation();
+    ubicacion = l.pathname + l.search;
+    return null;
+  }
+
+  async function montar() {
+    render(
+      <MemoryRouter initialEntries={["/academia/lista?grupo=7"]}>
+        <Ubicacion />
+        <Routes>
+          <Route path="/academia/lista" element={<PasarLista />} />
+          <Route path="/academia/mis-clases" element={<p>Mis clases</p>} />
+          <Route path="/academia/notas" element={<p>Notas</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  const marcarAusente = (nombre: string) =>
+    fireEvent.click(within(screen.getByRole("group", { name: `Asistencia de ${nombre}` })).getByRole("button", { name: "Ausente" }));
+
+  it("sin tocar nada (todos arrancan presentes) sale sin preguntar", async () => {
+    await montar();
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    expect(ubicacion).toBe("/academia/mis-clases");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("con cambios, volver pregunta: «Seguir pasando lista» se queda y «Salir sin guardar» sale sin guardar", async () => {
+    await montar();
+    marcarAusente("Bustillos Rek, Camila");
+    // El «volver» del encabezado y la barra del docente (celular): los dos preguntan.
+    const [volver, barraDocente] = screen.getAllByRole("link", { name: /Mis clases/ });
+    fireEvent.click(barraDocente);
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    const dialogo = screen.getByRole("dialog", { name: "La lista no se guardó" });
+    expect(dialogo).toHaveTextContent("Cambiaste la asistencia de 1");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Seguir pasando lista" }));
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    expect(within(screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" })).getByRole("button", { name: "Ausente" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(volver);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Salir sin guardar" }));
+    expect(ubicacion).toBe("/academia/mis-clases");
+    expect(apiAcademia.guardarLista).not.toHaveBeenCalled();
+  });
+
+  it("«Notas del módulo» con cambios pregunta, y «Guardar y salir» guarda la lista antes de ir", async () => {
+    await montar();
+    marcarAusente("Bustillos Rek, Camila");
+    fireEvent.click(screen.getByRole("link", { name: /Notas del/ }));
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Guardar y salir" }));
+    });
+    expect(apiAcademia.guardarLista).toHaveBeenCalledWith(7, "2026-10-16", [
+      { inscripcionId: 101, estado: "PRESENTE" },
+      { inscripcionId: 102, estado: "AUSENTE" },
+      { inscripcionId: 103, estado: "AUSENTE" },
+    ]);
+    expect(ubicacion).toBe("/academia/notas?grupo=7");
+  });
+
+  it("si guardar falla, no sale y muestra el error", async () => {
+    vi.mocked(apiAcademia.guardarLista).mockRejectedValue(new ApiError("La lista cerró", 403, { codigo: "LISTA_CERRADA" }));
+    await montar();
+    marcarAusente("Bustillos Rek, Camila");
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Guardar y salir" }));
+    });
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    expect(screen.getByText(/La lista de ese día ya cerró/)).toBeInTheDocument();
+  });
+
+  it("con cambios el navegador pregunta al cerrar; ya guardada, ni el navegador ni volver preguntan", async () => {
+    await montar();
+    const sinCambios = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(sinCambios);
+    expect(sinCambios.defaultPrevented).toBe(false);
+    marcarAusente("Bustillos Rek, Camila");
+    const conCambios = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(conCambios);
+    expect(conCambios.defaultPrevented).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Guardar lista/ }));
+    });
+    const guardada = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(guardada);
+    expect(guardada.defaultPrevented).toBe(false);
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    expect(ubicacion).toBe("/academia/mis-clases");
+  });
+
+  it("una lista que ya cerró (no editable) no pregunta nada", async () => {
+    vi.mocked(apiAcademia.lista).mockResolvedValue({ ...LISTA, editable: false });
+    await montar();
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    expect(ubicacion).toBe("/academia/mis-clases");
   });
 });
 

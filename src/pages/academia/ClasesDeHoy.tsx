@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorMsg } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import { aMinutos } from "../../lib/academia/calendario";
+import { aMinutos, minutosDeAtraso } from "../../lib/academia/calendario";
 import { nombreDe } from "../../lib/academia/formato";
 import type { ClaseDelDia } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
@@ -116,9 +116,12 @@ function momentoClase(c: ClaseDelDia, ahora: Date): "terminó" | "en curso" | "p
   return "por empezar";
 }
 
-/** "Llegó 07:12 · 12 min tarde": la llegada del docente, sin descontar nada (D9). */
+/**
+ * "Llegó 07:12 · 12 min tarde": la llegada del docente, sin descontar nada
+ * (D9). Tarde sólo pasada la tolerancia de los ajustes (`minutosDeAtraso`).
+ */
 function textoLlegada(c: ClaseDelDia): { texto: string; tarde: boolean } {
   if (!c.llegadaEn) return { texto: "Todavía no", tarde: false };
-  const tarde = (c.atrasoMin ?? 0) > 0;
-  return { texto: `Llegó ${fmtHora(c.llegadaEn)}${tarde ? ` · ${c.atrasoMin} min tarde` : ""}`, tarde };
+  const atraso = minutosDeAtraso(c);
+  return { texto: `Llegó ${fmtHora(c.llegadaEn)}${atraso > 0 ? ` · ${atraso} min tarde` : ""}`, tarde: atraso > 0 };
 }

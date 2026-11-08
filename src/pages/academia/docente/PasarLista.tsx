@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import ModalSalida from "../../../components/ModalSalida";
 import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe } from "../../../lib/academia/formato";
@@ -11,6 +12,7 @@ import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
 import { fmtHora, isoDia } from "../../../lib/format";
 import { soloLoSuyo } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
+import { useSalidaConCambios } from "../../../lib/useSalidaConCambios";
 import { useAuth } from "../../../store/AuthContext";
 import {
   BotonFila,
@@ -48,6 +50,11 @@ const ESTADOS: readonly (readonly [EstadoAsistencia, string, string])[] = [
  * Justificado (B8); arranca con todos presentes, que es lo común, y se guarda
  * todo junto. Se corrige hasta el final del día (después
  * sólo la administración: 403 LISTA_CERRADA).
+ *
+ * Salir con algo marcado y sin guardar pregunta, como en las Notas (revisión
+ * del 08-nov: antes se perdía sin avisar): volver, "Notas del módulo", la
+ * barra del docente y el navegador. Lo que arranca presente sin que nadie lo
+ * toque no cuenta como cambio.
  *
  * El docente entra desde Mis clases (`/academia/lista?grupo=`); la
  * administración y la recepción, desde el grupo (`/academia/grupos/:id/lista`).
@@ -125,6 +132,8 @@ function Lista({
   );
   const grupo = useApi(() => apiAcademia.grupo(grupoId).catch(() => null), [grupoId]);
   const [estados, setEstados] = useState<Record<number, EstadoAsistencia>>({});
+  /** Lo que está guardado (o arrancó así): contra esto se ve si hay cambios. */
+  const [guardados, setGuardados] = useState<Record<number, EstadoAsistencia>>({});
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [guardando, setGuardando] = useState(false);
   const [guardadaEn, setGuardadaEn] = useState<string | null>(null);
@@ -134,8 +143,13 @@ function Lista({
   // Lo guardado manda; lo que nunca se marcó arranca presente.
   useEffect(() => {
     if (!d) return;
-    setEstados(Object.fromEntries(d.alumnos.map((a) => [a.inscripcionId, a.estado ?? "PRESENTE"])));
+    const inicial = Object.fromEntries(d.alumnos.map((a) => [a.inscripcionId, a.estado ?? "PRESENTE"])) as Record<number, EstadoAsistencia>;
+    setEstados(inicial);
+    setGuardados(inicial);
   }, [d]);
+
+  const cambiados = d?.editable ? d.alumnos.filter((a) => (estados[a.inscripcionId] ?? "PRESENTE") !== (guardados[a.inscripcionId] ?? "PRESENTE")).length : 0;
+  const salida = useSalidaConCambios(cambiados > 0);
 
   // Tarde cuenta como presente y Justificado como ausente: así suman el
   // "Guardar lista" y los indicadores; el detalle va al pie del indicador.
@@ -151,7 +165,8 @@ function Lista({
   const volver = docente ? "/academia/mis-clases" : `/academia/grupos/${grupoId}`;
   const sinClase = !lista.cargando && !lista.error && d === null;
 
-  async function guardar(datos: ListaDeClase) {
+  /** Guarda la lista entera; true = quedó guardada. */
+  async function guardar(datos: ListaDeClase): Promise<boolean> {
     setGuardando(true);
     setError("");
     try {
@@ -161,6 +176,8 @@ function Lista({
         datos.alumnos.map((a) => ({ inscripcionId: a.inscripcionId, estado: estados[a.inscripcionId] ?? "PRESENTE" })),
       );
       setGuardadaEn(new Date().toISOString());
+      setGuardados(estados);
+      return true;
     } catch (e) {
       setError(
         e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LISTA_CERRADA
@@ -170,6 +187,7 @@ function Lista({
             : // CLASE_DE_OTRO_DOCENTE (403) y el resto: el mensaje del backend, tal cual.
               mensajeDelBackend(e, "No se pudo guardar la lista"),
       );
+      return false;
     } finally {
       setGuardando(false);
     }
@@ -195,7 +213,8 @@ function Lista({
   const notasA = docente ? `/academia/notas?grupo=${grupoId}` : `/academia/grupos/${grupoId}/notas`;
 
   return (
-    <PaginaAcademia ancho="max-w-2xl" className="max-md:!pb-44">
+    // Con cambios, los enlaces de adentro preguntan (el menú lateral queda afuera, como en Notas).
+    <PaginaAcademia ancho="max-w-2xl" className="max-md:!pb-44" onClickCapture={salida.alClicEnEnlace}>
       <EncabezadoPagina
         volver={{ a: volver, texto: docente ? "Mis clases" : "Grupo" }}
         sobre="Pasar lista"
@@ -378,6 +397,11 @@ function Lista({
             )}
           </div>
         </>
+      )}
+      {d && (
+        <ModalSalida salida={salida} titulo="La lista no se guardó" seguir="Seguir pasando lista" guardando={guardando} onGuardar={() => guardar(d)}>
+          Cambiaste la asistencia de {cambiados === 1 ? `1 ${p.alumno}` : `${cambiados} ${p.alumnos}`} y la lista todavía no se guardó. Si salís sin guardar, se pierde.
+        </ModalSalida>
       )}
       {docente && <NavDocente />}
     </PaginaAcademia>

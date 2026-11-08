@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../../components/ui";
+import { cargoDeDocente } from "../../lib/academia/docentes";
 import type { Docente } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { apiPersonal } from "../../lib/personal";
 import { mensajeDeError } from "../../lib/roles";
-import { normalizar } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { Interruptor, ResumenPanel } from "./piezas";
@@ -36,9 +36,10 @@ export function NuevoDocenteRapido({
 }) {
   const p = usePalabras();
   const { usuario } = useAuth();
-  // El cargo es un rol del negocio (PLAN-ROLES-NEGOCIO): se busca el del docente.
+  // El cargo es un rol del negocio (PLAN-ROLES-NEGOCIO): el del docente, por
+  // sus permisos (un «Profesor» también sirve, revisión del 08-nov).
   const cargos = useApi(() => apiPersonal.cargos(), []);
-  const cargo = (cargos.datos ?? []).find((c) => [normalizar(p.Docente), "docente"].includes(normalizar(c.nombre)));
+  const cargo = cargoDeDocente(cargos.datos ?? [], p.Docente);
 
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
@@ -61,7 +62,7 @@ export function NuevoDocenteRapido({
       return setError(
         cargos.error
           ? "No se pudieron cargar los cargos. Probá de nuevo."
-          : `No hay un cargo «${p.Docente}» en Roles: crealo y volvé a intentar.`,
+          : `No hay un cargo de ${p.docente} en Roles (uno que pase lista o cargue notas de lo suyo): crealo y volvé a intentar.`,
       );
     }
     setGuardando(true);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   diaAnterior,
+  minutosDeAtraso,
   duracionFranja,
   franjaSiguiente,
   franjasDe,
@@ -80,5 +81,17 @@ describe("diaAnterior", () => {
     expect(diaAnterior("2026-12-10")).toBe("2026-12-09");
     expect(diaAnterior("2027-01-01")).toBe("2026-12-31");
     expect(diaAnterior("2026-03-01")).toBe("2026-02-28");
+  });
+});
+
+describe("minutosDeAtraso (revisión del 08-nov): sólo pasada la tolerancia", () => {
+  it("con `conAtraso` del servidor: dentro de la tolerancia es a horario", () => {
+    expect(minutosDeAtraso({ atrasoMin: 3, conAtraso: false })).toBe(0);
+    expect(minutosDeAtraso({ atrasoMin: 12, conAtraso: true })).toBe(12);
+    expect(minutosDeAtraso({ atrasoMin: null, conAtraso: false })).toBe(0);
+  });
+  it("sin `conAtraso` (backend anterior), como antes: todo minuto cuenta", () => {
+    expect(minutosDeAtraso({ atrasoMin: 3 })).toBe(3);
+    expect(minutosDeAtraso({ atrasoMin: null })).toBe(0);
   });
 });

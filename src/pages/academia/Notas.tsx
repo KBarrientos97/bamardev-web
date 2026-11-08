@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as EventoMouse } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
-import { Boton, Cargando, ErrorMsg, Modal, Select, useAviso, Vacio } from "../../components/ui";
+import ModalSalida from "../../components/ModalSalida";
+import { Boton, Cargando, ErrorMsg, Select, useAviso, Vacio } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe, numeroEnLetras } from "../../lib/academia/formato";
+import { grupoConNotasAbiertas, notasHasta } from "../../lib/academia/plazoNotas";
 import type { NotasDelGrupo, PlazoNotas } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { ApiError } from "../../lib/api";
 import { soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { useSalidaConCambios } from "../../lib/useSalidaConCambios";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import NavDocente from "./docente/NavDocente";
@@ -76,13 +79,15 @@ export default function Notas() {
     () => (grupoId ? Promise.resolve(null) : apiAcademia.grupos({ pageSize: 100 }).then((r) => r.items)),
     [grupoId],
   );
+  // Los en curso y, mientras dure su plazo, los que ya terminaron: las notas
+  // del último módulo se cargan hasta 5 días después del fin (revisión 08-nov).
   useEffect(() => {
-    const lista = (grupos.datos ?? []).filter((g) => g.estado !== "TERMINADO");
+    const lista = (grupos.datos ?? []).filter((g) => grupoConNotasAbiertas(g));
     if (!grupoId && lista.length === 1) setParams({ grupo: String(lista[0].id) }, { replace: true });
   }, [grupos.datos, grupoId, setParams]);
 
   if (!grupoId) {
-    const lista = (grupos.datos ?? []).filter((g) => g.estado !== "TERMINADO");
+    const lista = (grupos.datos ?? []).filter((g) => grupoConNotasAbiertas(g));
     return (
       <PaginaAcademia ancho="max-w-xl" conBarraAbajo={docente}>
         <EncabezadoPagina titulo="Notas" />
@@ -99,6 +104,7 @@ export default function Notas() {
               {lista.map((g) => (
                 <option key={g.id} value={g.id}>
                   {nombreDe(g.carrera)} · {horarioGrupo(g)}
+                  {g.estado === "TERMINADO" ? ` · terminó, notas hasta el ${fechaCorta(notasHasta(g))}` : ""}
                 </option>
               ))}
             </Select>
@@ -158,8 +164,6 @@ function CargaNotas({
   const [rechazadas, setRechazadas] = useState<Record<number, string>>({});
   const [cerrando, setCerrando] = useState(false);
   const [reabriendo, setReabriendo] = useState(false);
-  /** Adónde iba quien quiso salir con cambios sin guardar (se pregunta antes). */
-  const [salida, setSalida] = useState<{ ir: () => void } | null>(null);
   const lista = useRef<HTMLUListElement>(null);
 
   const d = carga.datos;
@@ -200,13 +204,10 @@ function CargaNotas({
   const cambiadas = soloLectura ? [] : filas.filter((f) => f.cambiada);
   const hayCambios = cambiadas.length > 0;
 
-  // Con cambios sin guardar, el navegador pregunta antes de cerrar o recargar.
-  useEffect(() => {
-    if (!hayCambios) return;
-    const avisar = (ev: BeforeUnloadEvent) => ev.preventDefault();
-    window.addEventListener("beforeunload", avisar);
-    return () => window.removeEventListener("beforeunload", avisar);
-  }, [hayCambios]);
+  // Con cambios sin guardar se pregunta antes de salir: el navegador al cerrar
+  // o recargar, y los enlaces y acciones de la pantalla (`salirSi`).
+  const salida = useSalidaConCambios(hayCambios);
+  const { salirSi } = salida;
 
   if (carga.error && !d) {
     return (
@@ -237,23 +238,6 @@ function CargaNotas({
   const g = grupo.datos;
   const m = d.materia;
   const invalidas = cambiadas.filter((f) => f.e.tipo === "error");
-
-  /** Con cambios sin guardar, pregunta antes de ir; sin cambios, va. */
-  const salirSi = (ir: () => void) => (hayCambios ? setSalida({ ir }) : ir());
-
-  /**
-   * Los enlaces de adentro de la pantalla (volver, la barra del docente):
-   * con cambios, el clic se frena y se pregunta. El menú lateral de la app
-   * queda afuera de este contenedor (límite aceptado en L7).
-   */
-  const alClicEnEnlace = (e: EventoMouse) => {
-    if (!hayCambios || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    const a = (e.target as HTMLElement).closest("a[href]");
-    const destino = a?.getAttribute("href");
-    if (!a || !destino?.startsWith("/") || a.getAttribute("target") === "_blank") return;
-    e.preventDefault();
-    setSalida({ ir: () => navigate(destino) });
-  };
 
   /** Lleva el foco a la primera casilla con problema (y a su fila, si está oculta). */
   const enfocar = (inscripcionId: number) => {
@@ -360,7 +344,9 @@ function CargaNotas({
   const cerrarDeshabilitado = d.cerrada || cerrando || guardando || plazo?.estado === "ANTES";
 
   return (
-    <div className="contents" onClickCapture={alClicEnEnlace}>
+    // Los enlaces de adentro (volver, la barra del docente) preguntan si hay
+    // cambios; el menú lateral de la app queda afuera (límite aceptado en L7).
+    <div className="contents" onClickCapture={salida.alClicEnEnlace}>
       <PaginaAcademia ancho="max-w-7xl" conBarraAbajo={docente || hayCambios}>
         <EncabezadoPagina
           volver={docente ? { a: "/academia/mis-clases", texto: "Mis clases" } : { a: `/academia/grupos/${grupoId}`, texto: "Grupo" }}
@@ -620,45 +606,9 @@ function CargaNotas({
           />
         )}
 
-        <Modal
-          abierto={!!salida}
-          titulo="Hay notas sin guardar"
-          onClose={() => setSalida(null)}
-          ancho="max-w-sm"
-          acciones={
-            <>
-              <Boton variante="ghost" onClick={() => setSalida(null)} disabled={guardando}>
-                Seguir cargando
-              </Boton>
-              <Boton
-                variante="ghost"
-                disabled={guardando}
-                onClick={() => {
-                  const ir = salida?.ir;
-                  setSalida(null);
-                  ir?.();
-                }}
-              >
-                Salir sin guardar
-              </Boton>
-              <Boton
-                disabled={guardando}
-                onClick={async () => {
-                  const ir = salida?.ir;
-                  const ok = await guardar();
-                  setSalida(null);
-                  if (ok) ir?.();
-                }}
-              >
-                {guardando ? "Guardando…" : "Guardar y salir"}
-              </Boton>
-            </>
-          }
-        >
-          <p className="text-sm text-texto-2">
-            {cambiadas.length === 1 ? "Cambiaste 1 nota" : `Cambiaste ${cambiadas.length} notas`} y todavía no se guardaron. Si salís sin guardar, se pierden.
-          </p>
-        </Modal>
+        <ModalSalida salida={salida} titulo="Hay notas sin guardar" seguir="Seguir cargando" guardando={guardando} onGuardar={guardar}>
+          {cambiadas.length === 1 ? "Cambiaste 1 nota" : `Cambiaste ${cambiadas.length} notas`} y todavía no se guardaron. Si salís sin guardar, se pierden.
+        </ModalSalida>
         {docente && <NavDocente />}
       </PaginaAcademia>
     </div>

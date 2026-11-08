@@ -330,3 +330,57 @@ describe("B7 · el semáforo en las notas del docente", () => {
     expect(screen.getByText("setenta y seis")).toBeInTheDocument();
   });
 });
+
+describe("revisión 08-nov · el último módulo en los días de gracia", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 16, 10, 0));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  async function montarSinGrupo() {
+    render(
+      <MemoryRouter initialEntries={["/academia/notas"]}>
+        <Ubicacion />
+        <Routes>
+          <Route path="/academia/notas" element={<Notas />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  const enCurso = grupoDetalle({ id: 7, estado: "EN_CURSO", fechaFin: "2026-12-12", notasHasta: "2026-12-17" });
+  // Terminó el 13-nov: hoy (16-nov) todavía se cargan sus notas, hasta el 18.
+  const enGracia = grupoDetalle({ id: 8, horaInicio: "15:00", horaFin: "17:00", estado: "TERMINADO", fechaFin: "2026-11-13", notasHasta: "2026-11-18" });
+  // Terminó en octubre: su plazo ya pasó.
+  const vencido = grupoDetalle({ id: 9, horaInicio: "18:00", horaFin: "20:00", estado: "TERMINADO", fechaFin: "2026-10-09", notasHasta: "2026-10-14" });
+  const lista = (items: unknown[]) => ({ items, paginacion: { page: 1, pageSize: 100, total: items.length } }) as never;
+
+  it("un grupo terminado sale mientras dure el plazo de sus notas (y lo dice); uno vencido, no", async () => {
+    vi.mocked(apiAcademia.grupos).mockResolvedValue(lista([enCurso, enGracia, vencido]));
+    await montarSinGrupo();
+    const opciones = within(screen.getByRole("combobox", { name: "Grupo" }))
+      .getAllByRole("option")
+      .map((o) => o.getAttribute("value"));
+    expect(opciones).toEqual(["", "7", "8"]);
+    expect(screen.getByRole("option", { name: /terminó, notas hasta el/ })).toHaveValue("8");
+  });
+
+  it("si es el único que le queda al docente, entra directo (como uno en curso)", async () => {
+    vi.mocked(apiAcademia.grupos).mockResolvedValue(lista([enGracia, vencido]));
+    await montarSinGrupo();
+    expect(ubicacion).toBe("/academia/notas?grupo=8");
+  });
+
+  it("con un backend sin `notasHasta`, la misma regla con el fin del grupo", async () => {
+    const sinCampo = (g: ReturnType<typeof grupoDetalle>) => {
+      const copia: Partial<ReturnType<typeof grupoDetalle>> = { ...g };
+      delete copia.notasHasta;
+      return copia;
+    };
+    vi.mocked(apiAcademia.grupos).mockResolvedValue(lista([sinCampo(enGracia), sinCampo(vencido)]));
+    await montarSinGrupo();
+    expect(ubicacion).toBe("/academia/notas?grupo=8");
+  });
+});

@@ -108,6 +108,21 @@ describe("Clases de hoy (arriba del Calendario)", () => {
     expect(apiAcademia.hoy).toHaveBeenCalledTimes(2);
   });
 
+  it("revisión 08-nov: dentro de la tolerancia es a horario (sin «min tarde» ni ámbar); pasada, sí", async () => {
+    const llegada = { llegadaEn: "2026-10-16T13:03:00.000Z", toleranciaMin: 10 };
+    vi.mocked(apiAcademia.hoy).mockResolvedValue({
+      ...HOY,
+      clases: [clase({ sesionId: 1, ...llegada, atrasoMin: 3, conAtraso: false }), clase({ sesionId: 2, ...llegada, atrasoMin: 14, conAtraso: true })],
+    });
+    await montar();
+    const filas = within(screen.getByRole("region", { name: /Clases de hoy/ })).getAllByRole("listitem");
+    expect(filas[0]).toHaveTextContent(/Llegó/);
+    expect(filas[0]).not.toHaveTextContent(/tarde/);
+    expect(filas[0].innerHTML).not.toMatch(/warning/);
+    expect(filas[1]).toHaveTextContent(/14 min tarde/);
+    expect(filas[1].innerHTML).toMatch(/warning/);
+  });
+
   it("sin clases hoy no se dibuja nada", async () => {
     vi.mocked(apiAcademia.hoy).mockResolvedValue({ ...HOY, clases: [] });
     const { container } = await montar();

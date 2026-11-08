@@ -286,7 +286,7 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     expect(apiPersonal.darAcceso).not.toHaveBeenCalled();
     expect(selectDe(panel, 1)).toHaveValue("");
   });
-  it("sin un cargo «Docente» en Roles no inventa uno: lo dice y no crea nada", async () => {
+  it("sin un cargo de docente en Roles no inventa uno: lo dice y no crea nada", async () => {
     sesion.personal = true;
     vi.mocked(apiPersonal.cargos).mockResolvedValueOnce([{ id: 9, nombre: "Recepción", esAdministrador: false, permisos: [] }]);
     const { panel } = await montar();
@@ -294,8 +294,26 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     await act(async () => {});
     fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana" } });
     fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
-    expect(within(panel).getByText(/No hay un cargo «Docente» en Roles/)).toBeInTheDocument();
+    expect(within(panel).getByText(/No hay un cargo de docente en Roles/)).toBeInTheDocument();
     expect(apiPersonal.crear).not.toHaveBeenCalled();
+  });
+
+  it("revisión 08-nov: el cargo del docente se reconoce por sus permisos (un «Profesor» sirve; la Coordinación GENERAL, no)", async () => {
+    sesion.personal = true;
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ id: 22, nombre: "Ana Soria" } as never);
+    vi.mocked(apiPersonal.cargos).mockResolvedValueOnce([
+      { id: 9, nombre: "Recepción", esAdministrador: false, permisos: [{ codigo: "academia.inscribir", alcance: "GENERAL" }] },
+      { id: 10, nombre: "Coordinación", esAdministrador: false, permisos: [{ codigo: "notas.registrar", alcance: "GENERAL" }] },
+      { id: 12, nombre: "Profesor", esAdministrador: false, permisos: [{ codigo: "asistencia.registrar", alcance: "PROPIO" }, { codigo: "notas.registrar", alcance: "PROPIO" }] },
+    ]);
+    const { panel } = await montar();
+    fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
+    await act(async () => {});
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana Soria" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith({ nombre: "Ana Soria", telefono: null, cargoRolId: 12, sucursalIds: [1] });
   });
 });
 

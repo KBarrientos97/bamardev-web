@@ -21,9 +21,10 @@ import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
+import { cargoDeDocente } from "../lib/academia/docentes";
 import { usePalabras } from "../lib/academia/usePalabras";
 import { conMayuscula } from "../lib/rubro";
-import { contiene, normalizar } from "../lib/texto";
+import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
@@ -288,10 +289,11 @@ function FichaPersona({
   const [sucursalIds, setSucursalIds] = useState<number[]>(
     persona?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
   );
-  // En el instituto, quien se carga es casi siempre un docente: el cargo «Docente»
-  // viene elegido. Sin cargo la persona NO cuenta como docente (no aparece en
-  // «Abrir grupo»). Sólo al crear y mientras nadie haya elegido otra cosa (R4).
-  const cargoDocente = conDocentes && !persona ? cargos.find((c) => [normalizar(pal.Docente), "docente"].includes(normalizar(c.nombre))) : undefined;
+  // En el instituto, quien se carga es casi siempre un docente: el cargo de
+  // docente viene elegido. Sin cargo la persona NO cuenta como docente (no
+  // aparece en «Abrir grupo»). Sólo al crear y mientras nadie haya elegido otra
+  // cosa (R4). Por permisos, no por el nombre «Docente» (revisión del 08-nov).
+  const cargoDocente = conDocentes && !persona ? cargoDeDocente(cargos, pal.Docente) : undefined;
   useEffect(() => {
     if (cargoDocente) setCargoRolId((actual) => actual ?? cargoDocente.id);
   }, [cargoDocente]);
