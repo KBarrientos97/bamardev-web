@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { ApiError } from "../../lib/api";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -90,25 +90,48 @@ const guardarNotas = async () => {
 };
 
 describe("E13 · Notas", () => {
-  it("cada nota con su estado de pago, en letras y con su resultado", async () => {
+  it("rediseño de noviembre: el docente ve la escala, y cada fila «aprueba», «reprueba» o «sin nota» contra la mínima", async () => {
     await montar();
     expect(screen.getByRole("heading", { name: "Notas · M2 Degradados" })).toBeInTheDocument();
-    expect(screen.getByText("setenta y seis")).toBeInTheDocument();
-    expect(screen.getByText("Aprobado")).toBeInTheDocument();
-    expect(screen.getAllByText("Sin nota").length).toBeGreaterThan(0);
-    // El docente ve sólo el semáforo (QA 23-oct): nada de "Sin pagar".
+    expect(screen.getByText(/· sobre 100, aprueba con 51$/)).toBeInTheDocument();
+    expect(screen.getByText("aprueba")).toBeInTheDocument();
+    expect(screen.getByText("sin nota")).toBeInTheDocument();
+    // Lo tipeado ya dice si aprueba (antes de guardar): 50 con mínima 51 reprueba.
+    fireEvent.change(screen.getByLabelText("Nota de Bustillos Rek, Camila"), { target: { value: "50" } });
+    expect(screen.getByText("reprueba")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Nota de Bustillos Rek, Camila"), { target: { value: "51" } });
+    expect(screen.getAllByText("aprueba")).toHaveLength(2);
+    // La casilla, de pulgar y numérica.
+    const casilla = screen.getByLabelText("Nota de Andrade Villca, Mateo");
+    expect(casilla).toHaveAttribute("inputmode", "numeric");
+    expect(casilla.className).toContain("min-h-11");
+    expect(casilla.className).toContain("text-center");
+    // Sin indicadores, ni pago, ni nota en letras: la fila es el nombre, si aprueba y la nota.
+    expect(screen.queryByText("setenta y seis")).not.toBeInTheDocument();
+    expect(screen.queryByText("Promedio")).not.toBeInTheDocument();
     expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
   });
 
-  it("cerrar con notas que faltan avisa; con lo tipeado sin guardar, «Guardar y cerrar» guarda y después cierra", async () => {
+  it("rediseño de noviembre: «Guardar notas» y «Terminé: cerrar notas del módulo» quedan fijos abajo para el docente", async () => {
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Cerrar notas del módulo" }));
+    const abajo = screen.getByRole("region", { name: "Acciones de las notas" });
+    expect(abajo.className).toContain("fixed");
+    // Sin cambios no hay nada que guardar.
+    expect(within(abajo).getByRole("button", { name: "Guardar notas" })).toBeDisabled();
+    expect(within(abajo).getByRole("button", { name: "Terminé: cerrar notas del módulo" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Nota de Bustillos Rek, Camila"), { target: { value: "60" } });
+    expect(within(barra()!).getByRole("button", { name: "Guardar notas" })).toBeEnabled();
+  });
+
+  it("cerrar con notas que faltan avisa; con lo tipeado sin guardar, «Terminé» guarda y después cierra", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Terminé: cerrar notas del módulo" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Falta 1 nota");
     expect(apiAcademia.cerrarNotas).not.toHaveBeenCalled();
     vi.mocked(apiAcademia.guardarNotas).mockResolvedValue(conNotas({ 102: 60 }));
     fireEvent.change(screen.getByLabelText("Nota de Bustillos Rek, Camila"), { target: { value: "60" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Guardar y cerrar" }));
+      fireEvent.click(screen.getByRole("button", { name: "Terminé: cerrar notas del módulo" }));
     });
     expect(apiAcademia.guardarNotas).toHaveBeenCalledTimes(1);
     expect(apiAcademia.guardarNotas).toHaveBeenCalledWith(7, 32, [{ inscripcionId: 102, nota: 60 }]);
@@ -123,8 +146,12 @@ describe("E13 · Notas", () => {
     expect(screen.getByLabelText("Nota de Bustillos Rek, Camila")).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Cerrar notas/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Sólo lectura/)).toBeInTheDocument();
-    // La recepción sigue con "Pagado / Sin pagar".
+    // La recepción sigue con "Pagado / Sin pagar", la nota en letras y los indicadores.
     expect(screen.getByText("Sin pagar")).toBeInTheDocument();
+    expect(screen.getByText("setenta y seis")).toBeInTheDocument();
+    expect(screen.getByText("Promedio")).toBeInTheDocument();
+    // Sin notas.registrar no se le dice hasta cuándo cargar.
+    expect(screen.queryByText(/Podés cargar y corregir/)).not.toBeInTheDocument();
   });
 });
 
@@ -162,7 +189,7 @@ describe("L7 · Notas: borrador y «Guardar notas»", () => {
     ]);
     expect(barra()).not.toBeInTheDocument();
     expect(screen.getByText("2 notas guardadas.")).toBeInTheDocument();
-    expect(screen.getByText("Reprobado")).toBeInTheDocument();
+    expect(screen.getByText("reprueba")).toBeInTheDocument();
   });
 
   it("una nota inválida se marca y no se manda nada (tampoco las buenas)", async () => {
@@ -268,9 +295,25 @@ describe("L7 · Notas: borrador y «Guardar notas»", () => {
 });
 
 describe("L7 · el plazo de las notas (del inicio a 5 días después del fin)", () => {
-  it("dentro del plazo, lo dice arriba", async () => {
+  it("dentro del plazo, el aviso dice hasta cuándo se cargan y corrigen", async () => {
     await montar();
-    expect(screen.getByText(/Las notas se cargan del 10-oct al 14-nov\./)).toBeInTheDocument();
+    const aviso = screen.getByText(/Podés cargar y corregir notas/).closest("p")!;
+    expect(aviso).toHaveTextContent("Podés cargar y corregir notas hasta el sábado 14 de noviembre. Después se cierran solas.");
+    expect(aviso.className).toContain("bg-info-bg");
+  });
+
+  it("con un backend sin `plazo`, el aviso sale del `notasHasta` del grupo, sólo en su último módulo", async () => {
+    const sinPlazo = { ...NOTAS, materias: [...NOTAS.materias, { id: 33, orden: 3, nombre: "Barba", estado: "FUTURA" as const }] };
+    delete (sinPlazo as Partial<NotasDelGrupo>).plazo;
+    vi.mocked(apiAcademia.notas).mockResolvedValue(sinPlazo);
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ notasHasta: "2026-11-18" }));
+    await montar();
+    // El M2 no es el último: no se inventa un plazo.
+    expect(screen.queryByText(/Podés cargar y corregir/)).not.toBeInTheDocument();
+    cleanup();
+    vi.mocked(apiAcademia.notas).mockResolvedValue({ ...sinPlazo, materias: NOTAS.materias });
+    await montar();
+    expect(screen.getByText(/Podés cargar y corregir notas hasta el miércoles 18 de noviembre/)).toBeInTheDocument();
   });
 
   it("pasado el plazo: sólo lectura y lo dice, pero cerrar se puede", async () => {
@@ -282,8 +325,11 @@ describe("L7 · el plazo de las notas (del inicio a 5 días después del fin)", 
     await montar();
     expect(screen.getByLabelText("Nota de Bustillos Rek, Camila")).toBeDisabled();
     expect(screen.getByText(/Pasó el plazo: las notas de este módulo se cargaban del 10-oct al 14-nov\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Podés cargar y corregir/)).not.toBeInTheDocument();
+    // Sin poder cargar, abajo queda sólo cerrar.
+    expect(screen.queryByRole("button", { name: "Guardar notas" })).not.toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Cerrar notas del módulo" }));
+      fireEvent.click(screen.getByRole("button", { name: "Terminé: cerrar notas del módulo" }));
     });
     expect(apiAcademia.cerrarNotas).toHaveBeenCalledWith(7, 32);
   });
@@ -296,7 +342,7 @@ describe("L7 · el plazo de las notas (del inicio a 5 días después del fin)", 
     await montar();
     expect(screen.getByLabelText("Nota de Andrade Villca, Mateo")).toBeDisabled();
     expect(screen.getByText(/El módulo todavía no empezó: las notas se cargan del 10-nov al 14-dic\./)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cerrar notas del módulo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Terminé: cerrar notas del módulo" })).toBeDisabled();
   });
 
   it("si el plazo vence con la pantalla abierta, el 409 se muestra y se vuelve a leer", async () => {
@@ -315,7 +361,7 @@ describe("L7 · el plazo de las notas (del inicio a 5 días después del fin)", 
 });
 
 describe("B7 · el semáforo en las notas del docente", () => {
-  it("con semáforo, rojo o amarillo en vez de «Pagado / Sin pagar»; la recepción sigue como siempre", async () => {
+  it("rediseño de noviembre: el docente no ve el pago en las notas (está en Pasar lista), y la nota se carga igual", async () => {
     vi.mocked(apiAcademia.notas).mockResolvedValue({
       ...NOTAS,
       items: [
@@ -324,10 +370,11 @@ describe("B7 · el semáforo en las notas del docente", () => {
       ],
     });
     await montar();
-    expect(screen.getByLabelText("Debe, en semana de espera")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Debe, en semana de espera")).not.toBeInTheDocument();
     expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
     // Nunca bloquea: la nota se carga igual.
-    expect(screen.getByText("setenta y seis")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nota de Andrade Villca, Mateo")).toBeEnabled();
+    expect(screen.getByText("aprueba")).toBeInTheDocument();
   });
 });
 
