@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   calendarioConDescuento,
   datosDeLaBusqueda,
+  diaYMes,
+  diasEnPalabras,
   diasTexto,
   edadDe,
   etiquetaParentesco,
@@ -15,6 +17,7 @@ import {
   PARENTESCOS,
   problemaFechaNacimiento,
   problemasDelPlan,
+  sinPrefijoModulo,
   textoCubre,
   textoModulos,
   textoModulosDeCuota,
@@ -37,6 +40,30 @@ describe("cómo se cuenta un grupo", () => {
     expect(horarioGrupo({ dias: [1, 2, 3, 4, 5], horaInicio: "10:00", horaFin: "12:00" })).toBe("L-V 10:00–12:00");
     expect(fechaCorta("2026-11-03")).toBe("03-nov");
     expect(fechaCorta(null)).toBe("—");
+  });
+
+  it("la página pública dice los días en palabras y la fecha en un cuadrito", () => {
+    expect(diasEnPalabras([6])).toBe("Sábados");
+    expect(diasEnPalabras([5, 1, 3])).toBe("Lunes, miércoles y viernes");
+    expect(diasEnPalabras([0, 6])).toBe("Sábados y domingos");
+    expect(diasEnPalabras([1, 2, 3, 4, 5])).toBe("Lunes a viernes");
+    expect(diasEnPalabras([])).toBe("");
+    expect(diaYMes("2026-11-03")).toEqual({ dia: "3", mes: "NOV" });
+    expect(diaYMes("2026-13-03")).toBeNull();
+    expect(diaYMes(null)).toBeNull();
+  });
+
+  it("al numerar los módulos se les quita el número que ya traen", () => {
+    expect(sinPrefijoModulo("Modulo 1: Fundamentos")).toBe("Fundamentos");
+    expect(sinPrefijoModulo("Módulo 2 - Degradados")).toBe("Degradados");
+    expect(sinPrefijoModulo("MÓDULO 3 Barba y color")).toBe("Barba y color");
+    expect(sinPrefijoModulo("M1 - Corte clásico")).toBe("Corte clásico");
+    expect(sinPrefijoModulo("Mod. 4 — Colorimetría")).toBe("Colorimetría");
+    expect(sinPrefijoModulo("2. Peinados")).toBe("Peinados");
+    // Sin prefijo, igual: ni "Maquillaje" ni un número que es parte del nombre.
+    expect(sinPrefijoModulo("Maquillaje social")).toBe("Maquillaje social");
+    expect(sinPrefijoModulo("3D para principiantes")).toBe("3D para principiantes");
+    expect(sinPrefijoModulo("Módulo 1")).toBe("Módulo 1");
   });
 
   it("el alumno como en el centralizador y las referencias que vienen como texto u objeto", () => {

@@ -2,14 +2,15 @@ import type { CSSProperties, ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { TonosPagina } from "../../lib/pagina/estilosPagina";
-import { fechaCorta, horarioGrupo } from "../../lib/academia/formato";
+import { diaYMes, diasEnPalabras, fechaCorta, sinPrefijoModulo } from "../../lib/academia/formato";
 import type { CursoPublico } from "../../lib/academia/tipos";
 
 /**
  * P1 · La sección Cursos de la página de un instituto (PLAN-ACADEMIAS-TECNICO
- * §9, ronda 2): una tarjeta por curso publicado, con su foto, sus módulos, el
- * precio de las dos formas ("Bs 500 por módulo · o Bs 1.350 todo junto") con
- * lo que se ahorra, y el próximo inicio con los lugares que quedan. El botón
+ * §9, ronda 2): una tarjeta por curso publicado, con su foto, el precio de las
+ * dos formas ("Bs 500 por módulo" · "o Bs 1.350 el curso completo") con lo que
+ * se ahorra, el adelanto que asegura el cupo, sus módulos y los próximos
+ * inicios con los lugares que quedan. El botón
  * lleva a inscribirse (P2), donde se elige el horario. Un grupo lleno ya no
  * recibe preinscripciones (M5): si todos lo están, en lugar del botón dice que
  * se comuniquen con la academia. Al pie, «Pagar mi inscripción»: entrar con el
@@ -19,9 +20,9 @@ import type { CursoPublico } from "../../lib/academia/tipos";
  * de la vista): no es la app, es la vitrina del negocio.
  */
 /**
- * Un velo del color del texto de la tarjeta: el recuadro del precio y las
- * líneas de los horarios salen del mismo tono en una tarjeta clara o en una
- * oscura (Noche, Mosaico), sin depender de los tonos de la página.
+ * Un velo del color del texto (o del acento) de la tarjeta: el recuadro del
+ * adelanto y las filas de los inicios salen del mismo tono en una tarjeta
+ * clara o en una oscura (Noche, Mosaico), sin depender de los tonos de la página.
  */
 function velo(color: string, alfa: number): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
@@ -228,6 +229,13 @@ function SeccionPagar({
   );
 }
 
+/**
+ * La tarjeta de un curso, «opción A · Ordenada» (08-nov, elegida por el dueño
+ * en el lienzo): de arriba hacia abajo, en el orden en que se decide —qué es,
+ * cuánto cuesta, con cuánto se asegura el lugar, qué se aprende y cuándo
+ * empieza— y al final el botón. Nada de breakpoints: todo apila o envuelve,
+ * así entra igual en un celular de 360 px que en la grilla de la compu.
+ */
 function TarjetaCurso({
   c,
   t,
@@ -253,18 +261,46 @@ function TarjetaCurso({
   // Es un adelanto a cuenta del primer mes, nunca una «reserva» aparte (RM 0008/2016).
   const adelantos = c.grupos.filter((g) => g.cuposLibres !== 0).map((g) => g.adelantoDesde).filter((x): x is number => x != null && x > 0);
   const adelantoDesde = adelantos.length ? Math.min(...adelantos) : null;
+  // El acento de la tarjeta es el del precio, salvo que el precio del estilo no
+  // vaya sobre la tarjeta (Mosaico: etiqueta blanca sobre la foto y tarjeta
+  // oscura): ahí, el de los íconos, que sí se lee sobre ese fondo.
+  const acento = t.fondosPrecio && !t.fondosPrecio.includes(t.tarjeta) ? t.icono : t.precio;
+  // Con una sola sede va en la línea de datos; con varias, en cada inicio.
+  const sedes = [...new Set(c.grupos.map((g) => g.sede.nombre))];
+  const unaSede = sedes.length === 1 ? sedes[0] : null;
+  // Cuánto dura cada módulo no viene en el curso público (es un ajuste del
+  // instituto): no se dice «1 mes cada uno» sin el dato.
+  const datos = [c.precioModulo != null && n ? `${n} ${n === 1 ? "módulo" : "módulos"}` : `${c.horasTotales} h`, unaSede]
+    .filter(Boolean)
+    .join(" · ");
+  const rotulo: CSSProperties = { margin: "0 0 8px", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: t.texto3Tarjeta };
   const estiloBoton: CSSProperties = {
     display: "block",
     textAlign: "center",
     background: colorBoton,
     color: "#ffffff",
-    fontWeight: 600,
-    fontSize: 15,
-    padding: "12px 0",
+    fontWeight: 700,
+    fontSize: 16,
+    padding: "15px 0",
     borderRadius: 12,
     textDecoration: "none",
     boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)",
   };
+  const pastillaAhorro = c.ahorro != null && c.ahorro > 0 && (
+    <span
+      style={{
+        fontSize: 12,
+        fontWeight: 600,
+        color: "#047857",
+        background: "#ECFDF5",
+        borderRadius: 999,
+        padding: "2px 10px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      ahorrás {bs(c.ahorro)}
+    </span>
+  );
   return (
     <article
       style={{
@@ -278,100 +314,183 @@ function TarjetaCurso({
       }}
     >
       {foto && <img src={foto} alt="" loading="lazy" style={{ width: "100%", aspectRatio: "16 / 9", objectFit: "cover" }} />}
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+      <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 16, flex: 1 }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.textoTarjeta }}>{c.nombre}</h3>
-          <p style={{ margin: "2px 0 0", fontSize: 13, color: t.texto3Tarjeta }}>
-            {c.precioModulo != null && n
-              ? `${n} ${n === 1 ? "módulo" : "módulos"}${modulos.length ? ` · ${modulos.join(" · ")}` : ""}`
-              : `${c.horasTotales} h${modulos.length ? ` · ${modulos.join(" · ")}` : ""}`}
-          </p>
+          <h3 style={{ margin: 0, fontSize: 22, fontWeight: 800, lineHeight: 1.2, color: t.textoTarjeta }}>{c.nombre}</h3>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: t.texto3Tarjeta }}>{datos}</p>
+          {c.descripcion && <p style={{ margin: "8px 0 0", fontSize: 14, color: t.texto2Tarjeta }}>{c.descripcion}</p>}
         </div>
-        {c.descripcion && <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>{c.descripcion}</p>}
-        {c.grupos.length > 0 && (
+        {c.precioModulo != null ? (
+          // El precio arriba: lo primero que se busca en un curso.
           <div>
-            <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: t.texto3Tarjeta }}>
-              PRÓXIMOS INICIOS
+            <p style={{ margin: 0, display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0 8px" }}>
+              <strong style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: acento }}>{bs(c.precioModulo)}</strong>
+              <span style={{ fontSize: 14, color: t.texto2Tarjeta }}>por módulo</span>
             </p>
-            {/* Cada horario en su renglón enmarcado, con los lugares en una pastilla: se lee de un vistazo. */}
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", border: `1px solid ${velo(t.textoTarjeta, 0.14)}`, borderRadius: 12, overflow: "hidden" }}>
-              {c.grupos.map((g, i) => (
-                <li
-                  key={g.id}
-                  style={{
-                    fontSize: 14,
-                    color: t.textoTarjeta,
-                    padding: "9px 12px",
-                    borderTop: i ? `1px solid ${velo(t.textoTarjeta, 0.14)}` : undefined,
-                    display: "flex",
-                    flexWrap: "wrap",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "4px 8px",
-                  }}
-                >
-                  <span>
-                    <strong style={{ fontWeight: 600 }}>{fechaCorta(g.fechaInicio)}</strong> · {horarioGrupo(g)} · {g.sede.nombre}
+            {(c.precioCompleto != null || pastillaAhorro) && (
+              <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px" }}>
+                {c.precioCompleto != null && (
+                  <span style={{ fontSize: 14, color: t.texto2Tarjeta }}>
+                    o <strong style={{ color: t.textoTarjeta }}>{bs(c.precioCompleto)}</strong> el curso completo
                   </span>
-                  {g.cuposLibres != null && g.cuposLibres <= 10 && (
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: t.textoTarjeta,
-                        background: velo(t.textoTarjeta, 0.08),
-                        borderRadius: 999,
-                        padding: "2px 9px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {g.cuposLibres > 0 ? `quedan ${g.cuposLibres}` : "lleno"}
-                    </span>
-                  )}
+                )}
+                {pastillaAhorro}
+              </div>
+            )}
+          </div>
+        ) : (
+          c.desde != null && (
+            <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
+              Desde <strong style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, color: acento }}>{bs(c.desde)}</strong>
+            </p>
+          )
+        )}
+        {adelantoDesde != null && (
+          // Destacado: es lo que decide a quien duda. Adelanto a cuenta del primer mes, no «reserva».
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              background: velo(acento, 0.08),
+              border: `1px solid ${velo(acento, 0.24)}`,
+              borderRadius: 12,
+              padding: "12px 14px",
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                flexShrink: 0,
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: acento,
+                // El fondo de la tarjeta sobre el acento: el mismo contraste que el precio sobre la tarjeta.
+                color: t.tarjeta,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <svg aria-hidden="true" width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <polyline points="9 12 11 14 15 10" />
+              </svg>
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: t.textoTarjeta }}>Asegurá tu cupo con {bs(adelantoDesde)}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 13, color: t.texto2Tarjeta }}>Se descuenta del primer mes</p>
+            </div>
+          </div>
+        )}
+        {n > 0 && (
+          <div>
+            <p style={rotulo}>QUÉ VAS A APRENDER</p>
+            <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+              {modulos.map((m, i) => (
+                <li key={`${i}-${m}`} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: t.textoTarjeta }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flexShrink: 0,
+                      width: 24,
+                      height: 24,
+                      borderRadius: 999,
+                      background: velo(acento, 0.12),
+                      color: acento,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span style={{ minWidth: 0 }}>{sinPrefijoModulo(m)}</span>
                 </li>
               ))}
+            </ol>
+          </div>
+        )}
+        {c.grupos.length > 0 && (
+          <div>
+            <p style={rotulo}>PRÓXIMOS INICIOS</p>
+            {/* Cada grupo en su fila, con la fecha en un cuadrito: se encuentra el que conviene de un vistazo. */}
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+              {c.grupos.map((g) => {
+                const fecha = diaYMes(g.fechaInicio);
+                // Lleno: apagado (no recibe preinscripciones), pero la pastilla «lleno» se lee entera.
+                const apagado: CSSProperties | undefined = g.cuposLibres === 0 ? { opacity: 0.55 } : undefined;
+                return (
+                  <li
+                    key={g.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      background: velo(t.textoTarjeta, 0.05),
+                      borderRadius: 12,
+                      padding: "8px 12px 8px 8px",
+                    }}
+                  >
+                    <time
+                      dateTime={g.fechaInicio}
+                      style={{
+                        ...apagado,
+                        flexShrink: 0,
+                        width: 46,
+                        height: 46,
+                        borderRadius: 10,
+                        background: velo(acento, 0.12),
+                        color: acento,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        lineHeight: 1,
+                      }}
+                    >
+                      {fecha ? (
+                        <>
+                          <span style={{ fontSize: 18, fontWeight: 800 }}>{fecha.dia}</span>
+                          <span style={{ marginTop: 3, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 }}>{fecha.mes}</span>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 12, fontWeight: 700 }}>{fechaCorta(g.fechaInicio)}</span>
+                      )}
+                    </time>
+                    <div style={{ ...apagado, flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: t.textoTarjeta }}>{diasEnPalabras(g.dias)}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 13, color: t.texto2Tarjeta }}>
+                        {g.horaInicio} a {g.horaFin}
+                        {!unaSede && ` · ${g.sede.nombre}`}
+                      </p>
+                    </div>
+                    {g.cuposLibres != null && g.cuposLibres <= 10 && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: t.textoTarjeta,
+                          background: velo(t.textoTarjeta, 0.08),
+                          borderRadius: 999,
+                          padding: "2px 9px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {g.cuposLibres > 0 ? `quedan ${g.cuposLibres}` : "lleno"}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-          {c.precioModulo != null ? (
-            // El precio en su recuadro: lo primero que se busca en un curso.
-            <div style={{ background: velo(t.textoTarjeta, 0.05), borderRadius: 12, padding: "12px 14px" }}>
-              <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
-                <strong style={{ color: t.precio, fontSize: 18 }}>{bs(c.precioModulo)}</strong> por módulo
-                {c.precioCompleto != null && <> · o {bs(c.precioCompleto)} todo junto</>}
-              </p>
-              {c.ahorro != null && c.ahorro > 0 && (
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    display: "inline-block",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "#047857",
-                    background: "#ECFDF5",
-                    borderRadius: 999,
-                    padding: "2px 10px",
-                  }}
-                >
-                  Pagando todo junto ahorrás {bs(c.ahorro)}
-                </p>
-              )}
-              {adelantoDesde != null && (
-                <p style={{ margin: "6px 0 0", fontSize: 13, color: t.texto2Tarjeta }}>
-                  Asegurá tu cupo desde <strong style={{ color: t.textoTarjeta }}>{bs(adelantoDesde)}</strong>, a cuenta del primer mes
-                </p>
-              )}
-            </div>
-          ) : (
-            c.desde != null && (
-              <div style={{ background: velo(t.textoTarjeta, 0.05), borderRadius: 12, padding: "12px 14px" }}>
-                <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
-                  Desde <strong style={{ color: t.precio, fontSize: 18 }}>{bs(c.desde)}</strong>
-                </p>
-              </div>
-            )
-          )}
           {!primero && !todosLlenos && (
             <p style={{ margin: 0, fontSize: 13, color: t.texto3Tarjeta }}>Próximo grupo por confirmar.</p>
           )}
