@@ -66,4 +66,23 @@ describe("P1 · Cursos", () => {
     expect(screen.getByText("Los grupos están llenos, comunicate con la academia.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Pagar mi inscripción" })).not.toBeInTheDocument();
   });
+
+  it("Drick, 08-nov: dice desde cuánto se asegura el cupo, el menor de los grupos con lugar", () => {
+    const conAdelanto: CursoPublico = {
+      ...CURSO,
+      grupos: [
+        { ...CURSO.grupos[0], id: 21, cuposLibres: 0, adelantoDesde: 50 },
+        { ...CURSO.grupos[0], id: 22, cuposLibres: 5, adelantoDesde: 150 },
+        { ...CURSO.grupos[0], id: 23, cuposLibres: null, adelantoDesde: 100 },
+      ],
+    };
+    render(<CursosPagina cursos={[conAdelanto]} t={T} colorBoton="#282D73" radio={12} titulo={<h2>Cursos</h2>} escritorio={false} urlInscribirme={(g) => `/p/horizonte/inscribirme/${g}`} />);
+    // El 21 está lleno: su adelanto no cuenta.
+    expect(screen.getByText(/Asegurá tu cupo desde/)).toHaveTextContent("Asegurá tu cupo desde Bs 100, a cuenta del primer mes");
+  });
+
+  it("sin adelanto (sin QR o sin mínimo) no lo menciona", () => {
+    render(<CursosPagina cursos={[CURSO]} t={T} colorBoton="#282D73" radio={12} titulo={<h2>Cursos</h2>} escritorio={false} urlInscribirme={(g) => `/p/horizonte/inscribirme/${g}`} />);
+    expect(screen.queryByText(/Asegurá tu cupo/)).not.toBeInTheDocument();
+  });
 });

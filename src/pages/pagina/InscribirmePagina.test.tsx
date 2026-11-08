@@ -111,7 +111,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Rojas Lima" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Thiago" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2011-03-12" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2011-03-12" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     expect(screen.getByText(/datos de tu madre, padre o tutor/)).toBeInTheDocument();
     // "Faltan", no "Falta los datos" (QA ronda 2, B-29).
@@ -122,7 +122,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     // Paso 3: las fotos.
     expect(screen.getByRole("heading", { name: "Tus fotos" })).toBeInTheDocument();
     // M4: faltan, pero no bloquean.
-    expect(screen.getByText(/Faltan 3 fotos\. Podés seguir sin ellas/)).toBeInTheDocument();
+    expect(screen.getByText(/Las fotos son opcionales: podés seguir sin ellas/)).toBeInTheDocument();
     for (const t of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) {
       await act(async () => {
         fireEvent.change(screen.getByTestId("subir-" + t), { target: { files: [new File(["x"], t + ".jpg", { type: "image/jpeg" })] } });
@@ -167,7 +167,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
   }
@@ -190,7 +190,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     expect(screen.getByRole("heading", { name: "¡Listo, Ana!" })).toBeInTheDocument();
     expect(screen.getByText("Quedaste preinscrito. Para asegurar tu cupo, pagá lo que corresponde.")).toBeInTheDocument();
     expect(screen.getByRole("note")).toHaveTextContent(
-      "No subiste foto, carnet de adelante y carnet de atrás. Traé esas fotos cuando vengas a pagar o mandalas por WhatsApp",
+      "No subiste foto, carnet de adelante y carnet de atrás. Cuando puedas, traé esas fotos al venir a pagar o mandalas por WhatsApp",
     );
   });
 
@@ -240,7 +240,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     for (const t of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) {
@@ -341,14 +341,14 @@ describe("M5 · un grupo lleno ya no recibe preinscripciones", () => {
     await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
   }
 });
 
-describe("la fecha de nacimiento es opcional (03-nov)", () => {
-  it("sin la fecha se sigue y se envía sin ella: «Pagar mi inscripción» entra sólo con el carnet", async () => {
+describe("la fecha de nacimiento es obligatoria (Drick, 08-nov)", () => {
+  it("sin la fecha no deja seguir y lo dice; con ella, se envía", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
@@ -356,7 +356,9 @@ describe("la fecha de nacimiento es opcional (03-nov)", () => {
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
-    expect(screen.queryByText(/Falta.*fecha de nacimiento/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Falta.*tu fecha de nacimiento/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
     expect(screen.getByRole("button", { name: "Siguiente" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.click(screen.getByRole("button", { name: "Seguir sin fotos" }));
@@ -365,8 +367,7 @@ describe("la fecha de nacimiento es opcional (03-nov)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Enviar inscripción" }));
     });
     const [, input] = vi.mocked(apiAcademiaPublica.preinscribir).mock.calls[0];
-    expect(input).not.toHaveProperty("fechaNacimiento");
-    expect(input).not.toHaveProperty("edad");
+    expect(input).toHaveProperty("fechaNacimiento", "2000-01-01");
     expect(screen.getByRole("heading", { name: "¡Listo, Ana!" })).toBeInTheDocument();
   });
 });
@@ -447,7 +448,7 @@ describe("Derick, 04-nov · el carnet conocido y el pago en la misma inscripció
     await revisarCarnet();
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.click(screen.getByRole("button", { name: "Seguir sin fotos" }));

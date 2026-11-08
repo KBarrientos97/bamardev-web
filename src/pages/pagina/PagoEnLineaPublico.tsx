@@ -236,7 +236,11 @@ function SubirComprobante({
         {preinscrita && <p className="text-[13px] text-[#6B7280]">Con tu pago quedás inscrito y tu lugar en el grupo queda asegurado.</p>}
       </div>
 
-      <div role="radiogroup" aria-label="Qué vas a pagar" className={`grid gap-2 ${pago.opciones.length > 1 ? "sm:grid-cols-2" : ""}`}>
+      {/* Dos columnas según el ancho de la tarjeta (@container), no el de la pantalla: con `sm:` la página
+          de inscripción, angosta en una compu, partía cada opción en ~200 px y el monto se salía del borde
+          (Drick, 08-nov). */}
+      <div className="@container">
+      <div role="radiogroup" aria-label="Qué vas a pagar" className={`grid gap-2 ${pago.opciones.length > 1 ? "@xl:grid-cols-2" : ""}`}>
         {pago.opciones.map((o) => {
           const on = o.clave === opcion.clave;
           return (
@@ -253,7 +257,7 @@ function SubirComprobante({
                 {on && <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="flex items-baseline justify-between gap-2">
+                <span className="flex flex-wrap items-baseline justify-between gap-x-2">
                   <span className="text-sm font-bold text-[#111827]">{o.titulo}</span>
                   <span className="whitespace-nowrap text-base font-bold tabular-nums text-[#111827]">
                     {o.montoMaximo != null && o.montoMaximo > o.monto ? `desde ${bs(o.monto)}` : bs(o.monto)}
@@ -268,6 +272,7 @@ function SubirComprobante({
             </button>
           );
         })}
+      </div>
       </div>
 
       {elige && (

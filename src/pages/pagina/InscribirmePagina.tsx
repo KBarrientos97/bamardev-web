@@ -252,8 +252,9 @@ function Formulario({
       const f: string[] = [];
       if (!datos.ci.trim()) f.push("tu carnet");
       if (!datos.apellidos.trim() || !datos.nombres.trim()) f.push("tu nombre y apellidos");
-      // La fecha de nacimiento es opcional (03-nov): «Pagar mi inscripción» ya
-      // no la pide, y era lo único que la volvía indispensable acá.
+      // Obligatoria otra vez (Drick, 08-nov): la academia la necesita en la
+      // ficha y dice si hay que pedir tutor. El backend también la exige.
+      if (!datos.fechaNacimiento) f.push("tu fecha de nacimiento");
       if (datos.telefono.replace(/\D/g, "").length < 7) f.push("tu WhatsApp");
       if (esMenor && (!tutor.nombre.trim() || tutor.telefono.replace(/\D/g, "").length < 7)) f.push("los datos de tu tutor");
       return f.length ? faltaTexto(f) : fechaMal;
@@ -266,7 +267,14 @@ function Formulario({
     return f.length ? `Falta ${f.join(", ")}` : "";
   }
   const bloqueo = motivo(paso);
-  const notaFotos = paso === 3 && faltanFotos.length ? `${textoFaltanFotos(faltanFotos.length)}. Podés seguir sin ${faltanFotos.length === 1 ? "ella" : "ellas"}.` : "";
+  // Las fotos no son obligatorias (M4) y la página lo tiene que decir así: «Faltan 3 fotos» sonaba a
+  // que no se podía seguir (Drick, 08-nov).
+  const notaFotos =
+    paso === 3 && faltanFotos.length
+      ? faltanFotos.length === 3
+        ? "Las fotos son opcionales: podés seguir sin ellas."
+        : `Te ${faltanFotos.length === 1 ? "falta 1 foto" : `faltan ${faltanFotos.length} fotos`}, pero son opcionales: podés seguir.`
+      : "";
 
   /** ¿El carnet ya es de un estudiante? Si falla, sigue como alguien nuevo. */
   async function revisarCarnet() {
@@ -518,8 +526,10 @@ function Formulario({
             <CampoP etiqueta="Nombres">
               <input value={datos.nombres} onChange={(e) => setDatos({ ...datos, nombres: e.target.value })} autoComplete="given-name" className={INPUT} />
             </CampoP>
-            <div className="grid grid-cols-2 gap-3">
-              <CampoP etiqueta="Fecha de nacimiento (opcional)" error={fechaMal}>
+            {/* Uno debajo del otro en el celular (Drick, 08-nov): lado a lado, el campo de fecha
+                del iPhone, que trae su propio ancho mínimo, se montaba sobre el de WhatsApp. */}
+            <div className="grid gap-3 sm:grid-cols-2 [&>*]:min-w-0">
+              <CampoP etiqueta="Fecha de nacimiento" error={fechaMal}>
                 <input
                   type="date"
                   value={datos.fechaNacimiento}
@@ -527,7 +537,7 @@ function Formulario({
                   max={limitesFecha.max}
                   onChange={(e) => setDatos({ ...datos, fechaNacimiento: e.target.value })}
                   aria-invalid={!!fechaMal || undefined}
-                  className={`${INPUT} ${fechaMal ? "border-[#B91C1C]" : ""}`}
+                  className={`${INPUT} min-w-0 appearance-none ${fechaMal ? "border-[#B91C1C]" : ""}`}
                 />
               </CampoP>
               <CampoP etiqueta="WhatsApp">
@@ -568,8 +578,8 @@ function Formulario({
             <div>
               <h1 className="text-xl font-bold text-[#111827]">Tus fotos</h1>
               <p className="text-[13px] text-[#6B7280]">
-                Las necesitamos para emitir tu certificado y confirmar que sos vos. Sólo las ve la dirección del instituto. Si ahora no
-                podés sacarlas, seguí igual: las traés o las mandás después.
+                <strong className="font-semibold text-[#374151]">Son opcionales.</strong> Si las subís ahora, no tenés que traerlas
+                después: el instituto las usa para tu certificado y para confirmar que sos vos, y sólo las ve su dirección.
               </p>
             </div>
             <CapturaFotos
@@ -829,8 +839,8 @@ function Enviada({
       )}
       {sinFotos.length > 0 && (
         <p role="note" className="rounded-xl bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#92400E]">
-          No subiste {listaDeFotos(sinFotos)}. Traé {sinFotos.length === 1 ? "esa foto" : "esas fotos"} cuando vengas a pagar
-          {whatsapp ? ` o ${sinFotos.length === 1 ? "mandala" : "mandalas"} por WhatsApp` : ""}: las necesitamos para tu certificado.
+          No subiste {listaDeFotos(sinFotos)}. Cuando puedas, traé {sinFotos.length === 1 ? "esa foto" : "esas fotos"} al venir a pagar
+          {whatsapp ? ` o ${sinFotos.length === 1 ? "mandala" : "mandalas"} por WhatsApp` : ""}: el instituto las usa para tu certificado.
         </p>
       )}
       <p className="text-[13px] text-[#4B5563]">Cuando estés inscrito te mandamos por WhatsApp el enlace a tu estado de cuenta: ahí ves siempre lo que pagaste y lo que falta.</p>

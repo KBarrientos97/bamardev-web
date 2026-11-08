@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 import { enlaceDeCuotas, modulosDeCuotaVenta } from "../../lib/academia/cobroCuotas";
-import { compartirComoImagen } from "../../lib/compartirTicket";
+import { compartirComoImagen, enviarPorWhatsapp, type ResultadoCompartir } from "../../lib/compartirTicket";
 import { aCentavos, esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
@@ -16,7 +16,7 @@ import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, QrRecibo } from "./PiezasRecibo";
-import { whatsappDelRecibo } from "../../lib/mensajeRecibo";
+import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 
 /**
@@ -88,17 +88,51 @@ export default function PantallaRecibo({
     if (!ticket.current || compartiendo) return;
     setAvisoCompartir("");
     setCompartiendo(true);
+    // La imagen con el mensaje y el enlace al estado de cuenta (Drick, 08-nov):
+    // las dos cosas, no una sola. Una venta sin internet todavía no tiene
+    // comprobante: va sólo la imagen.
     const res = await compartirComoImagen(
       ticket.current,
       venta.comprobante ?? `recibo-${venta.id}`,
+      venta.pendienteSync ? undefined : mensajeRecibo(venta, negocio?.nombre ?? ""),
     );
     setCompartiendo(false);
-    // Cancelar el diálogo del sistema no es un error que mostrar.
-    if (!res.ok && res.motivo === "no_soportado") {
-      setAvisoCompartir("Se descargó la imagen del recibo para que la adjuntes.");
-    } else if (!res.ok && res.motivo === "error") {
-      setAvisoCompartir("No se pudo generar la imagen del recibo.");
+    avisar(
+      res,
+      venta.pendienteSync
+        ? "Se descargó la imagen del recibo para que la adjuntes."
+        : "Se descargó la imagen del recibo y se copió el mensaje para que los pegues.",
+    );
+  }
+
+  /**
+   * "Enviar por WhatsApp" con la imagen y el mensaje (Drick, 08-nov). Sin el
+   * plan que incluye el comprobante en imagen (`recibo_pdf`) va sólo el texto,
+   * como desde el 04-nov.
+   */
+  async function enviarWhatsapp() {
+    const url = whatsappDelRecibo(venta, negocio?.nombre ?? "");
+    if (!incluye("recibo_pdf") || !ticket.current) {
+      abrirWhatsapp(url);
+      return;
     }
+    if (compartiendo) return;
+    setAvisoCompartir("");
+    setCompartiendo(true);
+    const res = await enviarPorWhatsapp(
+      ticket.current,
+      venta.comprobante ?? `recibo-${venta.id}`,
+      mensajeRecibo(venta, negocio?.nombre ?? ""),
+      url,
+    );
+    setCompartiendo(false);
+    avisar(res, "Se descargó la imagen del recibo: adjuntala en el chat de WhatsApp.");
+  }
+
+  function avisar(res: ResultadoCompartir, siDescargo: string) {
+    // Cancelar el diálogo del sistema no es un error que mostrar.
+    if (!res.ok && res.motivo === "no_soportado") setAvisoCompartir(siDescargo);
+    else if (!res.ok && res.motivo === "error") setAvisoCompartir("No se pudo generar la imagen del recibo.");
   }
 
   const detalles = venta.detalles ?? [];
@@ -189,7 +223,7 @@ export default function PantallaRecibo({
           adjuntar. No pide `recibo_pdf`: no es el PDF, es un mensaje. Una
           venta sin internet todavía no tiene comprobante: no se manda. */}
       {!venta.pendienteSync && (
-        <Boton variante="ghost" icono="phone" onClick={() => abrirWhatsapp(whatsappDelRecibo(venta, negocio?.nombre ?? ""))}>
+        <Boton variante="ghost" icono="phone" onClick={() => void enviarWhatsapp()} disabled={compartiendo}>
           Enviar por WhatsApp
         </Boton>
       )}
