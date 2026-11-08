@@ -36,14 +36,17 @@ export default function Captcha({
     cargarTurnstile()
       .then((ts) => {
         if (!vivo || !caja.current) return;
+        // «flexible» no baja de 300 px: en una tarjeta dentro de otra, en el celular, se salía por
+        // el costado (Drick, 08-nov). Si no entra, el compacto (150 px).
+        const entra = caja.current.clientWidth === 0 || caja.current.clientWidth >= 300;
         id = ts.render(caja.current, {
           sitekey: siteKey,
           language: "es",
           // La página es blanca: con "auto", un teléfono en modo oscuro lo
           // pintaría negro en medio del formulario.
           theme: "light",
-          // Ocupa el ancho del formulario (mínimo 300 px): a 390 px entra.
-          size: "flexible",
+          // Ocupa el ancho del formulario (mínimo 300 px); si no entra, el compacto.
+          size: entra ? "flexible" : "compact",
           ...(discreto ? { appearance: "interaction-only" as const } : {}),
           callback: (token) => avisar.current(token),
           "expired-callback": () => avisar.current(null),

@@ -61,6 +61,54 @@ export function fechaCorta(fecha: string | null | undefined): string {
   return `${m[3]}-${MESES[Number(m[2]) - 1] ?? m[2]}`;
 }
 
+/**
+ * El cuadrito de fecha de la tarjeta de curso: "2026-11-14" → { dia: "14",
+ * mes: "NOV" }. Sólo la fecha del día (sin hora): los inicios de grupo no
+ * llevan hora, así que no hay zona horaria que la corra. null si no se lee.
+ */
+export function diaYMes(fecha: string | null | undefined): { dia: string; mes: string } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fecha ?? "");
+  const mes = m ? MESES[Number(m[2]) - 1] : undefined;
+  if (!m || !mes) return null;
+  return { dia: String(Number(m[3])), mes: mes.toUpperCase() };
+}
+
+/** 0 = domingo … 6 = sábado, en plural: el grupo se repite cada semana. */
+const PLURAL = ["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"];
+/** Para los rangos ("Lunes a sábado"): en singular, como se dice. */
+const SINGULAR = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+/**
+ * Los días en palabras, para la página pública (quien lee no conoce "L-V"):
+ * "Sábados", "Lunes, miércoles y viernes", "Lunes a viernes" (3 o más
+ * seguidos). La semana empieza el lunes, como en `diasTexto`.
+ */
+export function diasEnPalabras(dias: number[]): string {
+  const orden = [...new Set(dias)].filter((d) => d >= 0 && d <= 6).sort((a, b) => SEMANA.indexOf(a) - SEMANA.indexOf(b));
+  if (orden.length === 0) return "";
+  const pos = orden.map((d) => SEMANA.indexOf(d));
+  const seguidos = pos.every((p, i) => i === 0 || p === pos[i - 1] + 1);
+  const texto =
+    seguidos && orden.length >= 3
+      ? `${SINGULAR[orden[0]]} a ${SINGULAR[orden[orden.length - 1]]}`
+      : orden.length === 1
+        ? PLURAL[orden[0]]
+        : `${orden.slice(0, -1).map((d) => PLURAL[d]).join(", ")} y ${PLURAL[orden[orden.length - 1]]}`;
+  return texto[0].toUpperCase() + texto.slice(1);
+}
+
+/**
+ * El nombre de un módulo sin el número que ya trae ("Modulo 1: Fundamentos",
+ * "M1 - Corte", "2. Degradados"): la tarjeta los numera en un círculo y, si
+ * no, diría el número dos veces. Un nombre sin prefijo queda igual, y si
+ * quitarlo lo dejara vacío ("Módulo 1" a secas) también.
+ */
+const PREFIJO_MODULO = /^\s*(?:(?:m[óo]dulo|mod\.?|m)\s*\d+\s*(?:[:.)\-–—]|\s)|\d+\s*(?:[:\-–—]|[.)]\s))\s*/iu;
+export function sinPrefijoModulo(nombre: string): string {
+  const resto = nombre.replace(PREFIJO_MODULO, "").trim();
+  return resto || nombre.trim();
+}
+
 /** Horas entre dos "HH:mm". */
 export function horasEntre(desde: string, hasta: string): number {
   const min = (t: string) => {

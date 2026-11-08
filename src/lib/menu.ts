@@ -512,15 +512,29 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
       // (A1: las cuotas ya no se cobran en el POS) cuelga de su ruta, así que
       // estando ahí Cobranza queda encendida.
       { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza" },
-      // Las del docente (su planilla ya no: sólo el admin la ve, D1 del 22-oct).
+      // Los docentes del instituto (rediseño de noviembre): la gente de Personal
+      // con el cargo de docente, con su acceso y sus grupos. Pide lo de Personal.
       {
-        a: "/academia/mis-clases",
-        label: "Mis clases de hoy",
-        titulo: "Mis clases",
-        icono: "birrete",
-        seccion: "academia_mis_clases",
+        a: "/academia/docentes",
+        label: "Docentes",
+        etiqueta: (palabra) => `${conMayuscula(palabra("profesional"))}s`,
+        icono: "users",
+        seccion: "personal",
       },
-      { a: "/academia/lista", label: "Pasar lista", icono: "lista", seccion: "academia_lista" },
+      // La planilla salió de Configuración (rediseño de noviembre): pagarles es
+      // de todos los meses, no algo que se configura una vez. Misma ruta.
+      {
+        a: "/academia/planilla",
+        label: "Pagos a docentes",
+        etiqueta: (palabra) => `Pagos a ${palabra("profesional")}s`,
+        icono: "billetera",
+        seccion: "academia_planilla",
+      },
+      // Las del docente (su planilla ya no: sólo el admin la ve, D1 del 22-oct).
+      // «Pasar lista» salió del menú (rediseño de noviembre): se pasa desde cada
+      // clase de Mis clases, que también muestra las próximas (por eso ya no
+      // dice «de hoy»). La ruta sigue.
+      { a: "/academia/mis-clases", label: "Mis clases", icono: "birrete", seccion: "academia_mis_clases" },
       { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas" },
       // El control del dueño.
       { a: "/academia/control", label: "Panel de control", icono: "tablero", seccion: "academia_control" },
@@ -533,7 +547,7 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
         label: "Configuración",
         icono: "settings",
         seccion: "academia_ajustes",
-        tambien: ["academia_carreras", "academia_planilla"],
+        tambien: ["academia_carreras"],
         rutas: PESTANAS_CONFIG_ACADEMIA.map((t) => t.a),
       },
     ],
@@ -548,7 +562,7 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
   // la recepción y el docente no ven el grupo ni entran por la URL. Los avisos
   // y la contraseña, que los usa cualquier rol, volvieron al menú de usuario
   // (el pie de la barra), como en los demás rubros. Lo propio del instituto
-  // (cursos, sedes, planilla, ajustes) sigue en Academia → Configuración.
+  // (cursos, sedes, ajustes) sigue en Academia → Configuración.
   {
     a: "/personal",
     label: "Mi negocio",
@@ -706,6 +720,8 @@ function nodoDeRuta(planos: NodoMenu[], pathname: string): NodoMenu | null {
 const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/academia\/grupos\/\d+\/notas\/?$/, "Notas"],
   [/^\/academia\/grupos\/\d+\/lista\/?$/, "Pasar lista"],
+  // La del docente salió del menú (rediseño de noviembre): se llega desde Mis clases.
+  [/^\/academia\/lista\/?$/, "Pasar lista"],
   [/^\/academia\/grupos\/\d+\/?$/, "Grupo"],
   [/^\/academia\/cobranza\/cobrar\/?$/, "Cobrar a estudiante"],
   // Es de la cuenta y no del negocio: va abajo, con "Cambiar mi contraseña".

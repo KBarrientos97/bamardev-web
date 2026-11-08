@@ -10,6 +10,7 @@ import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, M
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import {
   cursosDePlanilla,
+  METODOS_PAGO_DOCENTE as METODOS,
   montoConSigno,
   MOTIVOS_NO_PAGO,
   pieBrutoPlanilla,
@@ -43,13 +44,6 @@ import {
 
 type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar" | "ajustes";
 
-/** Cómo se le paga al docente. La tarjeta (que el backend acepta) no es cómo se paga un sueldo. */
-const METODOS: readonly (readonly [MetodoPagoPlanilla, string])[] = [
-  ["EFECTIVO", "Efectivo"],
-  ["TRANSFERENCIA", "Transferencia"],
-  ["QR", "QR"],
-];
-
 /** En curso en gris, cerrada (falta pagarla) en ámbar, pagada en verde. */
 const CHIP_ESTADO: Record<EstadoPlanilla, TonoChip> = {
   EN_CURSO: "gris",
@@ -74,8 +68,9 @@ const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_
  * sale el monto ("Pagó Bs 1.350 · 1.350 ÷ 3 = 450 · 20 % = Bs 90").
  *
  * "Cerrar planilla" la deja inmutable (un mes en curso pide confirmar) y
- * "Registrar pago" la vuelve un gasto de sueldos. La retención y los atrasos
- * quedan por confirmar (D9).
+ * "Registrar pago" la vuelve un gasto de sueldos. A los docentes no se les
+ * retiene (dueño, 08-nov): sin retención el líquido es el bruto, así que va un
+ * solo monto. Los atrasos siguen por confirmar (D9).
  *
  * A6 (reunión con Derick, 22-oct): es sólo del admin, abre en "Cuentan", y en
  * las líneas que no le suman al docente (postergados y sin pagar) quien
@@ -118,12 +113,12 @@ export default function PlanillaDocente() {
     setEditandoMotivo(motivo);
   }
 
-  const volver = { a: "/academia/planilla", texto: `Planilla ${p.docente}s` };
+  const volver = { a: "/academia/planilla", texto: `Pagos a ${p.docente}s` };
   const d = carga.datos;
   if (carga.error && !d) {
     return (
       <PaginaAcademia>
-        <EncabezadoPagina titulo={`Planilla ${p.docente}s`} volver={volver} />
+        <EncabezadoPagina titulo={`Pagos a ${p.docente}s`} volver={volver} />
         <ErrorMsg onReintentar={carga.recargar}>{carga.error}</ErrorMsg>
       </PaginaAcademia>
     );
@@ -275,13 +270,13 @@ export default function PlanillaDocente() {
           <Chip tono={CHIP_ESTADO[d.estado]}>Planilla {TEXTO_ESTADO[d.estado]}</Chip>
           <span>
             líquido <b className="tabular-nums text-texto">{fmtMoney(r.liquido)}</b>
-            {!r.retencionActiva ? " · retención y atrasos siguen por confirmar" : ""}
+            {r.atrasos == null ? " · los atrasos siguen por confirmar" : ""}
           </span>
         </p>
       )}
 
-      {/* Con el panel abierto no entran cinco por fila: van de a tres. */}
-      <section aria-label="Resumen de la planilla" className={`grid grid-cols-2 gap-3 sm:gap-4 ${elegida ? "lg:grid-cols-3" : "lg:grid-cols-5"}`}>
+      {/* Sin retención (dueño, 08-nov) el bruto y el líquido eran el mismo número: queda uno. */}
+      <section aria-label="Resumen de la planilla" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <KpiTarjeta
           icono="users"
           etiqueta="Cuentan"
@@ -289,31 +284,20 @@ export default function PlanillaDocente() {
           pie={r.atrasados ? `+ ${r.atrasados} de meses anteriores` : undefined}
         />
         <KpiTarjeta
-          icono="billetera"
-          etiqueta="Bruto"
-          valor={fmtMoney(r.bruto)}
-          pie={pieBrutoPlanilla(r)}
-        />
-        <KpiTarjeta
-          icono="percent"
-          etiqueta="Retención"
-          valor={r.retencionActiva && r.retencion != null ? `− ${fmtMoney(r.retencion)}` : "—"}
-          pie={r.retencionActiva ? undefined : "Por confirmar con el instituto"}
-        />
-        <KpiTarjeta
           icono="clock"
           etiqueta="Atrasos"
           valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : "—"}
           pie={r.atrasos != null ? undefined : "Por confirmar con el instituto"}
         />
-        <div className={`col-span-2 grid ${elegida ? "lg:col-span-2" : "lg:col-span-1"}`}>
+        <div className="col-span-2 grid lg:col-span-1">
           <KpiTarjeta
             icono="coins"
             tono={r.liquido < 0 ? "urgente" : "ok"}
             etiqueta={d.estado === "EN_CURSO" ? "Líquido provisorio" : "Líquido"}
             valor={fmtMoney(r.liquido)}
             // Sólo se dice el hecho: qué se hace con un líquido negativo lo decide el instituto.
-            pie={r.liquido < 0 ? "El líquido es negativo por ajustes de cobros anulados" : undefined}
+            // Si no, de dónde sale (lo que era el pie del bruto).
+            pie={r.liquido < 0 ? "El líquido es negativo por ajustes de cobros anulados" : pieBrutoPlanilla(r)}
           />
         </div>
       </section>

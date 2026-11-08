@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { ErrorMsg, Vacio } from "../../components/ui";
@@ -28,14 +28,20 @@ export function PaginaAcademia({
   ancho = "max-w-6xl",
   conBarraAbajo = false,
   className = "",
+  onClickCapture,
 }: {
   children: ReactNode;
   ancho?: string;
   conBarraAbajo?: boolean;
   className?: string;
+  /** Para frenar los enlaces de adentro con cambios sin guardar (`useSalidaConCambios`). */
+  onClickCapture?: MouseEventHandler;
 }) {
   return (
-    <div className={`mx-auto w-full ${ancho} space-y-5 p-4 sm:p-6 lg:space-y-6 lg:p-8 ${conBarraAbajo ? "pb-28 md:pb-8" : ""} ${className}`}>
+    <div
+      className={`mx-auto w-full ${ancho} space-y-5 p-4 sm:p-6 lg:space-y-6 lg:p-8 ${conBarraAbajo ? "pb-28 md:pb-8" : ""} ${className}`}
+      onClickCapture={onClickCapture}
+    >
       {children}
     </div>
   );
@@ -545,7 +551,7 @@ export function Dato({ etiqueta, children }: { etiqueta: string; children: React
 /**
  * Un interruptor de sí o no, con su texto al lado. `bloqueado` lo deja a la
  * vista pero sin tocar: lo que el instituto todavía tiene que confirmar
- * (la retención, los atrasos) o lo que es regla fija (las 3 fotos).
+ * (los atrasos) o lo que es regla fija (las 3 fotos).
  */
 export function Interruptor({
   activo,

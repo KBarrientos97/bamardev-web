@@ -2,43 +2,64 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
-import { Cargando, ErrorMsg, Vacio } from "../../../components/ui";
-import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import { Chips } from "../../../components/filtros";
+import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Modal, useAviso, Vacio } from "../../../components/ui";
+import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
-import type { PlanillaMes as TPlanillaMes } from "../../../lib/academia/tipos";
+import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
+import type { FilaPlanillaMes, MetodoPagoPlanilla, PlanillaMes as TPlanillaMes } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoRetencion } from "../../../lib/academia/vista";
-import { fmtMoney } from "../../../lib/format";
+import { cuentaDelMesDocente, METODOS_PAGO_DOCENTE, TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO } from "../../../lib/academia/vista";
+import { ApiError } from "../../../lib/api";
+import { fmtMoney, iniciales, isoDia } from "../../../lib/format";
+import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
-import { Chip, claseBotonFila, EncabezadoPagina, GrillaKpi, KpiTarjeta, LISTA, PaginaAcademia, TABLA, Tarjeta, type TonoChip } from "../piezas";
+import { useAuth } from "../../../store/AuthContext";
+import { Chip, EncabezadoPagina, GrillaKpi, KpiTarjeta, PaginaAcademia, Tarjeta, type TonoChip } from "../piezas";
 
 /**
- * E14 · Planilla de docentes del mes (ronda 2, D2): cada docente con su %,
- * cuántos estudiantes cuentan (pagaron el módulo completo) de cuántos tiene,
- * el bruto, la retención (por confirmar, D9) y el líquido. Tocar uno abre su
- * planilla (N8), donde se cierra y se paga. Lo calcula todo el backend.
+ * E14 · Pagos a docentes (ronda 2, D2; rediseño de noviembre): el mes de cada
+ * docente en una tarjeta, con de dónde sale lo que cobra («Cobrado de sus
+ * estudiantes: Bs 4.500 × 20 %») y un solo botón, «Pagar Bs X». Lo calcula
+ * todo el backend. A los docentes no se les retiene (dueño, 08-nov): el bruto
+ * y el líquido son el mismo monto y se muestra uno.
+ *
+ * Hasta noviembre pagar eran dos pasos en la planilla del docente: cerrarla y
+ * después «Registrar pago». El botón hace los dos en orden (cerrar y pagar,
+ * con el método que se elige en el diálogo) y mantiene la pregunta de siempre
+ * si el mes no terminó. El detalle, línea por línea, sigue en la planilla de
+ * cada uno («Ver el detalle»).
+ *
+ * Vivía como pestaña de Configuración; ahora es una entrada del menú, en la
+ * misma ruta.
  */
 export default function PlanillaMes() {
   const p = usePalabras();
   const navigate = useNavigate();
+  const { usuario } = useAuth();
   const sede = useFiltroSede();
   const hoy = mesDe(new Date());
   const [mes, setMes] = useState(hoy);
   const datos = useApi(() => apiAcademia.planilla(mes, sede.sucursalId), [mes, sede.sucursalId]);
   const d = datos.datos;
+  const liquida = tienePermiso(usuario, "planilla.liquidar");
+  const [aviso, setAviso] = useAviso(6000);
+  /** Sube con cada pago: las tarjetas vuelven a pedir su planilla (el estado y la fecha del pago). */
+  const [version, setVersion] = useState(0);
 
   const acciones: AccionMenu[] = [
     { clave: "pct", etiqueta: `Cambiar el % de un ${p.carrera}`, icono: "percent", onClick: () => navigate("/configuracion/carreras") },
   ];
 
-  // Las mismas columnas para el encabezado, las filas y el total (en escritorio).
-  const columnas = "lg:grid-cols-[minmax(200px,2fr)_150px_110px_110px_110px_116px_72px]";
+  const porPagar = d ? d.docentes.filter((x) => x.estado !== "PAGADA").reduce((s, x) => s + x.liquido, 0) : 0;
+  const pagado = d ? d.docentes.filter((x) => x.estado === "PAGADA").reduce((s, x) => s + x.liquido, 0) : 0;
+  const pagadas = d ? d.docentes.filter((x) => x.estado === "PAGADA").length : 0;
 
   return (
-    <PaginaAcademia>
+    <PaginaAcademia ancho="max-w-5xl">
       <EncabezadoPagina
-        titulo={`Planilla ${p.docente}s · ${tituloMes(mes)}`}
+        titulo={`Pagos a ${p.docente}s`}
         bajada={d ? subtitulo(d, mes === hoy, sede.nombre) : undefined}
         acciones={
           <>
@@ -51,7 +72,7 @@ export default function PlanillaMes() {
               >
                 <Icon name="chevronLeft" size={16} />
               </button>
-              <span className="min-w-[7.5rem] text-center text-[13px] font-semibold text-texto">{tituloMes(mes)}</span>
+              <span className="min-w-[8.5rem] text-center text-[13px] font-semibold text-texto">{tituloMes(mes)}</span>
               <button
                 type="button"
                 aria-label="Mes siguiente"
@@ -64,113 +85,65 @@ export default function PlanillaMes() {
                 <Icon name="chevronRight" size={16} />
               </button>
             </div>
-            <MenuMas etiqueta="Más acciones de la planilla" acciones={acciones} />
+            <MenuMas etiqueta="Más acciones de los pagos" acciones={acciones} />
           </>
         }
       />
 
       {sede.selector}
+      <AvisoOk>{aviso}</AvisoOk>
 
       {datos.error && !d ? (
         <ErrorMsg onReintentar={datos.recargar}>{datos.error}</ErrorMsg>
       ) : !d ? (
         <Cargando />
       ) : d.docentes.length === 0 ? (
-        <Tarjeta etiqueta="Sin planilla">
+        <Tarjeta etiqueta="Sin pagos">
           <Vacio icono="fileText" titulo={`Ningún ${p.docente} tiene ${p.materias} este mes`} />
         </Tarjeta>
       ) : (
         <>
+          {/* Sin «clases dadas»: ese dato todavía no existe. El tercero es el que cuenta para cobrar. */}
           <section aria-label="Resumen del mes">
-            <GrillaKpi>
-              <KpiTarjeta
-                icono="billetera"
-                etiqueta="Bruto del mes"
-                valor={fmtMoney(d.totales.bruto)}
-                pie={`${d.docentes.length} ${d.docentes.length === 1 ? p.docente : `${p.docente}s`}`}
-              />
-              <KpiTarjeta
-                icono="percent"
-                etiqueta="Retención"
-                valor={d.retencionActiva ? fmtMoney(d.docentes.reduce((s, x) => s + (x.retencion ?? 0), 0)) : "—"}
-                pie={d.retencionActiva ? undefined : "Por confirmar con el instituto"}
-              />
+            <GrillaKpi columnas={3}>
               <KpiTarjeta
                 icono="coins"
-                tono="ok"
-                etiqueta={mes === hoy ? "Líquido provisorio" : "Líquido"}
-                valor={fmtMoney(d.totales.liquido)}
-                pie={d.retencionActiva ? undefined : "sin retención ni atrasos"}
+                tono={porPagar > 0 ? "ok" : "normal"}
+                etiqueta={mes === hoy ? "Por pagar este mes" : "Por pagar"}
+                valor={fmtMoney(porPagar)}
+                pie={mes === hoy ? "provisorio: el mes no terminó" : `${d.docentes.length - pagadas} de ${d.docentes.length} sin pagar`}
               />
               <KpiTarjeta
                 icono="check"
-                etiqueta="Estado"
-                valor={`${d.docentes.filter((x) => x.estado !== "EN_CURSO").length} de ${d.docentes.length} cerradas`}
-                pie={mes === hoy ? "se cierran a fin de mes" : `${d.docentes.filter((x) => x.estado === "PAGADA").length} pagadas`}
+                etiqueta="Ya pagado"
+                valor={fmtMoney(pagado)}
+                pie={`${pagadas} de ${d.docentes.length} ${d.docentes.length === 1 ? p.docente : `${p.docente}s`}`}
+              />
+              <KpiTarjeta
+                icono="users"
+                etiqueta={`${p.Alumnos} que cuentan`}
+                valor={`${d.docentes.reduce((s, x) => s + x.cuentan, 0)} de ${d.docentes.reduce((s, x) => s + x.total, 0)}`}
+                pie="pagaron el módulo completo"
               />
             </GrillaKpi>
           </section>
 
-          <Tarjeta
-            id="t-docentes"
-            titulo={`${p.Docente}s`}
-            contador={d.docentes.length}
-            sinRelleno
-            pie={
-              <div className={`flex flex-wrap items-baseline gap-x-3 text-sm font-bold text-texto lg:grid lg:gap-3 ${columnas}`}>
-                <span>Total</span>
-                <span className="tabular-nums max-lg:font-normal max-lg:text-texto-3">
-                  {d.docentes.reduce((s, x) => s + x.cuentan, 0)} de {d.docentes.reduce((s, x) => s + x.total, 0)}
-                </span>
-                <span className="text-right tabular-nums max-lg:ml-auto">{fmtMoney(d.totales.bruto)}</span>
-                <span className="hidden text-right text-[13px] font-normal text-texto-3 lg:block">{d.retencionActiva ? "" : "por confirmar"}</span>
-                <span className="hidden text-right tabular-nums lg:block">{fmtMoney(d.totales.liquido)}</span>
-              </div>
-            }
-          >
-            <div className={`hidden gap-3 px-4 py-2.5 sm:px-5 lg:grid ${TABLA.encabezado} ${columnas}`}>
-              <span>{p.Docente}</span>
-              <span>Cuentan / {p.alumnos}</span>
-              <span className="text-right">Bruto</span>
-              <span className="text-right">Retención</span>
-              <span className="text-right">Líquido</span>
-              <span className="lg:pl-4">Estado</span>
-              <span />
-            </div>
-            <ul className={`${LISTA.lista} lg:border-t lg:border-borde-soft`}>
-              {d.docentes.map((x) => (
-                <li key={x.personalId}>
-                  <Link
-                    to={`/academia/planilla/${x.personalId}?mes=${mes}`}
-                    aria-label={`Ver la planilla de ${x.nombre}`}
-                    className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 ${LISTA.itemHover} ${columnas}`}
-                  >
-                    <span className="min-w-0 max-lg:order-1">
-                      <span className="block truncate text-sm font-semibold text-texto group-hover:text-primary-700">Prof. {x.nombre}</span>
-                      <span className="block text-[12px] text-texto-3">
-                        {x.grupos} {x.grupos === 1 ? "grupo" : "grupos"}
-                      </span>
-                    </span>
-                    <span className="min-w-0 text-sm tabular-nums text-texto-2 max-lg:order-3">
-                      {x.cuentan} de {x.total}
-                      {extraDocente(x) && <span className="block truncate text-[12px] text-texto-3">{extraDocente(x)}</span>}
-                    </span>
-                    <span className="text-right text-sm font-semibold tabular-nums text-texto max-lg:order-2">{fmtMoney(x.bruto)}</span>
-                    <span className="hidden text-right text-[13px] text-texto-3 lg:block">{textoRetencion(d.retencionActiva, x.retencion)}</span>
-                    <span className="hidden text-right text-sm tabular-nums text-texto-2 lg:block">{fmtMoney(x.liquido)}</span>
-                    <span className="max-lg:order-4 max-lg:justify-self-end lg:pl-4">
-                      <Chip tono={CHIP_ESTADO[x.estado]}>{TEXTO_ESTADO[x.estado]}</Chip>
-                    </span>
-                    {/* La fila entera es el enlace: esto sólo dice que se toca. */}
-                    <span aria-hidden="true" className={`${claseBotonFila("ghost")} justify-self-end group-hover:border-primary-200 max-lg:!hidden`}>
-                      Ver
-                      <Icon name="chevronRight" size={15} />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Tarjeta>
+          <ul aria-label={`Pagos a ${p.docente}s`} className="space-y-3">
+            {d.docentes.map((x) => (
+              <TarjetaDocente
+                key={`${x.personalId}-${mes}`}
+                fila={x}
+                mes={mes}
+                version={version}
+                liquida={liquida}
+                onPagado={(texto) => {
+                  setAviso(texto);
+                  setVersion((v) => v + 1);
+                  datos.recargar();
+                }}
+              />
+            ))}
+          </ul>
         </>
       )}
     </PaginaAcademia>
@@ -178,11 +151,179 @@ export default function PlanillaMes() {
 }
 
 /** En curso en gris, cerrada (falta pagarla) en ámbar, pagada en verde. */
-const CHIP_ESTADO: Record<TPlanillaMes["docentes"][number]["estado"], TonoChip> = {
+const CHIP_ESTADO: Record<FilaPlanillaMes["estado"], TonoChip> = {
   EN_CURSO: "gris",
   CERRADA: "ambar",
   PAGADA: "verde",
 };
+
+/**
+ * Un docente del mes: quién es, de dónde sale lo que cobra y cuánto se le
+ * paga. Su planilla (`GET /academia/planilla/:id`) se pide aparte para la
+ * cuenta, los grupos y la fecha del pago: la lista del mes no los trae.
+ */
+function TarjetaDocente({
+  fila: x,
+  mes,
+  version,
+  liquida,
+  onPagado,
+}: {
+  fila: FilaPlanillaMes;
+  mes: string;
+  version: number;
+  liquida: boolean;
+  onPagado: (aviso: string) => void;
+}) {
+  const detalle = useApi(() => apiAcademia.planillaDocente(x.personalId, mes).catch(() => null), [x.personalId, mes, version]);
+  const det = detalle.datos;
+  const [pidiendo, setPidiendo] = useState(false);
+  const [metodo, setMetodo] = useState<MetodoPagoPlanilla>("EFECTIVO");
+  const [mesSinTerminar, setMesSinTerminar] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
+  const sinPago = x.liquido <= 0;
+  const carreras = det?.grupos?.length ? [...new Set(det.grupos.map((g) => nombreDe(g.carrera)))].join(", ") : "";
+  const cuenta = det ? cuentaDelMesDocente(det) : null;
+
+  /**
+   * Cerrar y pagar, en ese orden (lo que eran «Cerrar planilla» y «Registrar
+   * pago»). Si el mes no terminó, el backend lo dice (MES_EN_CURSO) y se
+   * pregunta antes de forzar el cierre; si ya estaba cerrada, se paga.
+   */
+  async function pagar(forzar = false) {
+    setOcupado(true);
+    setError("");
+    try {
+      if (x.estado === "EN_CURSO") {
+        try {
+          await apiAcademia.cerrarPlanilla(x.personalId, mes, forzar);
+        } catch (e) {
+          if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.MES_EN_CURSO) {
+            setPidiendo(false);
+            setMesSinTerminar(true);
+            return;
+          }
+          // Otro la cerró mientras tanto: se sigue con el pago.
+          if (!(e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.PLANILLA_CERRADA)) throw e;
+        }
+      }
+      await apiAcademia.pagarPlanilla(x.personalId, mes, metodo);
+      setPidiendo(false);
+      onPagado(
+        sinPago
+          ? `La planilla de ${x.nombre} quedó resuelta sin pago: no salió dinero ni se registró ningún gasto.`
+          : `Pagaste ${fmtMoney(x.liquido)} a ${x.nombre} (${METODOS_PAGO_DOCENTE.find(([k]) => k === metodo)?.[1] ?? metodo}): quedó como gasto de sueldos.`,
+      );
+    } catch (e) {
+      setPidiendo(false);
+      setError(e instanceof Error ? e.message : "No se pudo registrar el pago");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <li aria-label={x.nombre} className="card p-4 sm:p-5">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <span
+          aria-hidden="true"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-50 text-sm font-bold text-primary-700"
+        >
+          {iniciales(x.nombre)}
+        </span>
+        <div className="min-w-0 flex-1 basis-56 space-y-1">
+          <p className="text-[15px] font-bold text-texto">{x.nombre}</p>
+          <p className="text-[13px] text-texto-3">
+            {x.grupos} {x.grupos === 1 ? "grupo" : "grupos"}
+            {carreras ? ` · ${carreras}` : ""}
+          </p>
+          {cuenta && <p className="text-[13px] text-texto-2">{cuenta}</p>}
+          {extraDocente(x) && <p className="text-[12px] text-texto-3">{extraDocente(x)}</p>}
+          <Link
+            to={`/academia/planilla/${x.personalId}?mes=${mes}`}
+            aria-label={`Ver el detalle de ${x.nombre}`}
+            className="inline-flex min-h-11 items-center gap-1 text-[13px] font-semibold text-primary-700 hover:underline sm:min-h-0"
+          >
+            Ver el detalle
+            <Icon name="chevronRight" size={14} />
+          </Link>
+        </div>
+        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
+          <span className="sm:text-right">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">A pagar</span>
+            <span className="block text-2xl font-bold tabular-nums tracking-tight text-texto">{fmtMoney(x.liquido)}</span>
+          </span>
+          {x.estado === "PAGADA" ? (
+            <Chip tono="verde" className="self-start text-[13px] sm:self-end">
+              {det?.pagadaEn ? `Pagado el ${fechaCorta(isoDia(new Date(det.pagadaEn)))}` : "Pagado"}
+            </Chip>
+          ) : liquida ? (
+            <Boton icono="billetera" className="min-h-11" disabled={ocupado} onClick={() => setPidiendo(true)}>
+              {sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(x.liquido)}`}
+            </Boton>
+          ) : (
+            <Chip tono={CHIP_ESTADO[x.estado]} className="self-start sm:self-end">
+              {TEXTO_ESTADO[x.estado]}
+            </Chip>
+          )}
+        </div>
+      </div>
+      <ErrorMsg>{error}</ErrorMsg>
+
+      <Modal
+        abierto={pidiendo}
+        titulo={sinPago ? "Cerrar sin pago" : `Pagar a ${x.nombre}`}
+        onClose={() => !ocupado && setPidiendo(false)}
+        ancho="max-w-sm"
+        acciones={
+          <>
+            <Boton variante="ghost" onClick={() => setPidiendo(false)} disabled={ocupado}>
+              Cancelar
+            </Boton>
+            <Boton onClick={() => void pagar()} disabled={ocupado}>
+              {ocupado ? "Un momento…" : sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(x.liquido)}`}
+            </Boton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {sinPago ? (
+            <p className="text-sm text-texto-2">
+              El líquido de {x.nombre} por {tituloMes(mes).toLowerCase()} es <b className="tabular-nums">{fmtMoney(x.liquido)}</b>: este mes no sale dinero y no
+              se registra ningún gasto de sueldos. Lo que quedó en contra se resuelve en la planilla del mes siguiente. Se cierra la planilla, se da por
+              resuelta y no se deshace.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-texto-2">
+                ¿Pagar <b className="tabular-nums">{fmtMoney(x.liquido)}</b> a {x.nombre} por {tituloMes(mes).toLowerCase()}?
+                {x.estado === "EN_CURSO" ? " Se cierra su planilla del mes y" : ""} queda como gasto de sueldos: no se deshace.
+              </p>
+              <div className="space-y-2">
+                <span className="block text-[13px] font-semibold text-texto-2">Cómo se le paga</span>
+                <Chips titulo="Método" valor={metodo} opciones={METODOS_PAGO_DOCENTE} onChange={setMetodo} />
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <Confirmar
+        abierto={mesSinTerminar}
+        titulo="El mes no terminó"
+        texto={`Si la cerrás ahora, lo que se pague después entra en la planilla del mes siguiente. ¿Cerrarla igual y pagarle a ${x.nombre}?`}
+        etiquetaOk={sinPago ? "Cerrar igual" : "Cerrar igual y pagar"}
+        procesando={ocupado}
+        onCancel={() => setMesSinTerminar(false)}
+        onOk={() => {
+          setMesSinTerminar(false);
+          void pagar(true);
+        }}
+      />
+    </li>
+  );
+}
 
 /** "+ 2 de meses anteriores", "1 ajuste", "3 postergados", "todos pagaron". */
 function extraDocente(x: TPlanillaMes["docentes"][number]): string {

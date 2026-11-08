@@ -21,13 +21,14 @@ import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
+import { cargoDeDocente } from "../lib/academia/docentes";
 import { usePalabras } from "../lib/academia/usePalabras";
 import { conMayuscula } from "../lib/rubro";
-import { contiene, normalizar } from "../lib/texto";
+import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { SelectorColor } from "../components/SelectorColor";
 import { PreviaColorAgenda } from "./agenda/piezas";
 
@@ -68,6 +69,7 @@ export default function Personal() {
   const [sucursal, setSucursal] = useState("");
   const [editando, setEditando] = useState<Persona | "nueva" | null>(null);
   const [aviso, setAviso] = useAviso();
+  const [params, setParams] = useSearchParams();
 
   const personas = useApi(() => apiPersonal.listar({ incluirInactivos: true }), []);
   // Los cargos son los roles del negocio (PLAN-ROLES-NEGOCIO). Sin la lista
@@ -81,6 +83,22 @@ export default function Personal() {
   const nombreSucursal = (id: number) => sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`;
 
   const todas = personas.datos ?? [];
+  // `?persona=ID` abre su ficha: lo usa «Darle acceso» de la pantalla Docentes
+  // del instituto (rediseño de noviembre), para no tener que buscarlo acá.
+  const pedida = Number(params.get("persona")) || null;
+  useEffect(() => {
+    if (pedida == null || !personas.datos) return;
+    const p = personas.datos.find((x) => x.id === pedida);
+    if (p) setEditando(p);
+    setParams(
+      (actual) => {
+        const sin = new URLSearchParams(actual);
+        sin.delete("persona");
+        return sin;
+      },
+      { replace: true },
+    );
+  }, [pedida, personas.datos, setParams]);
   const cargos = useMemo(() => {
     const m = new Map<number, string>();
     for (const c of cargosRol.datos ?? []) m.set(c.id, c.nombre);
@@ -261,7 +279,8 @@ function FichaPersona({
   // el aviso decía "Profesionales" y la pestaña "Manicuristas y espacios").
   const pestanaProfesionales = `${plural(etiquetaRol("PROFESIONAL", negocio))} y espacios`;
   // En un instituto la gente son los docentes (contrato de la ronda 1): su %
-  // se llama "% docente" y suman la retención y el NIT.
+  // se llama "% docente" y suma el NIT. La retención ya no se pide (dueño,
+  // 08-nov: a los docentes no se les retiene).
   const conDocentes = esInstituto(negocio);
   const pal = usePalabras();
   const sedeTxt = conDocentes ? pal.sede : "sucursal";
@@ -280,7 +299,6 @@ function FichaPersona({
   const [fechaIngreso, setFechaIngreso] = useState(persona?.fechaIngreso ?? "");
   const [color, setColor] = useState(persona?.color ?? "");
   const [comision, setComision] = useState(persona?.comisionPct != null ? String(persona.comisionPct) : "");
-  const [retencion, setRetencion] = useState(persona?.retencionPct != null ? String(persona.retencionPct) : "");
   const [nit, setNit] = useState(persona?.nit ?? "");
   const [notas, setNotas] = useState(persona?.notas ?? "");
   const [zona, setZona] = useState(persona?.zona ?? "");
@@ -288,10 +306,11 @@ function FichaPersona({
   const [sucursalIds, setSucursalIds] = useState<number[]>(
     persona?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
   );
-  // En el instituto, quien se carga es casi siempre un docente: el cargo «Docente»
-  // viene elegido. Sin cargo la persona NO cuenta como docente (no aparece en
-  // «Abrir grupo»). Sólo al crear y mientras nadie haya elegido otra cosa (R4).
-  const cargoDocente = conDocentes && !persona ? cargos.find((c) => [normalizar(pal.Docente), "docente"].includes(normalizar(c.nombre))) : undefined;
+  // En el instituto, quien se carga es casi siempre un docente: el cargo de
+  // docente viene elegido. Sin cargo la persona NO cuenta como docente (no
+  // aparece en «Abrir grupo»). Sólo al crear y mientras nadie haya elegido otra
+  // cosa (R4). Por permisos, no por el nombre «Docente» (revisión del 08-nov).
+  const cargoDocente = conDocentes && !persona ? cargoDeDocente(cargos, pal.Docente) : undefined;
   useEffect(() => {
     if (cargoDocente) setCargoRolId((actual) => actual ?? cargoDocente.id);
   }, [cargoDocente]);
@@ -337,10 +356,6 @@ function FichaPersona({
     if (com !== null && (!Number.isFinite(com) || com < 0 || com > 100)) {
       return setError(conDocentes ? "El % docente va de 0 a 100." : "La comisión va de 0 a 100 %.");
     }
-    const ret = retencion.trim() === "" ? null : Number(retencion);
-    if (ret !== null && (!Number.isFinite(ret) || ret < 0 || ret > 100)) {
-      return setError("La retención va de 0 a 100 %.");
-    }
     if (persona && sucursales.length > 1 && !sucursalIds.length) {
       return setError(`Elegí al menos una ${sedeTxt} donde trabaja.`);
     }
@@ -364,8 +379,9 @@ function FichaPersona({
       notas: notas.trim() || null,
       ...(esRepartidor ? { zona: zona.trim() || null, vehiculo: vehiculo.trim() || null } : {}),
       ...(cambiaComision && com !== (persona?.comisionPct ?? null) ? { comisionPct: com } : {}),
-      // Sólo en el instituto, y sólo si cambiaron: un backend anterior no los conoce.
-      ...(conDocentes && cambiaComision && ret !== (persona?.retencionPct ?? null) ? { retencionPct: ret } : {}),
+      // Sólo en el instituto, y sólo si cambió: un backend anterior no lo conoce.
+      // `retencionPct` ya no viaja (dueño, 08-nov: sin retención): el que tenga
+      // guardado queda como está y la planilla no lo usa (`retencionActiva`).
       ...(conDocentes && (nit.trim() || null) !== (persona?.nit ?? null) ? { nit: nit.trim() || null } : {}),
       ...(sucursalIds.length ? { sucursalIds } : {}),
     };
@@ -597,11 +613,6 @@ function FichaPersona({
           {cambiaComision && !conDocentes && (
             <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
-            </Campo>
-          )}
-          {conDocentes && cambiaComision && (
-            <Campo label="Retención %" hint="Si no factura. Vacío = el de los ajustes.">
-              <Input type="number" value={retencion} onChange={(e) => setRetencion(e.target.value)} placeholder="Opcional" />
             </Campo>
           )}
           {conDocentes && (

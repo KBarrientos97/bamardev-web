@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaseDelDia, ListaDeClase, LlegadaRegistrada } from "../../../lib/academia/tipos";
 import { fmtHora } from "../../../lib/format";
@@ -105,9 +105,58 @@ describe("E11a · Mis clases", () => {
     expect(screen.queryByText(/pagaron el M2/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pasar lista/ })).toHaveAttribute("href", "/academia/lista?grupo=7");
     expect(screen.getByRole("region", { name: "Próximas clases" })).toBeInTheDocument();
-    // Su barra de abajo en el celular: Mis clases y Notas (sin "Mi planilla" desde D1, 22-oct).
+    // Su barra de abajo en el celular: Mis clases y Notas (sin "Mi planilla" desde D1, 22-oct,
+    // y sin "Pasar lista" desde el rediseño de noviembre: se pasa desde cada clase).
     const barra = within(screen.getByRole("navigation", { name: "Secciones del docente" }));
     expect(barra.getAllByRole("link").map((l) => l.textContent)).toEqual(["Mis clases", "Notas"]);
+  });
+
+  it("rediseño de noviembre: la clase que sigue va grande, con el horario, cuántos son y los dos botones", async () => {
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [
+        { ...CLASE, sesionId: 12, horaInicio: "07:00", horaFin: "08:30", nombre: "L-M-V 07:00–08:30" },
+        { ...CLASE, semaforos: { rojo: 1, amarillo: 1 } },
+      ],
+      proximas: [{ fecha: "2026-10-19", grupoId: 7, nombre: "L-M-V 09:00–11:00", carrera: "Barbería", materia: { orden: 2, nombre: "Degradados" }, horaInicio: "09:00", horaFin: "11:00", aula: "Aula 2" }],
+    });
+    render(
+      <MemoryRouter>
+        <MisClases />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    // La de las 07:00 ya terminó: la grande es la de las 09:00.
+    const grande = screen.getByRole("article", { name: "Tu próxima clase" });
+    expect(grande).toHaveTextContent("09:00 a 11:00");
+    expect(grande).toHaveTextContent("Barbería · M2 Degradados");
+    expect(grande).toHaveTextContent("Aula 2 · Central");
+    expect(within(grande).getByText("en 12 min")).toBeInTheDocument();
+    expect(grande).toHaveTextContent("22estudiantes");
+    expect(grande).toHaveTextContent("2deben la cuota");
+    expect(within(grande).getByRole("link", { name: "Pasar lista" })).toHaveAttribute("href", "/academia/lista?grupo=7");
+    expect(within(grande).getByRole("link", { name: "Notas del módulo" })).toHaveAttribute("href", "/academia/notas?grupo=7");
+    // La que terminó, chica debajo.
+    expect(screen.getByRole("region", { name: "Más clases de hoy" })).toHaveTextContent("07:00 a 08:30");
+    // Las próximas, con el cuadrito del día.
+    const proxima = within(screen.getByRole("region", { name: "Próximas clases" })).getByRole("listitem");
+    expect(proxima).toHaveTextContent("19LUN");
+    expect(proxima).toHaveTextContent("09:00 · Barbería");
+    expect(proxima).toHaveTextContent("M2 Degradados · Aula 2");
+  });
+
+  it("al volver a la pestaña vuelve a pedir las clases (la llegada que marcó la recepción no queda vieja)", async () => {
+    render(
+      <MemoryRouter>
+        <MisClases />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(apiAcademia.misClases).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(apiAcademia.misClases).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -223,10 +272,75 @@ describe("D7 · el «Llegué» del docente en Mis clases", () => {
     expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
   });
 
-  it("sin el permiso asistencia.llegadas no hay botón", async () => {
+  it("revisión 08-nov: dentro de la tolerancia es llegar a horario (sin «min de atraso»); pasada, los minutos", async () => {
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 3, conAtraso: false, toleranciaMin: 10 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(/Llegaste a las/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/atraso/);
+    cleanup();
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 12, conAtraso: true, toleranciaMin: 10 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(/12 min de atraso/)).toBeInTheDocument();
+  });
+
+  it("revisión 08-nov: el «Llegué» dentro de la tolerancia tampoco dice atraso", async () => {
+    vi.mocked(apiAcademia.llegada).mockResolvedValue({ ...REGISTRADA, atrasoMin: 3, conAtraso: false });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    expect(screen.getByText(/Llegaste a las/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/atraso/);
+  });
+
+  it("sin el permiso asistencia.llegadas no hay botón: dice que la marca la recepción", async () => {
     quien.permisos = ["academia.ver", "asistencia.registrar", "notas.registrar"];
     await montar();
     expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+    expect(screen.getByText("La recepción marca tu llegada cuando llegás")).toBeInTheDocument();
+  });
+
+  it("rediseño de noviembre: sin el permiso, la llegada que marcó la recepción en verde, y «tarde» sólo con conAtraso", async () => {
+    quien.permisos = ["academia.ver", "asistencia.registrar", "notas.registrar"];
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 4, conAtraso: false, toleranciaMin: 10 }],
+      proximas: [],
+    });
+    await montar();
+    const linea = screen.getByText(/La recepción marcó tu llegada a las/).closest("p")!;
+    expect(linea).toHaveTextContent(`La recepción marcó tu llegada a las ${fmtHora(LLEGADA_8_48)}`.replace(/\s+/g, " "));
+    expect(linea).not.toHaveTextContent(/tarde/);
+    expect(linea.className).toMatch(/emerald/);
+    expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+    cleanup();
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 12, conAtraso: true, toleranciaMin: 10 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(/La recepción marcó tu llegada a las/).closest("p")).toHaveTextContent("· 12 min tarde");
+    expect(document.body).not.toHaveTextContent(/Bs|descuento/i);
+  });
+
+  it("con el permiso, la llegada ya marcada no dice «la recepción»", async () => {
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 0 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(/Llegaste a las/)).toBeInTheDocument();
+    expect(screen.queryByText(/La recepción/)).not.toBeInTheDocument();
   });
 
   it("ronda 2 · más de 3 h antes: no hay botón, y dice desde qué hora se marca (texto a la vista)", async () => {
@@ -300,8 +414,10 @@ describe("N6 · Pasar lista", () => {
     const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
     expect(within(camila).getByRole("button", { name: "Presente" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(within(camila).getByRole("button", { name: "Ausente" }));
+    // Las pastillas de arriba, en vivo.
+    expect(screen.getByLabelText("Totales de la lista")).toHaveTextContent("1 presente0 tarde2 ausentes");
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Guardar lista (1 presente, 2 ausentes)" }));
+      fireEvent.click(screen.getByRole("button", { name: "Guardar lista" }));
     });
     expect(apiAcademia.guardarLista).toHaveBeenCalledWith(7, "2026-10-16", [
       { inscripcionId: 101, estado: "PRESENTE" },
@@ -311,10 +427,22 @@ describe("N6 · Pasar lista", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/podés corregirla hasta el final del día/);
   });
 
-  it("sin semáforo prendido, «Con deuda» queda vacío", async () => {
+  it("rediseño de noviembre: el encabezado dice de qué clase es, ayuda a empezar y, guardada, ofrece volver a mis clases", async () => {
     await montar();
-    fireEvent.click(screen.getByRole("tab", { name: /Con deuda/ }));
-    expect(screen.queryByText("Andrade Villca, Mateo")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pasar lista" })).toBeInTheDocument();
+    expect(screen.getByText("Barbería y Peluquería · M2 Degradados · Vie 16-oct, 09:00")).toBeInTheDocument();
+    expect(screen.getByText("Todos arrancan presentes: tocá sólo a quien faltó o llegó tarde.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Volver a mis clases" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar lista" }));
+    });
+    expect(screen.getByRole("link", { name: "Volver a mis clases" })).toHaveAttribute("href", "/academia/mis-clases");
+  });
+
+  it("sin semáforo prendido nadie «debe la cuota» y no hay filtro", async () => {
+    await montar();
+    expect(screen.queryByText("debe la cuota")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Deben la cuota/ })).not.toBeInTheDocument();
   });
 
   it("sin clase ese día lo dice, sin error", async () => {
@@ -336,6 +464,115 @@ describe("N6 · Pasar lista", () => {
   it("sin grupo y con una sola clase hoy, abre esa", async () => {
     await montar("/academia/lista");
     expect(apiAcademia.lista).toHaveBeenCalledWith(7, undefined);
+  });
+});
+
+describe("revisión 08-nov · Pasar lista avisa antes de perder lo marcado", () => {
+  /** Dónde quedó la app (para ver si salió o se quedó). */
+  let ubicacion = "";
+  function Ubicacion() {
+    const l = useLocation();
+    ubicacion = l.pathname + l.search;
+    return null;
+  }
+
+  async function montar() {
+    render(
+      <MemoryRouter initialEntries={["/academia/lista?grupo=7"]}>
+        <Ubicacion />
+        <Routes>
+          <Route path="/academia/lista" element={<PasarLista />} />
+          <Route path="/academia/mis-clases" element={<p>Mis clases</p>} />
+          <Route path="/academia/notas" element={<p>Notas</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  const marcarAusente = (nombre: string) =>
+    fireEvent.click(within(screen.getByRole("group", { name: `Asistencia de ${nombre}` })).getByRole("button", { name: "Ausente" }));
+
+  it("sin tocar nada (todos arrancan presentes) sale sin preguntar", async () => {
+    await montar();
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    expect(ubicacion).toBe("/academia/mis-clases");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("con cambios, volver pregunta: «Seguir pasando lista» se queda y «Salir sin guardar» sale sin guardar", async () => {
+    await montar();
+    marcarAusente("Bustillos Rek, Camila");
+    // El «volver» del encabezado y la barra del docente (celular): los dos preguntan.
+    const [volver, barraDocente] = screen.getAllByRole("link", { name: /Mis clases/ });
+    fireEvent.click(barraDocente);
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    const dialogo = screen.getByRole("dialog", { name: "La lista no se guardó" });
+    expect(dialogo).toHaveTextContent("Cambiaste la asistencia de 1");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Seguir pasando lista" }));
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    expect(within(screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" })).getByRole("button", { name: "Ausente" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(volver);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Salir sin guardar" }));
+    expect(ubicacion).toBe("/academia/mis-clases");
+    expect(apiAcademia.guardarLista).not.toHaveBeenCalled();
+  });
+
+  it("«Notas del módulo» con cambios pregunta, y «Guardar y salir» guarda la lista antes de ir", async () => {
+    await montar();
+    marcarAusente("Bustillos Rek, Camila");
+    fireEvent.click(screen.getByRole("link", { name: /Notas del/ }));
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Guardar y salir" }));
+    });
+    expect(apiAcademia.guardarLista).toHaveBeenCalledWith(7, "2026-10-16", [
+      { inscripcionId: 101, estado: "PRESENTE" },
+      { inscripcionId: 102, estado: "AUSENTE" },
+      { inscripcionId: 103, estado: "AUSENTE" },
+    ]);
+    expect(ubicacion).toBe("/academia/notas?grupo=7");
+  });
+
+  it("si guardar falla, no sale y muestra el error", async () => {
+    vi.mocked(apiAcademia.guardarLista).mockRejectedValue(new ApiError("La lista cerró", 403, { codigo: "LISTA_CERRADA" }));
+    await montar();
+    marcarAusente("Bustillos Rek, Camila");
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Guardar y salir" }));
+    });
+    expect(ubicacion).toBe("/academia/lista?grupo=7");
+    expect(screen.getByText(/La lista de ese día ya cerró/)).toBeInTheDocument();
+  });
+
+  it("con cambios el navegador pregunta al cerrar; ya guardada, ni el navegador ni volver preguntan", async () => {
+    await montar();
+    const sinCambios = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(sinCambios);
+    expect(sinCambios.defaultPrevented).toBe(false);
+    marcarAusente("Bustillos Rek, Camila");
+    const conCambios = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(conCambios);
+    expect(conCambios.defaultPrevented).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Guardar lista/ }));
+    });
+    const guardada = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(guardada);
+    expect(guardada.defaultPrevented).toBe(false);
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    expect(ubicacion).toBe("/academia/mis-clases");
+  });
+
+  it("una lista que ya cerró (no editable) no pregunta nada", async () => {
+    vi.mocked(apiAcademia.lista).mockResolvedValue({ ...LISTA, editable: false });
+    await montar();
+    fireEvent.click(screen.getAllByRole("link", { name: /Mis clases/ })[0]);
+    expect(ubicacion).toBe("/academia/mis-clases");
   });
 });
 
@@ -364,19 +601,19 @@ describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
   it("el docente ve rojo o amarillo, sin «Pagado / Abonó / Sin pagar» ni montos; «Con deuda» filtra por el semáforo", async () => {
     vi.mocked(apiAcademia.lista).mockResolvedValue(CON_SEMAFORO);
     await montar();
-    expect(screen.getByLabelText("Debe, pasó la semana de espera")).toHaveTextContent("Debe, pasó la espera");
-    expect(screen.getByLabelText("Debe, en semana de espera")).toHaveTextContent("Debe, en espera");
-    expect(screen.getByLabelText("Sin deudas vencidas")).toBeInTheDocument();
+    // «debe la cuota» (rediseño de noviembre), rojo o ámbar según el semáforo; el detalle en la etiqueta.
+    expect(screen.getByLabelText("Debe, pasó la semana de espera")).toHaveTextContent("debe la cuota");
+    expect(screen.getByLabelText("Debe, pasó la semana de espera").innerHTML).toMatch(/danger/);
+    expect(screen.getByLabelText("Debe, en semana de espera")).toHaveTextContent("debe la cuota");
+    expect(screen.getByLabelText("Debe, en semana de espera").innerHTML).toMatch(/warning/);
+    expect(screen.getAllByText("debe la cuota")).toHaveLength(2);
     for (const viejo of ["Pagado", "Abonó", "Sin pagar"]) expect(screen.queryByText(viejo)).not.toBeInTheDocument();
     expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
     // Nunca bloquea: el que debe se marca igual.
     const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
     expect(within(camila).getByRole("button", { name: "Ausente" })).toBeEnabled();
-    // El indicador cuenta los que tienen deuda, con el color del peor.
-    expect(screen.getByText("Con deuda", { selector: "p, span, dt, div" })).toBeInTheDocument();
-    expect(screen.getByText("1 pasó la espera")).toBeInTheDocument();
     expect(screen.queryByText(/Pagaron el M/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: /Con deuda/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Deben la cuota/ }));
     expect(screen.queryByText("Andrade Villca, Mateo")).not.toBeInTheDocument();
     expect(screen.getByText("Bustillos Rek, Camila")).toBeInTheDocument();
     expect(screen.getByText("Céspedes Molina, Joaquín")).toBeInTheDocument();
@@ -392,16 +629,19 @@ describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
       "Ausente",
       "Justificado",
     ]);
+    // Cuatro botones iguales, de pulgar, con lo que entra en un cuarto de celular.
+    expect(within(joaquin).getAllByRole("button").map((b) => b.textContent)).toEqual(["Presente", "Tarde", "Ausente", "Justif."]);
+    for (const b of within(joaquin).getAllByRole("button")) expect(b.className).toContain("min-h-11");
     // Lo guardado manda: venía Tarde.
     expect(within(joaquin).getByRole("button", { name: "Tarde" })).toHaveAttribute("aria-pressed", "true");
     const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
     fireEvent.click(within(camila).getByRole("button", { name: "Justificado" }));
     expect(within(camila).getByRole("button", { name: "Justificado" })).toHaveAttribute("aria-pressed", "true");
     expect(within(camila).getByRole("button", { name: "Presente" })).toHaveAttribute("aria-pressed", "false");
-    // Tarde cuenta como presente; Justificado, como ausente.
-    expect(screen.getByText(/1 ausente · 1 tarde · 1 justificado/)).toBeInTheDocument();
+    // Cada estado en su pastilla.
+    expect(screen.getByLabelText("Totales de la lista")).toHaveTextContent("1 presente1 tarde0 ausentes1 justificado");
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Guardar lista (2 presentes, 1 ausente)" }));
+      fireEvent.click(screen.getByRole("button", { name: "Guardar lista" }));
     });
     expect(apiAcademia.guardarLista).toHaveBeenCalledWith(7, "2026-10-16", [
       { inscripcionId: 101, estado: "PRESENTE" },
@@ -410,10 +650,10 @@ describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
     ]);
   });
 
-  it("sin semáforo en la respuesta el docente ve la raya, nunca «Pagado / Sin pagar»", async () => {
+  it("sin semáforo en la respuesta el docente no ve nada del pago, nunca «Pagado / Sin pagar»", async () => {
     await montar();
     expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
-    expect(screen.getAllByLabelText("Sin deudas vencidas").length).toBe(3);
+    expect(screen.queryByText("debe la cuota")).not.toBeInTheDocument();
   });
 });
 
@@ -437,8 +677,8 @@ describe("QA 23-oct · el docente sin los campos de cobro", () => {
     });
     await montarLista();
     expect(document.body).not.toHaveTextContent("undefined");
-    expect(screen.getByText("1 de 3")).toBeInTheDocument();
-    expect(screen.getByText("en semana de espera")).toBeInTheDocument();
+    expect(screen.getByLabelText("Debe, en semana de espera")).toHaveTextContent("debe la cuota");
+    expect(screen.queryByText(/Pagaron el M/)).not.toBeInTheDocument();
   });
 
   it("una lista de un día pasado no dice «hasta el final del día»", async () => {
@@ -465,8 +705,8 @@ describe("QA 23-oct · el docente sin los campos de cobro", () => {
     );
     await act(async () => {});
     expect(document.body).not.toHaveTextContent("undefined");
-    expect(screen.getByText("1 pasó la espera")).toBeInTheDocument();
-    expect(screen.getByText("2 en semana de espera")).toBeInTheDocument();
+    expect(screen.getByText("deben la cuota")).toBeInTheDocument();
+    expect(screen.getByText("1 pasó la espera · 2 en semana de espera")).toBeInTheDocument();
   });
 });
 

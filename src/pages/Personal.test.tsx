@@ -606,6 +606,15 @@ describe("ronda 2 · Personal del instituto", () => {
     expect(screen.getByText(/"Marco" quedó guardado\. Todavía no entra al sistema: abrí su ficha y marcá «Darle acceso al sistema»\./)).toBeInTheDocument();
   });
 
+  it("revisión 08-nov: un rol «Profesor» con los permisos del docente viene elegido igual (por permisos, no por el nombre)", async () => {
+    const PROFESOR = { ...DOCENTE, id: 12, nombre: "Profesor", permisos: [{ codigo: "notas.registrar", alcance: "PROPIO" }] };
+    vi.mocked(apiPersonal.cargos).mockResolvedValue([...ROLES, PROFESOR] as never);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    expect(within(dialogo).getByLabelText("Cargo")).toHaveValue("12");
+  });
+
   it("M2: al crear a un docente, el bloque de acceso arranca con el rol Docente y crea el usuario en el mismo paso", async () => {
     vi.mocked(apiRoles.asignables).mockResolvedValueOnce([...ROLES.slice(1), DOCENTE] as never);
     vi.mocked(api.getSucursales).mockResolvedValue([{ id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL" }] as never);

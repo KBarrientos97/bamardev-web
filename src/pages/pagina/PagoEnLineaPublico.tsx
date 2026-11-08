@@ -338,10 +338,11 @@ function SubirComprobante({
             type="button"
             disabled={procesando}
             onClick={() => archivo.current?.click()}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] text-sm font-semibold text-[#374151] hover:bg-white disabled:opacity-60"
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4 py-2.5 text-center text-sm font-semibold leading-snug text-[#374151] hover:bg-white disabled:opacity-60"
           >
-            <Icon name="camara" size={18} />
-            {procesando ? "Preparando la foto…" : "Subir foto o captura del comprobante"}
+            <Icon name="camara" size={18} className="shrink-0" />
+            {/* Corto (Drick, 08-nov): el largo se partía en dos renglones con el ícono pegado al borde. */}
+            {procesando ? "Preparando la foto…" : "Subir foto del comprobante"}
           </button>
         )}
         {siteKey && <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} />}
@@ -354,10 +355,21 @@ function SubirComprobante({
           type="button"
           onClick={() => void enviar()}
           disabled={enviando || procesando}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl text-[15px] font-semibold text-white disabled:opacity-60"
+          // El nombre completo para el lector de pantalla: los dos renglones se leerían pegados.
+          aria-label={enviando ? undefined : `Ya pagué ${bs(aPagar)}: enviar comprobante`}
+          className="flex min-h-12 w-full flex-col items-center justify-center rounded-xl px-4 py-2.5 text-center leading-tight text-white disabled:opacity-60"
           style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
         >
-          {enviando ? "Enviando…" : `Ya pagué ${bs(aPagar)}: enviar comprobante`}
+          {/* En dos renglones (Drick, 08-nov): «Ya pagué Bs 150: enviar comprobante» en uno solo
+              llegaba a los bordes del botón en el celular. Primero lo que hace el botón. */}
+          {enviando ? (
+            <span className="text-[15px] font-semibold">Enviando…</span>
+          ) : (
+            <>
+              <span className="text-[16px] font-bold">Enviar comprobante</span>
+              <span className="mt-0.5 text-[12.5px] font-medium opacity-90">Ya pagué {bs(aPagar)}</span>
+            </>
+          )}
         </button>
         <p className="text-center text-[12px] text-[#6B7280]">El instituto lo revisa y te avisa por WhatsApp. Si el pago no figura, tu deuda sigue igual y podés subir otro.</p>
       </div>

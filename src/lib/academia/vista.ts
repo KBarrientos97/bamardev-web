@@ -8,6 +8,7 @@ import type {
   FormaPago,
   GrupoResumen,
   LineaPlanilla,
+  MetodoPagoPlanilla,
   MotivoNoPago,
   PagoDocenteCurso,
   PlanillaDocente,
@@ -121,7 +122,6 @@ export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[
   // del inventario, así que no pide `almacenes.administrar` sino lo mismo que
   // Ajustes (`academia.configurar`).
   { seccion: "academia_ajustes", a: RUTA_SEDES },
-  { seccion: "academia_planilla", a: "/academia/planilla" },
   { seccion: "academia_ajustes", a: "/configuracion/academia" },
   // M1 (31-oct): la lista de primeros pasos vive sólo acá, no arriba del Calendario ni del Control.
   { seccion: "academia_ajustes", a: RUTA_CONFIG_RAPIDA },
@@ -316,11 +316,39 @@ export const TEXTO_ESTADO_PLANILLA: Record<EstadoPlanilla, string> = {
 };
 
 /**
- * Lo que se cuenta de una retención: el monto si el instituto la confirmó
- * (D9: hoy está apagada) o "por confirmar".
+ * Cómo se le paga al docente, en «Registrar pago» y «Pagar Bs X». La tarjeta
+ * (que el backend acepta) no es cómo se paga un sueldo.
  */
-export function textoRetencion(activa: boolean, monto: number | null): string {
-  return activa && monto != null ? `− ${fmtMoney(monto)}` : "por confirmar";
+export const METODOS_PAGO_DOCENTE: readonly (readonly [MetodoPagoPlanilla, string])[] = [
+  ["EFECTIVO", "Efectivo"],
+  ["TRANSFERENCIA", "Transferencia"],
+  ["QR", "QR"],
+];
+
+/**
+ * De dónde sale lo que se le paga al docente en el mes, en una cuenta que se
+ * lee de un vistazo (Pagos a docentes): «Cobrado de sus estudiantes: Bs 4.500
+ * × 20 %» si todo va por el mismo %, o «12 módulos × Bs 90» si todo es monto
+ * fijo. Cuenta lo del mes y lo atrasado que completaron (lo que suma); con
+ * cursos por % distintos, o mezclados, la cuenta no entra en una línea y
+ * queda la frase de siempre (`textoCobroPlanilla`). Sin nada que sume, null.
+ */
+export function cuentaDelMesDocente(d: Pick<PlanillaDocente, "cuentan" | "atrasados" | "pct" | "carreras" | "grupos">): string | null {
+  const lineas = [...d.cuentan, ...d.atrasados];
+  if (!lineas.length) return null;
+  if (lineas.every(lineaEsMontoFijo)) {
+    const montos = new Set(lineas.map((l) => l.montoFijo ?? null));
+    const [monto] = [...montos];
+    if (montos.size === 1 && monto != null) return `${lineas.length} ${lineas.length === 1 ? "módulo" : "módulos"} × ${fmtMoney(monto)}`;
+  } else if (!lineas.some(lineaEsMontoFijo)) {
+    const pcts = new Set(lineas.map((l) => l.pct));
+    const [pct] = [...pcts];
+    if (pcts.size === 1 && pct != null) {
+      const cobrado = lineas.reduce((s, l) => s + l.cobradoModulo, 0);
+      return `Cobrado de sus estudiantes: ${fmtMoney(cobrado)} × ${textoPct(pct)} %`;
+    }
+  }
+  return textoCobroPlanilla(d.pct.defecto, cursosDePlanilla(d, null));
 }
 
 // ── Historial de la ficha ───────────────────────────────────────────────────

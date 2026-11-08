@@ -206,8 +206,9 @@ describe("menú de ACADEMIA", () => {
   it("el administrador: TODO lo del instituto en Academia, lo que no es del día en Configuración, y abajo Mi negocio", () => {
     const m = menuDe("ADMIN");
     expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
+    // Docentes y Pagos a docentes (rediseño de noviembre): la planilla salió de Configuración.
     expect(academia(m)).toEqual([
-      "Calendario", "Estudiantes", "Inscripciones online", "Cobranza", "Panel de control", "Reportes", "Configuración",
+      "Calendario", "Estudiantes", "Inscripciones online", "Cobranza", "Docentes", "Pagos a docentes", "Panel de control", "Reportes", "Configuración",
     ]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
     // Sin el grupo "Más" (26-oct): con el título del bloque encima era un
@@ -224,8 +225,9 @@ describe("menú de ACADEMIA", () => {
     );
     expect(miNegocio(conQr)).toEqual(["Personal", "Usuarios", "Roles", "QR de cobro"]);
     const nombres = todos(m);
-    // Cursos, sedes, planilla y ajustes son pestañas de Configuración, no
-    // renglones del menú (26-oct); las sedes tampoco se repiten en Inventario.
+    // Cursos, sedes y ajustes son pestañas de Configuración, no renglones del
+    // menú (26-oct); las sedes tampoco se repiten en Inventario. La planilla
+    // volvió al menú como «Pagos a docentes» (rediseño de noviembre).
     for (const no of ["Cuentas por cobrar", "Mesas del salón", "Insumos", "Billar", "Grupos", "Mis clases de hoy",
       "Hoy", "Cursos", "Sedes", "Almacenes", "Planilla docentes", "Ajustes", "Más", "Equipo"]) {
       expect(nombres).not.toContain(no);
@@ -244,12 +246,17 @@ describe("menú de ACADEMIA", () => {
     const planos = aplanar(menuDe("ADMIN").flatMap((b) => b.nodos));
     const config = planos.find((n) => n.item.label === "Configuración")!;
     expect(config.item.a).toBe("/academia/configuracion");
-    for (const ruta of ["/configuracion/carreras", "/configuracion/sedes", "/academia/planilla", "/configuracion/academia"]) {
+    for (const ruta of ["/configuracion/carreras", "/configuracion/sedes", "/configuracion/academia"]) {
       expect(esActivo(config.item, ruta), ruta).toBe(true);
       expect(tituloDe(planos, ruta), ruta).toBe("Configuración");
     }
-    // El detalle de un docente también es de la planilla.
-    expect(esActivo(config.item, "/academia/planilla/195")).toBe(true);
+    // La planilla ya no es una pestaña: es «Pagos a docentes», en la misma ruta, con el detalle de cada docente.
+    const pagos = planos.find((n) => n.item.label === "Pagos a docentes")!;
+    expect(esActivo(config.item, "/academia/planilla")).toBe(false);
+    expect(esActivo(pagos.item, "/academia/planilla")).toBe(true);
+    expect(esActivo(pagos.item, "/academia/planilla/195")).toBe(true);
+    expect(tituloDe(planos, "/academia/planilla")).toBe("Pagos a docentes");
+    expect(tituloDe(planos, "/academia/docentes")).toBe("Docentes");
   });
 
   it("el docente ve sólo sus clases, dentro de Academia (sin «Mi planilla»: es del admin, D1 del 22-oct)", () => {
@@ -257,7 +264,10 @@ describe("menú de ACADEMIA", () => {
     // M6: sin "Mi negocio" (es del administrador); el docente cierra en Academia.
     expect(m.map((b) => b.bloque)).toEqual(["instituto"]);
     expect(todos(m)).not.toContain("Mi negocio");
-    expect(academia(m)).toEqual(["Mis clases de hoy", "Pasar lista", "Notas"]);
+    // Rediseño de noviembre: «Pasar lista» se pasa desde cada clase y «Mis clases» también muestra las próximas.
+    expect(academia(m)).toEqual(["Mis clases", "Notas"]);
+    expect(todos(m)).not.toContain("Docentes");
+    expect(todos(m)).not.toContain("Pagos a docentes");
     expect(m[0].nodos[0].item.a).toBe("/academia/mis-clases");
   });
 
@@ -270,6 +280,8 @@ describe("menú de ACADEMIA", () => {
     }
     const docente = aplanar(menuDe("PROFESIONAL").flatMap((b) => b.nodos));
     expect(tituloDe(docente, "/academia/notas")).toBe("Notas");
+    // Fuera del menú, la del docente sigue con su título.
+    expect(tituloDe(docente, "/academia/lista")).toBe("Pasar lista");
     expect(tituloDe(docente, "/academia/mis-clases")).toBe("Mis clases");
   });
 

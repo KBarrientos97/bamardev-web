@@ -174,6 +174,19 @@ export function franjaSiguiente(lista: Franja[], almacenId: number | null): Fran
 export const LLEGADA_VENTANA_ANTES_MIN = 180;
 
 /**
+ * Los minutos de atraso que se muestran de una llegada: los que dice el
+ * servidor sólo si pasó la tolerancia (`conAtraso`); dentro de ella es llegar
+ * a horario (revisión del 08-nov: con 10 de tolerancia, llegar 3 tarde decía
+ * «3 min de atraso»). Sin `conAtraso` (un backend anterior), como antes: todo
+ * minuto cuenta. 0 = a horario.
+ */
+export function minutosDeAtraso(x: { atrasoMin: number | null | undefined; conAtraso?: boolean }): number {
+  const min = x.atrasoMin ?? 0;
+  if (x.conAtraso === undefined) return min;
+  return x.conAtraso ? min : 0;
+}
+
+/**
  * Dónde está ahora el docente respecto de la ventana para marcar su llegada
  * (ronda 2): "antes" (todavía no se puede; `desde` es la hora a partir de la
  * cual sí), "dentro" o "despues" (la clase terminó). Con la hora del equipo:

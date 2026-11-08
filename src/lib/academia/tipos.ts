@@ -266,6 +266,12 @@ export interface GrupoResumen {
   cancelado?: boolean;
   materiaActual: { orden: number; nombre: string; docente: string | null } | null;
   materias: { orden: number; estado: EstadoMateriaGrupo }[];
+  /**
+   * El último día en que se cargan notas del último módulo (su fin + 5 días,
+   * `plazoDeNotas`). null = sin módulos; un backend anterior no lo manda (ver
+   * `notasHasta` de plazoNotas.ts).
+   */
+  notasHasta?: string | null;
 }
 
 export interface MateriaDelGrupo {
@@ -958,6 +964,13 @@ export interface ClaseDelDia {
   semaforos?: { rojo: number; amarillo: number };
   llegadaEn: string | null;
   atrasoMin: number | null;
+  /**
+   * Revisión del 08-nov: si la llegada pasó la tolerancia de los ajustes (los
+   * minutos solos no lo dicen) y cuál es. Un backend anterior no los manda:
+   * ver `minutosDeAtraso`.
+   */
+  conAtraso?: boolean;
+  toleranciaMin?: number;
   lista: { pasada: boolean; presentes: number; total: number };
   /** Cambio #13. */
   fecha?: string;

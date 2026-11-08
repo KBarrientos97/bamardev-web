@@ -5,8 +5,8 @@ import type { Persona } from "../lib/personal";
 
 /**
  * Personal en un instituto (contrato de la ronda 1): el % se llama "% docente"
- * y suman la retención y el NIT. Lo cambia quien liquida la planilla. En los
- * demás rubros el formulario sigue igual (Personal.test.tsx).
+ * y suma el NIT. La retención ya no se pide ni se manda (dueño, 08-nov: sin
+ * retención). En los demás rubros el formulario sigue igual (Personal.test.tsx).
  */
 
 vi.mock("../store/AuthContext", () => ({
@@ -77,7 +77,7 @@ beforeEach(() => {
 });
 
 describe("Personal en un instituto", () => {
-  it("muestra retención y NIT, sin % docente ni color de agenda, y manda sólo lo que cambió", async () => {
+  it("muestra el NIT, sin retención, % docente ni color de agenda, y manda sólo lo que cambió", async () => {
     vi.mocked(apiPersonal.editar).mockResolvedValue({ ...MARCO, nit: "123456" });
     render(
       <MemoryRouter>
@@ -91,16 +91,27 @@ describe("Personal en un instituto", () => {
     // C3: el % lo manda el curso (o Ajustes), no la persona; el color es de la agenda de belleza (U2).
     expect(within(dialogo).queryByLabelText(/% docente/)).not.toBeInTheDocument();
     expect(within(dialogo).queryByRole("button", { name: /^Color en la agenda/ })).not.toBeInTheDocument();
-    expect(within(dialogo).getByLabelText(/^Retención %/)).toHaveValue("16");
+    // Sin retención (dueño, 08-nov): el campo no está aunque la persona tenga una guardada.
+    expect(within(dialogo).queryByLabelText(/Retención/)).not.toBeInTheDocument();
     fireEvent.change(within(dialogo).getByLabelText(/^NIT/), { target: { value: "123456" } });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     const cuerpo = vi.mocked(apiPersonal.editar).mock.calls[0][1];
     expect(cuerpo).toMatchObject({ nit: "123456" });
-    // Ni el % ni la retención cambiaron: no viajan.
+    // El % no cambió y la retención ya no se manda: no viajan.
     expect(cuerpo).not.toHaveProperty("comisionPct");
     expect(cuerpo).not.toHaveProperty("retencionPct");
+  });
+
+  it("rediseño de noviembre: `?persona=ID` (el «Darle acceso» de Docentes) abre su ficha", async () => {
+    render(
+      <MemoryRouter initialEntries={["/personal?persona=7"]}>
+        <Personal />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole("dialog", { name: "Marco Rojas" })).toBeInTheDocument();
   });
 
   it("sin nadie cargado, el vacío no habla de barberos ni de agenda", async () => {

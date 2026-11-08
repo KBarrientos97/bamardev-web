@@ -1,25 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Icon } from "../../../components/Icon";
+import ModalSalida from "../../../components/ModalSalida";
 import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
-import { fechaCorta, horarioGrupo, nombreDe } from "../../../lib/academia/formato";
-import type { EstadoAsistencia, ListaDeClase } from "../../../lib/academia/tipos";
+import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
+import type { EstadoAsistencia, ListaDeClase, SemaforoPago } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { mensajeDelBackend } from "../../../lib/academia/errores";
 import { ApiError } from "../../../lib/api";
-import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
+import { textoSemaforo } from "../../../lib/academia/vista";
+import { capitalizar, diaCorto } from "../../../lib/agenda/horaAgenda";
 import { fmtHora, isoDia } from "../../../lib/format";
 import { soloLoSuyo } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
+import { useSalidaConCambios } from "../../../lib/useSalidaConCambios";
 import { useAuth } from "../../../store/AuthContext";
 import {
   BotonFila,
+  Chip,
+  claseBotonFila,
   EncabezadoPagina,
   ErrorDeCarga,
   FiltrosConteo,
-  GrillaKpi,
-  KpiTarjeta,
-  LISTA,
   PaginaAcademia,
   PagoDelModulo,
   Tarjeta,
@@ -31,8 +34,8 @@ type Filtro = "todos" | "debe";
 
 /**
  * B8 (UX 6): los cuatro estados que el backend ya acepta, también en el
- * celular. Van en una tira de cuatro botones del ancho de la pantalla, debajo
- * del nombre: cada uno de alto de pulgar, sin menú que abrir.
+ * celular. Van en una fila de cuatro botones iguales debajo del nombre, cada
+ * uno de alto de pulgar, sin menú que abrir; el elegido, con su color.
  */
 const ESTADOS: readonly (readonly [EstadoAsistencia, string, string])[] = [
   ["PRESENTE", "Presente", "bg-primary-boton text-white"],
@@ -49,9 +52,17 @@ const ESTADOS: readonly (readonly [EstadoAsistencia, string, string])[] = [
  * todo junto. Se corrige hasta el final del día (después
  * sólo la administración: 403 LISTA_CERRADA).
  *
+ * Salir con algo marcado y sin guardar pregunta, como en las Notas (revisión
+ * del 08-nov: antes se perdía sin avisar): volver, "Notas del módulo", la
+ * barra del docente y el navegador. Lo que arranca presente sin que nadie lo
+ * toque no cuenta como cambio.
+ *
  * El docente entra desde Mis clases (`/academia/lista?grupo=`); la
- * administración y la recepción, desde el grupo (`/academia/grupos/:id/lista`).
- * Sin grupo, se elige entre las clases de hoy.
+ * administración y la recepción, desde el grupo o desde Clases de hoy
+ * (`/academia/grupos/:id/lista`). Sin grupo, se elige entre las clases de hoy.
+ * Desde el rediseño de noviembre ya no está en el menú del docente: se pasa
+ * desde cada clase. Cada estudiante va en su tarjeta, con «debe la cuota» si
+ * corresponde y una fila de cuatro botones; arriba, los totales en pastillas.
  */
 export default function PasarLista() {
   const p = usePalabras();
@@ -125,6 +136,8 @@ function Lista({
   );
   const grupo = useApi(() => apiAcademia.grupo(grupoId).catch(() => null), [grupoId]);
   const [estados, setEstados] = useState<Record<number, EstadoAsistencia>>({});
+  /** Lo que está guardado (o arrancó así): contra esto se ve si hay cambios. */
+  const [guardados, setGuardados] = useState<Record<number, EstadoAsistencia>>({});
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [guardando, setGuardando] = useState(false);
   const [guardadaEn, setGuardadaEn] = useState<string | null>(null);
@@ -134,24 +147,27 @@ function Lista({
   // Lo guardado manda; lo que nunca se marcó arranca presente.
   useEffect(() => {
     if (!d) return;
-    setEstados(Object.fromEntries(d.alumnos.map((a) => [a.inscripcionId, a.estado ?? "PRESENTE"])));
+    const inicial = Object.fromEntries(d.alumnos.map((a) => [a.inscripcionId, a.estado ?? "PRESENTE"])) as Record<number, EstadoAsistencia>;
+    setEstados(inicial);
+    setGuardados(inicial);
   }, [d]);
 
-  // Tarde cuenta como presente y Justificado como ausente: así suman el
-  // "Guardar lista" y los indicadores; el detalle va al pie del indicador.
+  const cambiados = d?.editable ? d.alumnos.filter((a) => (estados[a.inscripcionId] ?? "PRESENTE") !== (guardados[a.inscripcionId] ?? "PRESENTE")).length : 0;
+  const salida = useSalidaConCambios(cambiados > 0);
+
+  // Las pastillas de arriba, cada estado por separado («12 presentes · 1
+  // tarde · 1 ausente»): así el docente ve de un vistazo a quién tocó.
   const conteo = useMemo(() => {
     const vals = Object.values(estados);
     const de = (e: EstadoAsistencia) => vals.filter((x) => x === e).length;
-    const tarde = de("TARDE");
-    const justificados = de("JUSTIFICADO");
-    const ausentes = de("AUSENTE") + justificados;
-    return { presentes: vals.length - ausentes, ausentes, tarde, justificados };
+    return { soloPresentes: de("PRESENTE"), tarde: de("TARDE"), soloAusentes: de("AUSENTE"), justificados: de("JUSTIFICADO") };
   }, [estados]);
 
   const volver = docente ? "/academia/mis-clases" : `/academia/grupos/${grupoId}`;
   const sinClase = !lista.cargando && !lista.error && d === null;
 
-  async function guardar(datos: ListaDeClase) {
+  /** Guarda la lista entera; true = quedó guardada. */
+  async function guardar(datos: ListaDeClase): Promise<boolean> {
     setGuardando(true);
     setError("");
     try {
@@ -161,6 +177,8 @@ function Lista({
         datos.alumnos.map((a) => ({ inscripcionId: a.inscripcionId, estado: estados[a.inscripcionId] ?? "PRESENTE" })),
       );
       setGuardadaEn(new Date().toISOString());
+      setGuardados(estados);
+      return true;
     } catch (e) {
       setError(
         e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LISTA_CERRADA
@@ -170,22 +188,18 @@ function Lista({
             : // CLASE_DE_OTRO_DOCENTE (403) y el resto: el mensaje del backend, tal cual.
               mensajeDelBackend(e, "No se pudo guardar la lista"),
       );
+      return false;
     } finally {
       setGuardando(false);
     }
   }
 
   const g = grupo.datos;
-  const titulo = g
-    ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}`
-    : d?.grupo
-      ? `${nombreDe(d.grupo.carrera)} · ${d.grupo.nombre}`
-      : "Pasar lista";
-  // B7: el docente ve sólo el semáforo (rojo o amarillo); "Con deuda" son los
-  // que tienen alguno. El backend ya no le manda `estadoPago` (QA 23-oct). La
-  // administración y la recepción, como siempre.
+  const curso = g ? nombreDe(g.carrera) : d?.grupo ? nombreDe(d.grupo.carrera) : "";
+  // B7: el docente ve sólo el semáforo (rojo o amarillo); "debe la cuota" son
+  // los que tienen alguno. El backend ya no le manda `estadoPago` (QA 23-oct).
+  // La administración y la recepción, como siempre.
   const conSemaforo = docente;
-  const rojos = (d?.alumnos ?? []).filter((a) => a.semaforo === "ROJO").length;
   const debe = (a: ListaDeClase["alumnos"][number]) =>
     conSemaforo ? a.semaforo != null : !!a.estadoPago && a.estadoPago !== "PAGADO";
   const alumnos = (d?.alumnos ?? []).filter((a) => filtro === "todos" || debe(a));
@@ -193,28 +207,36 @@ function Lista({
   const esHoy = d ? d.sesion.fecha === isoDia(new Date()) : true;
 
   const notasA = docente ? `/academia/notas?grupo=${grupoId}` : `/academia/grupos/${grupoId}/notas`;
+  // «Barbería · M2 Degradados · Vie 16-oct, 09:00»: de qué clase es la lista.
+  const deQueClase = d
+    ? [curso || null, `M${d.sesion.materia.orden} ${d.sesion.materia.nombre}`, `${capitalizar(diaCorto(d.sesion.fecha).toLowerCase())} ${fechaCorta(d.sesion.fecha)}, ${d.sesion.horaInicio}`]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+  const aula = g?.aula ?? d?.grupo?.aula ?? null;
 
   return (
-    <PaginaAcademia ancho="max-w-2xl" className="max-md:!pb-44">
-      <EncabezadoPagina
-        volver={{ a: volver, texto: docente ? "Mis clases" : "Grupo" }}
-        sobre="Pasar lista"
-        titulo={titulo}
-        bajada={
-          d && (
-            <>
-              M{d.sesion.materia.orden} {d.sesion.materia.nombre} · {esHoy ? "Hoy " : ""}
-              {capitalizar(fechaLarga(d.sesion.fecha)).toLowerCase()}
-              {(g?.aula ?? d.grupo?.aula) ? ` · ${g?.aula ?? d.grupo?.aula}` : ""}
-            </>
-          )
-        }
-        acciones={
-          <BotonFila variante="ghost" icono="edit" a={notasA}>
-            Notas del {p.materia}
-          </BotonFila>
-        }
-      />
+    // Con cambios, los enlaces de adentro preguntan (el menú lateral queda afuera, como en Notas).
+    <PaginaAcademia ancho="max-w-2xl" className="max-md:!pb-44" onClickCapture={salida.alClicEnEnlace}>
+      <div className="card p-4 sm:p-5">
+        <EncabezadoPagina
+          volver={{ a: volver, texto: docente ? "Mis clases" : "Grupo" }}
+          titulo="Pasar lista"
+          bajada={
+            deQueClase && (
+              <>
+                <span className="block font-semibold text-texto-2">{deQueClase}</span>
+                {aula && <span className="block">{aula}</span>}
+              </>
+            )
+          }
+          acciones={
+            <BotonFila variante="ghost" icono="edit" a={notasA}>
+              Notas del {p.materia}
+            </BotonFila>
+          }
+        />
+      </div>
 
       {lista.error && !d ? (
         <Tarjeta etiqueta="Lista">
@@ -242,126 +264,100 @@ function Lista({
         <Cargando />
       ) : (
         <>
-          {/* Lo que el docente mira antes de empezar: cuántos pagaron el
-              módulo (sin montos, D6) y cómo va quedando la lista. */}
-          <GrillaKpi columnas={2}>
-            {conSemaforo ? (
-              // El docente: cuántos tienen el semáforo prendido, con el color del peor.
-              <KpiTarjeta
-                etiqueta="Con deuda"
-                icono="alert"
-                valor={`${deben} de ${d.alumnos.length}`}
-                tono={rojos > 0 ? "urgente" : deben > 0 ? "ambar" : "normal"}
-                pie={rojos > 0 ? `${rojos} ${rojos === 1 ? "pasó" : "pasaron"} la espera` : deben > 0 ? "en semana de espera" : "nadie debe"}
-              />
-            ) : (
-              <KpiTarjeta
-                etiqueta={`Pagaron el M${d.sesion.materia.orden}`}
-                icono="coins"
-                valor={`${d.resumen.pagaron} de ${d.resumen.total}`}
-                tono={d.resumen.total > 0 && d.resumen.pagaron === d.resumen.total ? "ok" : "normal"}
-                pie={d.sesion.materia.nombre}
-              />
+          {/* Cómo va quedando la lista, en vivo; y lo que la recepción mira del pago (sin montos para el docente, D6). */}
+          <div aria-label="Totales de la lista" className="flex flex-wrap items-center gap-1.5">
+            <Chip tono="verde" className="text-[13px]">
+              {conteo.soloPresentes} {conteo.soloPresentes === 1 ? "presente" : "presentes"}
+            </Chip>
+            <Chip tono="ambar" className="text-[13px]">
+              {conteo.tarde} tarde
+            </Chip>
+            <Chip tono="rojo" className="text-[13px]">
+              {conteo.soloAusentes} {conteo.soloAusentes === 1 ? "ausente" : "ausentes"}
+            </Chip>
+            {conteo.justificados > 0 && (
+              <Chip tono="azul" className="text-[13px]">
+                {conteo.justificados} {conteo.justificados === 1 ? "justificado" : "justificados"}
+              </Chip>
             )}
-            <KpiTarjeta
-              etiqueta="Presentes"
-              icono="users"
-              valor={`${conteo.presentes} de ${d.alumnos.length}`}
-              tono={conteo.ausentes > 0 ? "ambar" : "normal"}
-              pie={[
-                `${conteo.ausentes} ${conteo.ausentes === 1 ? "ausente" : "ausentes"}`,
-                conteo.tarde ? `${conteo.tarde} tarde` : "",
-                conteo.justificados ? `${conteo.justificados} ${conteo.justificados === 1 ? "justificado" : "justificados"}` : "",
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            />
-          </GrillaKpi>
+            {!conSemaforo && d.resumen.pagaron != null && (
+              <Chip tono="gris" className="text-[13px]">
+                Pagaron el M{d.sesion.materia.orden}: {d.resumen.pagaron} de {d.resumen.total}
+              </Chip>
+            )}
+          </div>
+          {d.editable && <p className="text-[13px] text-texto-3">Todos arrancan presentes: tocá sólo a quien faltó o llegó tarde.</p>}
 
-          <Tarjeta
-            id="t-lista"
-            titulo={p.Alumnos}
-            sinRelleno
-            barra={
-              <FiltrosConteo<Filtro>
-                enTarjeta
-                etiqueta={`Filtrar ${p.alumnos}`}
-                opciones={[
-                  { clave: "todos", label: "Todos", n: d.alumnos.length },
-                  { clave: "debe", label: conSemaforo ? "Con deuda" : "Sin pagar o abonó", n: deben, urgente: true },
-                ]}
-                valor={filtro}
-                onChange={setFiltro}
-              />
-            }
-            pie={<p className="text-[13px] text-texto-3">Si alguien no pagó, recordáselo en clase; recepción le manda el QR.</p>}
-          >
-            <ul className={LISTA.lista}>
-              {alumnos.map((a) => {
-                const estado = estados[a.inscripcionId] ?? "PRESENTE";
-                const ausente = estado === "AUSENTE" || estado === "JUSTIFICADO";
-                return (
-                  <li key={a.inscripcionId} className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${LISTA.item}`}>
-                    <span className="min-w-0 space-y-1">
-                      <span className={`block truncate text-[15px] font-semibold ${ausente ? "text-texto-3" : "text-texto"}`}>{a.nombre}</span>
-                      <span className="block">
-                        <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={conSemaforo} />
-                      </span>
-                    </span>
-                    <div
-                      role="group"
-                      aria-label={`Asistencia de ${a.nombre}`}
-                      className="grid shrink-0 grid-cols-4 overflow-hidden rounded-xl border border-borde bg-white sm:flex"
-                    >
-                      {ESTADOS.map(([e, label, colorOn]) => {
-                        const on = estado === e;
-                        return (
-                          <button
-                            key={e}
-                            type="button"
-                            aria-pressed={on}
-                            aria-label={label}
-                            disabled={!d.editable}
-                            onClick={() => {
-                              setEstados({ ...estados, [a.inscripcionId]: e });
-                              setGuardadaEn(null);
-                            }}
-                            className={`min-h-11 border-l border-borde px-1.5 text-[12px] font-semibold transition-colors first:border-l-0 disabled:opacity-60 sm:px-3 sm:text-[13px] ${
-                              on ? colorOn : "bg-white text-texto-3 hover:bg-muted"
-                            }`}
-                          >
-                            {/* En el celular "Justificado" no entra en un cuarto de pantalla. */}
-                            {e === "JUSTIFICADO" ? (
-                              <>
-                                <span className="sm:hidden">Justif.</span>
-                                <span className="hidden sm:inline">{label}</span>
-                              </>
-                            ) : (
-                              label
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </Tarjeta>
+          {deben > 0 && (
+            <FiltrosConteo<Filtro>
+              etiqueta={`Filtrar ${p.alumnos}`}
+              opciones={[
+                { clave: "todos", label: "Todos", n: d.alumnos.length },
+                { clave: "debe", label: conSemaforo ? "Deben la cuota" : "Sin pagar o abonó", n: deben, urgente: true },
+              ]}
+              valor={filtro}
+              onChange={setFiltro}
+            />
+          )}
+
+          <ul aria-label={p.Alumnos} className="space-y-2.5">
+            {alumnos.map((a) => {
+              const estado = estados[a.inscripcionId] ?? "PRESENTE";
+              const ausente = estado === "AUSENTE" || estado === "JUSTIFICADO";
+              return (
+                <li key={a.inscripcionId} className="card space-y-2.5 p-3.5 sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <span className={`min-w-0 text-[15px] font-semibold ${ausente ? "text-texto-3" : "text-texto"}`}>{a.nombre}</span>
+                    {conSemaforo ? (
+                      a.semaforo && <DebeLaCuota semaforo={a.semaforo} />
+                    ) : (
+                      <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={false} />
+                    )}
+                  </div>
+                  <div role="group" aria-label={`Asistencia de ${a.nombre}`} className="grid grid-cols-4 gap-1.5">
+                    {ESTADOS.map(([e, label, colorOn]) => {
+                      const on = estado === e;
+                      return (
+                        <button
+                          key={e}
+                          type="button"
+                          aria-pressed={on}
+                          aria-label={label}
+                          disabled={!d.editable}
+                          onClick={() => {
+                            setEstados({ ...estados, [a.inscripcionId]: e });
+                            setGuardadaEn(null);
+                          }}
+                          className={`min-h-11 rounded-xl border px-1 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
+                            on ? `border-transparent ${colorOn}` : "border-borde bg-white text-texto-3 hover:bg-muted"
+                          }`}
+                        >
+                          {/* "Justificado" no entra en un cuarto de pantalla del celular. */}
+                          {e === "JUSTIFICADO" ? "Justif." : label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {conSemaforo && deben > 0 && (
+            <p className="text-[13px] text-texto-3">Si alguien debe la cuota, recordáselo en clase; recepción le manda el QR.</p>
+          )}
 
           {/* En el celular, fija abajo (encima de la barra del docente); en
-              escritorio, debajo de la lista. */}
+              escritorio, pegada al pie de la columna. */}
           <div
-            className={`fixed inset-x-0 z-20 space-y-1.5 border-t border-borde-soft bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:static md:border-0 md:bg-transparent md:p-0 md:shadow-none ${
-              docente && conNav ? "bottom-[57px] md:bottom-auto" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            // max-md:!mb-0: el space-y del contenedor le ponía 20 px de margen abajo (ver Notas).
+            className={`fixed inset-x-0 z-20 max-md:!mb-0 space-y-1.5 border-t border-borde-soft bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:rounded-2xl md:border md:border-borde md:p-4 md:shadow-lg ${
+              docente && conNav ? "bottom-[57px] md:bottom-4" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:bottom-4 md:pb-4"
             }`}
           >
             <ErrorMsg>{error}</ErrorMsg>
             {d.editable ? (
-              <Boton icono="check" className="min-h-11 w-full" disabled={guardando} onClick={() => void guardar(d)}>
-                {guardando
-                  ? "Guardando…"
-                  : `Guardar lista (${conteo.presentes} ${conteo.presentes === 1 ? "presente" : "presentes"}, ${conteo.ausentes} ${conteo.ausentes === 1 ? "ausente" : "ausentes"})`}
+              <Boton icono="check" className="min-h-12 w-full text-base" disabled={guardando} onClick={() => void guardar(d)}>
+                {guardando ? "Guardando…" : "Guardar lista"}
               </Boton>
             ) : (
               <p className="text-center text-[13px] text-texto-3">La lista de ese día ya cerró.</p>
@@ -376,10 +372,36 @@ function Lista({
                   : `Ya guardada el ${fechaCorta(d.sesion.fecha)} · podés corregirla`}
               </p>
             )}
+            {/* Recién guardada, lo que sigue es volver: no queda nada que perder. */}
+            {guardadaEn && cambiados === 0 && (
+              <Link to={volver} className={`${claseBotonFila("ghost")} !min-h-11 w-full rounded-xl text-sm`}>
+                <Icon name="arrowLeft" size={16} />
+                {docente ? "Volver a mis clases" : "Volver al grupo"}
+              </Link>
+            )}
           </div>
         </>
       )}
+      {d && (
+        <ModalSalida salida={salida} titulo="La lista no se guardó" seguir="Seguir pasando lista" guardando={guardando} onGuardar={() => guardar(d)}>
+          Cambiaste la asistencia de {cambiados === 1 ? `1 ${p.alumno}` : `${cambiados} ${p.alumnos}`} y la lista todavía no se guardó. Si salís sin guardar, se pierde.
+        </ModalSalida>
+      )}
       {docente && <NavDocente />}
     </PaginaAcademia>
+  );
+}
+
+/**
+ * «debe la cuota», lo único que el docente ve del pago (B7, D6): rojo si
+ * pasó la semana de espera, ámbar si está en ella. El detalle va en la
+ * etiqueta, para quien lee con lector de pantalla y al pasar el mouse.
+ */
+function DebeLaCuota({ semaforo }: { semaforo: Exclude<SemaforoPago, null> }) {
+  const t = textoSemaforo(semaforo);
+  return (
+    <span title={t.largo} aria-label={t.largo}>
+      <Chip tono={t.tono === "rojo" ? "rojo" : "ambar"}>debe la cuota</Chip>
+    </span>
   );
 }

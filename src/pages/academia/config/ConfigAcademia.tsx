@@ -7,9 +7,11 @@ import { useAuth } from "../../../store/AuthContext";
 
 /**
  * La Configuración del instituto (dueño, 26-oct): lo que no se usa todos los
- * días —cursos, sedes, la planilla de los docentes y los ajustes— sale del
- * menú y queda en UNA entrada, con una pestaña por pantalla. Así el menú
- * queda con lo del día a día.
+ * días —cursos, sedes y los ajustes— sale del menú y queda en UNA entrada,
+ * con una pestaña por pantalla. Así el menú queda con lo del día a día. La
+ * planilla de los docentes era una pestaña más hasta el rediseño de
+ * noviembre: pagarles es de todos los meses y volvió al menú como «Pagos a
+ * docentes», en su misma ruta.
  *
  * Cada pestaña es la pantalla de siempre en su misma ruta: los enlaces que ya
  * llevaban a "/configuracion/carreras" o a la planilla siguen andando, y cada
@@ -17,7 +19,6 @@ import { useAuth } from "../../../store/AuthContext";
  */
 const NOMBRE: Partial<Record<Seccion, (p: ReturnType<typeof usePalabras>) => string>> = {
   academia_carreras: (p) => p.Carreras,
-  academia_planilla: (p) => `Planilla ${p.docente}s`,
   academia_ajustes: () => "Ajustes",
 };
 

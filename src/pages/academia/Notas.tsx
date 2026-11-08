@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as EventoMouse } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
-import { Boton, Cargando, ErrorMsg, Modal, Select, useAviso, Vacio } from "../../components/ui";
+import ModalSalida from "../../components/ModalSalida";
+import { Boton, Cargando, ErrorMsg, Select, useAviso, Vacio } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe, numeroEnLetras } from "../../lib/academia/formato";
+import { grupoConNotasAbiertas, notasHasta } from "../../lib/academia/plazoNotas";
+import { fechaLarga } from "../../lib/agenda/horaAgenda";
 import type { NotasDelGrupo, PlazoNotas } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { ApiError } from "../../lib/api";
 import { soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { useSalidaConCambios } from "../../lib/useSalidaConCambios";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import NavDocente from "./docente/NavDocente";
@@ -63,6 +67,13 @@ const comoTexto = (n: number | null) => (n == null ? "" : String(n));
  *
  * El docente entra desde el menú o Mis clases (`/academia/notas?grupo=`); la
  * administración, desde el grupo (`/academia/grupos/:id/notas`).
+ *
+ * Rediseño de noviembre, la vista del docente (en el celular): arriba la
+ * escala y con cuánto aprueba, un aviso de hasta cuándo puede cargar, y una
+ * fila por estudiante con su nota y si aprueba; sin indicadores ni semáforo
+ * (para eso está Pasar lista). «Guardar notas» y «Terminé: cerrar notas del
+ * módulo» quedan fijos abajo, a mano del pulgar. La administración sigue como
+ * estaba.
  */
 export default function Notas() {
   const { id } = useParams();
@@ -76,13 +87,15 @@ export default function Notas() {
     () => (grupoId ? Promise.resolve(null) : apiAcademia.grupos({ pageSize: 100 }).then((r) => r.items)),
     [grupoId],
   );
+  // Los en curso y, mientras dure su plazo, los que ya terminaron: las notas
+  // del último módulo se cargan hasta 5 días después del fin (revisión 08-nov).
   useEffect(() => {
-    const lista = (grupos.datos ?? []).filter((g) => g.estado !== "TERMINADO");
+    const lista = (grupos.datos ?? []).filter((g) => grupoConNotasAbiertas(g));
     if (!grupoId && lista.length === 1) setParams({ grupo: String(lista[0].id) }, { replace: true });
   }, [grupos.datos, grupoId, setParams]);
 
   if (!grupoId) {
-    const lista = (grupos.datos ?? []).filter((g) => g.estado !== "TERMINADO");
+    const lista = (grupos.datos ?? []).filter((g) => grupoConNotasAbiertas(g));
     return (
       <PaginaAcademia ancho="max-w-xl" conBarraAbajo={docente}>
         <EncabezadoPagina titulo="Notas" />
@@ -99,6 +112,7 @@ export default function Notas() {
               {lista.map((g) => (
                 <option key={g.id} value={g.id}>
                   {nombreDe(g.carrera)} · {horarioGrupo(g)}
+                  {g.estado === "TERMINADO" ? ` · terminó, notas hasta el ${fechaCorta(notasHasta(g))}` : ""}
                 </option>
               ))}
             </Select>
@@ -158,8 +172,6 @@ function CargaNotas({
   const [rechazadas, setRechazadas] = useState<Record<number, string>>({});
   const [cerrando, setCerrando] = useState(false);
   const [reabriendo, setReabriendo] = useState(false);
-  /** Adónde iba quien quiso salir con cambios sin guardar (se pregunta antes). */
-  const [salida, setSalida] = useState<{ ir: () => void } | null>(null);
   const lista = useRef<HTMLUListElement>(null);
 
   const d = carga.datos;
@@ -200,13 +212,10 @@ function CargaNotas({
   const cambiadas = soloLectura ? [] : filas.filter((f) => f.cambiada);
   const hayCambios = cambiadas.length > 0;
 
-  // Con cambios sin guardar, el navegador pregunta antes de cerrar o recargar.
-  useEffect(() => {
-    if (!hayCambios) return;
-    const avisar = (ev: BeforeUnloadEvent) => ev.preventDefault();
-    window.addEventListener("beforeunload", avisar);
-    return () => window.removeEventListener("beforeunload", avisar);
-  }, [hayCambios]);
+  // Con cambios sin guardar se pregunta antes de salir: el navegador al cerrar
+  // o recargar, y los enlaces y acciones de la pantalla (`salirSi`).
+  const salida = useSalidaConCambios(hayCambios);
+  const { salirSi } = salida;
 
   if (carga.error && !d) {
     return (
@@ -237,23 +246,6 @@ function CargaNotas({
   const g = grupo.datos;
   const m = d.materia;
   const invalidas = cambiadas.filter((f) => f.e.tipo === "error");
-
-  /** Con cambios sin guardar, pregunta antes de ir; sin cambios, va. */
-  const salirSi = (ir: () => void) => (hayCambios ? setSalida({ ir }) : ir());
-
-  /**
-   * Los enlaces de adentro de la pantalla (volver, la barra del docente):
-   * con cambios, el clic se frena y se pregunta. El menú lateral de la app
-   * queda afuera de este contenedor (límite aceptado en L7).
-   */
-  const alClicEnEnlace = (e: EventoMouse) => {
-    if (!hayCambios || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    const a = (e.target as HTMLElement).closest("a[href]");
-    const destino = a?.getAttribute("href");
-    if (!a || !destino?.startsWith("/") || a.getAttribute("target") === "_blank") return;
-    e.preventDefault();
-    setSalida({ ir: () => navigate(destino) });
-  };
 
   /** Lleva el foco a la primera casilla con problema (y a su fila, si está oculta). */
   const enfocar = (inscripcionId: number) => {
@@ -355,13 +347,25 @@ function CargaNotas({
   //  · angosta (celular, tablet en vertical): nombre arriba, pastillas abajo, nota a la derecha;
   //  · @2xl (≥ 672 px): tabla sin "En letras";
   //  · @4xl (≥ 896 px): tabla completa.
-  const columnas =
-    "@2xl:grid-cols-[minmax(140px,1fr)_184px_104px_140px] @2xl:gap-x-5 @4xl:grid-cols-[minmax(180px,1.6fr)_184px_104px_minmax(130px,1fr)_148px] @4xl:gap-x-6";
+  // El docente (rediseño de noviembre) tiene tres: el nombre, si aprueba y la nota.
+  const columnas = docente
+    ? "@lg:grid-cols-[minmax(140px,1fr)_120px_104px] @lg:gap-x-5"
+    : "@2xl:grid-cols-[minmax(140px,1fr)_184px_104px_140px] @2xl:gap-x-5 @4xl:grid-cols-[minmax(180px,1.6fr)_184px_104px_minmax(130px,1fr)_148px] @4xl:gap-x-6";
   const cerrarDeshabilitado = d.cerrada || cerrando || guardando || plazo?.estado === "ANTES";
+  // Hasta cuándo se cargan: lo dice el plazo del módulo; con un backend que no lo
+  // manda, el `notasHasta` del grupo, que es el del último módulo (sólo vale para él).
+  const ultimo = Math.max(...d.materias.map((x) => x.orden), m.orden) === m.orden;
+  const hasta = plazo ? (plazo.estado === "ABIERTO" ? plazo.hasta : null) : ultimo && g ? notasHasta(g) : null;
+  const avisoPlazo = registra && !d.cerrada && hasta;
+  // El docente tiene sus dos acciones fijas abajo; la administración, como siempre.
+  const barraDocente = docente && registra && !d.cerrada;
+  const textoCerrar = cerrando ? "Cerrando…" : `Terminé: cerrar notas del ${p.materia}`;
 
   return (
-    <div className="contents" onClickCapture={alClicEnEnlace}>
-      <PaginaAcademia ancho="max-w-7xl" conBarraAbajo={docente || hayCambios}>
+    // Los enlaces de adentro (volver, la barra del docente) preguntan si hay
+    // cambios; el menú lateral de la app queda afuera (límite aceptado en L7).
+    <div className="contents" onClickCapture={salida.alClicEnEnlace}>
+      <PaginaAcademia ancho={docente ? "max-w-2xl" : "max-w-7xl"} conBarraAbajo={docente || hayCambios} className={barraDocente ? "max-md:!pb-52" : ""}>
         <EncabezadoPagina
           volver={docente ? { a: "/academia/mis-clases", texto: "Mis clases" } : { a: `/academia/grupos/${grupoId}`, texto: "Grupo" }}
           titulo={
@@ -370,21 +374,27 @@ function CargaNotas({
             </>
           }
           bajada={
-            <>
+            docente ? (
+              // «Barbería · L-M-V 09:00–11:00 · sobre 100, aprueba con 51»: lo que el docente necesita para cargar.
               <span className="block">
-                {[g ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}` : null, g ? nombreDe(g.sede) : null, `${d.items.length} ${d.items.length === 1 ? p.alumno : p.alumnos}`, `del ${fechaCorta(m.desde)} al ${fechaCorta(m.hasta)}`]
-                  .filter(Boolean)
-                  .join(" · ")}
+                {[g ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}` : null, `sobre ${d.escalaMax}, aprueba con ${d.notaMinima}`].filter(Boolean).join(" · ")}
               </span>
-              <span className="block">
-                Nota de 1 a {d.escalaMax} · aprueba con {d.notaMinima}
-                {plazo && plazo.estado === "ABIERTO" && !d.cerrada ? ` · ${textoPlazo(plazo, p.materia)}` : ""}
-              </span>
-            </>
+            ) : (
+              <>
+                <span className="block">
+                  {[g ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}` : null, g ? nombreDe(g.sede) : null, `${d.items.length} ${d.items.length === 1 ? p.alumno : p.alumnos}`, `del ${fechaCorta(m.desde)} al ${fechaCorta(m.hasta)}`]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+                <span className="block">
+                  Nota de 1 a {d.escalaMax} · aprueba con {d.notaMinima}
+                </span>
+              </>
+            )
           }
           acciones={
             <>
-              {registra && (
+              {registra && !docente && (
                 <Boton
                   icono="lock"
                   disabled={cerrarDeshabilitado}
@@ -413,6 +423,14 @@ function CargaNotas({
             <Icon name="lock" size={14} /> Sólo lectura: las notas las carga el {p.docente} del {p.materia}.
           </p>
         ) : null}
+        {avisoPlazo && (
+          <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-sm text-info-text">
+            <Icon name="clock" size={16} className="mt-0.5 shrink-0" />
+            <span>
+              Podés cargar y corregir notas hasta el {fechaLarga(hasta)}. Después se cierran solas.
+            </span>
+          </p>
+        )}
         {mensaje && (
           <p role="status" className="flex items-center gap-1.5 text-[13px] text-texto-3">
             <Icon name="check" size={14} /> {mensaje}
@@ -425,7 +443,8 @@ function CargaNotas({
         )}
         <ErrorMsg>{error}</ErrorMsg>
 
-        {/* El resumen del módulo, con lo guardado. */}
+        {/* El resumen del módulo, con lo guardado. El docente no lo necesita: cada fila dice si aprueba. */}
+        {!docente && (
         <GrillaKpi>
           <KpiTarjeta
             etiqueta="Cargadas"
@@ -449,6 +468,7 @@ function CargaNotas({
             pie={`de 1 a ${d.escalaMax}`}
           />
         </GrillaKpi>
+        )}
 
         <Tarjeta
           id="t-notas"
@@ -487,6 +507,13 @@ function CargaNotas({
           pie={<p className="text-[12px] text-texto-3">La deuda no impide cargar la nota ni aprobar el {p.materia} (RM 0008/2016, art. 41).</p>}
         >
           <div className="@container">
+            {docente ? (
+              <div className={`hidden px-5 py-2.5 @lg:grid ${columnas} ${TABLA.encabezado}`}>
+                <span>{p.Alumno}</span>
+                <span>Resultado</span>
+                <span className="text-center">Nota</span>
+              </div>
+            ) : (
             <div className={`hidden px-5 py-2.5 @2xl:grid ${columnas} ${TABLA.encabezado}`}>
               <span>{p.Alumno}</span>
               <span>{conSemaforo ? "Cuotas" : `Pago del M${m.orden}`}</span>
@@ -494,6 +521,7 @@ function CargaNotas({
               <span className="hidden @4xl:block">En letras</span>
               <span>Resultado</span>
             </div>
+            )}
             {visibles.length === 0 ? (
               <p className="border-t border-borde-soft p-5 text-sm text-texto-3">
                 {filtro === "sin" ? "Todas las notas están cargadas." : "Nadie en esta lista."}
@@ -512,19 +540,30 @@ function CargaNotas({
                         pendiente ? "bg-warning-bg/30" : ""
                       }`}
                     >
-                      <span className="min-w-0 truncate text-sm font-semibold text-texto @2xl:col-start-1 @2xl:row-start-1">{f.nombre}</span>
-                      {/* Angosta: el pago y el resultado van juntos debajo del nombre;
-                          como tabla (`contents`), cada uno en su columna. */}
+                      <span className={`min-w-0 truncate text-sm font-semibold text-texto ${docente ? "@lg:col-start-1 @lg:row-start-1" : "@2xl:col-start-1 @2xl:row-start-1"}`}>
+                        {f.nombre}
+                      </span>
+                      {docente ? (
+                        // El docente: sólo si aprueba, sin el pago (eso lo mira en Pasar lista).
+                        <span className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 @lg:col-start-2 @lg:row-start-1">
+                          <Chip tono={TONO_RESULTADO[t]}>{textoResultado(f.e)}</Chip>
+                          {rechazo && <span className="block text-[12px] font-semibold text-danger-text">No se guardó: {rechazo}</span>}
+                          {pendiente && !rechazo && <span className="block text-[12px] font-semibold text-warning-text">Sin guardar</span>}
+                        </span>
+                      ) : (
+                      // Angosta: el pago y el resultado van juntos debajo del nombre;
+                      // como tabla (`contents`), cada uno en su columna.
                       <span className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 @2xl:contents">
                         <span className="min-w-0 @2xl:col-start-2 @2xl:row-start-1">
                           <PagoDelModulo estado={f.estadoPago} semaforo={f.semaforo} conSemaforo={conSemaforo} />
                         </span>
                         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 @2xl:col-start-4 @2xl:row-start-1 @2xl:block @4xl:col-start-5">
-                          <Chip tono={TONO_RESULTADO[t]}>{t === "vacia" ? "Sin nota" : t === "error" ? f.e.motivo : t === "aprueba" ? "Aprobado" : "Reprobado"}</Chip>
+                          <Chip tono={TONO_RESULTADO[t]}>{textoResultado(f.e)}</Chip>
                           {rechazo && <span className="block text-[12px] font-semibold text-danger-text @2xl:mt-0.5">No se guardó: {rechazo}</span>}
                           {pendiente && !rechazo && <span className="block text-[12px] font-semibold text-warning-text @2xl:mt-0.5">Sin guardar</span>}
                         </span>
                       </span>
+                      )}
                       <input
                         inputMode="numeric"
                         enterKeyHint="next"
@@ -548,13 +587,17 @@ function CargaNotas({
                           const casillas = Array.from(lista.current?.querySelectorAll<HTMLInputElement>("input:not(:disabled)") ?? []);
                           casillas[casillas.indexOf(e.currentTarget) + 1]?.focus();
                         }}
-                        className={`col-start-2 row-span-2 row-start-1 min-h-11 w-full rounded-xl border px-3 py-2 text-center text-base font-semibold tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted @2xl:col-start-3 @2xl:row-span-1 @2xl:min-h-10 @2xl:text-sm ${
+                        className={`col-start-2 row-span-2 row-start-1 min-h-11 w-full rounded-xl border px-3 py-2 text-center text-base font-semibold tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted ${
+                          docente ? "@lg:col-start-3 @lg:row-span-1" : "@2xl:col-start-3 @2xl:row-span-1 @2xl:min-h-10 @2xl:text-sm"
+                        } ${
                           malo ? "border-danger bg-danger-bg" : pendiente ? "border-warning-text/60 bg-white" : t === "vacia" && !soloLectura ? "border-warning-text/50 bg-warning-bg/40" : "border-borde bg-white"
                         }`}
                       />
-                      <span className="hidden text-sm text-texto-3 @4xl:col-start-4 @4xl:row-start-1 @4xl:block">
-                        {"n" in f.e && f.e.n != null ? numeroEnLetras(f.e.n) : "—"}
-                      </span>
+                      {!docente && (
+                        <span className="hidden text-sm text-texto-3 @4xl:col-start-4 @4xl:row-start-1 @4xl:block">
+                          {"n" in f.e && f.e.n != null ? numeroEnLetras(f.e.n) : "—"}
+                        </span>
+                      )}
                     </li>
                   );
                 })}
@@ -571,31 +614,56 @@ function CargaNotas({
         </Tarjeta>
 
         {/* L7: un solo guardado con todo. En el celular, fija abajo (encima de la barra del
-            docente); en la compu, pegada al pie de la pantalla dentro de la columna. */}
-        {hayCambios && (
+            docente); en la compu, pegada al pie de la pantalla dentro de la columna. El
+            docente la tiene siempre, con «Terminé: cerrar notas» debajo (rediseño de
+            noviembre); la administración, sólo con cambios. */}
+        {(hayCambios || barraDocente) && (
           <div
             role="region"
-            aria-label="Notas sin guardar"
-            className={`fixed inset-x-0 z-20 border-t border-borde-soft bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:bottom-4 md:rounded-2xl md:border md:border-borde md:px-5 md:shadow-lg ${
+            aria-label={hayCambios ? "Notas sin guardar" : "Acciones de las notas"}
+            // max-md:!mb-0: el space-y del contenedor le ponía 20 px de margen abajo y la despegaba
+            // de la barra del docente; por el hueco se veía el contenido de atrás.
+            className={`fixed inset-x-0 z-20 max-md:!mb-0 border-t border-borde-soft bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:bottom-4 md:rounded-2xl md:border md:border-borde md:px-5 md:shadow-lg ${
               docente && conNav ? "bottom-[57px]" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3"
             }`}
           >
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-              <p className="text-sm text-texto-2">
-                <span className="font-semibold text-texto">
-                  {cambiadas.length === 1 ? "1 cambio sin guardar" : `${cambiadas.length} cambios sin guardar`}
-                </span>
-                {invalidas.length > 0 && (
-                  <span className="font-semibold text-danger-text">
-                    {" · "}
-                    {invalidas.length === 1 ? "1 no es válida" : `${invalidas.length} no son válidas`}
+              {hayCambios && (
+                <p className="text-sm text-texto-2">
+                  <span className="font-semibold text-texto">
+                    {cambiadas.length === 1 ? "1 cambio sin guardar" : `${cambiadas.length} cambios sin guardar`}
                   </span>
-                )}
-              </p>
-              <Boton icono="check" className="min-h-11 flex-1 sm:flex-none" disabled={guardando} onClick={() => void guardar()}>
-                {guardando ? "Guardando…" : "Guardar notas"}
-              </Boton>
+                  {invalidas.length > 0 && (
+                    <span className="font-semibold text-danger-text">
+                      {" · "}
+                      {invalidas.length === 1 ? "1 no es válida" : `${invalidas.length} no son válidas`}
+                    </span>
+                  )}
+                </p>
+              )}
+              {(hayCambios || !soloLectura) && (
+                <Boton
+                  icono="check"
+                  className={`min-h-11 flex-1 ${barraDocente ? "w-full text-base sm:w-auto" : "sm:flex-none"}`}
+                  disabled={guardando || !hayCambios}
+                  onClick={() => void guardar()}
+                >
+                  {guardando ? "Guardando…" : "Guardar notas"}
+                </Boton>
+              )}
             </div>
+            {barraDocente && (
+              <Boton
+                variante="ghost"
+                icono="lock"
+                className="mt-2 min-h-11 w-full"
+                disabled={cerrarDeshabilitado}
+                title={plazo?.estado === "ANTES" ? `El ${p.materia} todavía no empezó` : undefined}
+                onClick={() => void cerrar()}
+              >
+                {textoCerrar}
+              </Boton>
+            )}
           </div>
         )}
 
@@ -620,49 +688,20 @@ function CargaNotas({
           />
         )}
 
-        <Modal
-          abierto={!!salida}
-          titulo="Hay notas sin guardar"
-          onClose={() => setSalida(null)}
-          ancho="max-w-sm"
-          acciones={
-            <>
-              <Boton variante="ghost" onClick={() => setSalida(null)} disabled={guardando}>
-                Seguir cargando
-              </Boton>
-              <Boton
-                variante="ghost"
-                disabled={guardando}
-                onClick={() => {
-                  const ir = salida?.ir;
-                  setSalida(null);
-                  ir?.();
-                }}
-              >
-                Salir sin guardar
-              </Boton>
-              <Boton
-                disabled={guardando}
-                onClick={async () => {
-                  const ir = salida?.ir;
-                  const ok = await guardar();
-                  setSalida(null);
-                  if (ok) ir?.();
-                }}
-              >
-                {guardando ? "Guardando…" : "Guardar y salir"}
-              </Boton>
-            </>
-          }
-        >
-          <p className="text-sm text-texto-2">
-            {cambiadas.length === 1 ? "Cambiaste 1 nota" : `Cambiaste ${cambiadas.length} notas`} y todavía no se guardaron. Si salís sin guardar, se pierden.
-          </p>
-        </Modal>
+        <ModalSalida salida={salida} titulo="Hay notas sin guardar" seguir="Seguir cargando" guardando={guardando} onGuardar={guardar}>
+          {cambiadas.length === 1 ? "Cambiaste 1 nota" : `Cambiaste ${cambiadas.length} notas`} y todavía no se guardaron. Si salís sin guardar, se pierden.
+        </ModalSalida>
         {docente && <NavDocente />}
       </PaginaAcademia>
     </div>
   );
+}
+
+/** «aprueba», «reprueba», «sin nota» o por qué no vale la casilla: lo que dice la pastilla de cada fila. */
+function textoResultado(e: { tipo: "vacia" | "error" | "aprueba" | "reprueba"; motivo?: string }): string {
+  if (e.tipo === "vacia") return "sin nota";
+  if (e.tipo === "error") return e.motivo ?? "No vale";
+  return e.tipo;
 }
 
 /** El color del resultado: aprobado en verde, lo que falta en ámbar, lo que reprueba o no vale en rojo. */

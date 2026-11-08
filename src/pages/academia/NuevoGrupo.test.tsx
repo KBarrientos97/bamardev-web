@@ -194,8 +194,8 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     expect(within(panel).getByText(/Todavía no hay docentes en esta sede/)).toBeInTheDocument();
     fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
     await act(async () => {}); // llegan los cargos
-    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: " Pedro Gil " } });
-    fireEvent.change(within(panel).getByLabelText(/Teléfono/), { target: { value: "70011223" } });
+    fireEvent.change(within(panel).getByLabelText("Nombre y apellido"), { target: { value: " Pedro Gil " } });
+    fireEvent.change(within(panel).getByLabelText(/WhatsApp/), { target: { value: "70011223" } });
     expect(within(panel).getByText("Central")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
@@ -205,7 +205,7 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     // Queda elegido en el módulo y en la lista de los demás.
     expect(selectDe(panel, 1)).toHaveValue("21");
     expect(within(selectDe(panel, 1)).getByRole("option", { name: "Pedro Gil" })).toBeInTheDocument();
-    expect(within(panel).queryByLabelText("Nombre")).not.toBeInTheDocument();
+    expect(within(panel).queryByLabelText("Nombre y apellido")).not.toBeInTheDocument();
     vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
@@ -225,8 +225,8 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     expect(selectDe(panel, 3)).toHaveValue("");
     expect(within(panel).getByText(/Nuevo docente · M3 Barba/)).toBeInTheDocument();
     await act(async () => {}); // llegan los cargos
-    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Rosa Luna" } });
-    fireEvent.click(within(panel).getByRole("switch", { name: "Darle acceso al sistema" }));
+    fireEvent.change(within(panel).getByLabelText("Nombre y apellido"), { target: { value: "Rosa Luna" } });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Que pueda entrar al sistema (pasar lista y notas)" }));
     fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "Rosa.Luna" } });
     fireEvent.change(within(panel).getByLabelText("Contraseña"), { target: { value: "secreta1" } });
     await act(async () => {
@@ -246,8 +246,8 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     const { panel } = await montar();
     fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
     await act(async () => {}); // llegan los cargos
-    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana Rios" } });
-    fireEvent.click(within(panel).getByRole("switch", { name: "Darle acceso al sistema" }));
+    fireEvent.change(within(panel).getByLabelText("Nombre y apellido"), { target: { value: "Ana Rios" } });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Que pueda entrar al sistema (pasar lista y notas)" }));
     fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "ana.rios" } });
     fireEvent.change(within(panel).getByLabelText("Contraseña"), { target: { value: "secreta1" } });
     await act(async () => {
@@ -267,8 +267,8 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     await act(async () => {}); // llegan los cargos
     fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
     expect(within(panel).getByText("Poné el nombre.")).toBeInTheDocument();
-    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana" } });
-    fireEvent.click(within(panel).getByRole("switch", { name: "Darle acceso al sistema" }));
+    fireEvent.change(within(panel).getByLabelText("Nombre y apellido"), { target: { value: "Ana" } });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Que pueda entrar al sistema (pasar lista y notas)" }));
     fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "a" } });
     fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
     expect(within(panel).getByText(/El usuario lleva 3 a 30/)).toBeInTheDocument();
@@ -286,16 +286,34 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     expect(apiPersonal.darAcceso).not.toHaveBeenCalled();
     expect(selectDe(panel, 1)).toHaveValue("");
   });
-  it("sin un cargo «Docente» en Roles no inventa uno: lo dice y no crea nada", async () => {
+  it("sin un cargo de docente en Roles no inventa uno: lo dice y no crea nada", async () => {
     sesion.personal = true;
     vi.mocked(apiPersonal.cargos).mockResolvedValueOnce([{ id: 9, nombre: "Recepción", esAdministrador: false, permisos: [] }]);
     const { panel } = await montar();
     fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
     await act(async () => {});
-    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana" } });
+    fireEvent.change(within(panel).getByLabelText("Nombre y apellido"), { target: { value: "Ana" } });
     fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
-    expect(within(panel).getByText(/No hay un cargo «Docente» en Roles/)).toBeInTheDocument();
+    expect(within(panel).getByText(/No hay un cargo de docente en Roles/)).toBeInTheDocument();
     expect(apiPersonal.crear).not.toHaveBeenCalled();
+  });
+
+  it("revisión 08-nov: el cargo del docente se reconoce por sus permisos (un «Profesor» sirve; la Coordinación GENERAL, no)", async () => {
+    sesion.personal = true;
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ id: 22, nombre: "Ana Soria" } as never);
+    vi.mocked(apiPersonal.cargos).mockResolvedValueOnce([
+      { id: 9, nombre: "Recepción", esAdministrador: false, permisos: [{ codigo: "academia.inscribir", alcance: "GENERAL" }] },
+      { id: 10, nombre: "Coordinación", esAdministrador: false, permisos: [{ codigo: "notas.registrar", alcance: "GENERAL" }] },
+      { id: 12, nombre: "Profesor", esAdministrador: false, permisos: [{ codigo: "asistencia.registrar", alcance: "PROPIO" }, { codigo: "notas.registrar", alcance: "PROPIO" }] },
+    ]);
+    const { panel } = await montar();
+    fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
+    await act(async () => {});
+    fireEvent.change(within(panel).getByLabelText("Nombre y apellido"), { target: { value: "Ana Soria" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith({ nombre: "Ana Soria", telefono: null, cargoRolId: 12, sucursalIds: [1] });
   });
 });
 
