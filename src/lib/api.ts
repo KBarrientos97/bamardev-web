@@ -54,6 +54,7 @@ import type {
   Producto,
   ProductoInput,
   RangoReporte,
+  ReporteCierreGanancia,
   ReporteCierreProductos,
   ReporteCompraDocumento,
   ReporteComprasDetalle,
@@ -461,6 +462,12 @@ export const api = {
   /** Lo que salió del mostrador en un turno. Baja del arqueo, no del período. */
   reporteCierreProductos: (cierreId: number) =>
     request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
+  /**
+   * El mismo turno con costo y ganancia (7-nov). Es otra ruta, con el permiso
+   * de rentabilidad, para que el costo no viaje en la que usa la cajera.
+   */
+  reporteCierreGanancia: (cierreId: number) =>
+    request<ReporteCierreGanancia>(`/reportes/cierres/${cierreId}/ganancia`),
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
   /**

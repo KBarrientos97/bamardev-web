@@ -302,6 +302,18 @@ describe("Reportes › Ventas en el restaurante (REP-02, 28-oct)", () => {
     expect(screen.queryByRole("button", { name: /V-000005/ })).toBeNull();
   });
 
+  it("en Detallado también: tocar una línea abre el recibo de esa venta, como en la app", async () => {
+    reporteVentasDetalle.mockResolvedValue(detalle([LINEA], { page: 1, limite: 50, total: 1, totalPaginas: 1 }));
+    mostrar();
+    fireEvent.click(screen.getByRole("tab", { name: "Detallado" }));
+    const fila = await screen.findByRole("button", { name: new RegExp(LINEA.comprobante) });
+    await act(async () => {
+      fireEvent.click(fila);
+    });
+    await screen.findByRole("dialog", { name: "Recibo de venta" });
+    expect(getVenta).toHaveBeenCalledWith(LINEA.ventaId);
+  });
+
   it("la fila sigue diciendo «Mixto» como siempre: los montos van en el recibo", async () => {
     mostrar();
     expect(await screen.findByText(/· Mixto ·/)).toBeInTheDocument();

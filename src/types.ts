@@ -2251,6 +2251,21 @@ export interface ReporteCierreProductos {
   lineas: number;
 }
 
+/** Lo que costó y lo que dejó: en cada producto, en cada categoría y en el turno. */
+interface CostoYGanancia {
+  costo: number;
+  ganancia: number;
+}
+
+/**
+ * Lo mismo que `ReporteCierreProductos`, en el mismo orden, con costo y
+ * ganancia. Sólo con rentabilidad: es lo que el dueño no le muestra a la cajera.
+ */
+export interface ReporteCierreGanancia extends Omit<ReporteCierreProductos, "categorias">, CostoYGanancia {
+  categorias: (Omit<ReporteCierreProductos["categorias"][number], "items"> &
+    CostoYGanancia & { items: (ReporteCierreProductos["categorias"][number]["items"][number] & CostoYGanancia)[] })[];
+}
+
 
 // ── Gastos operativos ───────────────────────────────────────────────────────
 //

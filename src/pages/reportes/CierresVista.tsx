@@ -3,7 +3,9 @@ import { Icon } from "../../components/Icon";
 import { Boton, Modal, Vacio } from "../../components/ui";
 import { esCero } from "../../lib/dinero";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
-import { ProductosDelTurno } from "../pos/PantallaCierre";
+import { useAuth } from "../../store/AuthContext";
+import { ProductosDelArqueo } from "./ProductosDelArqueo";
+import { cruzaMedianoche } from "./vistas/Cierres.datos";
 
 /** Una fila de `GET reportes/cierres` (historial). */
 export interface CierreFila {
@@ -96,6 +98,11 @@ function Diferencia({ esperado, conteo }: { esperado: number; conteo: number }) 
  */
 export function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onCerrar: () => void }) {
   const [viendoProductos, setViendoProductos] = useState(false);
+  const { rubro } = useAuth();
+  // Como la app: cuánto duró y si pasó de un día al otro. El listado fecha el
+  // turno por una sola punta, y mirándolo una semana después no se sabía de
+  // qué jornada era el que abrió al mediodía y cerró a las 3.
+  const enRestaurante = rubro === "RESTAURANTE";
   return (
     <Modal
       abierto
@@ -125,6 +132,10 @@ export function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onC
             </div>
           </dl>
         )}
+        {enRestaurante && c.duracion && <p className="text-xs text-texto-3">Duración: {c.duracion}</p>}
+        {enRestaurante && cruzaMedianoche(c) && (
+          <p className="text-xs text-texto-3">Este turno cruzó la medianoche: abrió un día y cerró al siguiente.</p>
+        )}
 
         <dl className="space-y-1.5 text-sm">
           <Fila etiqueta="Total vendido" valor={c.totalDia} />
@@ -143,7 +154,11 @@ export function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onC
       </div>
 
       {viendoProductos && (
-        <ProductosDelTurno cajaId={c.id} onClose={() => setViendoProductos(false)} />
+        <ProductosDelArqueo
+          cajaId={c.id}
+          subtitulo={`${c.fecha} · ${c.cajero}`}
+          onClose={() => setViendoProductos(false)}
+        />
       )}
     </Modal>
   );

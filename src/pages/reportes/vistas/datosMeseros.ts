@@ -58,6 +58,19 @@ export function filasMeseros(d: MeserosApi): FilaMesero[] {
     .sort((a, b) => b.vendido - a.vendido || b.mesas - a.mesas || a.nombre.localeCompare(b.nombre, "es"));
 }
 
+export type OrdenMeseros = "vendido" | "porComensal" | "mesas";
+
+/**
+ * El orden de la lista, como en la app. "Por comensal" es el más justo entre
+ * meseros: lo vendido premia a quien le tocaron las mesas grandes. Quien no
+ * tiene el dato cae al final, y lo vendido desempata para que no baile.
+ */
+export function ordenarMeseros(filas: FilaMesero[], orden: OrdenMeseros): FilaMesero[] {
+  const valor = (f: FilaMesero) =>
+    orden === "vendido" ? f.vendido : orden === "mesas" ? f.mesas : (f.porComensal ?? -1);
+  return [...filas].sort((a, b) => valor(b) - valor(a) || b.vendido - a.vendido || a.nombre.localeCompare(b.nombre, "es"));
+}
+
 /** Los que vendieron algo, del que más al que menos: los de "sólo anuló" no van en el ranking de ventas. */
 export function quienVendioMas(filas: FilaMesero[], maximo = 10): FilaMesero[] {
   return filas.filter((f) => esPositivo(f.vendido)).slice(0, maximo);
