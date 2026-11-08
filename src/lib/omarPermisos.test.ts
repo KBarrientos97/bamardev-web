@@ -133,15 +133,17 @@ const HOY = {
         // ubicación y horario): el dueño decidió que es para todos los rubros
         // y sin flag del panel, así que Omar también la ve.
         // Desde el 04-nov, el QR de cobro (pedido de Kevin): el administrador
-        // que nunca abre caja no tenía dónde cargarlo, y con él Finanzas
-        // vuelve a tener dos hijos y se dibuja como carpeta.
+        // que nunca abre caja no tenía dónde cargarlo. Colgó de Finanzas
+        // hasta el 08-nov; desde entonces va con la configuración general en
+        // todos los rubros (pedido del dueño), y con la ficha de sucursales
+        // arma la carpeta Configuración. Finanzas vuelve a un solo hijo.
         items: [
           "Usuarios /usuarios",
-          "Finanzas /creditos",
-          "  Cuentas por cobrar /creditos",
-          "  QR de cobro /configuracion/qr-cobro",
+          "Cuentas por cobrar /creditos",
           "Reportes /reportes",
-          "Datos de las sucursales /configuracion/sucursales",
+          "Configuración /configuracion/sucursales",
+          "  Datos de las sucursales /configuracion/sucursales",
+          "  QR de cobro /configuracion/qr-cobro",
         ],
       },
     ],
@@ -177,11 +179,12 @@ const HOY = {
           "Finanzas /creditos",
           "  Cuentas por cobrar /creditos",
           "  Gastos operativos /gastos",
-          "  QR de cobro /configuracion/qr-cobro",
           "Reportes /reportes",
           // Lo que se arma una vez, abajo.
           "Mesas del salón /mesas",
-          "Datos de las sucursales /configuracion/sucursales",
+          "Configuración /configuracion/sucursales",
+          "  Datos de las sucursales /configuracion/sucursales",
+          "  QR de cobro /configuracion/qr-cobro",
         ],
       },
     ],
@@ -235,11 +238,11 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
                 "Equipo /usuarios",
                 "  Usuarios /usuarios",
                 "  Roles /roles",
-                "Finanzas /creditos",
-                "  Cuentas por cobrar /creditos",
-                "  QR de cobro /configuracion/qr-cobro",
+                "Cuentas por cobrar /creditos",
                 "Reportes /reportes",
-                "Datos de las sucursales /configuracion/sucursales",
+                "Configuración /configuracion/sucursales",
+                "  Datos de las sucursales /configuracion/sucursales",
+                "  QR de cobro /configuracion/qr-cobro",
               ],
             }
           : b,

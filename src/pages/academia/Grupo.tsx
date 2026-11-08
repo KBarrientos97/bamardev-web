@@ -6,14 +6,15 @@ import PanelLateral from "../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe } from "../../lib/academia/calendario";
-import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
+import { esDatoViejo, mensajeDelBackend, tieneCodigo } from "../../lib/academia/errores";
 import { avisoFotosPendientes, avisoInscripcionHecha } from "../../lib/academia/fotos";
-import { etiquetaParentesco, fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
+import { etiquetaParentesco, fechaCorta, horarioGrupo, horasEntre, nombreAlumno, nombreDe, SEMANA } from "../../lib/academia/formato";
 import { useChoques } from "../../lib/academia/choques";
 import type { AlumnoDelGrupo, ConsultaChoques, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
+import { ApiError } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas, tieneFeature, tienePermiso } from "../../lib/permisos";
@@ -792,8 +793,26 @@ function EditarGrupo({
   const [docentePor, setDocentePor] = useState<Record<number, number | null>>(
     Object.fromEntries(g.materiasGrupo.map((m) => [m.materia.id, m.docente?.personalId ?? null])),
   );
+  // Drick, 08-nov: el grupo se edita entero, también cuándo empieza. El backend ya movía todo
+  // (módulos, clases y vencimientos que siguen al inicio de un módulo, `moverInicio`); sólo
+  // faltaba la pantalla, y hubo que mover a mano en la base los cuatro grupos de Drick.
+  const [nombre, setNombre] = useState(g.nombre);
+  const [dias, setDias] = useState<number[]>(g.dias);
+  const [horaInicio, setHoraInicio] = useState(g.horaInicio);
+  const [horaFin, setHoraFin] = useState(g.horaFin);
+  const [fechaInicio, setFechaInicio] = useState(g.fechaInicio);
+  /** `FECHA_PASADA`: el inicio quedó antes del módulo en curso; quien configura lo puede confirmar. */
+  const [pasado, setPasado] = useState<{ puedeConfirmar: boolean } | null>(null);
+  const [confirmarPasado, setConfirmarPasado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+
+  const cambiaDias = claveDias(dias) !== claveDias(g.dias);
+  const cambiaHorario = cambiaDias || horaInicio !== g.horaInicio || horaFin !== g.horaFin;
+  const cambiaInicio = fechaInicio !== g.fechaInicio;
+  // Para el aviso de choques: el fin se corre lo mismo que el inicio (el backend lo recalcula).
+  const fechaFin = cambiaInicio && FECHA.test(fechaInicio) ? sumarDiasIso(g.fechaFin, diasEntre(g.fechaInicio, fechaInicio)) : g.fechaFin;
+  const alternarDia = (d: number) => setDias((xs) => (xs.includes(d) ? xs.filter((x) => x !== d) : [...xs, d].sort((a, b) => a - b)));
 
   // C10: se pregunta por lo que cambió (el aula nueva, los docentes nuevos); lo que el grupo
   // ya tenía no se avisa como choque otra vez.
@@ -806,23 +825,33 @@ function EditarGrupo({
     ),
   ];
   const aulaNueva = typeof aulaId === "number" && aulaId !== aulaInicial ? aulaId : null;
+  // Con otro horario o con otra fecha, el aula y los docentes de siempre también pueden chocar.
+  const mueveTodo = (cambiaHorario || cambiaInicio) && dias.length > 0 && horasEntre(horaInicio, horaFin) > 0 && FECHA.test(fechaInicio);
+  const aulaAConsultar = aulaNueva ?? (mueveTodo && typeof aulaId === "number" ? aulaId : null);
+  const docentesAConsultar = mueveTodo
+    ? [...new Set(Object.values(docentePor).filter((x): x is number => x != null))]
+    : docentesNuevos;
   const consulta: ConsultaChoques | null =
-    aulaNueva != null || docentesNuevos.length
+    aulaAConsultar != null || docentesAConsultar.length
       ? {
           almacenId: g.sede.id,
-          dias: g.dias,
-          horaInicio: g.horaInicio,
-          horaFin: g.horaFin,
-          fechaInicio: g.fechaInicio,
-          fechaFin: g.fechaFin,
+          dias,
+          horaInicio,
+          horaFin,
+          fechaInicio,
+          fechaFin,
           excluirGrupoId: g.id,
-          ...(aulaNueva != null ? { aulaId: aulaNueva } : {}),
-          ...(docentesNuevos.length ? { docentes: docentesNuevos } : {}),
+          ...(aulaAConsultar != null ? { aulaId: aulaAConsultar } : {}),
+          ...(docentesAConsultar.length ? { docentes: docentesAConsultar } : {}),
         }
       : null;
   const avisoChoques = useChoques(consulta);
 
   async function guardar() {
+    if (!nombre.trim()) return setError("Escribí el nombre del grupo.");
+    if (!dias.length) return setError("Elegí al menos un día.");
+    if (horasEntre(horaInicio, horaFin) <= 0) return setError("La hora de fin tiene que ser después de la de inicio.");
+    if (!FECHA.test(fechaInicio)) return setError("Elegí la fecha de inicio.");
     setGuardando(true);
     setError("");
     try {
@@ -832,6 +861,14 @@ function EditarGrupo({
         cupo: Number(cupo) > 0 ? Number(cupo) : null,
         inscripcionAbierta: abierta,
         publicarEnPagina: publicar,
+        // También sólo lo que cambió. Sin `nombre`, si era el de fábrica («Lu Mi Vi 19:00–21:00»)
+        // el backend lo rehace con el horario nuevo.
+        ...(nombre.trim() !== g.nombre ? { nombre: nombre.trim() } : {}),
+        ...(cambiaDias ? { dias } : {}),
+        ...(horaInicio !== g.horaInicio ? { horaInicio } : {}),
+        ...(horaFin !== g.horaFin ? { horaFin } : {}),
+        ...(cambiaInicio ? { fechaInicio } : {}),
+        ...(cambiaInicio && confirmarPasado ? { confirmarInicioPasado: true } : {}),
       });
       for (const m of g.materiasGrupo) {
         const antes = m.docente?.personalId ?? null;
@@ -840,6 +877,7 @@ function EditarGrupo({
       }
       onGuardado(nuevo);
     } catch (e) {
+      if (tieneCodigo(e, "FECHA_PASADA") && e instanceof ApiError) setPasado({ puedeConfirmar: e.detalle.puedeConfirmar === true });
       setError(mensajeDelBackend(e, "No se pudo guardar"));
     } finally {
       setGuardando(false);
@@ -866,6 +904,77 @@ function EditarGrupo({
       }
     >
       <div className="space-y-4">
+        <Campo label="Nombre del grupo">
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} maxLength={80} />
+        </Campo>
+        <div>
+          <span id="editar-dias" className="mb-1.5 block text-[13px] font-semibold text-texto-2">
+            Días de clase
+          </span>
+          <div role="group" aria-labelledby="editar-dias" className="flex flex-wrap gap-1.5">
+            {SEMANA.map((d) => {
+              const on = dias.includes(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={on}
+                  aria-label={NOMBRE_DIA[d]}
+                  onClick={() => alternarDia(d)}
+                  className={`h-11 w-11 rounded-xl border text-sm font-semibold transition-colors sm:h-10 sm:w-10 ${
+                    on ? "border-primary bg-primary-boton text-white" : "border-borde bg-white text-texto-3 hover:border-primary-200 hover:bg-muted"
+                  }`}
+                >
+                  {LETRA_DIA[d]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Campo label="Desde">
+            <Input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
+          </Campo>
+          <Campo label="Hasta">
+            <Input type="time" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
+          </Campo>
+          <div className="col-span-2 sm:col-span-1">
+            <Campo label="Empieza el">
+              <Input
+                type="date"
+                value={fechaInicio}
+                onChange={(e) => {
+                  setFechaInicio(e.target.value);
+                  setPasado(null);
+                  setConfirmarPasado(false);
+                }}
+              />
+            </Campo>
+          </div>
+        </div>
+        {(cambiaInicio || cambiaHorario) && (
+          <p role="note" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+            {cambiaInicio
+              ? `Se mueven los ${p.materias} y sus clases${
+                  g.inscritos > 0
+                    ? `, y el vencimiento de las cuotas de ${g.inscritos === 1 ? "1 inscrito" : `${g.inscritos} inscritos`} que vencen al empezar cada ${p.materia}`
+                    : ""
+                }. Lo cobrado no cambia.`
+              : "Las clases que faltan se rehacen con el horario nuevo."}{" "}
+            Si el grupo ya tiene clases con lista, notas o una planilla cerrada, no se puede mover.
+          </p>
+        )}
+        {pasado?.puedeConfirmar && cambiaInicio && (
+          <label className="flex items-start gap-2 text-sm text-texto">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[var(--color-primary-boton)]"
+              checked={confirmarPasado}
+              onChange={(e) => setConfirmarPasado(e.target.checked)}
+            />
+            El grupo ya venía en clases desde esa fecha: confirmo el inicio en el pasado.
+          </label>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <SelectorAula
             sedeId={g.sede.id}
@@ -918,4 +1027,24 @@ function EditarGrupo({
       </div>
     </Modal>
   );
+}
+
+const NOMBRE_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const LETRA_DIA = ["D", "L", "M", "X", "J", "V", "S"];
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Los días como clave comparable: el orden en que se tocaron no es un cambio. */
+function claveDias(dias: number[]): string {
+  return [...new Set(dias)].sort((a, b) => a - b).join(",");
+}
+
+/** Días entre dos fechas ISO (b − a), sin que la hora local corra un día. */
+function diasEntre(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
+function sumarDiasIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }

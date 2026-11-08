@@ -4,6 +4,7 @@ import { api } from "../../../lib/api";
 import { compartirComoImagen } from "../../../lib/compartirTicket";
 import { aCentavos, esPositivo } from "../../../lib/dinero";
 import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney } from "../../../lib/format";
+import { mensajeRecibo } from "../../../lib/mensajeRecibo";
 import { marcaConsumo } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
@@ -48,10 +49,11 @@ export function ModalReciboVenta({
     setAviso("");
     setCompartiendo(true);
     const nombre = (v?.comprobante ?? `recibo-${fila.id}`).replace(/[^A-Za-z0-9_-]/g, "_");
-    const res = await compartirComoImagen(ticket.current, nombre);
+    // La imagen con el mensaje del recibo (Drick, 08-nov): las dos cosas, no una sola.
+    const res = await compartirComoImagen(ticket.current, nombre, v ? mensajeRecibo(v, negocio?.nombre ?? "") : undefined);
     setCompartiendo(false);
     // Cancelar el diálogo del sistema no es un error que mostrar.
-    if (!res.ok && res.motivo === "no_soportado") setAviso("Se descargó la imagen del recibo para que la adjuntes.");
+    if (!res.ok && res.motivo === "no_soportado") setAviso("Se descargó la imagen del recibo y se copió el mensaje para que los pegues.");
     else if (!res.ok && res.motivo === "error") setAviso("No se pudo generar la imagen del recibo.");
   }
 

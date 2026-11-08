@@ -248,6 +248,11 @@ function TarjetaCurso({
   const modulos = c.modulos?.length ? c.modulos : c.materias;
   const n = modulos.length;
   const bs = (x: number) => `Bs ${x.toLocaleString("es-BO")}`;
+  // Drick, 08-nov: desde cuánto se asegura el cupo, en la tarjeta y no recién al pagar. El menor
+  // de los grupos con lugar; null si el instituto no lo ofrece (sin QR de cobro o sin mínimo).
+  // Es un adelanto a cuenta del primer mes, nunca una «reserva» aparte (RM 0008/2016).
+  const adelantos = c.grupos.filter((g) => g.cuposLibres !== 0).map((g) => g.adelantoDesde).filter((x): x is number => x != null && x > 0);
+  const adelantoDesde = adelantos.length ? Math.min(...adelantos) : null;
   const estiloBoton: CSSProperties = {
     display: "block",
     textAlign: "center",
@@ -350,6 +355,11 @@ function TarjetaCurso({
                   }}
                 >
                   Pagando todo junto ahorrás {bs(c.ahorro)}
+                </p>
+              )}
+              {adelantoDesde != null && (
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: t.texto2Tarjeta }}>
+                  Asegurá tu cupo desde <strong style={{ color: t.textoTarjeta }}>{bs(adelantoDesde)}</strong>, a cuenta del primer mes
                 </p>
               )}
             </div>

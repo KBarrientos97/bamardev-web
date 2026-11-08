@@ -216,6 +216,13 @@ describe("menú de ACADEMIA", () => {
       "Mi negocio", "Inventario", "Gastos operativos", "Reportes de ventas", "Mi página",
     ]);
     expect(miNegocio(m)).toEqual(["Personal", "Usuarios", "Roles"]);
+    // Con el QR en el plan, el QR de cobro también va en Mi negocio (Drick, 08-nov): antes
+    // el instituto no lo tenía en ningún lado del menú.
+    const conQr = construirMenu(
+      (s) => puedeVer(ctxDe("ADMIN", "ACADEMIA", [...SOLO_ACADEMIA, "pago_qr_mixto"], { extra: PERMISOS_NUEVOS }), s),
+      "ACADEMIA",
+    );
+    expect(miNegocio(conQr)).toEqual(["Personal", "Usuarios", "Roles", "QR de cobro"]);
     const nombres = todos(m);
     // Cursos, sedes, planilla y ajustes son pestañas de Configuración, no
     // renglones del menú (26-oct); las sedes tampoco se repiten en Inventario.

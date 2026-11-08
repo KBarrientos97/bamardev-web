@@ -575,7 +575,7 @@ describe("billar: un extra estricto", () => {
     expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
   });
 
-  it("la pantalla del QR de cobro es de quien lo puede cambiar, en el billar y en el restaurante", () => {
+  it("la pantalla del QR de cobro es de quien lo puede cambiar, en todos los rubros", () => {
     // El dueño, 18-oct: cambiarlo desde la apertura de una caja "no es el
     // lugar". La cajera no lo cambia de fábrica (16-oct): con su QR, la plata
     // iría a ella; el administrador se lo puede dar en Roles.
@@ -587,8 +587,11 @@ describe("billar: un extra estricto", () => {
     // dónde cargar el QR. La cajera sin el permiso sigue sin verla.
     expect(puedeVer(ctxCon(["qr.configurar"], "RESTAURANTE", conQr), "qr_cobro")).toBe(true);
     expect(puedeVer(ctxCon(["caja.operar", "ventas.vender"], "RESTAURANTE", conQr), "qr_cobro")).toBe(false);
-    // Los rubros que no la pidieron siguen cambiándolo desde la apertura.
-    expect(puedeVer(ctxCon(["qr.configurar"], "MINIMARKET", conQr), "qr_cobro")).toBe(false);
+    // 08-nov (el dueño): es de todos los rubros, en la configuración general. Sigue pidiendo el
+    // plan con QR y el permiso.
+    expect(puedeVer(ctxCon(["qr.configurar"], "MINIMARKET", conQr), "qr_cobro")).toBe(true);
+    expect(puedeVer(ctxCon(["qr.configurar"], "FARMACIA", conQr), "qr_cobro")).toBe(true);
+    expect(puedeVer(ctxCon(["caja.operar", "ventas.vender"], "MINIMARKET", conQr), "qr_cobro")).toBe(false);
   });
 
   it("quien administra el billar sin atenderlo entra a Mesas de billar; quien sólo atiende no la ve", () => {

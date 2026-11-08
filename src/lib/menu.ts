@@ -339,9 +339,6 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // Después de las cuentas por cobrar, igual que en el drawer de la app:
       // es plata del negocio, pero del libro del resultado y no de la caja.
       { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
-      // La cuenta a la que entra la plata por QR: antes sólo se cambiaba desde
-      // la apertura de una caja (el dueño, 18-oct: "no es el lugar").
-      { a: "/configuracion/qr-cobro", label: "QR de cobro", icono: "qr", seccion: "qr_cobro" },
     ],
   },
   // Reportes, suelto y de primer nivel (13-oct-2026): junta los de TODAS las
@@ -423,6 +420,12 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
         icono: "pin",
         seccion: "config_sucursales",
       },
+      // La cuenta a la que entra la plata por QR. Antes sólo se cambiaba desde
+      // la apertura de una caja (el dueño, 18-oct: "no es el lugar") y después
+      // colgó de Finanzas; desde el 08-nov va con la configuración general,
+      // para todos los rubros (el instituto, que no tiene este grupo, la lleva
+      // en "Mi negocio").
+      { a: "/configuracion/qr-cobro", label: "QR de cobro", icono: "qr", seccion: "qr_cobro" },
       // E17: carreras, materias y planes de pago.
       {
         a: "/configuracion/carreras",
@@ -553,6 +556,10 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       ...(general("/personal").hijos ?? []).filter((h) => ["/personal", "/usuarios", "/roles"].includes(h.a)),
+      // Drick, 08-nov: el instituto no lo tenía en ningún lado del menú (sólo
+      // desde la apertura de caja o Configuración rápida). Es del negocio, no
+      // de un curso: va acá y no en Academia → Configuración.
+      general("/configuracion/qr-cobro"),
     ],
   },
   // Sin Almacenes: en el instituto son las sedes, y están en Configuración.

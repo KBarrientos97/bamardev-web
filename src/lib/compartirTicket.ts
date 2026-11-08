@@ -30,20 +30,73 @@ export function puedeCompartirImagen(): boolean {
 /**
  * Rasteriza `nodo` y abre el diálogo de compartir del sistema.
  *
+ * Con `texto` (el mensaje del recibo, con el enlace al estado de cuenta) va la
+ * imagen Y el texto en el mismo envío (Drick, 08-nov: "la imagen y el link, no
+ * sólo uno"): WhatsApp en Android lo manda como foto con el texto de pie. Si
+ * el equipo no acepta las dos cosas juntas, va sólo la imagen.
+ *
  * Si el equipo no puede compartir archivos, baja la imagen: en un escritorio es
- * lo más parecido que hay, y deja al cajero adjuntarla a mano.
+ * lo más parecido que hay, y deja al cajero adjuntarla a mano. Con `texto`,
+ * además lo copia, para pegarlo junto a la imagen.
  */
 export async function compartirComoImagen(
   nodo: HTMLElement,
   nombre: string,
+  texto?: string,
 ): Promise<ResultadoCompartir> {
-  let blob: Blob | null;
+  const blob = await rasterizar(nodo);
+  if (!blob) return { ok: false, motivo: "error" };
+
+  const archivo = new File([blob], `${nombre}.png`, { type: "image/png" });
+
+  if (puedeCompartirImagen() && navigator.canShare({ files: [archivo] })) {
+    const conTexto = !!texto && navigator.canShare({ files: [archivo], text: texto });
+    try {
+      await navigator.share(conTexto ? { files: [archivo], text: texto, title: nombre } : { files: [archivo], title: nombre });
+      return { ok: true };
+    } catch (e) {
+      // Cancelar el diálogo del sistema no es un error que mostrar.
+      const cancelado = e instanceof DOMException && e.name === "AbortError";
+      return { ok: false, motivo: cancelado ? "cancelado" : "error" };
+    }
+  }
+
+  // Sin soporte para compartir archivos: se descarga (y el texto, al portapapeles).
+  descargar(blob, nombre);
+  if (texto) await copiar(texto);
+  return { ok: false, motivo: "no_soportado" };
+}
+
+/**
+ * "Enviar por WhatsApp" con la imagen del recibo y el mensaje (Drick, 08-nov).
+ *
+ * En el celular, el diálogo de compartir con las dos cosas juntas (ahí se
+ * elige WhatsApp y el chat). En la compu `wa.me` no puede adjuntar archivos:
+ * se abre el chat con el mensaje ya escrito y se baja la imagen para
+ * arrastrarla. El chat se abre ANTES de rasterizar, mientras dura el clic: si
+ * no, el bloqueador de ventanas lo frena.
+ */
+export async function enviarPorWhatsapp(
+  nodo: HTMLElement,
+  nombre: string,
+  texto: string,
+  urlWhatsapp: string,
+): Promise<ResultadoCompartir> {
+  if (puedeCompartirImagen()) return compartirComoImagen(nodo, nombre, texto);
+  window.open(urlWhatsapp, "_blank", "noopener,noreferrer");
+  const blob = await rasterizar(nodo);
+  if (!blob) return { ok: false, motivo: "error" };
+  descargar(blob, nombre);
+  return { ok: false, motivo: "no_soportado" };
+}
+
+async function rasterizar(nodo: HTMLElement): Promise<Blob | null> {
   try {
     // Import dinámico: la librería son ~45 KB que sólo hacen falta al tocar
     // "Compartir". Cargarla en el bundle principal se la haría bajar a todos
     // los cajeros en cada visita, incluidos los que nunca comparten un ticket.
     const { toBlob } = await import("html-to-image");
-    blob = await toBlob(nodo, {
+    return await toBlob(nodo, {
       pixelRatio: ESCALA,
       // Fondo blanco explícito: el ticket es transparente y sin esto sale
       // negro en los visores que ponen fondo oscuro.
@@ -54,29 +107,24 @@ export async function compartirComoImagen(
         !(el instanceof HTMLElement && el.classList.contains("print:hidden")),
     });
   } catch {
-    return { ok: false, motivo: "error" };
+    return null;
   }
-  if (!blob) return { ok: false, motivo: "error" };
+}
 
-  const archivo = new File([blob], `${nombre}.png`, { type: "image/png" });
-
-  if (puedeCompartirImagen() && navigator.canShare({ files: [archivo] })) {
-    try {
-      await navigator.share({ files: [archivo], title: nombre });
-      return { ok: true };
-    } catch (e) {
-      // Cancelar el diálogo del sistema no es un error que mostrar.
-      const cancelado = e instanceof DOMException && e.name === "AbortError";
-      return { ok: false, motivo: cancelado ? "cancelado" : "error" };
-    }
-  }
-
-  // Sin soporte para compartir archivos: se descarga.
+function descargar(blob: Blob, nombre: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = `${nombre}.png`;
   a.click();
   URL.revokeObjectURL(url);
-  return { ok: false, motivo: "no_soportado" };
+}
+
+/** Al portapapeles; si el navegador no deja, no pasa nada: la imagen ya bajó. */
+async function copiar(texto: string) {
+  try {
+    await navigator.clipboard?.writeText(texto);
+  } catch {
+    // Sin permiso o sin https: se sigue.
+  }
 }
