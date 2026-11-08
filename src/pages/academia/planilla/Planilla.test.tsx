@@ -88,24 +88,130 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
-describe("E14 · Planilla del mes", () => {
-  it("cada docente con su líquido, sin retención (dueño, 08-nov); tocarlo abre su planilla", async () => {
+describe("E14 · Pagos a docentes (el mes)", () => {
+  async function montarMes() {
     render(
       <MemoryRouter>
         <PlanillaMes />
       </MemoryRouter>,
     );
     await act(async () => {});
-    expect(screen.getByRole("heading", { name: "Planilla docentes · Octubre 2026" })).toBeInTheDocument();
+  }
+  const tarjeta = (nombre: string) => screen.getByRole("listitem", { name: nombre });
+
+  it("cada docente en su tarjeta con lo que se le paga, sin retención (dueño, 08-nov); «Ver el detalle» abre su planilla", async () => {
+    await montarMes();
+    expect(screen.getByRole("heading", { name: "Pagos a docentes" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Mes" })).toHaveTextContent("Octubre 2026");
     expect(apiAcademia.planilla).toHaveBeenCalledWith("2026-10", null);
-    expect(screen.getByRole("region", { name: "Resumen del mes" })).toHaveTextContent(/4\.040/);
+    // Los tres totales: por pagar, pagado y los que cuentan (sin «clases dadas»: no existe ese dato).
+    const resumen = screen.getByRole("region", { name: "Resumen del mes" });
+    expect(resumen).toHaveTextContent(/Por pagar este mes.*4\.040/);
+    expect(resumen).toHaveTextContent(/Ya pagado.*0,00/);
+    expect(resumen).toHaveTextContent("32 de 40");
+    expect(document.body).not.toHaveTextContent(/clases dadas/i);
     // Sin retención: ni tarjeta, ni columna, ni «por confirmar»; un solo monto por docente.
     expect(document.body).not.toHaveTextContent(/Retención|retención|Por confirmar|Bruto/);
-    expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveTextContent(/1\.850/);
-    expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveAttribute("href", "/academia/planilla/9?mes=2026-10");
+    const marco = tarjeta("Marco Rojas");
+    expect(marco).toHaveTextContent("MR");
+    expect(marco).toHaveTextContent(/A pagar.*1\.850/);
+    expect(within(marco).getByRole("link", { name: "Ver el detalle de Marco Rojas" })).toHaveAttribute("href", "/academia/planilla/9?mes=2026-10");
     fireEvent.click(screen.getByRole("button", { name: "Mes anterior" }));
     await act(async () => {});
     expect(apiAcademia.planilla).toHaveBeenLastCalledWith("2026-09", null);
+  });
+
+  it("de dónde sale lo que cobra: lo cobrado × su % o los módulos × el monto fijo, con sus grupos", async () => {
+    vi.mocked(apiAcademia.planillaDocente).mockImplementation(async (id) =>
+      id === 9
+        ? {
+            ...PLANILLA,
+            grupos: [{ grupoId: 7, nombre: "L-M-V 09–11", carrera: { id: 3, nombre: "Barbería" }, materia: { orden: 2, nombre: "Degradados" }, sede: { id: 1, nombre: "Central" }, estudiantes: 22, pct: 20 }],
+          }
+        : {
+            ...PLANILLA,
+            docente: { personalId: 10, nombre: "Diego Mamani" },
+            cuentan: [linea({ modalidad: "MONTO", pct: null, montoFijo: 90 }), linea({ inscripcionId: 102, modalidad: "MONTO", pct: null, montoFijo: 90 })],
+          },
+    );
+    await montarMes();
+    expect(tarjeta("Marco Rojas")).toHaveTextContent("1 grupo · Barbería");
+    // 450 + 500 cobrados de sus estudiantes, al 20 %.
+    expect(tarjeta("Marco Rojas")).toHaveTextContent("Cobrado de sus estudiantes: Bs 950,00 × 20 %");
+    expect(tarjeta("Diego Mamani")).toHaveTextContent("2 módulos × Bs 90,00");
+  });
+
+  it("«Pagar Bs X» pide el método y hace en orden lo que eran dos pasos: cerrar la planilla y registrar el pago", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({
+      mes: "2026-09",
+      retencionActiva: false,
+      docentes: [{ personalId: 9, nombre: "Marco Rojas", grupos: 1, cuentan: 17, total: 22, bruto: 1850, retencion: null, liquido: 1850, estado: "EN_CURSO" }],
+      totales: { bruto: 1850, liquido: 1850 },
+    });
+    vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
+    await montarMes();
+    const marco = tarjeta("Marco Rojas");
+    fireEvent.click(within(marco).getByRole("button", { name: "Pagar Bs 1.850,00" }));
+    const dialogo = screen.getByRole("dialog", { name: "Pagar a Marco Rojas" });
+    expect(dialogo).toHaveTextContent("Se cierra su planilla del mes");
+    // Los métodos de «Registrar pago», sin la tarjeta.
+    expect(within(dialogo).getAllByRole("button", { pressed: false }).map((b) => b.textContent)).toEqual(["Transferencia", "QR"]);
+    fireEvent.click(within(dialogo).getByRole("button", { name: "QR" }));
+    expect(apiAcademia.cerrarPlanilla).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Pagar Bs 1.850,00" }));
+    });
+    expect(apiAcademia.cerrarPlanilla).toHaveBeenCalledWith(9, "2026-10", false);
+    expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10", "QR");
+    expect(vi.mocked(apiAcademia.cerrarPlanilla).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(apiAcademia.pagarPlanilla).mock.invocationCallOrder[0]);
+    expect(screen.getByText(/Pagaste Bs 1\.850,00 a Marco Rojas \(QR\)/)).toBeInTheDocument();
+    // Vuelve a pedir el mes y la planilla del docente (el estado nuevo).
+    expect(apiAcademia.planilla).toHaveBeenCalledTimes(2);
+  });
+
+  it("si el mes no terminó, pregunta como antes y, confirmado, cierra forzando y paga", async () => {
+    vi.mocked(apiAcademia.cerrarPlanilla).mockRejectedValueOnce(new ApiError("El mes no terminó", 400, { codigo: "MES_EN_CURSO" }));
+    vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
+    await montarMes();
+    fireEvent.click(within(tarjeta("Marco Rojas")).getByRole("button", { name: /^Pagar/ }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Pagar/ }));
+    });
+    // No pagó nada todavía: pregunta.
+    expect(apiAcademia.pagarPlanilla).not.toHaveBeenCalled();
+    const pregunta = screen.getByRole("dialog", { name: "El mes no terminó" });
+    await act(async () => {
+      fireEvent.click(within(pregunta).getByRole("button", { name: "Cerrar igual y pagar" }));
+    });
+    expect(apiAcademia.cerrarPlanilla).toHaveBeenLastCalledWith(9, "2026-10", true);
+    expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10", "EFECTIVO");
+  });
+
+  it("una ya cerrada sólo se paga; una pagada muestra cuándo, sin botón", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({
+      mes: "2026-10",
+      retencionActiva: false,
+      docentes: [
+        { personalId: 9, nombre: "Marco Rojas", grupos: 1, cuentan: 17, total: 22, bruto: 1850, retencion: null, liquido: 1850, estado: "CERRADA" },
+        { personalId: 10, nombre: "Diego Mamani", grupos: 1, cuentan: 15, total: 18, bruto: 2190, retencion: null, liquido: 2190, estado: "PAGADA" },
+      ],
+      totales: { bruto: 4040, liquido: 4040 },
+    });
+    vi.mocked(apiAcademia.planillaDocente).mockImplementation(async (id) =>
+      id === 10 ? { ...PLANILLA, estado: "PAGADA", pagadaEn: new Date(2026, 9, 12, 21, 30).toISOString() } : { ...PLANILLA, estado: "CERRADA" },
+    );
+    vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
+    await montarMes();
+    expect(screen.getByRole("region", { name: "Resumen del mes" })).toHaveTextContent(/Ya pagado.*2\.190/);
+    const diego = tarjeta("Diego Mamani");
+    expect(within(diego).queryByRole("button", { name: /Pagar/ })).not.toBeInTheDocument();
+    expect(diego).toHaveTextContent("Pagado el 12-oct");
+    fireEvent.click(within(tarjeta("Marco Rojas")).getByRole("button", { name: /^Pagar/ }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Pagar/ }));
+    });
+    expect(apiAcademia.cerrarPlanilla).not.toHaveBeenCalled();
+    expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10", "EFECTIVO");
   });
 });
 
@@ -543,6 +649,6 @@ describe("Bug 4 · los ajustes de cobros anulados o repuestos", () => {
       </MemoryRouter>,
     );
     await act(async () => {});
-    expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveTextContent("2 ajustes");
+    expect(screen.getByRole("listitem", { name: "Marco Rojas" })).toHaveTextContent("2 ajustes");
   });
 });

@@ -10,6 +10,7 @@ import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, M
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import {
   cursosDePlanilla,
+  METODOS_PAGO_DOCENTE as METODOS,
   montoConSigno,
   MOTIVOS_NO_PAGO,
   pieBrutoPlanilla,
@@ -42,13 +43,6 @@ import {
 } from "../piezas";
 
 type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar" | "ajustes";
-
-/** Cómo se le paga al docente. La tarjeta (que el backend acepta) no es cómo se paga un sueldo. */
-const METODOS: readonly (readonly [MetodoPagoPlanilla, string])[] = [
-  ["EFECTIVO", "Efectivo"],
-  ["TRANSFERENCIA", "Transferencia"],
-  ["QR", "QR"],
-];
 
 /** En curso en gris, cerrada (falta pagarla) en ámbar, pagada en verde. */
 const CHIP_ESTADO: Record<EstadoPlanilla, TonoChip> = {
@@ -119,12 +113,12 @@ export default function PlanillaDocente() {
     setEditandoMotivo(motivo);
   }
 
-  const volver = { a: "/academia/planilla", texto: `Planilla ${p.docente}s` };
+  const volver = { a: "/academia/planilla", texto: `Pagos a ${p.docente}s` };
   const d = carga.datos;
   if (carga.error && !d) {
     return (
       <PaginaAcademia>
-        <EncabezadoPagina titulo={`Planilla ${p.docente}s`} volver={volver} />
+        <EncabezadoPagina titulo={`Pagos a ${p.docente}s`} volver={volver} />
         <ErrorMsg onReintentar={carga.recargar}>{carga.error}</ErrorMsg>
       </PaginaAcademia>
     );

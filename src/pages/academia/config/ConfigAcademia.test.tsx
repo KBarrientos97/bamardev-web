@@ -68,7 +68,8 @@ describe("Configuración del instituto", () => {
     montar("/configuracion/sedes");
     const nav = screen.getByRole("navigation", { name: "Configuración del instituto" });
     // Sin pestaña «Aulas» suelta: las aulas viven dentro de cada sede (WEB-8).
-    expect(Array.from(nav.querySelectorAll("a"), (a) => a.textContent)).toEqual(["Cursos", "Sedes", "Planilla docentes", "Ajustes", "Configuración rápida"]);
+    // Sin «Planilla docentes»: volvió al menú como «Pagos a docentes» (rediseño de noviembre).
+    expect(Array.from(nav.querySelectorAll("a"), (a) => a.textContent)).toEqual(["Cursos", "Sedes", "Ajustes", "Configuración rápida"]);
     expect(screen.getByRole("link", { name: "Sedes" })).toHaveAttribute("aria-current", "page");
   });
 

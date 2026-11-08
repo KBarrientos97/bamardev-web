@@ -58,8 +58,11 @@ const ESTADOS: readonly (readonly [EstadoAsistencia, string, string])[] = [
  * toque no cuenta como cambio.
  *
  * El docente entra desde Mis clases (`/academia/lista?grupo=`); la
- * administración y la recepción, desde el grupo (`/academia/grupos/:id/lista`).
- * Sin grupo, se elige entre las clases de hoy.
+ * administración y la recepción, desde el grupo o desde Clases de hoy
+ * (`/academia/grupos/:id/lista`). Sin grupo, se elige entre las clases de hoy.
+ * Desde el rediseño de noviembre ya no está en el menú del docente: se pasa
+ * desde cada clase. Cada estudiante va en su tarjeta, con «debe la cuota» si
+ * corresponde y una fila de cuatro botones; arriba, los totales en pastillas.
  */
 export default function PasarLista() {
   const p = usePalabras();
