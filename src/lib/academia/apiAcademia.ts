@@ -287,6 +287,13 @@ export const apiAcademia = {
       method: "POST",
       ...(confirmarTemprano ? { body: json({ confirmarTemprano: true }) } : {}),
     }),
+  /**
+   * Borra una llegada mal marcada para volver a marcarla (ronda 1, P4). Pide
+   * `asistencia.llegadas` general: al docente (PROPIO) el backend le responde
+   * 403 LLEGADA_LA_CORRIGE_RECEPCION.
+   */
+  borrarLlegada: (sesionId: number) =>
+    request<LlegadaRegistrada>(`/academia/sesiones/${sesionId}/llegada`, { method: "DELETE" }),
 
   // ── Notas (F1b) ────────────────────────────────────────────────────────────
   notas: (grupoId: number, materiaId?: number) =>
