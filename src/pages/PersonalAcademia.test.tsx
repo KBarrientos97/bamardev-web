@@ -104,6 +104,16 @@ describe("Personal en un instituto", () => {
     expect(cuerpo).not.toHaveProperty("retencionPct");
   });
 
+  it("rediseño de noviembre: `?persona=ID` (el «Darle acceso» de Docentes) abre su ficha", async () => {
+    render(
+      <MemoryRouter initialEntries={["/personal?persona=7"]}>
+        <Personal />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole("dialog", { name: "Marco Rojas" })).toBeInTheDocument();
+  });
+
   it("sin nadie cargado, el vacío no habla de barberos ni de agenda", async () => {
     vi.mocked(apiPersonal.listar).mockResolvedValue([]);
     render(

@@ -28,7 +28,7 @@ import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { SelectorColor } from "../components/SelectorColor";
 import { PreviaColorAgenda } from "./agenda/piezas";
 
@@ -69,6 +69,7 @@ export default function Personal() {
   const [sucursal, setSucursal] = useState("");
   const [editando, setEditando] = useState<Persona | "nueva" | null>(null);
   const [aviso, setAviso] = useAviso();
+  const [params, setParams] = useSearchParams();
 
   const personas = useApi(() => apiPersonal.listar({ incluirInactivos: true }), []);
   // Los cargos son los roles del negocio (PLAN-ROLES-NEGOCIO). Sin la lista
@@ -82,6 +83,22 @@ export default function Personal() {
   const nombreSucursal = (id: number) => sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`;
 
   const todas = personas.datos ?? [];
+  // `?persona=ID` abre su ficha: lo usa «Darle acceso» de la pantalla Docentes
+  // del instituto (rediseño de noviembre), para no tener que buscarlo acá.
+  const pedida = Number(params.get("persona")) || null;
+  useEffect(() => {
+    if (pedida == null || !personas.datos) return;
+    const p = personas.datos.find((x) => x.id === pedida);
+    if (p) setEditando(p);
+    setParams(
+      (actual) => {
+        const sin = new URLSearchParams(actual);
+        sin.delete("persona");
+        return sin;
+      },
+      { replace: true },
+    );
+  }, [pedida, personas.datos, setParams]);
   const cargos = useMemo(() => {
     const m = new Map<number, string>();
     for (const c of cargosRol.datos ?? []) m.set(c.id, c.nombre);
