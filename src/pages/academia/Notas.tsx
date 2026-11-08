@@ -621,7 +621,9 @@ function CargaNotas({
           <div
             role="region"
             aria-label={hayCambios ? "Notas sin guardar" : "Acciones de las notas"}
-            className={`fixed inset-x-0 z-20 border-t border-borde-soft bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:bottom-4 md:rounded-2xl md:border md:border-borde md:px-5 md:shadow-lg ${
+            // max-md:!mb-0: el space-y del contenedor le ponía 20 px de margen abajo y la despegaba
+            // de la barra del docente; por el hueco se veía el contenido de atrás.
+            className={`fixed inset-x-0 z-20 max-md:!mb-0 border-t border-borde-soft bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:bottom-4 md:rounded-2xl md:border md:border-borde md:px-5 md:shadow-lg ${
               docente && conNav ? "bottom-[57px]" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3"
             }`}
           >

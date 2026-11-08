@@ -349,7 +349,8 @@ function Lista({
           {/* En el celular, fija abajo (encima de la barra del docente); en
               escritorio, pegada al pie de la columna. */}
           <div
-            className={`fixed inset-x-0 z-20 space-y-1.5 border-t border-borde-soft bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:rounded-2xl md:border md:border-borde md:p-4 md:shadow-lg ${
+            // max-md:!mb-0: el space-y del contenedor le ponía 20 px de margen abajo (ver Notas).
+            className={`fixed inset-x-0 z-20 max-md:!mb-0 space-y-1.5 border-t border-borde-soft bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:sticky md:inset-x-auto md:rounded-2xl md:border md:border-borde md:p-4 md:shadow-lg ${
               docente && conNav ? "bottom-[57px] md:bottom-4" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:bottom-4 md:pb-4"
             }`}
           >
