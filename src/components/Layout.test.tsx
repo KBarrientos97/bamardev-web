@@ -490,7 +490,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     sesion.features = ["pos", "caja", "academia"];
   });
 
-  it("arranca plegado: un solo botón, y sus opciones no se alcanzan", () => {
+  it("arranca plegado: sus opciones no se alcanzan, y «Cerrar sesión» queda suelto debajo (08-nov)", () => {
     const nav = abrir("/pos");
     const boton = nav.getByRole("button", { name: "Más opciones" });
     expect(boton).toHaveAttribute("aria-expanded", "false");
@@ -498,10 +498,12 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     // Ni con el lector de pantalla: plegado no existe.
     expect(nav.queryByRole("link", { name: "Notificaciones" })).toBeNull();
     expect(nav.queryByRole("link", { name: "Tutoriales" })).toBeNull();
-    expect(nav.queryByRole("button", { name: "Cerrar sesión" })).toBeNull();
+    // El dueño, 08-nov: para salir no hay que abrir el panel.
+    const salir = nav.getByRole("button", { name: "Cerrar sesión" });
+    expect(boton.compareDocumentPosition(salir) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("al tocarlo despliega Instalar, Notificaciones, Tutoriales, Cambiar mi contraseña y Cerrar sesión, en ese orden", () => {
+  it("al tocarlo despliega Instalar, Notificaciones, Tutoriales y Cambiar mi contraseña, en ese orden", () => {
     // Que el navegador ofrezca instalar: sin eso "Instalar" no sale, como antes.
     reiniciarEstadoPwa({
       instalable: Object.assign(new Event("beforeinstallprompt"), {
@@ -512,7 +514,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     try {
       const nav = abrirMas(abrir("/pos"));
       expect(nav.getByRole("button", { name: "Más opciones" })).toHaveAttribute("aria-expanded", "true");
-      expect(opciones(nav)).toEqual(["Instalar", "Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
+      expect(opciones(nav)).toEqual(["Instalar", "Notificaciones", "Tutoriales", "Cambiar mi contraseña"]);
       expect(nav.getByRole("link", { name: "Tutoriales" })).toHaveAttribute("href", "/tutoriales");
       expect(nav.getByRole("link", { name: "Notificaciones" })).toHaveAttribute("href", "/notificaciones");
     } finally {
@@ -522,7 +524,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
 
   it("sin poder instalar no ofrece Instalar", () => {
     const nav = abrirMas(abrir("/pos"));
-    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
+    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña"]);
   });
 
   it("en los demás rubros también, con lo de la cuenta que les toca", () => {
@@ -530,7 +532,7 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     sesion.rol = "ADMIN";
     sesion.features = [];
     const nav = abrirMas(abrir("/pos"));
-    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña", "Cerrar sesión"]);
+    expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña"]);
   });
 
   it("elegir Tutoriales lleva a la pantalla y pliega el panel; el botón queda encendido", () => {
@@ -555,11 +557,14 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     expect(boton).toHaveFocus();
   });
 
-  it("con teclado: la flecha arriba desde el botón sube a «Cerrar sesión»", () => {
+  it("con teclado: la flecha arriba desde el botón sube a la última opción y la de abajo baja a «Cerrar sesión»", () => {
     const nav = abrirMas(abrir("/pos"));
     const boton = nav.getByRole("button", { name: "Más opciones" });
     act(() => boton.focus());
     fireEvent.keyDown(boton, { key: "ArrowUp" });
+    expect(nav.getByRole("button", { name: "Cambiar mi contraseña" })).toHaveFocus();
+    act(() => boton.focus());
+    fireEvent.keyDown(boton, { key: "ArrowDown" });
     expect(nav.getByRole("button", { name: "Cerrar sesión" })).toHaveFocus();
   });
 

@@ -495,9 +495,7 @@ export default function MenuLateral({
           ].join(" ")}
         >
           <div className="min-h-0 overflow-hidden">
-            {/* Tope de alto: en un celular apaisado las seis opciones no
-                entran, y que se corte "Cerrar sesión" es lo peor que puede
-                pasar acá. */}
+            {/* Tope de alto: en un celular apaisado las opciones no entran. */}
             <div className="flex max-h-[45dvh] flex-col gap-0.5 overflow-y-auto pb-1">
               {onInstalar && (
                 <button
@@ -576,31 +574,6 @@ export default function MenuLateral({
                 </button>
               )}
 
-              <div className="my-1 border-t border-white/15" />
-
-              {/* No pliega el panel: mientras se pregunta por la caja el
-                  renglón dice "Revisando tu caja…", y plegado no se vería. */}
-              <button
-                type="button"
-                onClick={() => {
-                  setTip(null);
-                  if (onCerrarSesion) onCerrarSesion();
-                  else logout();
-                }}
-                disabled={cerrandoSesion}
-                aria-busy={cerrandoSesion || undefined}
-                aria-label={compacta ? "Cerrar sesión" : undefined}
-                data-fila=""
-                data-nav-id="salir"
-                {...mostrarTip("Cerrar sesión")}
-                className={claseOpcion(false, true)}
-              >
-                <Icon name="logout" size={19} />
-                {/* Mientras se pregunta por la caja lo dice: con el wifi lento
-                    son unos segundos, y un botón quieto se vuelve a tocar. */}
-                {!compacta && <span>{cerrandoSesion ? "Revisando tu caja…" : "Cerrar sesión"}</span>}
-              </button>
-
               {/* Qué versión tiene este equipo: para comparar con la publicada
                   cuando alguien dice "a mí no me aparece" (21-oct). */}
               {!compacta && (
@@ -652,6 +625,30 @@ export default function MenuLateral({
               />
             </>
           )}
+        </button>
+
+        {/* "Cerrar sesión" suelto, debajo de "Más opciones" y siempre a la
+            vista (el dueño, 08-nov): dentro del panel había que abrirlo para
+            salir. */}
+        <button
+          type="button"
+          onClick={() => {
+            setTip(null);
+            if (onCerrarSesion) onCerrarSesion();
+            else logout();
+          }}
+          disabled={cerrandoSesion}
+          aria-busy={cerrandoSesion || undefined}
+          aria-label={compacta ? "Cerrar sesión" : undefined}
+          data-fila=""
+          data-nav-id="salir"
+          {...mostrarTip("Cerrar sesión")}
+          className={claseOpcion(false, true)}
+        >
+          <Icon name="logout" size={19} />
+          {/* Mientras se pregunta por la caja lo dice: con el wifi lento
+              son unos segundos, y un botón quieto se vuelve a tocar. */}
+          {!compacta && <span>{cerrandoSesion ? "Revisando tu caja…" : "Cerrar sesión"}</span>}
         </button>
       </div>
 
