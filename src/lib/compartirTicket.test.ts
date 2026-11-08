@@ -34,8 +34,14 @@ beforeEach(() => {
 afterEach(() => {
   delete nav.share;
   delete nav.canShare;
+  delete nav.userAgentData;
   vi.restoreAllMocks();
 });
+
+/** Como lo reporta Chrome: `mobile` true en el celular, false en la compu. */
+const comoCelular = (mobile: boolean) => {
+  nav.userAgentData = { mobile };
+};
 
 describe("compartirComoImagen", () => {
   it("en el celular manda la imagen con el mensaje en el mismo envío", async () => {
@@ -67,6 +73,7 @@ describe("compartirComoImagen", () => {
 
 describe("enviarPorWhatsapp", () => {
   it("en la compu abre el chat con el mensaje y baja la imagen para adjuntarla", async () => {
+    comoCelular(false);
     const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
     const res = await enviarPorWhatsapp(document.createElement("div"), "V-000012", TEXTO, WA);
     expect(abrir).toHaveBeenCalledWith(WA, "_blank", "noopener,noreferrer");
@@ -74,7 +81,18 @@ describe("enviarPorWhatsapp", () => {
     expect(res).toEqual({ ok: false, motivo: "no_soportado" });
   });
 
+  it("en la compu abre el chat aunque el navegador sepa compartir archivos (Chrome en Windows)", async () => {
+    comoCelular(false);
+    const share = conCompartir();
+    const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
+    await enviarPorWhatsapp(document.createElement("div"), "V-000012", TEXTO, WA);
+    expect(abrir).toHaveBeenCalledWith(WA, "_blank", "noopener,noreferrer");
+    expect(share).not.toHaveBeenCalled();
+    expect(descargas).toEqual(["V-000012.png"]);
+  });
+
   it("en el celular usa el diálogo de compartir con la imagen y el mensaje", async () => {
+    comoCelular(true);
     const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
     const share = conCompartir();
     await enviarPorWhatsapp(document.createElement("div"), "V-000012", TEXTO, WA);

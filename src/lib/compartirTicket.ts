@@ -72,9 +72,13 @@ export async function compartirComoImagen(
  *
  * En el celular, el diálogo de compartir con las dos cosas juntas (ahí se
  * elige WhatsApp y el chat). En la compu `wa.me` no puede adjuntar archivos:
- * se abre el chat con el mensaje ya escrito y se baja la imagen para
- * arrastrarla. El chat se abre ANTES de rasterizar, mientras dura el clic: si
- * no, el bloqueador de ventanas lo frena.
+ * se abre el chat de quien pagó con el mensaje ya escrito y se baja la imagen
+ * para arrastrarla. El chat se abre ANTES de rasterizar, mientras dura el
+ * clic: si no, el bloqueador de ventanas lo frena.
+ *
+ * Se decide por el celular y no por `puedeCompartirImagen`: Chrome en Windows
+ * también comparte archivos, y en la PC de la recepción abría el diálogo de
+ * Windows en vez del chat del estudiante (visto en QA el 08-nov).
  */
 export async function enviarPorWhatsapp(
   nodo: HTMLElement,
@@ -82,12 +86,20 @@ export async function enviarPorWhatsapp(
   texto: string,
   urlWhatsapp: string,
 ): Promise<ResultadoCompartir> {
-  if (puedeCompartirImagen()) return compartirComoImagen(nodo, nombre, texto);
+  if (esCelular() && puedeCompartirImagen()) return compartirComoImagen(nodo, nombre, texto);
   window.open(urlWhatsapp, "_blank", "noopener,noreferrer");
   const blob = await rasterizar(nodo);
   if (!blob) return { ok: false, motivo: "error" };
   descargar(blob, nombre);
   return { ok: false, motivo: "no_soportado" };
+}
+
+/** Un teléfono (o tablet Android). El iPad se presenta como Mac: va por el camino de la compu. */
+function esCelular(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const datos = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
+  if (typeof datos?.mobile === "boolean") return datos.mobile;
+  return /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent);
 }
 
 async function rasterizar(nodo: HTMLElement): Promise<Blob | null> {
