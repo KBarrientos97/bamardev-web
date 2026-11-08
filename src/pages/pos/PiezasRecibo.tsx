@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { urlApi } from "../../lib/apiMenuDigital";
+import { esPositivo } from "../../lib/dinero";
+import { fmtMoney } from "../../lib/format";
+import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { escalaLetra } from "../../lib/menuDigital/letraRecibo";
 import { svgDeQr, textoEnlace } from "../../lib/pagina/qr";
+import { PIE_BAMARDEV } from "../../lib/pieBamarDev";
 import { numeroTicket } from "../../lib/tickets/llamado";
+import type { Venta } from "../../types";
 import type { AjustesRecibo } from "../../types/menuDigital";
 
 /**
@@ -24,6 +29,83 @@ const ALTO_LOGO = { s: 44, m: 64, l: 88 } as const;
  */
 export function HojaAngosta() {
   return <style>{"@page { size: 58mm 297mm; margin: 4mm 5mm; }"}</style>;
+}
+
+/**
+ * Subtotal, descuentos, envío y TOTAL. Sin diseño (`r` null) sale todo, como
+ * siempre; `!== false` y no el valor pelado para que un diseño guardado antes
+ * de los interruptores nunca se quede sin el total.
+ */
+export function TotalesRecibo({
+  r,
+  subtotal,
+  total,
+  descuentos = [],
+  envio = 0,
+}: {
+  r: AjustesRecibo | null;
+  subtotal: number;
+  total: number;
+  descuentos?: NonNullable<Venta["descuentos"]>;
+  envio?: number;
+}) {
+  const conSubtotal = r?.subtotal !== false;
+  const conTotal = r?.total !== false;
+  const conEnvio = esPositivo(envio);
+  const algoArribaDelTotal = conSubtotal || descuentos.length > 0 || conEnvio;
+  // Con todo apagado el bloque no se dibuja: quedaba su línea punteada pegada
+  // a la siguiente, dos rayas seguidas con nada en el medio.
+  if (!algoArribaDelTotal && !conTotal && !r?.totalEnLetras) return null;
+  return (
+    <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
+      {conSubtotal && (
+        <div className="flex justify-between text-texto-2">
+          <dt>Subtotal</dt>
+          <dd>{fmtMoney(subtotal)}</dd>
+        </div>
+      )}
+      {/* Cupones y promociones: cada uno con su nombre. Sólo en una
+          venta con descuento; el ticket de siempre no cambia. */}
+      {descuentos.map((x, i) => (
+        <div key={i} className="flex justify-between text-texto-2">
+          <dt>
+            {x.nombre}
+            {x.codigo ? ` (${x.codigo})` : ""}
+          </dt>
+          <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
+        </div>
+      ))}
+      {conEnvio && (
+        <div className="flex justify-between text-texto-2">
+          <dt>Envío</dt>
+          <dd>{fmtMoney(envio)}</dd>
+        </div>
+      )}
+      {conTotal && (
+        // La raya separa el TOTAL de lo que tiene arriba: sin nada arriba
+        // quedaba pegada a la punteada del bloque.
+        <div className={`flex justify-between text-base font-extrabold text-texto ${algoArribaDelTotal ? "border-t border-borde pt-1" : ""}`}>
+          <dt>TOTAL</dt>
+          <dd>{fmtMoney(total)}</dd>
+        </div>
+      )}
+      {r?.totalEnLetras && <p className="text-[11px] italic leading-snug text-texto-2">{totalEnLetras(total)}</p>}
+    </dl>
+  );
+}
+
+/**
+ * El pie: el mensaje del negocio, que se puede apagar, y la línea de BamarDev,
+ * que no (va en el lugar del antiguo mensaje secundario).
+ */
+export function PieDelRecibo({ r }: { r: AjustesRecibo | null }) {
+  const mensaje = r ? (r.mostrarMensaje !== false ? r.mensaje : "") : "¡Gracias por su compra!";
+  return (
+    <div className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
+      {mensaje && <p className={r ? "font-semibold text-texto" : undefined}>{mensaje}</p>}
+      <p className="mt-0.5">{PIE_BAMARDEV}</p>
+    </div>
+  );
 }
 
 export function CabeceraNegocio({ r, logo, nombre }: { r: AjustesRecibo; logo: string | null; nombre: string }) {

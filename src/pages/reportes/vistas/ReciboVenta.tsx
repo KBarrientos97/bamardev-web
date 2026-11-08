@@ -12,6 +12,7 @@ import type { Venta } from "../../../types";
 import { Chip } from "../ui";
 import { datosPedido, efectivoDelRecibo, textoFormaPago } from "./ReciboVenta.datos";
 import { chipEstado, type VentaFila } from "./Ventas.datos";
+import { PIE_BAMARDEV } from "../../../lib/pieBamarDev";
 
 /**
  * El recibo de una venta, abierto desde Reportes › Ventas en el restaurante
@@ -265,6 +266,7 @@ function TicketVenta({ venta: v, negocio, rubro }: { venta: Venta; negocio: stri
 
       <div className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
         <p>¡Gracias por su compra!</p>
+        <p className="mt-0.5">{PIE_BAMARDEV}</p>
       </div>
     </>
   );

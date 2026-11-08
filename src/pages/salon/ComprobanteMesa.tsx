@@ -6,6 +6,7 @@ import { fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Mesa } from "../../types/salon";
 import { datosComprobanteMesa } from "./datosComprobanteMesa";
+import { PIE_BAMARDEV } from "../../lib/pieBamarDev";
 
 /**
  * La cuenta (precuenta) o el recibo de una mesa, para imprimirlo o mandarlo.
@@ -156,9 +157,10 @@ export default function ComprobanteMesa({
           </div>
         )}
 
-        <p className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
-          {d.esRecibo ? "¡Gracias por su compra!" : "Gracias por su visita"}
-        </p>
+        <div className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
+          <p>{d.esRecibo ? "¡Gracias por su compra!" : "Gracias por su visita"}</p>
+          <p className="mt-0.5">{PIE_BAMARDEV}</p>
+        </div>
       </article>
 
       {aviso && <p className="mt-3 text-center text-[13px] text-texto-2">{aviso}</p>}

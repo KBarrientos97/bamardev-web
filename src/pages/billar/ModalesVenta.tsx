@@ -9,6 +9,7 @@ import { tipoDe, useBillar } from "./store";
 import { BotonB, Circulo } from "./ui";
 import { etiquetaOrigen, origenDe, textoMetodo, vistaDe } from "./vista";
 import { sePuedeCorregirPago } from "./Avisos.datos";
+import { PIE_BAMARDEV } from "../../lib/pieBamarDev";
 
 /** El detalle de una venta (§7.9): con Ticket, Anular (PIN) y Listo. */
 export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () => void }) {
@@ -204,6 +205,7 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
           )}
           {sep}
           <p className="text-center">Comprobante interno · no válido como factura</p>
+          <p className="text-center">{PIE_BAMARDEV}</p>
         </article>
       </div>
     </Modal>

@@ -6,6 +6,7 @@ import { abonosDe, historialDePagos, type PagoDelHistorial } from "../lib/histor
 import { useAuth } from "../store/AuthContext";
 import { Boton, Modal } from "./ui";
 import type { CreditoDetalle } from "../types";
+import { PIE_BAMARDEV } from "../lib/pieBamarDev";
 
 /**
  * Los papeles que el cliente se lleva de una cuenta a crédito.
@@ -135,9 +136,10 @@ export default function ComprobanteCredito({
           </div>
         )}
 
-        <p className="text-center text-xs text-texto-3">
-          {quien ? `${tipo === "RECIBO" ? "Cobró" : "Atendió"}: ${quien} · ¡Gracias!` : "¡Gracias!"}
-        </p>
+        <div className="text-center text-xs text-texto-3">
+          <p>{quien ? `${tipo === "RECIBO" ? "Cobró" : "Atendió"}: ${quien} · ¡Gracias!` : "¡Gracias!"}</p>
+          <p className="mt-0.5">{PIE_BAMARDEV}</p>
+        </div>
       </article>
 
       {aviso && (

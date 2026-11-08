@@ -84,6 +84,9 @@ export interface MenuPublicoApi {
 /** Chica, Normal o Grande: cuánto achica cada una está en `ESCALA_LETRA` (lib/menuDigital/letraRecibo). */
 export type TamanoLetra = "s" | "m" | "l";
 
+/** Lo de la mesa y lo que se lleva: en bloques EN MESA y PARA LLEVAR, o con M o LL en cada producto. */
+export type ModeloConsumo = "separado" | "letras";
+
 /** El diseño del recibo (`menu-digital/ajustes-recibo.ts` del backend). */
 export interface AjustesRecibo {
   ancho: number;
@@ -101,13 +104,19 @@ export interface AjustesRecibo {
   direccion: string;
   telefono: string;
   nit: string;
+  /** Lo elige cada negocio (Kevin, 8-nov). */
+  modeloConsumo: ModeloConsumo;
   cajero: boolean;
+  /** Cada renglón se apaga por su lado (Kevin, 8-nov): el dueño saca lo que no quiere que se vea. */
+  subtotal: boolean;
+  total: boolean;
   totalEnLetras: boolean;
   pagoYCambio: boolean;
   minutosEstimados: number;
   qr: { mostrar: boolean; titulo: string; texto: string; enlace: string };
+  /** Apagado, el pie no lleva el mensaje; el texto queda guardado por si lo vuelve a prender. */
+  mostrarMensaje: boolean;
   mensaje: string;
-  mensaje2: string;
   /**
    * Qué sale solo al registrar la venta. Juntos: una impresión con el corte en
    * el medio. Separados: el recibo y después la comanda, cada uno con su
@@ -127,12 +136,15 @@ export const RECIBO_DE_FABRICA: AjustesRecibo = {
   direccion: "",
   telefono: "",
   nit: "",
+  modeloConsumo: "separado",
   cajero: true,
+  subtotal: true,
+  total: true,
   totalEnLetras: true,
   pagoYCambio: true,
   minutosEstimados: 0,
   qr: { mostrar: false, titulo: "Síguenos", texto: "", enlace: "" },
+  mostrarMensaje: true,
   mensaje: "¡Gracias por su compra!",
-  mensaje2: "Conserve este recibo",
   alCobrar: { recibo: false, comanda: false, juntos: true },
 };

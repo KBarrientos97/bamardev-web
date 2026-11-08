@@ -7,11 +7,12 @@ import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { olvidarReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { prepararImagen } from "../../lib/pagina/imagen";
+import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
-import { RECIBO_DE_FABRICA, type AjustesRecibo, type TamanoLetra } from "../../types/menuDigital";
+import { RECIBO_DE_FABRICA, type AjustesRecibo, type ModeloConsumo, type TamanoLetra } from "../../types/menuDigital";
 import ComandaCocina from "../pos/ComandaCocina";
-import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, QrRecibo } from "../pos/PiezasRecibo";
+import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "../pos/PiezasRecibo";
 import { PestanasTickets, Segmentado, SiNo, Tarjeta } from "../tickets/piezas";
 
 /**
@@ -158,6 +159,7 @@ function AjustesDelRecibo({
   guardado: "" | "guardando" | "guardado" | "error";
   verPapel: (p: Papel) => void;
 }) {
+  const { rubro } = useAuth();
   return (
     <>
       <Tarjeta titulo="Papel" accion={<EstadoGuardado estado={guardado} />}>
@@ -270,7 +272,34 @@ function AjustesDelRecibo({
         <p className="mt-1 text-[12px] text-texto-3">El lema, la dirección, el teléfono y el NIT se cargan en «Logo y datos».</p>
       </Tarjeta>
       <Tarjeta titulo="Contenido">
+        {/* Sólo donde hay mesa y llevar: en una farmacia no cambiaría nada, y
+            un control que no hace nada es peor que no tenerlo. */}
+        {marcaConsumo(rubro) && (
+          <Fila
+            etiqueta="Mesa y para llevar"
+            detalle={
+              r.modeloConsumo === "letras"
+                ? "Una sola lista, con M (mesa) o LL (llevar) en cada producto."
+                : "Los productos separados en EN MESA y PARA LLEVAR."
+            }
+          >
+            <Segmentado<ModeloConsumo>
+              etiqueta="Mesa y para llevar"
+              valor={r.modeloConsumo}
+              onCambiar={(v) => {
+                cambiar({ modeloConsumo: v });
+                verPapel("recibo");
+              }}
+              opciones={[
+                { valor: "separado", texto: "Separado" },
+                { valor: "letras", texto: "M y LL" },
+              ]}
+            />
+          </Fila>
+        )}
         <SiNo etiqueta="Cajero" activo={r.cajero} onCambiar={(v) => cambiar({ cajero: v })} />
+        <SiNo etiqueta="Subtotal" activo={r.subtotal} onCambiar={(v) => cambiar({ subtotal: v })} />
+        <SiNo etiqueta="Total" activo={r.total} onCambiar={(v) => cambiar({ total: v })} />
         <SiNo
           etiqueta="Total en letras"
           detalle={`«${totalEnLetras(123)}»`}
@@ -308,10 +337,12 @@ function AjustesDelRecibo({
         )}
       </Tarjeta>
       <Tarjeta titulo="Pie del ticket">
-        <div className="space-y-2.5">
-          <Texto etiqueta="Mensaje principal" valor={r.mensaje} largo={80} onCambiar={(v) => cambiar({ mensaje: v })} />
-          <Texto etiqueta="Mensaje secundario" valor={r.mensaje2} largo={80} onCambiar={(v) => cambiar({ mensaje2: v })} />
-        </div>
+        <SiNo etiqueta="Mensaje principal" activo={r.mostrarMensaje} onCambiar={(v) => cambiar({ mostrarMensaje: v })} />
+        {r.mostrarMensaje && (
+          <div className="mt-2">
+            <Texto etiqueta="Mensaje" valor={r.mensaje} largo={80} onCambiar={(v) => cambiar({ mensaje: v })} />
+          </div>
+        )}
       </Tarjeta>
     </>
   );
@@ -514,37 +545,22 @@ function VistaPrevia({
                 <Dato etiqueta="Pago:" valor="Efectivo" />
               </dl>
               <div className="mt-2 border-t border-dashed border-borde pt-1">
-                {grupos.map((g) => (
-                  <div key={g.titulo}>
-                    <p className="mt-1.5 border-b border-texto pb-0.5 text-[11px] font-extrabold tracking-[0.14em] text-texto">{g.titulo}</p>
-                    {g.lineas.map((d, i) => (
-                      <div key={i} className="py-1 text-[13px]">
-                        <p className="font-semibold text-texto">{d.producto}</p>
-                        <div className="flex justify-between text-texto-3">
-                          <span>
-                            {d.cantidad} × {fmtMoney(d.precio)}
-                          </span>
-                          <span className="font-bold text-texto">{fmtMoney(d.subtotal)}</span>
-                        </div>
-                        {d.nota && <p className="text-xs italic text-texto-3">{d.nota}</p>}
+                {r.modeloConsumo === "letras"
+                  ? (VENTA_EJEMPLO.detalles ?? []).map((d, i) => (
+                      <LineaPrevia key={i} d={d} marca={d.consumo === "MESA" ? "M" : "LL"} />
+                    ))
+                  : grupos.map((g) => (
+                      <div key={g.titulo}>
+                        <p className="mt-1.5 border-b border-texto pb-0.5 text-[11px] font-extrabold tracking-[0.14em] text-texto">{g.titulo}</p>
+                        {g.lineas.map((d, i) => (
+                          <LineaPrevia key={i} d={d} />
+                        ))}
                       </div>
                     ))}
-                  </div>
-                ))}
               </div>
               {/* Con el Subtotal, como el recibo de la caja: sin él la vista
                   previa salía más corta que el papel de verdad. */}
-              <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
-                <div className="flex justify-between text-texto-2">
-                  <dt>Subtotal</dt>
-                  <dd>{fmtMoney(123)}</dd>
-                </div>
-                <div className="flex justify-between border-t border-borde pt-1 text-base font-extrabold text-texto">
-                  <dt>TOTAL</dt>
-                  <dd>{fmtMoney(123)}</dd>
-                </div>
-                {r.totalEnLetras && <p className="text-[11px] italic leading-snug text-texto-2">{totalEnLetras(123)}</p>}
-              </dl>
+              <TotalesRecibo r={r} subtotal={123} total={123} />
               {r.pagoYCambio && (
                 <dl className="mt-2 space-y-0.5 border-t border-dashed border-borde pt-2 text-xs">
                   <Linea etiqueta="Método de pago" valor="Efectivo" />
@@ -553,10 +569,7 @@ function VistaPrevia({
                 </dl>
               )}
               <QrRecibo r={r} conTicket />
-              <div className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
-                {r.mensaje && <p className="font-semibold text-texto">{r.mensaje}</p>}
-                {r.mensaje2 && <p className="mt-0.5">{r.mensaje2}</p>}
-              </div>
+              <PieDelRecibo r={r} />
             </article>
           ) : (
             <ComandaCocina
@@ -627,6 +640,25 @@ function Texto({
         className="w-full rounded-xl border border-borde bg-white px-3 py-2 text-sm text-texto outline-none focus:border-primary"
       />
     </label>
+  );
+}
+
+/** Un producto de la vista previa, como lo dibuja el recibo de la caja. */
+function LineaPrevia({ d, marca }: { d: NonNullable<Venta["detalles"]>[number]; marca?: "M" | "LL" }) {
+  return (
+    <div className="py-1 text-[13px]">
+      <div className="flex items-start gap-2">
+        <p className="min-w-0 flex-1 font-semibold text-texto">{d.producto}</p>
+        {marca && <span className={`shrink-0 font-bold ${marca === "M" ? "text-primary-700" : "text-texto-3"}`}>{marca}</span>}
+      </div>
+      <div className="flex justify-between text-texto-3">
+        <span>
+          {d.cantidad} × {fmtMoney(d.precio)}
+        </span>
+        <span className="font-bold text-texto">{fmtMoney(d.subtotal)}</span>
+      </div>
+      {d.nota && <p className="text-xs italic text-texto-3">{d.nota}</p>}
+    </div>
   );
 }
 

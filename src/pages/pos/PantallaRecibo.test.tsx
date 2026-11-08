@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import type { Feature, Venta } from "../../types";
-import { RECIBO_DE_FABRICA } from "../../types/menuDigital";
+import { RECIBO_DE_FABRICA, type AjustesRecibo } from "../../types/menuDigital";
 
 /**
  * La "M" (mesa) y "LL" (llevar) al lado de cada producto del ticket.
@@ -43,7 +43,7 @@ vi.mock("../../lib/academia/apiAcademia", () => ({
   apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
 }));
 
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, within } from "@testing-library/react";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import PantallaRecibo from "./PantallaRecibo";
 
@@ -734,6 +734,180 @@ describe("la letra y el logo del papel (Configuración del recibo, 5-nov)", () =
   it("sin diseño del recibo (un negocio sin pantallas), el papel no cambia de letra", () => {
     dibujar(venta());
     expect(document.getElementById("area-impresion")!.style.getPropertyValue("--escala-letra")).toBe("");
+  });
+});
+
+describe("lo que el dueño saca del papel y el pie de BamarDev (8-nov)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+  });
+
+  const conDiseno = (cambios: Partial<AjustesRecibo>) => {
+    disenoRecibo.valor = { recibo: { ...RECIBO_DE_FABRICA, ...cambios }, logo: null };
+  };
+  const LINEA = "INF. BamarDev - 67865462";
+
+  it("de fábrica salen el subtotal, el total y el mensaje", () => {
+    conDiseno({});
+    dibujar(venta());
+    expect(screen.getByText("Subtotal")).toBeInTheDocument();
+    expect(screen.getByText("TOTAL")).toBeInTheDocument();
+    expect(screen.getByText("¡Gracias por su compra!")).toBeInTheDocument();
+  });
+
+  it("un diseño guardado antes de los interruptores no pierde el total", () => {
+    // A propósito: sin el campo, el papel sigue como estaba. Tomarlo como
+    // apagado le borraba el total a todos los negocios que ya tenían diseño.
+    const viejo: Partial<AjustesRecibo> = { ...RECIBO_DE_FABRICA };
+    delete viejo.subtotal;
+    delete viejo.total;
+    delete viejo.mostrarMensaje;
+    disenoRecibo.valor = { recibo: viejo as AjustesRecibo, logo: null };
+    dibujar(venta());
+    expect(screen.getByText("Subtotal")).toBeInTheDocument();
+    expect(screen.getByText("TOTAL")).toBeInTheDocument();
+    expect(screen.getByText("¡Gracias por su compra!")).toBeInTheDocument();
+  });
+
+  it("el subtotal se apaga solo, y el total también", () => {
+    conDiseno({ subtotal: false });
+    const { unmount } = dibujar(venta());
+    expect(screen.queryByText("Subtotal")).not.toBeInTheDocument();
+    expect(screen.getByText("TOTAL")).toBeInTheDocument();
+    unmount();
+
+    conDiseno({ total: false });
+    dibujar(venta());
+    expect(screen.getByText("Subtotal")).toBeInTheDocument();
+    expect(screen.queryByText("TOTAL")).not.toBeInTheDocument();
+  });
+
+  it("sin subtotal, el total no lleva su raya: quedaría pegada a la punteada", () => {
+    conDiseno({ subtotal: false });
+    dibujar(venta());
+    expect(screen.getByText("TOTAL").parentElement).not.toHaveClass("border-t");
+  });
+
+  it("con todo apagado no queda un bloque vacío", () => {
+    // Dejaba su raya punteada sola, pegada a la del bloque siguiente.
+    conDiseno({ subtotal: false, total: false, totalEnLetras: false, pagoYCambio: false });
+    dibujar(venta());
+    const bloques = Array.from(document.querySelectorAll("#area-impresion dl")).filter((d) => !d.classList.contains("hidden"));
+    expect(bloques.every((d) => d.children.length > 0)).toBe(true);
+    expect(screen.queryByText("TOTAL")).not.toBeInTheDocument();
+  });
+
+  it("un descuento sigue saliendo aunque se apaguen el subtotal y el total", () => {
+    conDiseno({ subtotal: false, total: false });
+    dibujar(venta({ descuentos: [{ nombre: "Promo martes", monto: 5 }] } as Partial<Venta>));
+    expect(screen.getByText("Promo martes")).toBeInTheDocument();
+  });
+
+  it("apagar el mensaje no saca la línea de BamarDev", () => {
+    conDiseno({ mostrarMensaje: false });
+    dibujar(venta());
+    expect(screen.queryByText("¡Gracias por su compra!")).not.toBeInTheDocument();
+    expect(screen.getByText(LINEA)).toBeInTheDocument();
+  });
+
+  it("un mensaje secundario guardado de antes ya no se imprime", () => {
+    disenoRecibo.valor = {
+      recibo: { ...RECIBO_DE_FABRICA, mensaje2: "Conserve este recibo" } as AjustesRecibo,
+      logo: null,
+    };
+    dibujar(venta());
+    expect(screen.queryByText("Conserve este recibo")).not.toBeInTheDocument();
+    expect(screen.getByText(LINEA)).toBeInTheDocument();
+  });
+
+  it("sin diseño (un negocio sin pantallas) también lleva la línea, en lugar de «Conserve este recibo»", () => {
+    dibujar(venta());
+    expect(screen.getByText("¡Gracias por su compra!")).toBeInTheDocument();
+    expect(screen.getByText("Subtotal")).toBeInTheDocument();
+    expect(screen.getByText("TOTAL")).toBeInTheDocument();
+    expect(screen.queryByText("Conserve este recibo")).not.toBeInTheDocument();
+    expect(screen.getByText(LINEA)).toBeInTheDocument();
+  });
+});
+
+describe("mesa y para llevar: el modelo que elige cada negocio (8-nov)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+  });
+
+  const conModelo = (modeloConsumo: AjustesRecibo["modeloConsumo"]) => {
+    disenoRecibo.valor = { recibo: { ...RECIBO_DE_FABRICA, modeloConsumo }, logo: null };
+  };
+  const lineas = [
+    { productoId: 1, producto: "Económico", cantidad: 2, precio: 20, subtotal: 40, nota: "sin ensalada", consumo: "MESA" },
+    { productoId: 2, producto: "Económico", cantidad: 1, precio: 20, subtotal: 20, nota: null, consumo: "LLEVAR" },
+  ];
+  const conNumero = () => venta({ ticket: { numero: 72, estado: "PREPARANDO" }, detalles: lineas } as Partial<Venta>);
+  const sinNumero = () => venta({ detalles: lineas } as Partial<Venta>);
+  const papel = () => document.querySelector<HTMLElement>("article")!;
+
+  it("separado: un pedido mixto sale en EN MESA y PARA LLEVAR, sin letras", () => {
+    conModelo("separado");
+    dibujar(conNumero());
+    expect(within(papel()).getByText("EN MESA")).toBeInTheDocument();
+    expect(within(papel()).getByText("PARA LLEVAR")).toBeInTheDocument();
+    expect(within(papel()).queryByText("M")).not.toBeInTheDocument();
+    expect(within(papel()).queryByText("LL")).not.toBeInTheDocument();
+  });
+
+  it("M y LL: una sola lista con la letra en cada producto, aunque tenga número", () => {
+    conModelo("letras");
+    dibujar(conNumero());
+    expect(within(papel()).queryByText("EN MESA")).not.toBeInTheDocument();
+    expect(within(papel()).queryByText("PARA LLEVAR")).not.toBeInTheDocument();
+    expect(within(papel()).getByText("M")).toBeInTheDocument();
+    expect(within(papel()).getByText("LL")).toBeInTheDocument();
+  });
+
+  it("con número la nota sigue yendo sólo en la comanda, en los dos modelos", () => {
+    conModelo("letras");
+    const { unmount } = dibujar(conNumero());
+    expect(within(papel()).queryByText("sin ensalada")).not.toBeInTheDocument();
+    unmount();
+    conModelo("separado");
+    dibujar(conNumero());
+    expect(within(papel()).queryByText("sin ensalada")).not.toBeInTheDocument();
+  });
+
+  it("separado sin número: el recibo conserva la nota, porque no hay comanda", () => {
+    // Sin este cuidado, pasar a bloques borraba la nota del único papel que hay.
+    conModelo("separado");
+    dibujar(sinNumero());
+    expect(within(papel()).getByText("EN MESA")).toBeInTheDocument();
+    expect(within(papel()).getByText("sin ensalada")).toBeInTheDocument();
+  });
+
+  it("sin diseño (un negocio sin pantallas), sigue con M y LL como siempre", () => {
+    dibujar(sinNumero());
+    expect(within(papel()).getByText("M")).toBeInTheDocument();
+    expect(within(papel()).queryByText("EN MESA")).not.toBeInTheDocument();
+  });
+
+  it("un diseño guardado antes de la opción sale separado", () => {
+    const viejo: Partial<AjustesRecibo> = { ...RECIBO_DE_FABRICA };
+    delete viejo.modeloConsumo;
+    disenoRecibo.valor = { recibo: viejo as AjustesRecibo, logo: null };
+    dibujar(conNumero());
+    expect(within(papel()).getByText("EN MESA")).toBeInTheDocument();
+  });
+
+  it("donde no hay mesa ni llevar no salen ni bloques ni letras", () => {
+    sesion.rubro = "FARMACIA";
+    conModelo("separado");
+    dibujar(sinNumero());
+    expect(within(papel()).queryByText("EN MESA")).not.toBeInTheDocument();
+    expect(within(papel()).queryByText("M")).not.toBeInTheDocument();
   });
 });
 
