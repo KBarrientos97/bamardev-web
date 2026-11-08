@@ -262,7 +262,8 @@ function FichaPersona({
   // el aviso decía "Profesionales" y la pestaña "Manicuristas y espacios").
   const pestanaProfesionales = `${plural(etiquetaRol("PROFESIONAL", negocio))} y espacios`;
   // En un instituto la gente son los docentes (contrato de la ronda 1): su %
-  // se llama "% docente" y suman la retención y el NIT.
+  // se llama "% docente" y suma el NIT. La retención ya no se pide (dueño,
+  // 08-nov: a los docentes no se les retiene).
   const conDocentes = esInstituto(negocio);
   const pal = usePalabras();
   const sedeTxt = conDocentes ? pal.sede : "sucursal";
@@ -281,7 +282,6 @@ function FichaPersona({
   const [fechaIngreso, setFechaIngreso] = useState(persona?.fechaIngreso ?? "");
   const [color, setColor] = useState(persona?.color ?? "");
   const [comision, setComision] = useState(persona?.comisionPct != null ? String(persona.comisionPct) : "");
-  const [retencion, setRetencion] = useState(persona?.retencionPct != null ? String(persona.retencionPct) : "");
   const [nit, setNit] = useState(persona?.nit ?? "");
   const [notas, setNotas] = useState(persona?.notas ?? "");
   const [zona, setZona] = useState(persona?.zona ?? "");
@@ -339,10 +339,6 @@ function FichaPersona({
     if (com !== null && (!Number.isFinite(com) || com < 0 || com > 100)) {
       return setError(conDocentes ? "El % docente va de 0 a 100." : "La comisión va de 0 a 100 %.");
     }
-    const ret = retencion.trim() === "" ? null : Number(retencion);
-    if (ret !== null && (!Number.isFinite(ret) || ret < 0 || ret > 100)) {
-      return setError("La retención va de 0 a 100 %.");
-    }
     if (persona && sucursales.length > 1 && !sucursalIds.length) {
       return setError(`Elegí al menos una ${sedeTxt} donde trabaja.`);
     }
@@ -366,8 +362,9 @@ function FichaPersona({
       notas: notas.trim() || null,
       ...(esRepartidor ? { zona: zona.trim() || null, vehiculo: vehiculo.trim() || null } : {}),
       ...(cambiaComision && com !== (persona?.comisionPct ?? null) ? { comisionPct: com } : {}),
-      // Sólo en el instituto, y sólo si cambiaron: un backend anterior no los conoce.
-      ...(conDocentes && cambiaComision && ret !== (persona?.retencionPct ?? null) ? { retencionPct: ret } : {}),
+      // Sólo en el instituto, y sólo si cambió: un backend anterior no lo conoce.
+      // `retencionPct` ya no viaja (dueño, 08-nov: sin retención): el que tenga
+      // guardado queda como está y la planilla no lo usa (`retencionActiva`).
       ...(conDocentes && (nit.trim() || null) !== (persona?.nit ?? null) ? { nit: nit.trim() || null } : {}),
       ...(sucursalIds.length ? { sucursalIds } : {}),
     };
@@ -599,11 +596,6 @@ function FichaPersona({
           {cambiaComision && !conDocentes && (
             <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
-            </Campo>
-          )}
-          {conDocentes && cambiaComision && (
-            <Campo label="Retención %" hint="Si no factura. Vacío = el de los ajustes.">
-              <Input type="number" value={retencion} onChange={(e) => setRetencion(e.target.value)} placeholder="Opcional" />
             </Campo>
           )}
           {conDocentes && (

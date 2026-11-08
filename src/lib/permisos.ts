@@ -500,7 +500,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   config_recibo: ["RESTAURANTE"],
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
-  // ahí carga a sus docentes, con su % y su retención.
+  // ahí carga a sus docentes y su NIT (sin retención desde el 08-nov).
   personal: [...RUBROS_BELLEZA, "ACADEMIA"],
 };
 

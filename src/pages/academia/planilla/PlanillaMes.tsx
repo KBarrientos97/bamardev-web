@@ -8,16 +8,17 @@ import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import type { PlanillaMes as TPlanillaMes } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoRetencion } from "../../../lib/academia/vista";
+import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO } from "../../../lib/academia/vista";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { Chip, claseBotonFila, EncabezadoPagina, GrillaKpi, KpiTarjeta, LISTA, PaginaAcademia, TABLA, Tarjeta, type TonoChip } from "../piezas";
 
 /**
  * E14 · Planilla de docentes del mes (ronda 2, D2): cada docente con su %,
- * cuántos estudiantes cuentan (pagaron el módulo completo) de cuántos tiene,
- * el bruto, la retención (por confirmar, D9) y el líquido. Tocar uno abre su
- * planilla (N8), donde se cierra y se paga. Lo calcula todo el backend.
+ * cuántos estudiantes cuentan (pagaron el módulo completo) de cuántos tiene
+ * y el líquido. Tocar uno abre su planilla (N8), donde se cierra y se paga. Lo
+ * calcula todo el backend. A los docentes no se les retiene (dueño, 08-nov):
+ * sin retención el bruto y el líquido son el mismo monto y se muestra uno.
  */
 export default function PlanillaMes() {
   const p = usePalabras();
@@ -33,7 +34,7 @@ export default function PlanillaMes() {
   ];
 
   // Las mismas columnas para el encabezado, las filas y el total (en escritorio).
-  const columnas = "lg:grid-cols-[minmax(200px,2fr)_150px_110px_110px_110px_116px_72px]";
+  const columnas = "lg:grid-cols-[minmax(200px,2fr)_150px_120px_116px_72px]";
 
   return (
     <PaginaAcademia>
@@ -82,25 +83,13 @@ export default function PlanillaMes() {
       ) : (
         <>
           <section aria-label="Resumen del mes">
-            <GrillaKpi>
-              <KpiTarjeta
-                icono="billetera"
-                etiqueta="Bruto del mes"
-                valor={fmtMoney(d.totales.bruto)}
-                pie={`${d.docentes.length} ${d.docentes.length === 1 ? p.docente : `${p.docente}s`}`}
-              />
-              <KpiTarjeta
-                icono="percent"
-                etiqueta="Retención"
-                valor={d.retencionActiva ? fmtMoney(d.docentes.reduce((s, x) => s + (x.retencion ?? 0), 0)) : "—"}
-                pie={d.retencionActiva ? undefined : "Por confirmar con el instituto"}
-              />
+            <GrillaKpi columnas={2}>
               <KpiTarjeta
                 icono="coins"
                 tono="ok"
-                etiqueta={mes === hoy ? "Líquido provisorio" : "Líquido"}
+                etiqueta={mes === hoy ? "Líquido provisorio" : "Líquido del mes"}
                 valor={fmtMoney(d.totales.liquido)}
-                pie={d.retencionActiva ? undefined : "sin retención ni atrasos"}
+                pie={`${d.docentes.length} ${d.docentes.length === 1 ? p.docente : `${p.docente}s`}`}
               />
               <KpiTarjeta
                 icono="check"
@@ -122,17 +111,13 @@ export default function PlanillaMes() {
                 <span className="tabular-nums max-lg:font-normal max-lg:text-texto-3">
                   {d.docentes.reduce((s, x) => s + x.cuentan, 0)} de {d.docentes.reduce((s, x) => s + x.total, 0)}
                 </span>
-                <span className="text-right tabular-nums max-lg:ml-auto">{fmtMoney(d.totales.bruto)}</span>
-                <span className="hidden text-right text-[13px] font-normal text-texto-3 lg:block">{d.retencionActiva ? "" : "por confirmar"}</span>
-                <span className="hidden text-right tabular-nums lg:block">{fmtMoney(d.totales.liquido)}</span>
+                <span className="text-right tabular-nums max-lg:ml-auto">{fmtMoney(d.totales.liquido)}</span>
               </div>
             }
           >
             <div className={`hidden gap-3 px-4 py-2.5 sm:px-5 lg:grid ${TABLA.encabezado} ${columnas}`}>
               <span>{p.Docente}</span>
               <span>Cuentan / {p.alumnos}</span>
-              <span className="text-right">Bruto</span>
-              <span className="text-right">Retención</span>
               <span className="text-right">Líquido</span>
               <span className="lg:pl-4">Estado</span>
               <span />
@@ -155,9 +140,7 @@ export default function PlanillaMes() {
                       {x.cuentan} de {x.total}
                       {extraDocente(x) && <span className="block truncate text-[12px] text-texto-3">{extraDocente(x)}</span>}
                     </span>
-                    <span className="text-right text-sm font-semibold tabular-nums text-texto max-lg:order-2">{fmtMoney(x.bruto)}</span>
-                    <span className="hidden text-right text-[13px] text-texto-3 lg:block">{textoRetencion(d.retencionActiva, x.retencion)}</span>
-                    <span className="hidden text-right text-sm tabular-nums text-texto-2 lg:block">{fmtMoney(x.liquido)}</span>
+                    <span className="text-right text-sm font-semibold tabular-nums text-texto max-lg:order-2">{fmtMoney(x.liquido)}</span>
                     <span className="max-lg:order-4 max-lg:justify-self-end lg:pl-4">
                       <Chip tono={CHIP_ESTADO[x.estado]}>{TEXTO_ESTADO[x.estado]}</Chip>
                     </span>

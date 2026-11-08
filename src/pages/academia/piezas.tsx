@@ -551,7 +551,7 @@ export function Dato({ etiqueta, children }: { etiqueta: string; children: React
 /**
  * Un interruptor de sí o no, con su texto al lado. `bloqueado` lo deja a la
  * vista pero sin tocar: lo que el instituto todavía tiene que confirmar
- * (la retención, los atrasos) o lo que es regla fija (las 3 fotos).
+ * (los atrasos) o lo que es regla fija (las 3 fotos).
  */
 export function Interruptor({
   activo,

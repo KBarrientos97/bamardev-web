@@ -315,14 +315,6 @@ export const TEXTO_ESTADO_PLANILLA: Record<EstadoPlanilla, string> = {
   PAGADA: "pagada",
 };
 
-/**
- * Lo que se cuenta de una retención: el monto si el instituto la confirmó
- * (D9: hoy está apagada) o "por confirmar".
- */
-export function textoRetencion(activa: boolean, monto: number | null): string {
-  return activa && monto != null ? `− ${fmtMoney(monto)}` : "por confirmar";
-}
-
 // ── Historial de la ficha ───────────────────────────────────────────────────
 
 const TITULO_EVENTO: Record<string, string> = {

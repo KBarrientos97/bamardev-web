@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LineaPlanilla, PlanillaDocente as TPlanillaDocente } from "../../../lib/academia/tipos";
 
 /**
- * E14 / N8 · Planilla de los docentes: el mes con cada docente y su bruto, la
- * retención por confirmar (D9); la de un docente con lo que cuenta, lo
- * postergado y de dónde sale cada monto; cerrar y pagar.
+ * E14 / N8 · Planilla de los docentes: el mes con cada docente y su líquido
+ * (sin retención desde el 08-nov: un solo monto); la de un docente con lo que
+ * cuenta, lo postergado y de dónde sale cada monto; cerrar y pagar.
  */
 
 vi.mock("../../../store/AuthContext", async () => {
@@ -89,7 +89,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("E14 · Planilla del mes", () => {
-  it("cada docente con su bruto y la retención por confirmar; tocarlo abre su planilla", async () => {
+  it("cada docente con su líquido, sin retención (dueño, 08-nov); tocarlo abre su planilla", async () => {
     render(
       <MemoryRouter>
         <PlanillaMes />
@@ -99,7 +99,9 @@ describe("E14 · Planilla del mes", () => {
     expect(screen.getByRole("heading", { name: "Planilla docentes · Octubre 2026" })).toBeInTheDocument();
     expect(apiAcademia.planilla).toHaveBeenCalledWith("2026-10", null);
     expect(screen.getByRole("region", { name: "Resumen del mes" })).toHaveTextContent(/4\.040/);
-    expect(screen.getByText("Por confirmar con el instituto")).toBeInTheDocument();
+    // Sin retención: ni tarjeta, ni columna, ni «por confirmar»; un solo monto por docente.
+    expect(document.body).not.toHaveTextContent(/Retención|retención|Por confirmar|Bruto/);
+    expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveTextContent(/1\.850/);
     expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveAttribute("href", "/academia/planilla/9?mes=2026-10");
     fireEvent.click(screen.getByRole("button", { name: "Mes anterior" }));
     await act(async () => {});
@@ -504,12 +506,16 @@ describe("Bug 4 · los ajustes de cobros anulados o repuestos", () => {
     expect(within(panel).getByText("Se anuló el cobro del módulo liquidado en 2026-09: se descuenta Bs 90")).toBeInTheDocument();
   });
 
-  it("el resumen dice los ajustes que componen el bruto", async () => {
+  it("sin retención el resumen tiene un solo monto, y dice los ajustes que lo componen", async () => {
     await montar({
       resumen: { ...PLANILLA.resumen, ajustes: 1, brutoAjustes: -90, brutoCuentan: 190, bruto: 100, liquido: 100 },
       ajustes: [ANULADO],
     });
-    expect(screen.getByRole("region", { name: "Resumen de la planilla" })).toHaveTextContent(/Bs 190,00 del mes − Bs 90,00 de ajustes/);
+    const resumen = screen.getByRole("region", { name: "Resumen de la planilla" });
+    expect(resumen).toHaveTextContent(/Bs 190,00 del mes − Bs 90,00 de ajustes/);
+    // Sin tarjeta de retención ni de bruto; la de atrasos sigue (D9, otra decisión).
+    expect(resumen).not.toHaveTextContent(/Retención|Bruto/);
+    expect(resumen).toHaveTextContent(/Atrasos/);
   });
 
   it("un líquido negativo se muestra con el número y una nota neutra", async () => {
