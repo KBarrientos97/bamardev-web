@@ -25,6 +25,20 @@ function instante(iso: string | null | undefined): Date | null {
 }
 
 /**
+ * ¿Abrió un día y cerró al siguiente? Por los días LOCALES: con el prefijo del
+ * ISO, que es UTC, todo lo posterior a las 20:00 de Bolivia caería en el día
+ * siguiente y un turno de tarde se marcaría como cruzado sin serlo.
+ */
+export function cruzaMedianoche(c: {
+  fechaApertura?: string | null;
+  fechaCierre?: string | null;
+}): boolean {
+  const a = instante(c.fechaApertura);
+  const b = instante(c.fechaCierre);
+  return a != null && b != null && a.toDateString() !== b.toDateString();
+}
+
+/**
  * El turno por la hora LOCAL en que se abrió la caja: mañana de 6 a 12, tarde
  * de 12 a 18, noche el resto. El backend no lo manda; sin él, dos cierres del
  * mismo día de dos cajeros se distinguían sólo por el nombre.

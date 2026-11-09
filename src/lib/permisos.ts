@@ -617,6 +617,16 @@ export function creaClientes(usuario: ConPermisos): boolean {
 }
 
 /**
+ * ¿Revisa los comprobantes de los pagos en línea de la academia (verlos,
+ * aprobarlos, rechazarlos)? Lo mismo que pide el backend en toda la bandeja.
+ * Desde el 08-nov es un permiso propio y no `academia.fotos`: el dueño se lo
+ * da a la recepción sin entregarle por eso la cara y el carnet de los menores.
+ */
+export function revisaPagosEnLinea(usuario: ConPermisos): boolean {
+  return tienePermiso(usuario, "academia.pagos_en_linea");
+}
+
+/**
  * ¿Opera la cola de espera (anotar, atender, "se fue")? El backend pide
  * `agenda.gestionar` o `cola.gestionar`. A quien no los tiene la cola le
  * llega vacía y anotar le da 403: mostrarle la pestaña era ofrecerle un error.

@@ -4,6 +4,7 @@ import VisorFotos from "../../components/VisorFotos";
 import { Boton, Cargando, ErrorMsg } from "../../components/ui";
 import { ApiError } from "../../lib/api";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { EVENTO_PREINSCRIPCIONES } from "../../lib/academia/contadorPreinscripciones";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import type { EstadoPagoEnLinea, PagoEnLinea } from "../../lib/academia/tipos";
 import { fmtMoney, tiempoRelativo } from "../../lib/format";
@@ -33,15 +34,18 @@ interface SinLugar {
 /**
  * M5 · Pagos por revisar (02-nov): los comprobantes que los estudiantes suben
  * desde la página del instituto con el QR fijo. La recepción (con
- * `academia.fotos`, el permiso que el administrador le da desde Roles) y el
- * dueño los ven en grande y los **aprueban** (se registra el cobro, sin caja, y
- * si era una preinscripción queda inscrito) o los **rechazan con un motivo**
- * (la deuda sigue intacta y el estudiante puede subir otro). El aviso al
- * estudiante es un botón de WhatsApp: se manda a mano.
+ * `academia.pagos_en_linea`, el permiso que el administrador le da desde
+ * Roles; hasta el 08-nov era `academia.fotos`, que también entrega la cara y
+ * el carnet de los menores) y el dueño los ven en grande y los **aprueban**
+ * (se registra el cobro, sin caja ni PIN, y si era una preinscripción queda
+ * inscrito) o los **rechazan con un motivo** (la deuda sigue intacta y el
+ * estudiante puede subir otro). El aviso al estudiante es un botón de
+ * WhatsApp: se manda a mano.
  *
- * Va en «Inscripciones online» (donde la recepción ya revisa las fotos) y en
- * el Panel de control del dueño. Sin comprobantes y sin historial, no dibuja
- * nada: un instituto sin QR fijo no ve una tarjeta vacía.
+ * Va en «Inscripciones online» (la recepción ya entra ahí para inscribir), en
+ * el Panel de control del dueño y, si el negocio no tiene el formulario de la
+ * página (sin «Inscripciones online»), en Cobranza. Sin comprobantes y sin
+ * historial, no dibuja nada: un instituto sin QR fijo no ve una tarjeta vacía.
  */
 export default function PagosPorRevisar({ sede }: { sede?: number | null }) {
   const [estado, setEstado] = useState<EstadoPagoEnLinea>("POR_REVISAR");
@@ -140,6 +144,8 @@ export default function PagosPorRevisar({ sede }: { sede?: number | null }) {
             // El panel se queda abierto con el resultado y el botón de WhatsApp.
             setAbierto(p);
             lista.recargar();
+            // El número del menú también los cuenta: baja en el acto.
+            window.dispatchEvent(new Event(EVENTO_PREINSCRIPCIONES));
           }}
         />
       )}

@@ -6,6 +6,11 @@ vi.mock("../pos/PantallaCierre", () => ({
   ProductosDelTurno: () => <p>productos del turno</p>,
 }));
 
+// Un rol sin rentabilidad: la lista de siempre (el cuadro con costos tiene su test).
+vi.mock("../../store/AuthContext", () => ({
+  useAuth: () => ({ rubro: "RESTAURANTE", usuario: { permisos: [] }, negocio: null, incluye: () => false }),
+}));
+
 function cierre(p: Partial<CierreFila>): CierreFila {
   return {
     id: 1,
@@ -50,6 +55,8 @@ describe("cierres de caja (web)", () => {
     render(<CierresVista historial={[cierre({})]} />);
     fireEvent.click(screen.getByText(/24 sept 2026 · Administrador/));
     expect(screen.getByText("Arqueo del turno")).toBeInTheDocument();
+    // Como la app: un turno de 12:00 a 03:00 tiene que decir cuánto duró y que cruzó de día.
+    expect(screen.getByText("Duración: 15h")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Productos vendidos"));
     expect(screen.getByText("productos del turno")).toBeInTheDocument();
   });

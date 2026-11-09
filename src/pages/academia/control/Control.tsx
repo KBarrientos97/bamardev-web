@@ -11,7 +11,7 @@ import { TIPOS_FOTO, type PanelControl, type TipoFoto } from "../../../lib/acade
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtFecha, fmtMoney, tiempoRelativo } from "../../../lib/format";
-import { tienePermiso } from "../../../lib/permisos";
+import { revisaPagosEnLinea } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import PagosPorRevisar from "../PagosPorRevisar";
@@ -245,8 +245,8 @@ export default function Control() {
 
           <FotosFaltan filas={d.fotosFaltan ?? []} total={d.fotosFaltanTotal} />
 
-          {/* M5: los comprobantes de pago de la página, con el mismo permiso que las fotos. */}
-          {tienePermiso(usuario, "academia.fotos") && <PagosPorRevisar sede={sede.sucursalId} />}
+          {/* M5: los comprobantes de pago de la página, con su permiso (desde el 08-nov, no el de las fotos). */}
+          {revisaPagosEnLinea(usuario) && <PagosPorRevisar sede={sede.sucursalId} />}
 
           <Sobrecupos filas={d.sobrecupos ?? []} variasSedes={sede.variasSedes} />
 

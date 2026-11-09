@@ -12,10 +12,9 @@ import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 import ComandaCocina from "./ComandaCocina";
-import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
-import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, QrRecibo } from "./PiezasRecibo";
+import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "./PiezasRecibo";
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 
@@ -52,7 +51,7 @@ export default function PantallaRecibo({
   const { negocio, incluye, rubro } = useAuth();
   // El diseño del recibo (logo, datos del negocio, QR, pie): sólo en un
   // negocio con las pantallas del local. Sin él, null, y el recibo sale
-  // exactamente como siempre.
+  // como siempre (la línea de BamarDev del pie va en todos).
   const conf = useReciboNegocio();
   const r = conf?.recibo ?? null;
 
@@ -202,6 +201,9 @@ export default function PantallaRecibo({
   // Sin él, todo sale exactamente como siempre.
   const ticketPedido = venta.ticket ?? null;
   const conTicket = !!ticketPedido && !venta.pendienteSync;
+  // Bloques EN MESA y PARA LLEVAR o M/LL en cada renglón: lo elige el negocio
+  // en Configuración del recibo (Kevin, 8-nov). Sin diseño, lo de siempre.
+  const separarConsumo = mostrarConsumo && (r ? r.modeloConsumo !== "letras" : conTicket);
 
   const imprimirYCompartir = (
     <>
@@ -399,17 +401,16 @@ export default function PantallaRecibo({
       </dl>
 
       <div className="mt-2 border-t border-dashed border-borde pt-1">
-        {conTicket && mostrarConsumo
-          ? // Con número de pedido, en bloques "EN MESA" y "PARA LLEVAR"
-            // en vez de la M/LL de cada renglón: el cliente de un pedido
-            // mixto ve de un vistazo qué se lleva.
+        {separarConsumo
+          ? // En bloques en vez de la M/LL de cada renglón: el cliente de un
+            // pedido mixto ve de un vistazo qué se lleva.
             porConsumo(detalles).map((g) => (
               <div key={g.consumo}>
                 <p className="mt-1.5 border-b border-texto pb-0.5 text-[11px] font-extrabold tracking-[0.14em] text-texto">
                   {g.consumo === "MESA" ? "EN MESA" : "PARA LLEVAR"}
                 </p>
                 {g.lineas.map((d, i) => (
-                  <LineaTicket key={i} linea={d} mostrarConsumo={false} conNota={false} />
+                  <LineaTicket key={i} linea={d} mostrarConsumo={false} conNota={!conTicket} />
                 ))}
               </div>
             ))
@@ -424,36 +425,7 @@ export default function PantallaRecibo({
             ))}
       </div>
 
-      <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
-        <div className="flex justify-between text-texto-2">
-          <dt>Subtotal</dt>
-          <dd>{fmtMoney(subtotal)}</dd>
-        </div>
-        {/* Cupones y promociones: cada uno con su nombre. Sólo en una
-            venta con descuento; el ticket de siempre no cambia. */}
-        {(venta.descuentos ?? []).map((x, i) => (
-          <div key={i} className="flex justify-between text-texto-2">
-            <dt>
-              {x.nombre}
-              {x.codigo ? ` (${x.codigo})` : ""}
-            </dt>
-            <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
-          </div>
-        ))}
-        {esPositivo(envio) && (
-          <div className="flex justify-between text-texto-2">
-            <dt>Envío</dt>
-            <dd>{fmtMoney(envio)}</dd>
-          </div>
-        )}
-        <div className="flex justify-between border-t border-borde pt-1 text-base font-extrabold text-texto">
-          <dt>TOTAL</dt>
-          <dd>{fmtMoney(totalTicket)}</dd>
-        </div>
-        {r?.totalEnLetras && (
-          <p className="text-[11px] italic leading-snug text-texto-2">{totalEnLetras(totalTicket)}</p>
-        )}
-      </dl>
+      <TotalesRecibo r={r} subtotal={subtotal} total={totalTicket} descuentos={venta.descuentos ?? []} envio={envio} />
       {/* Lo cobrado en la caja (o registrado al entregar) es lo de los
           productos: sin esta línea, un TOTAL mayor que lo pagado se leía
           como un cobro de menos. */}
@@ -570,19 +542,7 @@ export default function PantallaRecibo({
         <QrRecibo r={r} conTicket={conTicket} />
       )}
 
-      <div className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
-        {r ? (
-          <>
-            {r.mensaje && <p className="font-semibold text-texto">{r.mensaje}</p>}
-            {r.mensaje2 && <p className="mt-0.5">{r.mensaje2}</p>}
-          </>
-        ) : (
-          <>
-            <p>¡Gracias por su compra!</p>
-            <p className="mt-0.5">Conserve este recibo</p>
-          </>
-        )}
-      </div>
+      <PieDelRecibo r={r} />
     </article>
   );
 

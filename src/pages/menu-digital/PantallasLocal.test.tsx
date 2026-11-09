@@ -295,6 +295,81 @@ describe("Configuración del recibo", () => {
   });
 });
 
+describe("Configuración del recibo: lo que se saca del papel (8-nov)", () => {
+  const LINEA = "INF. BamarDev - 67865462";
+
+  it("mesa y para llevar: arranca separado y al elegir M y LL cambia la vista previa y se guarda", async () => {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+    const modelo = screen.getByRole("radiogroup", { name: "Mesa y para llevar" });
+    expect(within(modelo).getByRole("radio", { name: "Separado" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("EN MESA")).toBeInTheDocument();
+
+    fireEvent.click(within(modelo).getByRole("radio", { name: "M y LL" }));
+
+    expect(screen.queryByText("EN MESA")).not.toBeInTheDocument();
+    expect(screen.queryByText("PARA LLEVAR")).not.toBeInTheDocument();
+    expect(screen.getAllByText("M")).toHaveLength(2);
+    expect(screen.getByText("LL")).toBeInTheDocument();
+    await waitFor(
+      () => {
+        const guardados = request.mock.calls.filter(
+          ([ruta, op]) => ruta === "/pantallas/recibo" && (op as RequestInit | undefined)?.method === "PATCH",
+        );
+        const { recibo } = JSON.parse((guardados[guardados.length - 1][1] as RequestInit).body as string);
+        expect(recibo.modeloConsumo).toBe("letras");
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("subtotal, total y mensaje se apagan en la vista previa y se guardan; la línea de BamarDev no tiene interruptor", async () => {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+
+    // El recibo simulado no trae los interruptores, como el backend viejo:
+    // arrancan prendidos. Y trae un mensaje2, que ya no se muestra.
+    expect(screen.getByText("Subtotal", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText("TOTAL", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Mensaje")).toHaveValue("¡Gracias por su compra!");
+    expect(screen.queryByText("Mensaje secundario")).not.toBeInTheDocument();
+    expect(screen.queryByText("Conserve este recibo")).not.toBeInTheDocument();
+    expect(screen.getByText(LINEA)).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /BamarDev/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Subtotal" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Total" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Mensaje principal" }));
+
+    expect(screen.queryByText("Subtotal", { selector: "dt" })).not.toBeInTheDocument();
+    expect(screen.queryByText("TOTAL", { selector: "dt" })).not.toBeInTheDocument();
+    expect(screen.queryByText("¡Gracias por su compra!")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Mensaje")).not.toBeInTheDocument();
+    expect(screen.getByText(LINEA)).toBeInTheDocument();
+
+    await waitFor(
+      () => {
+        const guardados = request.mock.calls.filter(
+          ([ruta, op]) => ruta === "/pantallas/recibo" && (op as RequestInit | undefined)?.method === "PATCH",
+        );
+        const { recibo } = JSON.parse((guardados[guardados.length - 1][1] as RequestInit).body as string);
+        expect(recibo).toMatchObject({ subtotal: false, total: false, mostrarMensaje: false });
+      },
+      { timeout: 3000 },
+    );
+  });
+});
+
 describe("Tickets y pedidos", () => {
   it("el tablero, el número que sigue y la vista previa de la TV", async () => {
     const { default: TicketsPedidos } = await import("../tickets/TicketsPedidos");

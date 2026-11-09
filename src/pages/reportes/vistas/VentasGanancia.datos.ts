@@ -3,6 +3,7 @@ import { fmtCantidad, fmtMoney } from "../../../lib/format";
 import type { CeldaPdf, DocumentoPdf } from "../../../lib/pdf/tablaPdf";
 import type { HojaNueva } from "../../../lib/planilla";
 import { esBelleza, esBillar } from "../../../lib/rubro";
+import type { ReporteCierreGanancia } from "../../../types";
 import type { TopProductoApi } from "../api";
 import { hoja } from "../contexto";
 import { plural } from "../formato";
@@ -117,6 +118,71 @@ export function armarVentasGanancia(top: TopProductoApi[]): VentasGanancia {
 }
 
 /**
+ * El cuadro de UN turno (arqueo de Reportes, 7-nov): la app y la web miran el
+ * mismo `reportes/cierres/:id/ganancia`. Por fechas no se podía: el turno que
+ * cerró a las 4 de la mañana se mezclaba con el que abrió al mediodía y el
+ * dueño no lograba cuadrar cada cierre.
+ *
+ * Las sumas y el orden son los del backend y no se vuelven a calcular ni a
+ * ordenar: es la misma lista, en el mismo orden, que la del arqueo.
+ *
+ * El total es lo COBRADO en el turno, como en el arqueo, no el bruto antes de
+ * promos que suma Ventas y ganancia: sin descuentos dan lo mismo.
+ */
+export function armarGananciaTurno(g: ReporteCierreGanancia): VentasGanancia {
+  const categorias = g.categorias.map(
+    (c): CategoriaGanancia => ({
+      nombre: c.nombre,
+      unidades: c.unidades,
+      total: c.total,
+      costo: c.costo,
+      ganancia: c.ganancia,
+      productos: c.items.map((i) => ({
+        nombre: i.nombre,
+        unidades: i.cantidad,
+        total: i.total,
+        costo: i.costo,
+        ganancia: i.ganancia,
+      })),
+    }),
+  );
+  return {
+    categorias,
+    unidades: g.unidades,
+    total: g.total,
+    costo: g.costo,
+    ganancia: g.ganancia,
+    productos: g.lineas,
+    ventasSinCosto: sumarPlata(categorias.flatMap((c) => c.productos).filter(sinCosto).map((p) => p.total)),
+  };
+}
+
+/**
+ * ¿El arqueo muestra el costo y la ganancia del turno? Sólo a quien tiene
+ * rentabilidad, por plan y por rol: Kevin, 7-nov, "ese dato sólo es para el
+ * dueño, por seguridad del local". Y por ahora sólo en el restaurante, que es
+ * quien lo pidió; los demás rubros siguen viendo su lista.
+ */
+export function veGananciaDelTurno(
+  rubro: string | null | undefined,
+  planIncluye: boolean,
+  permisos: readonly string[],
+): boolean {
+  return rubro === "RESTAURANTE" && planIncluye && permisos.includes("reportes.rentabilidad");
+}
+
+/** El aviso de productos sin costo: el mismo en la pantalla y en el PDF. */
+export function textoSinCosto(v: Pick<VentasGanancia, "ventasSinCosto">): string {
+  return `${fmtMoney(v.ventasSinCosto)} de lo vendido es de productos sin costo cargado: su ganancia es el precio entero. Cargales el costo en Artículos para que la ganancia sea real.`;
+}
+
+/** Por qué el total del turno no es lo que hay en el cajón, ni la ganancia lo que quedó. */
+export const NOTAS_GANANCIA_TURNO = [
+  "Es lo vendido en el turno, no lo que hay en el cajón. Un crédito cobrado hoy tampoco suma acá: ese producto ya se vendió antes.",
+  "La ganancia es lo vendido menos lo que costó cada producto. Es antes de gastos: el alquiler y los sueldos se restan en Finanzas.",
+] as const;
+
+/**
  * El aviso de "productos sin costo", salvo en billar y belleza: ahí el tiempo
  * de mesa o un corte no tienen costo y el aviso no se apagaría nunca. Lo mismo
  * que la app (`SinCosto.avisaEnVentasYGanancia`).
@@ -171,7 +237,14 @@ export function hojaVentasGanancia(v: VentasGanancia, cajero?: string | null): H
 /** El PDF, igual al de la app: PRODUCTO · CANT. · TOTAL · COSTO · GANANCIA. */
 export function documentoVentasGanancia(
   v: VentasGanancia,
-  o: { negocio?: string | null; subtitulo: string; cajero?: string | null },
+  o: {
+    negocio?: string | null;
+    subtitulo: string;
+    cajero?: string | null;
+    /** El de un turno se titula distinto y lleva sus propias aclaraciones. */
+    titulo?: string;
+    notas?: string[];
+  },
 ): DocumentoPdf {
   const celdas = (c: CifrasGanancia, esProducto: boolean): CeldaPdf[] => {
     const sc = esProducto && sinCosto(c);
@@ -186,7 +259,7 @@ export function documentoVentasGanancia(
     ];
   };
   return {
-    titulo: "Ventas y ganancia",
+    titulo: o.titulo ?? "Ventas y ganancia",
     negocio: o.negocio,
     subtitulo: o.subtitulo,
     resumen: resumenVentasGanancia(v, o.cajero),
@@ -199,7 +272,7 @@ export function documentoVentasGanancia(
     // "TOTAL" aunque dé pérdida: es el total de todas las columnas, y la
     // pérdida ya sale en rojo en la suya.
     total: { etiqueta: "TOTAL", celdas: celdas(v, false) },
-    notas: [
+    notas: o.notas ?? [
       "Los montos son antes de promos y cupones: es lo vendido a precio de lista, así que puede dar más que lo cobrado. La ganancia es antes de gastos: el alquiler y los sueldos se restan en Finanzas.",
     ],
   };

@@ -1,12 +1,18 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { esPositivo } from "../../../lib/dinero";
 import { fmtMoney, fmtNum } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { apiReportes, type MeserosApi } from "../api";
 import { hoja, useExportar, useReporte } from "../contexto";
 import { bsEntero, bsResta } from "../formato";
-import { BarraFila, Cargador, Chip, KpiR, Nota, Tarjeta } from "../ui";
-import { filasMeseros, quienVendioMas, textoMinutos, type FilaMesero } from "./datosMeseros";
+import { BarraFila, Cargador, Chip, KpiR, Nota, Segmentos, Tarjeta } from "../ui";
+import { filasMeseros, ordenarMeseros, quienVendioMas, textoMinutos, type FilaMesero, type OrdenMeseros } from "./datosMeseros";
+
+const ORDENES = [
+  ["vendido", "Vendido"],
+  ["porComensal", "Por comensal"],
+  ["mesas", "Mesas"],
+] as const;
 
 /**
  * Ventas por mesero: quién atendió el salón, cuánto vendió y qué anuló.
@@ -117,7 +123,9 @@ function Anulado({ f }: { f: FilaMesero }) {
   );
 }
 
-function TablaMeseros({ filas }: { filas: FilaMesero[] }) {
+function TablaMeseros({ filas: todas }: { filas: FilaMesero[] }) {
+  const [orden, setOrden] = useState<OrdenMeseros>("vendido");
+  const filas = useMemo(() => ordenarMeseros(todas, orden), [todas, orden]);
   const th = "px-3 py-3 text-[11px] font-bold uppercase leading-tight tracking-wider text-texto-3";
   const td = "px-3 py-3 tabular-nums";
   // Un cero de quien sólo anuló es real (no atendió mesas), pero no es lo que
@@ -125,6 +133,9 @@ function TablaMeseros({ filas }: { filas: FilaMesero[] }) {
   const cero = (f: FilaMesero) => (f.soloAnulo ? "text-texto-4" : "text-texto-2");
   return (
     <Tarjeta titulo="Por mesero" subtitulo="Mesas, comensales, lo vendido y lo que anuló cada uno" cuerpo="">
+      <div className="px-4 pb-3 pt-1 sm:px-5">
+        <Segmentos valor={orden} opciones={ORDENES} onChange={setOrden} />
+      </div>
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-left text-[13px]">
           <thead className="bg-slate-50">
@@ -134,6 +145,7 @@ function TablaMeseros({ filas }: { filas: FilaMesero[] }) {
               <th className={`${th} text-right`}>Comensales</th>
               <th className={`${th} text-right`}>Vendido</th>
               <th className={`${th} text-right`}>Por mesa</th>
+              <th className={`${th} text-right`}>Por comensal</th>
               <th className={`${th} text-right`}>Propinas</th>
               <th className={`${th} text-right`}>Duración por mesa</th>
               <th className={`${th} text-right`}>Anulado</th>
@@ -154,6 +166,7 @@ function TablaMeseros({ filas }: { filas: FilaMesero[] }) {
                 <td className={`${td} text-right ${cero(f)}`}>{fmtNum(f.comensales)}</td>
                 <td className={`${td} whitespace-nowrap text-right font-extrabold ${f.soloAnulo ? "text-texto-4" : "text-texto"}`}>{fmtMoney(f.vendido)}</td>
                 <td className={`${td} whitespace-nowrap text-right text-texto-2`}>{f.ticket == null ? "—" : fmtMoney(f.ticket)}</td>
+                <td className={`${td} whitespace-nowrap text-right text-texto-2`}>{f.porComensal == null ? "—" : fmtMoney(f.porComensal)}</td>
                 <td className={`${td} whitespace-nowrap text-right ${cero(f)}`}>{fmtMoney(f.propinas)}</td>
                 <td className={`${td} whitespace-nowrap text-right text-texto-2`}>{f.minutos == null ? "—" : textoMinutos(f.minutos)}</td>
                 <td className={`${td} text-right`}>
@@ -180,8 +193,9 @@ function TablaMeseros({ filas }: { filas: FilaMesero[] }) {
               </div>
               <p className={`shrink-0 text-[15px] font-extrabold tabular-nums ${f.soloAnulo ? "text-texto-4" : "text-texto"}`}>{fmtMoney(f.vendido)}</p>
             </div>
-            <dl className="mt-2.5 grid grid-cols-3 gap-x-3 gap-y-2">
+            <dl className="mt-2.5 grid grid-cols-4 gap-x-3 gap-y-2">
               <Dato etiqueta="Por mesa" valor={f.ticket == null ? "—" : bsEntero(f.ticket)} />
+              <Dato etiqueta="Por comensal" valor={f.porComensal == null ? "—" : bsEntero(f.porComensal)} />
               <Dato etiqueta="Propinas" valor={bsEntero(f.propinas)} />
               <Dato etiqueta="Duración" valor={f.minutos == null ? "—" : textoMinutos(f.minutos)} />
             </dl>

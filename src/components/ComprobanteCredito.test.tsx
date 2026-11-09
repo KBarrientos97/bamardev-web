@@ -75,6 +75,11 @@ afterEach(() => {
 });
 
 describe("CRE-5 / C-02 / BUG-finanzas-3: el comprobante que firma el cliente", () => {
+  it("lleva la línea de BamarDev al pie, como todo papel que se lleva el cliente", () => {
+    render(<ComprobanteCredito credito={cuenta} tipo="COMPROMISO" onClose={() => {}} />);
+    expect(screen.getByText("INF. BamarDev - 67865462")).toBeInTheDocument();
+  });
+
   it("lista lo que se llevó, con el unitario sólo si llevó más de uno", () => {
     render(<ComprobanteCredito credito={cuenta} tipo="COMPROMISO" onClose={() => {}} />);
     expect(screen.getByText("2 × Pollo entero")).toBeInTheDocument();

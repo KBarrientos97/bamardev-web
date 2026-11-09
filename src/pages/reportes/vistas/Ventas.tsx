@@ -239,7 +239,11 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
 
 function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Cajero | null) => void }) {
   const { rango, veReporte } = useReporte();
-  const { rubro } = useAuth();
+  const { rubro, usuario } = useAuth();
+  // Como en la app: tocar una línea abre el recibo de esa venta, para ver qué
+  // más llevó y cómo la pagaron. Mismo candado que en General.
+  const conRecibo = abreRecibo(rubro, usuario);
+  const [recibo, setRecibo] = useState<Pick<VentaFila, "id" | "comprobante" | "estado"> | null>(null);
   // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
   const pal = usePalabras();
   const enBillar = esBillar(rubro);
@@ -278,6 +282,7 @@ function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: 
   );
 
   return (
+    <>
     <Cargador
       estado={datos}
       vacio={(x) =>
@@ -329,6 +334,8 @@ function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: 
                       // El tiempo es un renglón de cantidad 1 con el precio de lo
                       // jugado: "Bs 28 c/u" ahí no quiere decir nada.
                       valorPie={tiempo ? "tiempo" : `${fmtMoney(l.precio)} c/u`}
+                      // El Detallado sólo trae ventas aprobadas.
+                      onClick={conRecibo ? () => setRecibo({ id: l.ventaId, comprobante: l.comprobante, estado: "APROBADO" }) : undefined}
                     />
                   );
                 })}
@@ -360,6 +367,8 @@ function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: 
         );
       }}
     </Cargador>
+      {recibo && <ModalReciboVenta key={recibo.id} fila={recibo} onClose={() => setRecibo(null)} />}
+    </>
   );
 }
 
