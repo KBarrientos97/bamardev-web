@@ -35,6 +35,8 @@ import {
 } from "./piezasPagina";
 import { MapaPagina } from "./MapaPagina";
 import SitioPagina from "./SitioPagina";
+import CartaSitio, { type PedidoCarta } from "./CartaSitio";
+import { cantidadDe, type LineaPedido } from "../../lib/pagina/pedido";
 import { estiloCatalogoSitio, tonosSitio } from "../../lib/pagina/sitio";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
@@ -302,6 +304,12 @@ export interface PropsVista {
    */
   alAgregarAlPedido?: (item: ItemCatalogoPublico) => void;
   /**
+   * El pedido armado y cómo cambiar una cantidad: la carta del sitio muestra
+   * «− n +» en cada fila y el WhatsApp flotante sube para no tapar la barra.
+   */
+  lineasPedido?: LineaPedido[];
+  alCambiarPedido?: (id: number, delta: number) => void;
+  /**
    * La sucursal elegida en el catálogo («Mis productos» con más de una), si
    * la maneja quien la usa (la página pública, para que el pedido sepa de
    * cuál son los precios). Sin esto la vista lleva la suya.
@@ -326,6 +334,8 @@ export default function VistaPagina({
   modo = "auto",
   miniatura,
   alAgregarAlPedido,
+  lineasPedido,
+  alCambiarPedido,
   sucursalCatalogo,
   onSucursalCatalogo,
   urlInscribirme,
@@ -720,30 +730,39 @@ export default function VistaPagina({
     ));
     // El catálogo con el título del bloque ("La carta", "Servicios") escrito
     // como los demás títulos del sitio; los cursos de un instituto, antes.
+    // La carta del sitio: lista con «+» si hay pedido. En la vista previa del
+    // editor el «+» se ve (para que el dueño vea lo mismo) pero no suma.
+    const lineas = lineasPedido ?? [];
+    const pedidoCarta: PedidoCarta | null = alAgregarAlPedido
+      ? { cantidadDe: (id) => cantidadDe(lineas, id), agregar: alAgregarAlPedido, cambiar: alCambiarPedido ?? null }
+      : p.pedidos && enCaja && contactos.length > 0
+        ? { cantidadDe: () => 0, agregar: null, cambiar: null }
+        : null;
     const catalogoSitio = (titulo: string | null) => {
       if (!cursos && !(p.catalogo && catalogoVisto && p.catalogo.items.length > 0)) return null;
       return (
         <>
           {cursos}
           {p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
-            <CatalogoPagina
-              catalogo={{ ...catalogoVisto, titulo: titulo || catalogoVisto.titulo }}
+            <CartaSitio
+              items={catalogoVisto.items}
+              titulo={(id) => (
+                <h2 id={id} style={{ ...estiloLetra(letraNombre, escritorio ? 44 : 30), color: tSitio.titulo, margin: 0, lineHeight: 1.05 }}>
+                  {titulo || catalogoVisto.titulo}
+                </h2>
+              )}
               selector={selectorSucursal}
-              colorVacio={t.texto3}
-              sucursal={palabraSucursal}
+              t={tSitio}
               c={c}
               escritorio={escritorio}
               enMarco={enCaja}
               radio={radioTarjeta}
-              accion={accionCatalogo}
+              pedido={pedidoCarta}
+              accionVisor={accionCatalogo}
               estiloBoton={{ ...tamanoPrincipal, ...bVisor.principal.estilo }}
               colorIconoBoton={bVisor.principal.icono}
-              aspecto={aspectoCatalogo}
-              renderTitulo={(id, texto) => (
-                <h2 id={id} style={{ ...estiloLetra(letraNombre, escritorio ? 44 : 30), color: t.titulo, margin: 0, lineHeight: 1.05 }}>
-                  {texto}
-                </h2>
-              )}
+              colorVacio={tSitio.texto3}
+              sucursal={palabraSucursal}
             />
           )}
         </>
@@ -781,6 +800,7 @@ export default function VistaPagina({
           whatsapp={enlaceWhatsapp(p)}
           clic={clic}
           conPedido={!!alAgregarAlPedido}
+          hayPedido={lineas.length > 0}
         />
         {hojaWhatsapp}
       </>

@@ -18,6 +18,9 @@ export interface LineaPedido {
   /** "desde Bs X": el total queda "a confirmar". */
   desde: boolean;
   cantidad: number;
+  /** Para la miniatura del carrito; opcionales porque un pedido viejo guardado no los trae. */
+  fotoUrl?: string | null;
+  icono?: string | null;
 }
 
 export type Entrega = "RETIRO" | "DELIVERY";
@@ -33,7 +36,20 @@ export function agregarLinea(lineas: LineaPedido[], item: ItemCatalogoPublico): 
   const ya = lineas.find((l) => l.id === item.id);
   if (ya) return lineas.map((l) => (l.id === item.id ? { ...l, cantidad: Math.min(MAX_CANTIDAD, l.cantidad + 1) } : l));
   if (lineas.length >= MAX_LINEAS) return lineas;
-  return [...lineas, { id: item.id, titulo: item.titulo, precio: item.precio, desde: item.precioDesde, cantidad: 1 }];
+  return [
+    ...lineas,
+    { id: item.id, titulo: item.titulo, precio: item.precio, desde: item.precioDesde, cantidad: 1, fotoUrl: item.fotoUrl, icono: item.icono ?? null },
+  ];
+}
+
+/** Cuántos de ese ítem lleva el pedido (0 si no está). */
+export function cantidadDe(lineas: LineaPedido[], id: number): number {
+  return lineas.find((l) => l.id === id)?.cantidad ?? 0;
+}
+
+/** El subtotal de la línea, si se puede calcular (con precio fijo). */
+export function subtotalLinea(l: LineaPedido): number | null {
+  return l.precio != null && !l.desde ? Math.round(l.precio * l.cantidad * 100) / 100 : null;
 }
 
 export function cambiarCantidad(lineas: LineaPedido[], id: number, delta: number): LineaPedido[] {
