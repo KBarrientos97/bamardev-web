@@ -21,6 +21,13 @@ export type PaginaMenu =
   | { diseno: "lista"; columnas: BloqueLista[][] }
   | { diseno: "destacado"; heroe: PlatoTv | null; columna: BloqueLista[] };
 
+/** Las letras de cada tamaño (A- / A / A+), en px del lienzo de 1600 × 900. */
+export const LETRA = {
+  s: { nombre: 22, precio: 34, desc: 15, lista: 24 },
+  m: { nombre: 27, precio: 40, desc: 17, lista: 28 },
+  l: { nombre: 32, precio: 48, desc: 19, lista: 33 },
+} as const;
+
 /** Filas de tarjetas por página en el diseño Fotos. */
 export function filasFotos(tamano: TamanoMenu, conFotos: boolean): number {
   if (!conFotos) return tamano === "s" ? 5 : tamano === "m" ? 4 : 3;
@@ -41,12 +48,19 @@ function altoPlato(p: PlatoTv, conDescripcion: boolean): number {
   return 1 + (conDescripcion && p.descripcion ? ALTO_DESCRIPCION : 0);
 }
 
-/** Los platos en el orden de la TV: por categoría (la que eligió el dueño primero) y por nombre. */
-export function ordenar(platos: PlatoTv[], categorias: { id: number; nombre: string }[]): PlatoTv[] {
-  const orden = new Map(categorias.map((c, i) => [c.id, i]));
+/**
+ * Los platos en el orden de la TV: por categoría (la que eligió el dueño
+ * primero) y, adentro, en el orden en que los acomodó en esa TV (`orden`). Los
+ * que no acomodó van después, por nombre: un plato nuevo de Inventario aparece
+ * al final de su categoría sin desordenar lo que ya estaba.
+ */
+export function ordenar<T extends PlatoTv>(platos: T[], categorias: { id: number; nombre: string }[], orden: number[] = []): T[] {
+  const deCategoria = new Map(categorias.map((c, i) => [c.id, i]));
+  const lugar = new Map(orden.map((id, i) => [id, i]));
   return [...platos].sort(
     (a, b) =>
-      (orden.get(a.categoriaId ?? -1) ?? 999) - (orden.get(b.categoriaId ?? -1) ?? 999) ||
+      (deCategoria.get(a.categoriaId ?? -1) ?? 999) - (deCategoria.get(b.categoriaId ?? -1) ?? 999) ||
+      (lugar.get(a.id) ?? 100_000) - (lugar.get(b.id) ?? 100_000) ||
       a.nombre.localeCompare(b.nombre, "es"),
   );
 }
@@ -57,7 +71,7 @@ export function ordenar(platos: PlatoTv[], categorias: { id: number; nombre: str
  * título repetido: un plato suelto arriba de una columna, sin título, no se
  * sabe de qué es.
  */
-function llenarColumnas(
+export function llenarColumnas(
   platos: PlatoTv[],
   categorias: { id: number; nombre: string }[],
   alto: number,
@@ -99,7 +113,7 @@ export function paginar(
   platosSinOrden: PlatoTv[],
   categorias: { id: number; nombre: string }[],
 ): PaginaMenu[] {
-  const platos = ordenar(platosSinOrden, categorias);
+  const platos = ordenar(platosSinOrden, categorias, pantalla.orden);
   const conDescripcion = pantalla.descripciones;
 
   if (pantalla.diseno === "fotos") {

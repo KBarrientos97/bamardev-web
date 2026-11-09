@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
+import { armarAnimacion, conAnimacion, mezclarEdicion } from "../../lib/menuDigital/animado";
 import { paginar } from "../../lib/menuDigital/paginar";
 import { coloresMenu } from "../../lib/menuDigital/colores";
+import { useRelojEscenas } from "../../lib/menuDigital/useRelojEscenas";
+import { TableroAnimado } from "../../pages/menu-digital/TableroAnimado";
 import { TableroMenu } from "../../pages/menu-digital/TableroMenu";
 import { LienzoTv } from "../../pages/tickets/TableroTv";
 import type { MenuPublicoApi, PantallaMenu } from "../../types/menuDigital";
@@ -195,13 +198,33 @@ export function PantallaMenuTv({
   }, [vistaPrevia]);
 
   // Lo que manda el editor va encima de lo guardado: un campo que la app no
-  // conoce (de una versión más nueva de la web) queda como estaba.
-  const pantalla = useMemo(() => (datos ? { ...datos.pantalla, ...(enEdicion ?? {}) } : null), [datos, enEdicion]);
+  // conoce (de una versión más nueva de la web) queda como estaba. Si eligió
+  // otro diseño quieto, la animación se apaga (ver mezclarEdicion).
+  const pantalla = useMemo(() => (datos ? mezclarEdicion(datos.pantalla, enEdicion) : null), [datos, enEdicion]);
+  const animado = pantalla ? conAnimacion(pantalla).animado : null;
 
   const paginas = useMemo(
-    () => (datos && pantalla ? paginar(pantalla, datos.platos, datos.categorias) : []),
-    [datos, pantalla],
+    () => (datos && pantalla && !animado ? paginar(pantalla, datos.platos, datos.categorias) : []),
+    [datos, pantalla, animado],
   );
+  // Una TV animada no tiene páginas: tiene escenas, cada una con lo que dura.
+  const animacion = useMemo(
+    () => (datos && pantalla && animado ? armarAnimacion(pantalla, datos.platos, datos.categorias) : null),
+    [datos, pantalla, animado],
+  );
+  const reloj = useRelojEscenas(animacion ? animacion.escenas.map((e) => e.ms) : []);
+
+  // Las fotos de la vuelta entera, de entrada. En una TV animada cada plato
+  // aparece solo y en grande: la primera vez su foto llegaba cuando ya había
+  // entrado, y se veía el recuadro vacío.
+  const fotosDeLaVuelta = animacion && datos ? datos.platos.flatMap((p) => (p.foto ? [urlPublica(p.foto)] : [])).join("|") : "";
+  useEffect(() => {
+    if (!fotosDeLaVuelta) return;
+    for (const src of fotosDeLaVuelta.split("|")) {
+      const img = new Image();
+      img.src = src;
+    }
+  }, [fotosDeLaVuelta]);
 
   // Pasa de página sola; con una sola página no hace nada. Depende del ritmo
   // y no de `datos`, que es otro objeto en cada vuelta de 30 s: el intervalo
@@ -228,17 +251,21 @@ export function PantallaMenuTv({
   }
   if (!datos) return <Mensaje titulo={fase === "sinConexion" ? "No se pudo conectar" : "Cargando el menú…"} />;
 
-  const actual = paginas[pagina % paginas.length];
   const vista = pantalla ?? datos.pantalla;
+  const datosTablero = { negocio: datos.negocio, moneda: datos.moneda, pantalla: vista, url: urlPublica, logo: datos.logo };
   return (
     <div onDoubleClick={() => completa.disponible && !completa.activa && completa.pedir()}>
       <LienzoTv modo="pantalla" fondo={coloresMenu(vista).fondo}>
-        <TableroMenu
-          datos={{ negocio: datos.negocio, moneda: datos.moneda, pantalla: vista, url: urlPublica, logo: datos.logo }}
-          pagina={actual}
-          paginaActual={pagina % paginas.length}
-          totalPaginas={paginas.length}
-        />
+        {animacion ? (
+          <TableroAnimado datos={datosTablero} escena={animacion.escenas[reloj.indice]} vuelta={reloj.vuelta} cinta={animacion.cinta} />
+        ) : (
+          <TableroMenu
+            datos={datosTablero}
+            pagina={paginas[pagina % paginas.length]}
+            paginaActual={pagina % paginas.length}
+            totalPaginas={paginas.length}
+          />
+        )}
       </LienzoTv>
       {/* En la vista previa de la app no hay pantalla completa que pedir. */}
       {ayuda && !vistaPrevia && completa.disponible && !completa.activa && (

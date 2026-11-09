@@ -244,6 +244,83 @@ describe("Menú digital", () => {
   });
 });
 
+describe("Menú digital: los diseños animados y los atajos (8-nov)", () => {
+  /** Lo último que se mandó a guardar, ya con el reloj de 700 ms vencido. */
+  async function ultimoGuardado() {
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/menu-digital/pantallas", expect.objectContaining({ method: "PUT" })));
+    const llamadas = request.mock.calls.filter((c) => c[0] === "/menu-digital/pantallas");
+    return (JSON.parse((llamadas.at(-1)![1] as { body: string }).body) as { pantallas: Record<string, unknown>[] }).pantallas[0];
+  }
+
+  async function abrirEditor() {
+    const { default: MenuDigital } = await import("./MenuDigital");
+    render(
+      <MemoryRouter>
+        <MenuDigital />
+      </MemoryRouter>,
+    );
+    await screen.findByDisplayValue("Pollos a la brasa y broaster");
+  }
+
+  it("los tres de siempre quedan; un animado se guarda con su quieto de respaldo y volver a uno quieto lo apaga", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    for (const nombre of ["Fotos", "Lista", "Destacado", "Presentación", "Carrusel", "Mosaico"]) {
+      expect(screen.getByRole("button", { name: nombre })).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Carrusel" }));
+    // El quieto de al lado es lo que dibuja una pestaña de la web de antes.
+    expect(await ultimoGuardado()).toMatchObject({ animado: "carrusel", diseno: "destacado" });
+    expect(screen.getByRole("button", { name: "Carrusel" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Destacado" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Animación")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Lista" }));
+    expect(await ultimoGuardado()).toMatchObject({ animado: null, diseno: "lista" });
+    expect(screen.queryByText("Animación")).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("«Sólo bebidas» elige la categoría, no apaga plato por plato", async () => {
+    // Kevin: "destiquear todo lo que es bebidas rápido". Por categoría, una
+    // gaseosa nueva de Inventario no aparece sola en la TV de los pollos.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    // La TV de la prueba muestra sólo Pollos: el atajo prendido es «Sólo comida».
+    expect(screen.getByRole("button", { name: "Sólo comida" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sólo bebidas" }));
+    expect(await ultimoGuardado()).toMatchObject({ categorias: [2], ocultos: [] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Todo" }));
+    expect(await ultimoGuardado()).toMatchObject({ categorias: [] });
+    vi.useRealTimers();
+  });
+
+  it("el interruptor de una categoría apaga y prende todos sus platos en esta TV", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    fireEvent.click(screen.getByRole("switch", { name: "Todos los de Pollos" }));
+    expect(await ultimoGuardado()).toMatchObject({ ocultos: [1, 2] });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Todos los de Pollos" }));
+    expect(await ultimoGuardado()).toMatchObject({ ocultos: [] });
+    vi.useRealTimers();
+  });
+
+  it("las flechas cambian el orden de los platos y queda guardado para esa TV", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    fireEvent.click(screen.getByRole("button", { name: "Bajar Brasa cuarto" }));
+    expect(await ultimoGuardado()).toMatchObject({ orden: [2, 1] });
+    vi.useRealTimers();
+  });
+});
+
 describe("Configuración del recibo", () => {
   it("la vista previa usa los datos cargados: lema, dirección, total en letras y tiempo estimado", async () => {
     const { default: ConfigRecibo } = await import("./ConfigRecibo");

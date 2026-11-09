@@ -1,5 +1,5 @@
 import IconoProducto from "../../components/IconoProducto";
-import { filasFotos, precioTv, simboloMoneda, type BloqueLista, type PaginaMenu, type PlatoTv } from "../../lib/menuDigital/paginar";
+import { filasFotos, LETRA, precioTv, simboloMoneda, type BloqueLista, type PaginaMenu, type PlatoTv } from "../../lib/menuDigital/paginar";
 import { coloresMenu } from "../../lib/menuDigital/colores";
 import { TEXTO_ETIQUETA, type PantallaMenu } from "../../types/menuDigital";
 
@@ -21,13 +21,6 @@ export interface DatosTableroMenu {
   url: (ruta: string) => string;
   logo: string | null;
 }
-
-/** Las letras de cada tamaño (A- / A / A+). */
-const LETRA = {
-  s: { nombre: 22, precio: 34, desc: 15, lista: 24 },
-  m: { nombre: 27, precio: 40, desc: 17, lista: 28 },
-  l: { nombre: 32, precio: 48, desc: 19, lista: 33 },
-} as const;
 
 export function TableroMenu({
   datos,
