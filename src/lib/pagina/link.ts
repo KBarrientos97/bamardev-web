@@ -63,6 +63,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (segundo === "privacidad" && tercero === undefined) return `/p/${sub}/privacidad`;
   // «Pagar mi inscripción» de una academia (M5): sin más tramos.
   if (segundo === "mi-cuenta" && tercero === undefined) return `/p/${sub}/mi-cuenta`;
+  // La tienda del sitio del Profesional (09-nov): el catálogo entero.
+  if (segundo === "tienda" && tercero === undefined) return `/p/${sub}/tienda`;
   if (segundo === "reservar") {
     if (tercero === undefined) return `/r/${sub}/reservar`;
     return RESTO.test(tercero) ? `/r/${sub}/reservar/${tercero}` : null;

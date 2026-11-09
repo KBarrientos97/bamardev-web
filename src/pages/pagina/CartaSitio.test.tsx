@@ -107,11 +107,9 @@ describe("carta del sitio", () => {
     expect(screen.getByRole("button", { name: "Ver tu pedido: 2 productos, Bs 60" })).toBeInTheDocument();
   });
 
-  it("filtra por categoría y con «Todo» la agrupa como una carta", () => {
+  it("con pocos ítems, las categorías filtran ahí mismo", () => {
     render(<Pagina />);
     const filtros = within(screen.getByRole("group", { name: "Categorías" }));
-    expect(screen.getByRole("heading", { level: 3, name: "Platos" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Bebidas" })).toBeInTheDocument();
     fireEvent.click(filtros.getByRole("button", { name: "Bebidas" }));
     expect(screen.getAllByTestId("fila-carta")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Agregar Silpancho al pedido" })).toBeNull();
@@ -183,5 +181,95 @@ describe("panel del pedido", () => {
     fireEvent.click(screen.getByRole("button", { name: "Vaciar pedido" }));
     expect(screen.queryByRole("dialog", { name: "Tu pedido" })).toBeNull();
     expect(screen.queryByTestId("barra-pedido")).toBeNull();
+  });
+});
+
+const muchos = (n: number) =>
+  Array.from({ length: n }, (_, i) => producto(i + 1, `Plato ${i + 1}`, 10 + i, i % 2 ? "Bebidas" : "Platos"));
+
+describe("portada y tienda", () => {
+  it("con más de seis, la portada muestra seis y lleva a la tienda; las categorías también", () => {
+    const pagina = { ...PAGINA, catalogo: { titulo: "Carta", items: muchos(9) } };
+    render(<VistaPagina pagina={pagina} urlReservar="/r/x" modo="movil" urlTienda="/saborcriollo/tienda" />);
+    expect(screen.getAllByTestId("fila-carta")).toHaveLength(6);
+    expect(screen.getByRole("link", { name: "Ver toda la carta (9)" })).toHaveAttribute("href", "/saborcriollo/tienda");
+    expect(screen.getByRole("link", { name: "Bebidas" })).toHaveAttribute("href", "/saborcriollo/tienda?categoria=Bebidas");
+  });
+
+  it("la tienda muestra todo, con buscador y la categoría con la que se llegó", () => {
+    const pagina = { ...PAGINA, catalogo: { titulo: "Carta", items: muchos(9) } };
+    render(
+      <VistaPagina pagina={pagina} urlReservar="/r/x" modo="movil" urlTienda="/x/tienda" tienda={{ urlInicio: "/saborcriollo", categoria: "Bebidas" }} />,
+    );
+    expect(screen.getByRole("link", { name: /Volver al inicio/ })).toHaveAttribute("href", "/saborcriollo");
+    expect(screen.queryByRole("link", { name: /Ver toda la carta/ })).toBeNull();
+    expect(screen.getAllByTestId("fila-carta")).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Todo" }));
+    expect(screen.getAllByTestId("fila-carta")).toHaveLength(9);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar en la tienda" }), { target: { value: "plato 7" } });
+    expect(screen.getAllByTestId("fila-carta")).toHaveLength(1);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar en la tienda" }), { target: { value: "pizza" } });
+    expect(screen.getByText("No encontramos «pizza».")).toBeInTheDocument();
+  });
+
+  it("en la computadora, la tienda pone las categorías en una columna", () => {
+    const pagina = { ...PAGINA, catalogo: { titulo: "Carta", items: muchos(9) } };
+    render(<VistaPagina pagina={pagina} urlReservar="/r/x" modo="escritorio" tienda={{ urlInicio: "/s", categoria: null }} />);
+    expect(screen.getByTestId("menu-categorias")).toBeInTheDocument();
+  });
+});
+
+const servicio = (id: number, titulo: string, precio: number, servicioId: number, duracionMin: number): ItemCatalogoPublico => ({
+  ...producto(id, titulo, precio, null),
+  servicioId,
+  duracionMin,
+});
+
+const BELLEZA: PaginaPublica = {
+  ...PAGINA,
+  subdominio: "bellavista",
+  nombre: "Bella Vista",
+  rubroClave: "PELUQUERIA",
+  sitio: { plantilla: "BELLEZA", bloques: [{ tipo: "CATALOGO", titulo: "Servicios" }] },
+  catalogo: {
+    titulo: "Servicios",
+    items: [servicio(1, "Corte de dama", 60, 191, 45), servicio(2, "Alisado", 500, 356, 120), producto(3, "Acondicionador", 60, "Productos")],
+  },
+};
+
+describe("servicios y productos", () => {
+  it("con reserva online: el servicio dice su duración y lleva a reservar ése; el producto se suma", () => {
+    render(<VistaPagina pagina={{ ...BELLEZA, reservar: true }} urlReservar="/r/bellavista/reservar" modo="movil" alAgregarAlPedido={() => {}} />);
+    expect(screen.getAllByTestId("fila-servicio")).toHaveLength(2);
+    expect(screen.getByText("45 min")).toBeInTheDocument();
+    expect(screen.getByText("2 h")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reservar Corte de dama" })).toHaveAttribute("href", "/r/bellavista/reservar?servicio=191");
+    expect(screen.queryByRole("button", { name: "Agregar Corte de dama al pedido" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 3, name: "Productos" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar Acondicionador al pedido" })).toBeInTheDocument();
+  });
+
+  it("sin reserva online: el servicio se agrega una sola vez, sin cantidad", () => {
+    render(<Pagina pagina={BELLEZA} />);
+    fireEvent.click(screen.getByRole("button", { name: "Agregar Corte de dama al pedido" }));
+    expect(screen.getByRole("button", { name: "Quitar Corte de dama del pedido" })).toHaveTextContent("Agregado");
+    expect(screen.queryByRole("button", { name: "Sumar uno de Corte de dama" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Ver tu pedido: 1 producto/ }));
+    const panel = within(screen.getByRole("dialog", { name: "Tu pedido" }));
+    expect(panel.queryByRole("button", { name: "Sumar uno de Corte de dama" })).toBeNull();
+    expect(panel.getByRole("button", { name: "Quitar Corte de dama del pedido" })).toBeInTheDocument();
+  });
+});
+
+describe("dónde estamos", () => {
+  const sucursal = (nombre: string) => ({ nombre, reservaSlug: null, direccion: `Calle ${nombre}`, telefono: null, horario: null, mapaUrl: null });
+  it("en la computadora, varias sucursales van una al lado de la otra", () => {
+    const pagina = {
+      ...PAGINA,
+      sitio: { plantilla: "GASTRONOMIA", bloques: [{ tipo: "UBICACION" as const, titulo: "Dónde estamos" }] },
+      sucursales: [sucursal("Centro"), sucursal("Norte")],
+    };
+    render(<VistaPagina pagina={pagina} urlReservar="/r/x" modo="escritorio" />);
+    expect(screen.getByTestId("tarjetas-sucursal").style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
   });
 });

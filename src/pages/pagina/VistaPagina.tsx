@@ -309,6 +309,13 @@ export interface PropsVista {
    */
   lineasPedido?: LineaPedido[];
   alCambiarPedido?: (id: number, delta: number) => void;
+  /** A dónde lleva «Ver toda la carta» del sitio (la tienda, 09-nov). Sin esto, la portada muestra todo. */
+  urlTienda?: string;
+  /**
+   * La tienda del sitio (`/tienda`): sólo el catálogo entero, con buscador y
+   * categorías; el menú lleva a las secciones de la portada (`urlInicio`).
+   */
+  tienda?: { urlInicio: string; categoria: string | null };
   /**
    * La sucursal elegida en el catálogo («Mis productos» con más de una), si
    * la maneja quien la usa (la página pública, para que el pedido sepa de
@@ -336,6 +343,8 @@ export default function VistaPagina({
   alAgregarAlPedido,
   lineasPedido,
   alCambiarPedido,
+  urlTienda,
+  tienda,
   sucursalCatalogo,
   onSucursalCatalogo,
   urlInscribirme,
@@ -745,7 +754,16 @@ export default function VistaPagina({
           {cursos}
           {p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
             <CartaSitio
+              key={tienda ? `tienda-${tienda.categoria ?? ""}` : "portada"}
               items={catalogoVisto.items}
+              plantilla={sitio.plantilla}
+              letra={letraNombre}
+              lleno={b.principal.estilo}
+              colorIconoLleno={b.principal.icono}
+              urlReservar={p.reservar ? urlReservar : null}
+              modo={tienda ? "tienda" : "portada"}
+              urlTienda={urlTienda ?? null}
+              categoriaInicial={tienda?.categoria ?? null}
               titulo={(id) => (
                 <h2 id={id} style={{ ...estiloLetra(letraNombre, escritorio ? 44 : 30), color: tSitio.titulo, margin: 0, lineHeight: 1.05 }}>
                   {titulo || catalogoVisto.titulo}
@@ -801,6 +819,7 @@ export default function VistaPagina({
           clic={clic}
           conPedido={!!alAgregarAlPedido}
           hayPedido={lineas.length > 0}
+          tienda={tienda ?? null}
         />
         {hojaWhatsapp}
       </>

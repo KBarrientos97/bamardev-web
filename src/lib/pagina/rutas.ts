@@ -30,6 +30,9 @@ export const urlReservaDe = (subdominio: string) =>
 
 export const urlPrivacidadDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/privacidad`;
 
+/** La tienda del sitio (09-nov): el catálogo entero, con buscador y categorías. */
+export const urlTiendaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/tienda`;
+
 /** El formulario de preinscripción a un grupo (P2, academias). */
 export const urlInscribirmeDe = (subdominio: string, grupoId: number) =>
   `${urlPaginaDe(subdominio)}/inscribirme/${grupoId}`;
@@ -49,7 +52,8 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/pagar/<token>`: el estado de cuenta de un estudiante (P6),
   // el enlace que la recepción manda por WhatsApp.
   // `/p/<negocio>/mi-cuenta`: «Pagar mi inscripción» con el carnet (M5).
-  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
+  // `/p/<negocio>/tienda`: el catálogo entero del sitio (09-nov).
+  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/tienda|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
 }
 
 /**

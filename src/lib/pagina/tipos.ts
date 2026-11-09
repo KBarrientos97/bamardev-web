@@ -178,6 +178,13 @@ export interface ItemCatalogoPublico {
   /** Sólo en "Mis productos": la categoría del producto, si tiene. */
   categoria?: string | null;
   /**
+   * Sólo en un servicio de agenda (un corte, un masaje; 09-nov): su id para
+   * reservarlo (`?servicio=`) y cuánto dura. Un servicio no se pide por
+   * cantidad. Un plato no es servicio de agenda aunque no controle stock.
+   */
+  servicioId?: number;
+  duracionMin?: number;
+  /**
    * Sólo en "Mis productos" con más de una sucursal publicada: el precio y si
    * se ofrece en cada una, en el orden de `CatalogoPublico.sucursales`.
    */

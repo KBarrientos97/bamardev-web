@@ -59,6 +59,11 @@ export interface PiezasSitio {
   conPedido: boolean;
   /** El pedido ya tiene algo: la barra está a la vista y el WhatsApp flotante se esconde. */
   hayPedido?: boolean;
+  /**
+   * La tienda (`/tienda`, 09-nov): sólo el catálogo entero; el menú lleva a
+   * las secciones de la portada (`urlInicio`).
+   */
+  tienda?: { urlInicio: string; categoria: string | null } | null;
 }
 
 const ICONO_PLAY = "M8 5v14l11-7z";
@@ -159,10 +164,12 @@ function Encabezado({ x, accion }: { x: PiezasSitio; accion: ReactNode }) {
       {p.nombre}
     </x.Titulo>
   );
+  // En la tienda las secciones están en la portada.
+  const base = x.tienda ? x.tienda.urlInicio : "";
   const enlaces = secciones.map((s) => (
     <a
       key={s.ancla}
-      href={`#${s.ancla}`}
+      href={`${base}#${s.ancla}`}
       onClick={() => setAbierto(false)}
       style={{
         color: t.texto,
@@ -998,6 +1005,12 @@ function seDibuja(x: PiezasSitio, b: BloquePublico): boolean {
   }
 }
 
+/** El título de la tienda: el del bloque, salvo «Lo más pedido», que en la tienda no dice nada. */
+function tituloTienda(plantilla: string, delBloque: string | null): string {
+  if (plantilla === "COMERCIO") return "Todos los productos";
+  return delBloque?.trim() || (plantilla === "GASTRONOMIA" ? "La carta" : "Servicios");
+}
+
 export default function SitioPagina(x: PiezasSitio) {
   const { p, t, c, sitio, escritorio } = x;
   const plantilla = sitio.plantilla;
@@ -1077,7 +1090,8 @@ export default function SitioPagina(x: PiezasSitio) {
   ) : null;
 
   const bloques: ReactNode[] = [];
-  sitio.bloques.forEach((b, n) => {
+  // En la tienda no va nada de la portada: sólo el catálogo (abajo).
+  if (!x.tienda) sitio.bloques.forEach((b, n) => {
     const clave = `${b.tipo}-${n}`;
     switch (b.tipo) {
       case "PORTADA":
@@ -1130,16 +1144,34 @@ export default function SitioPagina(x: PiezasSitio) {
               <TituloBloque x={x} id="titulo-ubicacion">
                 {b.titulo || x.tituloSucursales}
               </TituloBloque>
-              <div
-                style={
-                  escritorio && x.mapa
-                    ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }
-                    : { display: "flex", flexDirection: "column", gap: 12 }
-                }
-              >
-                {x.mapa}
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{x.tarjetasSucursal}</div>
-              </div>
+              {escritorio && x.mapa && p.sucursales.length === 1 ? (
+                // Una sola: el mapa y su tarjeta lado a lado (lienzo).
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16, alignItems: "start" }}>
+                  {x.mapa}
+                  {x.tarjetasSucursal}
+                </div>
+              ) : (
+                // Varias: en la computadora, una al lado de la otra (de a tres
+                // como mucho; pedido del dueño, 09-nov); el mapa arriba, entero.
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  {x.mapa}
+                  <div
+                    data-testid="tarjetas-sucursal"
+                    style={
+                      escritorio
+                        ? {
+                            display: "grid",
+                            gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, p.sucursales.length))}, minmax(0, 1fr))`,
+                            gap: 16,
+                            alignItems: "stretch",
+                          }
+                        : { display: "flex", flexDirection: "column", gap: 12 }
+                    }
+                  >
+                    {x.tarjetasSucursal}
+                  </div>
+                </div>
+              )}
             </Franja>,
           );
         }
@@ -1155,6 +1187,26 @@ export default function SitioPagina(x: PiezasSitio) {
         break;
     }
   });
+
+  if (x.tienda) {
+    // La tienda: sólo el catálogo entero, con la vuelta a la portada arriba.
+    const bloqueCatalogo = sitio.bloques.find((b) => b.tipo === "CATALOGO");
+    const cat = x.catalogo(tituloTienda(plantilla, bloqueCatalogo?.tipo === "CATALOGO" ? bloqueCatalogo.titulo : null));
+    bloques.push(
+      <section key="tienda" id="catalogo" style={{ padding: escritorio ? "28px 0 56px" : "16px 0 32px", scrollMarginTop: 72 }}>
+        <Contenedor escritorio={escritorio} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <a
+            href={x.tienda.urlInicio}
+            style={{ alignSelf: "flex-start", color: t.texto2, fontWeight: 700, fontSize: 14, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6, minHeight: 44 }}
+          >
+            <Trazo d="M15 6l-6 6 6 6" color={t.texto2} ancho={2.4} size={18} />
+            Volver al inicio
+          </a>
+          {cat ?? <p style={{ margin: 0, color: t.texto3 }}>Todavía no hay productos para mostrar.</p>}
+        </Contenedor>
+      </section>,
+    );
+  }
 
   // Belleza: la barra fija de abajo con "Reservar" (como en el diseño). Si
   // hay carrito, abajo va su barra: entonces va el botón redondo.

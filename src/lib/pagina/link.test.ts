@@ -43,6 +43,8 @@ describe("dirección corta → la de siempre", () => {
     expect(rutaLargaDeLink("/horizonte/pagar")).toBeNull();
     // «Pagar mi inscripción» con el carnet (M5): sin más tramos.
     expect(rutaLargaDeLink("/horizonte/mi-cuenta")).toBe("/p/horizonte/mi-cuenta");
+    expect(rutaLargaDeLink("/saborcriollo/tienda")).toBe("/p/saborcriollo/tienda");
+    expect(rutaLargaDeLink("/saborcriollo/tienda/x")).toBeNull();
     expect(rutaLargaDeLink("/horizonte/mi-cuenta/x")).toBeNull();
   });
 

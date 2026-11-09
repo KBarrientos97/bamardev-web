@@ -45,6 +45,7 @@ export default function RutasLink() {
         <Route path="/:subdominio/inscribirme/:grupoId" element={<InscribirmePagina />} />
         <Route path="/:subdominio/pagar/:token" element={<PagarPagina />} />
         <Route path="/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />
+        <Route path="/:subdominio/tienda" element={<PaginaPublica tienda />} />
         <Route path="/*" element={<SoloReserva />} />
       </Routes>
     </Suspense>

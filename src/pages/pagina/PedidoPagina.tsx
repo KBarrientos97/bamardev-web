@@ -3,7 +3,14 @@ import { iconoPorLlave } from "../../lib/iconosArticulo";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_RED, paleta } from "../../lib/pagina/aspecto";
 import { formatoPrecio, urlWhatsappConTexto } from "../../lib/pagina/catalogo";
-import { cantidadTotal, mensajePedido, subtotalLinea, totalPedido, type DatosPedido, type LineaPedido } from "../../lib/pagina/pedido";
+import {
+  cantidadTotal,
+  mensajePedido,
+  subtotalLinea,
+  totalPedido,
+  type DatosPedido,
+  type LineaPedido,
+} from "../../lib/pagina/pedido";
 import type { Pedido } from "../../lib/pagina/usePedido";
 import type { ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import { conMayuscula, termino } from "../../lib/rubro";
@@ -26,15 +33,23 @@ function claveDatos(sub: string) {
 }
 
 function leerDatos(sub: string | undefined): DatosPedido {
-  const vacio: DatosPedido = { nombre: "", entrega: "RETIRO", direccion: "", nota: "" };
+  const vacio: DatosPedido = {
+    nombre: "",
+    entrega: "RETIRO",
+    direccion: "",
+    nota: "",
+  };
   if (!sub) return vacio;
   try {
-    const v = JSON.parse(localStorage.getItem(claveDatos(sub)) ?? "null") as Partial<DatosPedido> | null;
+    const v = JSON.parse(
+      localStorage.getItem(claveDatos(sub)) ?? "null",
+    ) as Partial<DatosPedido> | null;
     if (!v || typeof v !== "object") return vacio;
     return {
       nombre: typeof v.nombre === "string" ? v.nombre.slice(0, 60) : "",
       entrega: v.entrega === "DELIVERY" ? "DELIVERY" : "RETIRO",
-      direccion: typeof v.direccion === "string" ? v.direccion.slice(0, 160) : "",
+      direccion:
+        typeof v.direccion === "string" ? v.direccion.slice(0, 160) : "",
       nota: "",
     };
   } catch {
@@ -73,9 +88,29 @@ function useAncho(min: number): boolean {
   return ancho;
 }
 
-function Trazo({ d, color, size = 18, grosor = 2.2 }: { d: string; color: string; size?: number; grosor?: number }) {
+function Trazo({
+  d,
+  color,
+  size = 18,
+  grosor = 2.2,
+}: {
+  d: string;
+  color: string;
+  size?: number;
+  grosor?: number;
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={grosor} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={grosor}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d={d} />
     </svg>
   );
@@ -116,7 +151,9 @@ export default function PedidoPagina({
 }) {
   const [abierto, setAbierto] = useState(false);
   const [destinoElegido, setDestino] = useState<string | null>(null);
-  const [datos, setDatosCrudos] = useState<DatosPedido>(() => leerDatos(subdominio));
+  const [datos, setDatosCrudos] = useState<DatosPedido>(() =>
+    leerDatos(subdominio),
+  );
   const [intento, setIntento] = useState(false);
   const barra = useRef<HTMLButtonElement>(null);
   const cerrar = useRef<HTMLButtonElement>(null);
@@ -132,7 +169,14 @@ export default function PedidoPagina({
     setDatosCrudos(d);
     if (!subdominio) return;
     try {
-      localStorage.setItem(claveDatos(subdominio), JSON.stringify({ nombre: d.nombre, entrega: d.entrega, direccion: d.direccion }));
+      localStorage.setItem(
+        claveDatos(subdominio),
+        JSON.stringify({
+          nombre: d.nombre,
+          entrega: d.entrega,
+          direccion: d.direccion,
+        }),
+      );
     } catch {
       // Sin storage: se piden de nuevo la próxima vez.
     }
@@ -160,7 +204,14 @@ export default function PedidoPagina({
     const subio = cantidad > previa.current;
     previa.current = cantidad;
     if (!subio || sinMovimiento()) return;
-    barra.current?.animate?.([{ transform: "scale(1)" }, { transform: "scale(1.04)" }, { transform: "scale(1)" }], { duration: 260, easing: "ease-out" });
+    barra.current?.animate?.(
+      [
+        { transform: "scale(1)" },
+        { transform: "scale(1.04)" },
+        { transform: "scale(1)" },
+      ],
+      { duration: 260, easing: "ease-out" },
+    );
   }, [cantidad]);
 
   // Se vació desde el panel: se cierra solo.
@@ -170,20 +221,46 @@ export default function PedidoPagina({
 
   if (!cantidad && !abierto) return null;
 
-  const totalTexto = total > 0 ? `${formatoPrecio(total)}${aConfirmar ? " +" : ""}` : "a confirmar";
+  const totalTexto =
+    total > 0
+      ? `${formatoPrecio(total)}${aConfirmar ? " +" : ""}`
+      : "a confirmar";
   // Se recuerda por URL: con otra sucursal elegida en el catálogo cambia la
   // lista, y una elección vieja no apunta a otro número.
-  const destino = destinos.length === 1 ? destinos[0] : (destinos.find((d) => d.url === destinoElegido) ?? null);
+  const destino =
+    destinos.length === 1
+      ? destinos[0]
+      : (destinos.find((d) => d.url === destinoElegido) ?? null);
   // La sucursal del mensaje: la elegida en el catálogo o, si se eligió a qué
   // WhatsApp mandarlo, ésa (el general no es una sucursal).
-  const sucursalMensaje = sucursal ?? (destinos.length > 1 && destino && destino.etiqueta !== "General" ? destino.etiqueta : null);
+  const sucursalMensaje =
+    sucursal ??
+    (destinos.length > 1 && destino && destino.etiqueta !== "General"
+      ? destino.etiqueta
+      : null);
   // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
   const palabraSucursal = termino(rubro, "sucursal");
-  const url = destino ? urlWhatsappConTexto(destino.url, mensajePedido(negocio, lineas, datos, sucursalMensaje, conMayuscula(palabraSucursal))) : undefined;
-  const faltaDireccion = datos.entrega === "DELIVERY" && datos.direccion.trim().length < 5;
+  const url = destino
+    ? urlWhatsappConTexto(
+        destino.url,
+        mensajePedido(
+          negocio,
+          lineas,
+          datos,
+          sucursalMensaje,
+          conMayuscula(palabraSucursal),
+        ),
+      )
+    : undefined;
+  const faltaDireccion =
+    datos.entrega === "DELIVERY" && datos.direccion.trim().length < 5;
   const bloqueado = !lineas.length || faltaDireccion || !destino;
   // Qué falta, dicho: un botón gris sin explicación no ayuda a nadie.
-  const falta = faltaDireccion ? "Escribí la dirección para el delivery." : !destino ? `Elegí a qué ${palabraSucursal} lo mandás.` : null;
+  const falta = faltaDireccion
+    ? "Escribí la dirección para el delivery."
+    : !destino
+      ? `Elegí a qué ${palabraSucursal} lo mandás.`
+      : null;
   const etiquetaCantidad = `${cantidad} ${cantidad === 1 ? "producto" : "productos"}`;
 
   if (!abierto) {
@@ -257,11 +334,25 @@ export default function PedidoPagina({
             {cantidad}
           </span>
         </span>
-        <span aria-hidden="true" style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minWidth: 0,
+            lineHeight: 1.2,
+          }}
+        >
           <span style={{ fontSize: 16, fontWeight: 800 }}>Ver tu pedido</span>
-          <span style={{ fontSize: 13, opacity: 0.85 }}>{etiquetaCantidad}</span>
+          <span style={{ fontSize: 13, opacity: 0.85 }}>
+            {etiquetaCantidad}
+          </span>
         </span>
-        <span aria-hidden="true" style={{ fontSize: 17, fontWeight: 800, whiteSpace: "nowrap" }}>
+        <span
+          aria-hidden="true"
+          style={{ fontSize: 17, fontWeight: 800, whiteSpace: "nowrap" }}
+        >
           {totalTexto === "a confirmar" ? "A confirmar" : totalTexto}
         </span>
         <Trazo d={ICONO_SEGUIR} color="#ffffff" size={18} grosor={2.6} />
@@ -281,7 +372,11 @@ export default function PedidoPagina({
     color: "#1F2937",
     background: "#ffffff",
   };
-  const etiqueta: CSSProperties = { fontSize: 13, fontWeight: 600, color: "#4B5563" };
+  const etiqueta: CSSProperties = {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#4B5563",
+  };
 
   return (
     <div
@@ -314,9 +409,19 @@ export default function PedidoPagina({
           boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
         }}
       >
-        <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px 12px", borderBottom: "1px solid #F1F2F4" }}>
+        <header
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "16px 18px 12px",
+            borderBottom: "1px solid #F1F2F4",
+          }}
+        >
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Tu pedido</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
+              Tu pedido
+            </h2>
             <span style={{ fontSize: 13, color: "#6B7280" }}>
               {etiquetaCantidad} · {negocio}
             </span>
@@ -326,16 +431,51 @@ export default function PedidoPagina({
             type="button"
             aria-label="Cerrar el pedido"
             onClick={() => setAbierto(false)}
-            style={{ width: 40, height: 40, borderRadius: 999, border: "none", background: "#F3F4F6", fontSize: 22, lineHeight: 1, cursor: "pointer", color: "#374151" }}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              border: "none",
+              background: "#F3F4F6",
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: "pointer",
+              color: "#374151",
+            }}
           >
             ×
           </button>
         </header>
 
-        <div style={{ overflowY: "auto", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 16, flex: 1, minHeight: 0 }}>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div
+          style={{
+            overflowY: "auto",
+            padding: "14px 18px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
             {lineas.map((l) => (
-              <LineaCarrito key={l.id} l={l} fuerte={fuerte} tinte={tinte} pedido={pedido} />
+              <LineaCarrito
+                key={l.id}
+                l={l}
+                fuerte={fuerte}
+                tinte={tinte}
+                pedido={pedido}
+              />
             ))}
           </ul>
           <button
@@ -360,9 +500,28 @@ export default function PedidoPagina({
             Agregar más productos
           </button>
 
-          <fieldset style={{ border: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-            <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>¿Cómo lo recibís?</legend>
-            <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
+          <fieldset
+            style={{
+              border: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>
+              ¿Cómo lo recibís?
+            </legend>
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                background: "#F3F4F6",
+                borderRadius: 14,
+                padding: 4,
+              }}
+            >
               {(["RETIRO", "DELIVERY"] as const).map((e) => {
                 const activo = datos.entrega === e;
                 return (
@@ -387,7 +546,11 @@ export default function PedidoPagina({
                       name="entrega"
                       checked={activo}
                       onChange={() => setDatos({ ...datos, entrega: e })}
-                      style={{ position: "absolute", opacity: 0, pointerEvents: "none" }}
+                      style={{
+                        position: "absolute",
+                        opacity: 0,
+                        pointerEvents: "none",
+                      }}
                     />
                     {e === "RETIRO" ? "Paso a recoger" : "Delivery"}
                   </label>
@@ -404,8 +567,14 @@ export default function PedidoPagina({
                 value={datos.direccion}
                 maxLength={160}
                 autoComplete="street-address"
-                onChange={(e) => setDatos({ ...datos, direccion: e.target.value })}
-                style={{ ...campo, borderColor: intento && faltaDireccion ? "#DC2626" : "#D1D5DB" }}
+                onChange={(e) =>
+                  setDatos({ ...datos, direccion: e.target.value })
+                }
+                style={{
+                  ...campo,
+                  borderColor:
+                    intento && faltaDireccion ? "#DC2626" : "#D1D5DB",
+                }}
               />
             </label>
           )}
@@ -445,7 +614,16 @@ export default function PedidoPagina({
           <button
             type="button"
             onClick={() => pedido.vaciar()}
-            style={{ alignSelf: "center", border: "none", background: "transparent", color: "#6B7280", cursor: "pointer", fontSize: 13, textDecoration: "underline", fontFamily: "inherit" }}
+            style={{
+              alignSelf: "center",
+              border: "none",
+              background: "transparent",
+              color: "#6B7280",
+              cursor: "pointer",
+              fontSize: 13,
+              textDecoration: "underline",
+              fontFamily: "inherit",
+            }}
           >
             Vaciar pedido
           </button>
@@ -455,22 +633,47 @@ export default function PedidoPagina({
           style={{
             borderTop: "1px solid #E5E7EB",
             padding: `12px 18px ${ancho ? 16 : 12}px`,
-            paddingBottom: ancho ? 16 : "calc(12px + env(safe-area-inset-bottom, 0px))",
+            paddingBottom: ancho
+              ? 16
+              : "calc(12px + env(safe-area-inset-bottom, 0px))",
             display: "flex",
             flexDirection: "column",
             gap: 10,
             background: "#ffffff",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontWeight: 800, fontSize: 18 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              fontWeight: 800,
+              fontSize: 18,
+            }}
+          >
             <span>Total</span>
             <span>
               {total > 0 ? formatoPrecio(total) : "A confirmar"}
-              {total > 0 && aConfirmar && <span style={{ fontWeight: 400, fontSize: 13, color: "#6B7280" }}> + a confirmar</span>}
+              {total > 0 && aConfirmar && (
+                <span
+                  style={{ fontWeight: 400, fontSize: 13, color: "#6B7280" }}
+                >
+                  {" "}
+                  + a confirmar
+                </span>
+              )}
             </span>
           </div>
           {intento && falta && (
-            <p role="alert" style={{ margin: 0, fontSize: 14, color: "#B91C1C", fontWeight: 600 }}>
+            <p
+              role="alert"
+              style={{
+                margin: 0,
+                fontSize: 14,
+                color: "#B91C1C",
+                fontWeight: 600,
+              }}
+            >
               {falta}
             </p>
           )}
@@ -505,11 +708,24 @@ export default function PedidoPagina({
               opacity: bloqueado ? 0.55 : 1,
             }}
           >
-            <Trazo d={ICONO_RED.WHATSAPP} color="#ffffff" size={22} grosor={2} />
+            <Trazo
+              d={ICONO_RED.WHATSAPP}
+              color="#ffffff"
+              size={22}
+              grosor={2}
+            />
             Enviar pedido por WhatsApp
           </a>
-          <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
-            Se abre WhatsApp con tu pedido escrito: el negocio te confirma el total y la entrega.
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: "#6B7280",
+              textAlign: "center",
+            }}
+          >
+            Se abre WhatsApp con tu pedido escrito: el negocio te confirma el
+            total y la entrega.
           </p>
         </footer>
       </section>
@@ -517,7 +733,17 @@ export default function PedidoPagina({
   );
 }
 
-function LineaCarrito({ l, fuerte, tinte, pedido }: { l: LineaPedido; fuerte: string; tinte: string; pedido: Pedido }) {
+function LineaCarrito({
+  l,
+  fuerte,
+  tinte,
+  pedido,
+}: {
+  l: LineaPedido;
+  fuerte: string;
+  tinte: string;
+  pedido: Pedido;
+}) {
   const foto = urlDeImagen(l.fotoUrl ?? null);
   const icono = foto ? null : iconoPorLlave(l.icono);
   const subtotal = subtotalLinea(l);
@@ -552,36 +778,103 @@ function LineaCarrito({ l, fuerte, tinte, pedido }: { l: LineaPedido; fuerte: st
         }}
       >
         {foto ? (
-          <img src={foto} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          <img
+            src={foto}
+            alt=""
+            loading="lazy"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
         ) : icono ? (
-          <img src={icono.src} alt="" loading="lazy" style={{ width: "74%", height: "74%", objectFit: "contain", display: "block" }} />
+          <img
+            src={icono.src}
+            alt=""
+            loading="lazy"
+            style={{
+              width: "74%",
+              height: "74%",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
         ) : (
           l.titulo.trim().charAt(0).toUpperCase()
         )}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>{l.titulo}</div>
+        <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>
+          {l.titulo}
+        </div>
         <div style={{ fontSize: 13, color: "#6B7280" }}>
           {formatoPrecio(l.precio, l.desde) ?? "Precio a consultar"}
-          {subtotal != null && l.cantidad > 1 && <span style={{ color: "#111827", fontWeight: 700 }}> · {formatoPrecio(subtotal)}</span>}
+          {subtotal != null && l.cantidad > 1 && (
+            <span style={{ color: "#111827", fontWeight: 700 }}>
+              {" "}
+              · {formatoPrecio(subtotal)}
+            </span>
+          )}
         </div>
       </div>
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: tinte, borderRadius: 999, padding: 3, flex: "none" }}>
+      {l.servicio ? (
+        // Un servicio va una vez: sólo se puede quitar.
         <button
           type="button"
-          aria-label={`Quitar uno de ${l.titulo}`}
+          aria-label={`Quitar ${l.titulo} del pedido`}
           onClick={() => pedido.cambiar(l.id, -1)}
-          style={{ ...redondo, background: "#ffffff" }}
+          style={{ ...redondo, background: tinte, flex: "none" }}
         >
-          <Trazo d={l.cantidad === 1 ? ICONO_TACHO : ICONO_MENOS} color={fuerte} size={16} grosor={2.4} />
+          <Trazo d={ICONO_TACHO} color={fuerte} size={16} grosor={2.4} />
         </button>
-        <span aria-label={`Cantidad de ${l.titulo}`} style={{ minWidth: 22, textAlign: "center", fontWeight: 800, color: fuerte }}>
-          {l.cantidad}
-        </span>
-        <button type="button" aria-label={`Sumar uno de ${l.titulo}`} onClick={() => pedido.cambiar(l.id, 1)} style={{ ...redondo, background: fuerte }}>
-          <Trazo d={ICONO_MAS} color="#ffffff" size={16} grosor={2.4} />
-        </button>
-      </div>
+      ) : (
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            background: tinte,
+            borderRadius: 999,
+            padding: 3,
+            flex: "none",
+          }}
+        >
+          <button
+            type="button"
+            aria-label={`Quitar uno de ${l.titulo}`}
+            onClick={() => pedido.cambiar(l.id, -1)}
+            style={{ ...redondo, background: "#ffffff" }}
+          >
+            <Trazo
+              d={l.cantidad === 1 ? ICONO_TACHO : ICONO_MENOS}
+              color={fuerte}
+              size={16}
+              grosor={2.4}
+            />
+          </button>
+          <span
+            aria-label={`Cantidad de ${l.titulo}`}
+            style={{
+              minWidth: 22,
+              textAlign: "center",
+              fontWeight: 800,
+              color: fuerte,
+            }}
+          >
+            {l.cantidad}
+          </span>
+          <button
+            type="button"
+            aria-label={`Sumar uno de ${l.titulo}`}
+            onClick={() => pedido.cambiar(l.id, 1)}
+            style={{ ...redondo, background: fuerte }}
+          >
+            <Trazo d={ICONO_MAS} color="#ffffff" size={16} grosor={2.4} />
+          </button>
+        </div>
+      )}
     </li>
   );
 }
