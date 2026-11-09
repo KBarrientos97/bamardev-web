@@ -139,10 +139,11 @@ function cercaDelFondo(d: Uint8ClampedArray, i: number, fondo: Grupo[]): number 
 }
 
 /**
- * Lo que queda con algo de dibujo, más un margen. El backend pide al menos 64
- * px por lado: si el dibujo es más chico, el recorte crece alrededor.
+ * Lo que queda con algo de dibujo, más un margen. El backend pide un lado
+ * mínimo (64 px el logo, 96 la foto de un plato): si el dibujo es más chico,
+ * el recorte crece alrededor.
  */
-function recortar(p: Pixeles): Recorte {
+function recortar(p: Pixeles, ladoMinimo: number): Recorte {
   const { data: d, width: ancho, height: alto } = p;
   let x0 = ancho;
   let y0 = alto;
@@ -164,7 +165,7 @@ function recortar(p: Pixeles): Recorte {
   const lado = (a: number, b: number, total: number): [number, number] => {
     let ini = Math.max(0, a - margen);
     let fin = Math.min(total - 1, b + margen);
-    const minimo = Math.min(total, LADO_MINIMO_LOGO);
+    const minimo = Math.min(total, ladoMinimo);
     while (fin - ini + 1 < minimo) {
       if (ini > 0) ini--;
       if (fin - ini + 1 < minimo && fin < total - 1) fin++;
@@ -241,7 +242,7 @@ function borrarMotas(esFondo: Uint8Array, lejos: Uint16Array, ancho: number, alt
   }
 }
 
-export function quitarFondo(p: Pixeles): ResultadoFondo {
+export function quitarFondo(p: Pixeles, ladoMinimo = LADO_MINIMO_LOGO): ResultadoFondo {
   const { data: d, width: ancho, height: alto } = p;
   const total = ancho * alto;
   if (total === 0) return { tipo: "sin-cambios" };
@@ -250,7 +251,7 @@ export function quitarFondo(p: Pixeles): ResultadoFondo {
   // Un PNG que ya es transparente: el borde está vacío. Rellenarlo con la
   // varita borraría el contorno claro de un logo hecho para fondos oscuros.
   const vacios = borde.filter((k) => d[k * 4 + 3] <= ALFA_VACIO).length;
-  if (vacios >= borde.length / 2) return { tipo: "ya-transparente", recorte: recortar(p) };
+  if (vacios >= borde.length / 2) return { tipo: "ya-transparente", recorte: recortar(p, ladoMinimo) };
 
   const fondo = coloresDelFondo(p, borde);
   if (!fondo) return { tipo: "sin-cambios" };
@@ -365,5 +366,5 @@ export function quitarFondo(p: Pixeles): ResultadoFondo {
     d[i + 3] = d[i + 3] * a;
   }
 
-  return { tipo: "quitado", recorte: recortar(p) };
+  return { tipo: "quitado", recorte: recortar(p, ladoMinimo) };
 }

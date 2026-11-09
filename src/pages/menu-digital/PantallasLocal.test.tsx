@@ -20,9 +20,10 @@ vi.mock("../../lib/api", async (original) => {
 });
 // jsdom no tiene canvas: el quitado de fondo se prueba aparte (quitarFondo.test).
 const prepararLogo = vi.hoisted(() => vi.fn());
+const prepararFotoPlato = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/pagina/imagen", async (original) => {
   const real = await original<typeof import("../../lib/pagina/imagen")>();
-  return { ...real, prepararLogo };
+  return { ...real, prepararLogo, prepararFotoPlato };
 });
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
@@ -491,7 +492,7 @@ describe("Configuración del recibo: el logo sin fondo (9-nov)", () => {
     await screen.findByText("Brasa y broasted");
     fireEvent.click(screen.getByRole("tab", { name: /Logo y datos/ }));
 
-    const archivo = new File(["jpg"], "logo-tio-fabio.jpg", { type: "image/jpeg" });
+    const archivo = new File(["jpg"], "logo-del-restaurante.jpg", { type: "image/jpeg" });
     fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [archivo] } });
 
     expect(await screen.findByText("Le sacamos el fondo para que en las TVs se vea sólo el dibujo.")).toBeInTheDocument();
@@ -505,6 +506,50 @@ describe("Configuración del recibo: el logo sin fondo (9-nov)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sacarle el fondo" }));
     expect(await screen.findByText("Le sacamos el fondo para que en las TVs se vea sólo el dibujo.")).toBeInTheDocument();
     expect(prepararLogo).toHaveBeenLastCalledWith(archivo, true);
+  });
+});
+
+describe("Platos y fotos: la foto del plato sin fondo (9-nov)", () => {
+  it("al subirla se le saca el fondo, se avisa y se puede dejar con su fondo sin buscar el archivo", async () => {
+    // Kevin quería en la TV sólo el plato, como el dibujo del ícono, y no la
+    // foto enmarcada. Si la varita se come el borde de un plato blanco sobre
+    // blanco, el dueño la vuelve a subir tal cual con un toque.
+    prepararFotoPlato.mockImplementation(async (_f: File, sacarFondo: boolean) => ({
+      blob: new Blob(["foto"], { type: "image/webp" }),
+      fondoQuitado: sacarFondo,
+    }));
+    let sinFondo = true;
+    request.mockImplementation((ruta: string, op?: RequestInit) => {
+      if (ruta === "/menu-digital/platos/1/foto" && op?.method === "POST") {
+        const r = plato(1, "Brasa cuarto", 1, { foto: "/publico/pantallas/foto/1/abcdef123", fotoSinFondo: sinFondo });
+        sinFondo = !sinFondo;
+        return Promise.resolve(r);
+      }
+      return responder(ruta);
+    });
+    const { default: MenuDigital } = await import("./MenuDigital");
+    render(
+      <MemoryRouter>
+        <MenuDigital />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("tab", { name: /Platos y fotos/ }));
+    const fila = screen.getByText("Brasa cuarto").closest("li")!;
+    const archivo = new File(["jpg"], "brasa-cuarto.jpg", { type: "image/jpeg" });
+    fireEvent.change(fila.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [archivo] } });
+
+    expect(await within(fila).findByText("Le sacamos el fondo: en la TV sale sólo el plato.")).toBeInTheDocument();
+    expect(prepararFotoPlato).toHaveBeenLastCalledWith(archivo, true);
+    // La miniatura muestra el plato entero, no recortado al cuadrado.
+    expect(fila.querySelector("img")).toHaveClass("object-contain");
+
+    fireEvent.click(within(fila).getByRole("button", { name: "Dejarlo con su fondo" }));
+    expect(await within(fila).findByText("Quedó con su fondo, enmarcada.")).toBeInTheDocument();
+    expect(prepararFotoPlato).toHaveBeenLastCalledWith(archivo, false);
+    expect(fila.querySelector("img")).toHaveClass("object-cover");
+    expect(
+      request.mock.calls.filter(([ruta, op]) => ruta === "/menu-digital/platos/1/foto" && (op as RequestInit).method === "POST"),
+    ).toHaveLength(2);
   });
 });
 
@@ -560,6 +605,37 @@ describe("TV del menú, sin sesión", () => {
     });
     expect(await screen.findByText("Plato 9")).toBeInTheDocument();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("una foto sin fondo sale entera y suelta; una con su fondo, enmarcada como siempre (9-nov)", async () => {
+    const menu: MenuPublicoApi = {
+      negocio: "Pollos de prueba",
+      moneda: "BOB",
+      ahora: Date.now(),
+      logo: null,
+      pantalla: { ...EDITOR.pantallas[0], categorias: [] },
+      categorias: EDITOR.categorias,
+      platos: [
+        { ...plato(1, "Brasa cuarto", 1), foto: "/publico/pantallas/foto/1/sinfondo1", fotoSinFondo: true },
+        { ...plato(2, "Brasa medio", 1), foto: "/publico/pantallas/foto/2/confondo2", fotoSinFondo: false },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(menu), { status: 200 }))));
+    const { default: RutasMenu } = await import("../../publico/tv/TvMenu");
+    const { container } = render(
+      <MemoryRouter initialEntries={["/llave-de-prueba-123456789/1"]}>
+        <Routes>
+          <Route path="/*" element={<RutasMenu />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Brasa cuarto")).toBeInTheDocument();
+    const foto = (huella: string) => container.querySelector(`img[src$="${huella}"]`);
+    // Con object-cover se le cortaban los bordes al plato y quedaba un recuadro.
+    expect(foto("sinfondo1")).toHaveClass("object-contain");
+    expect(foto("sinfondo1")).not.toHaveClass("object-cover");
+    expect(foto("confondo2")).toHaveClass("object-cover");
     vi.unstubAllGlobals();
   });
 });

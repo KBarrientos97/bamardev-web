@@ -82,6 +82,12 @@ export interface PlatoMenu {
   categoria: string | null;
   /** Ruta de la foto (relativa al API), o null: sale el ícono. */
   foto: string | null;
+  /**
+   * La foto es sólo el plato, sin fondo: la TV la dibuja suelta, como el
+   * ícono, y no enmarcada. Opcional: un backend anterior no lo manda y la
+   * foto sale enmarcada como siempre.
+   */
+  fotoSinFondo?: boolean;
   descripcion: string | null;
   etiqueta: EtiquetaPlato | null;
   destacado: boolean;

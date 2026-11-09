@@ -14,7 +14,7 @@ export const TOPE_ORIGINAL = 10 * 1024 * 1024;
  * `plato` es la foto de un plato del menú digital (640 px de lado mayor: en
  * una TV de 4 columnas la tarjeta mide ~350 px, y una TV con 25 platos baja
  * todas las fotos de una). `marca` es el logo del negocio para el recibo y
- * las TVs, que no se recorta: un logo ancho ("POLLOS TÍO FABIO") cortado al
+ * las TVs, que no se recorta: un logo ancho (el dibujo con el nombre al lado) cortado al
  * cuadrado perdía las letras de los costados.
  */
 export type TipoImagen = "logo" | "portada" | "catalogo" | "plato" | "marca";
@@ -91,16 +91,22 @@ function cargar(archivo: Blob): Promise<HTMLImageElement> {
   });
 }
 
-/** El backend rechaza un logo de más de 300 KB. */
-const TOPE_LOGO = 300 * 1024;
+/**
+ * Lo que el backend acepta de cada imagen que puede ir sin fondo: el logo
+ * (300 KB, 64 px de lado) y la foto de un plato (400 KB, 96 px).
+ */
+const SIN_FONDO = {
+  marca: { tope: 300 * 1024, ladoMinimo: LADO_MINIMO_LOGO, calidad: 0.9 },
+  plato: { tope: 400 * 1024, ladoMinimo: 96, calidad: 0.82 },
+} as const;
 
 function blobDe(canvas: HTMLCanvasElement, tipoMime: string, calidad?: number): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob(resolve, tipoMime, calidad));
 }
 
-export interface LogoPreparado {
+export interface ImagenSinFondo {
   blob: Blob;
-  /** Se le borró el fondo (blanco, negro o los cuadritos dibujados). */
+  /** Se le borró el fondo (blanco, negro, un color parejo o los cuadritos dibujados). */
   fondoQuitado: boolean;
 }
 
@@ -109,11 +115,33 @@ export interface LogoPreparado {
  * pide y el borde es parejo (`quitarFondo`). Después se recorta lo vacío de
  * alrededor: en la TV el dibujo sale más grande en el mismo lugar.
  */
-export async function prepararLogo(archivo: File, sacarFondo: boolean): Promise<LogoPreparado> {
+export function prepararLogo(archivo: File, sacarFondo: boolean): Promise<ImagenSinFondo> {
+  return prepararSinFondo(archivo, sacarFondo, "marca");
+}
+
+/**
+ * La foto de un plato del menú digital, sin el fondo si es parejo (una foto
+ * de internet sobre blanco, el plato sobre una cartulina o un mantel liso).
+ * Kevin (9-nov) quería el plato suelto en la TV, como el dibujo del ícono, y
+ * no la foto enmarcada con la mesa adentro. Una foto con la mesa, el mantel
+ * estampado o las sombras no tiene un borde parejo: sube como vino y la TV la
+ * sigue mostrando enmarcada. El backend se da cuenta solo de que quedó
+ * transparente (`fotoSinFondo`).
+ */
+export function prepararFotoPlato(archivo: File, sacarFondo: boolean): Promise<ImagenSinFondo> {
+  return prepararSinFondo(archivo, sacarFondo, "plato");
+}
+
+async function prepararSinFondo(
+  archivo: File,
+  sacarFondo: boolean,
+  tipo: keyof typeof SIN_FONDO,
+): Promise<ImagenSinFondo> {
+  const lim = SIN_FONDO[tipo];
   if (!archivo.type.startsWith("image/")) throw new Error("Elegí una imagen (PNG, JPG o WebP).");
   if (archivo.size > TOPE_ORIGINAL) throw new Error("La imagen pesa más de 10 MB.");
   const img = await cargar(archivo);
-  const m = medidas("marca", img.naturalWidth, img.naturalHeight);
+  const m = medidas(tipo, img.naturalWidth, img.naturalHeight);
   let canvas = document.createElement("canvas");
   canvas.width = m.ancho;
   canvas.height = m.alto;
@@ -126,7 +154,7 @@ export async function prepararLogo(archivo: File, sacarFondo: boolean): Promise<
   let conTransparencia = false;
   if (sacarFondo) {
     const pixeles = ctx.getImageData(0, 0, m.ancho, m.alto);
-    const r = quitarFondo(pixeles);
+    const r = quitarFondo(pixeles, lim.ladoMinimo);
     if (r.tipo !== "sin-cambios") {
       fondoQuitado = r.tipo === "quitado";
       conTransparencia = true;
@@ -142,24 +170,26 @@ export async function prepararLogo(archivo: File, sacarFondo: boolean): Promise<
     }
   }
 
-  let blob = await blobDe(canvas, "image/webp", 0.9);
+  let blob = await blobDe(canvas, "image/webp", lim.calidad);
   if (!blob || blob.type !== "image/webp") {
     // Safari no sabe hacer WebP. El JPG de siempre pinta de NEGRO lo
     // transparente, que es justo lo que se acaba de borrar: va en PNG, que
     // pesa más y se achica hasta entrar en el tope del backend.
-    blob = conTransparencia ? await pngQueEntre(canvas) : await blobDe(canvas, "image/jpeg", 0.85);
+    blob = conTransparencia
+      ? await pngQueEntre(canvas, lim.tope, lim.ladoMinimo)
+      : await blobDe(canvas, "image/jpeg", 0.85);
   }
   if (!blob) throw new Error("Tu navegador no pudo procesar la imagen.");
   return { blob, fondoQuitado };
 }
 
-async function pngQueEntre(original: HTMLCanvasElement): Promise<Blob | null> {
+async function pngQueEntre(original: HTMLCanvasElement, tope: number, ladoMinimo: number): Promise<Blob | null> {
   let canvas = original;
   for (let vuelta = 0; vuelta < 5; vuelta++) {
     const blob = await blobDe(canvas, "image/png");
     const ancho = Math.round(canvas.width * 0.8);
     const alto = Math.round(canvas.height * 0.8);
-    if (!blob || blob.size <= TOPE_LOGO || Math.min(ancho, alto) < LADO_MINIMO_LOGO) return blob;
+    if (!blob || blob.size <= tope || Math.min(ancho, alto) < ladoMinimo) return blob;
     const chico = document.createElement("canvas");
     chico.width = ancho;
     chico.height = alto;

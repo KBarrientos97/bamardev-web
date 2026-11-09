@@ -163,4 +163,14 @@ describe("quitarFondo (el logo en la TV, 9-nov)", () => {
     expect(r.recorte.x).toBeGreaterThan(110);
     expect(r.recorte.x).toBeLessThan(140);
   });
+
+  it("con el lado mínimo de la foto de un plato (96 px), el recorte no baja de eso", () => {
+    // El backend rechaza una foto de plato de menos de 96 px de lado: con el
+    // mínimo del logo (64) la foto recortada no se podía subir.
+    const p = imagen(300, 300, (x, y) => (dentro(x, y, 135, 135, 164, 164) ? ROJO : BLANCO));
+    const r = quitarFondo(p, 96);
+    if (r.tipo !== "quitado") throw new Error(r.tipo);
+    expect(r.recorte.ancho).toBe(96);
+    expect(r.recorte.alto).toBe(96);
+  });
 });
