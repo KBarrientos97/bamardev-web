@@ -139,7 +139,21 @@ function Imagen({ plato, datos, c, alto, lado }: { plato: PlatoTv; datos: DatosT
       className="relative flex shrink-0 items-center justify-center overflow-hidden"
       style={{ height: alto, background: `radial-gradient(circle at 50% 55%, ${c.acento}40, transparent 70%)` }}
     >
-      {plato.foto ? (
+      {plato.foto && plato.fotoSinFondo ? (
+        // Sólo el plato (Kevin, 9-nov): entero y suelto sobre el brillo, como
+        // el ícono. Con object-cover se le cortaban los bordes del plato y
+        // pegado al borde de la tarjeta parecía un recuadro otra vez.
+        <img
+          src={datos.url(plato.foto)}
+          alt=""
+          className="object-contain"
+          style={{
+            width: "92%",
+            height: "88%",
+            filter: `${plato.agotado ? "grayscale(1) opacity(0.55) " : ""}drop-shadow(0 10px 14px rgba(0,0,0,0.35))`,
+          }}
+        />
+      ) : plato.foto ? (
         <img
           src={datos.url(plato.foto)}
           alt=""

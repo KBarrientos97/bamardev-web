@@ -18,7 +18,7 @@ import { categoriasDeBebidas } from "../../lib/menuDigital/bebidas";
 import { ordenar, paginar, platosDeLaPantalla } from "../../lib/menuDigital/paginar";
 import { useRelojEscenas } from "../../lib/menuDigital/useRelojEscenas";
 import { useArrastreGrilla } from "../pos/useArrastreGrilla";
-import { prepararImagen } from "../../lib/pagina/imagen";
+import { prepararFotoPlato } from "../../lib/pagina/imagen";
 import { useAuth } from "../../store/AuthContext";
 import {
   ANIMADOS_MENU,
@@ -1222,6 +1222,10 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
         <Icon name="lock" size={12} className="mr-1 inline" />
         El nombre y el precio vienen de Inventario y se cambian allá: la TV muestra siempre lo que cobra la caja.
       </p>
+      <p className="text-[12px] text-texto-3">
+        <Icon name="camara" size={12} className="mr-1 inline" />
+        Una foto con fondo blanco o de un solo color (una cartulina, un mantel liso) se sube sin el fondo y en la TV sale sólo el plato. Con la mesa de fondo sale enmarcada.
+      </p>
       {error && <ErrorMsg>{error}</ErrorMsg>}
       <ul className="card divide-y divide-borde">
         {lista.length === 0 && <li className="p-8 text-center text-sm text-texto-3">No hay platos con ese filtro.</li>}
@@ -1246,15 +1250,22 @@ function FilaPlato({
 }) {
   const [descripcion, setDescripcion] = useState(p.descripcion ?? "");
   const [subiendo, setSubiendo] = useState(false);
+  // El último archivo elegido y qué se hizo con su fondo: con eso se puede
+  // volver a subirlo con o sin fondo sin pedirle que lo elija otra vez.
+  const [ultimo, setUltimo] = useState<File | null>(null);
+  const [fondo, setFondo] = useState<"quitado" | "con-fondo" | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
   useEffect(() => setDescripcion(p.descripcion ?? ""), [p.descripcion]);
 
-  const subir = async (f: File | undefined) => {
+  const subir = async (f: File | undefined, sacarFondo = true) => {
     if (!f) return;
     setSubiendo(true);
     onError("");
     try {
-      onPlato(await apiMenuDigital.subirFoto(p.id, await prepararImagen(f, "plato")));
+      const preparada = await prepararFotoPlato(f, sacarFondo);
+      onPlato(await apiMenuDigital.subirFoto(p.id, preparada.blob));
+      setUltimo(f);
+      setFondo(preparada.fondoQuitado ? "quitado" : sacarFondo ? null : "con-fondo");
     } catch (e) {
       onError(e instanceof Error ? e.message : "No se pudo subir la foto");
     } finally {
@@ -1265,6 +1276,8 @@ function FilaPlato({
   const quitar = async () => {
     try {
       onPlato(await apiMenuDigital.quitarFoto(p.id));
+      setUltimo(null);
+      setFondo(null);
     } catch (e) {
       onError(e instanceof Error ? e.message : "No se pudo quitar la foto");
     }
@@ -1311,6 +1324,35 @@ function FilaPlato({
             </button>
           )}
         </p>
+        {/* Lo de sacarle el fondo se dice y se puede deshacer: la varita a
+            veces se come el borde blanco de un plato blanco sobre blanco, y el
+            dueño tiene que poder dejar la foto como la sacó. */}
+        {ultimo && fondo === "quitado" && (
+          <p className="px-1 text-[12px] text-texto-2">
+            Le sacamos el fondo: en la TV sale sólo el plato.
+            <button
+              type="button"
+              disabled={subiendo}
+              onClick={() => void subir(ultimo, false)}
+              className="ml-2 font-semibold text-primary-700 underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Dejarlo con su fondo
+            </button>
+          </p>
+        )}
+        {ultimo && fondo === "con-fondo" && (
+          <p className="px-1 text-[12px] text-texto-2">
+            Quedó con su fondo, enmarcada.
+            <button
+              type="button"
+              disabled={subiendo}
+              onClick={() => void subir(ultimo, true)}
+              className="ml-2 font-semibold text-primary-700 underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              Sacarle el fondo
+            </button>
+          </p>
+        )}
       </div>
       <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:gap-3">
         <span className="flex shrink-0 items-center gap-1 rounded-lg bg-muted px-2.5 py-1.5 text-[13px] font-bold text-texto-2">
@@ -1360,7 +1402,13 @@ function FilaPlato({
 }
 
 function Miniatura({ plato, lado }: { plato: PlatoMenu; lado: number }) {
-  return plato.foto ? (
+  // Sin fondo va sobre el mismo fondito que el ícono: así se ve qué quedó del
+  // plato y qué se borró, antes de mirarlo en la TV.
+  return plato.foto && plato.fotoSinFondo ? (
+    <span className="flex items-center justify-center rounded-xl bg-amber-50" style={{ width: lado, height: lado }}>
+      <img src={urlApi(plato.foto)} alt="" className="object-contain" style={{ width: lado * 0.9, height: lado * 0.9 }} />
+    </span>
+  ) : plato.foto ? (
     <img src={urlApi(plato.foto)} alt="" className="rounded-xl object-cover" style={{ width: lado, height: lado }} />
   ) : (
     <span className="flex items-center justify-center rounded-xl bg-amber-50" style={{ width: lado, height: lado }}>

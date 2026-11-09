@@ -303,6 +303,17 @@ function Imagen({
   conFoto: boolean;
   redondo?: boolean;
 }) {
+  if (conFoto && plato.foto && plato.fotoSinFondo) {
+    // Sólo el plato: entero y sin recortarlo en círculo, como el ícono.
+    return (
+      <img
+        src={datos.url(plato.foto)}
+        alt=""
+        className="shrink-0 object-contain"
+        style={{ width: lado, height: lado, filter: fotoSuelta(plato.agotado, lado), opacity: plato.agotado ? 0.5 : 1 }}
+      />
+    );
+  }
   if (conFoto && plato.foto) {
     return (
       <img
@@ -318,6 +329,16 @@ function Imagen({
       <IconoProducto nombre={plato.nombre} icono={plato.icono} size={lado} />
     </span>
   );
+}
+
+/**
+ * El filtro de una foto sin fondo: una sombra que sigue el contorno del plato
+ * (lo que lo despega del fondo, como al ícono) y, agotado, en gris.
+ */
+function fotoSuelta(agotado: boolean, lado: number): string {
+  const y = Math.max(2, Math.round(lado * 0.035));
+  const borroso = Math.max(2, Math.round(lado * 0.05));
+  return `${agotado ? "grayscale(1) " : ""}drop-shadow(0 ${y}px ${borroso}px rgba(0,0,0,0.4))`;
 }
 
 /** "AGOTADO" como un sello que cae encima de la foto. */
@@ -404,7 +425,7 @@ function Particulas({ c, cuantas, burbujas = false }: { c: Colores; cuantas: num
 /**
  * Cada letra cae en su lugar, una detrás de otra; las palabras no se parten.
  * Entre palabra y palabra va un espacio de verdad (no un margen): si no, el
- * texto del título era "PollosTíoFabio" para quien lo lee o lo copia.
+ * texto del título era "PollosDeLaEsquina" para quien lo lee o lo copia.
  */
 function Letras({ texto, demora }: { texto: string; demora: number }) {
   let n = 0;
@@ -479,7 +500,7 @@ function Intro({ datos, c, ms, sinSalida }: { datos: DatosTableroMenu; c: Colore
             </div>
           </div>
         )}
-        {/* El nombre entero en la etiqueta: letra por letra se leía "PollosTíoFabio". */}
+        {/* El nombre entero en la etiqueta: letra por letra se leía "PollosDeLaEsquina". */}
         <h1 aria-label={nombre} className="font-black" style={{ fontSize: tam, lineHeight: 1.05, letterSpacing: "-0.01em" }}>
           <span aria-hidden="true">
             <Letras texto={nombre} demora={hayLogo ? 1000 : 300} />
@@ -552,7 +573,13 @@ function PlatoGrande({ e, datos, c }: { e: Extract<Escena, { tipo: "plato" }>; d
         />
         <div className="pointer-events-none absolute" style={{ width: 720, height: 720, left: 20, top: "calc(50% - 360px)", borderRadius: "50%", background: `radial-gradient(circle, ${conAlfa(c.acento, 0.42)}, transparent 68%)` }} />
         <div className="relative" style={anim("md-entra-izq", 850, { curva: "cubic-bezier(0.2, 0.9, 0.3, 1.1)" })}>
-          {p.fotos && x.foto ? (
+          {p.fotos && x.foto && x.fotoSinFondo ? (
+            // Sin fondo flota sobre los rayos como el ícono, más grande: el
+            // marco era para tapar la mesa de la foto, y acá no hay mesa.
+            <div style={anim("md-flotar", 3200, { repetir: true, curva: "ease-in-out" })}>
+              <Imagen plato={x} datos={datos} lado={580} conFoto />
+            </div>
+          ) : p.fotos && x.foto ? (
             <div className="overflow-hidden" style={{ width: 720, height: 540, borderRadius: 40, border: `6px solid ${conAlfa(c.texto, 0.9)}`, boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}>
               <img
                 src={datos.url(x.foto)}
@@ -683,7 +710,11 @@ function Carrusel({ e, datos, c, vuelta }: { e: Extract<Escena, { tipo: "carruse
         <div className="relative shrink-0 overflow-hidden" style={{ height: 390 }}>
           <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 50% 55%, ${conAlfa(c.acento, 0.45)}, transparent 70%)` }} />
           <div className="absolute inset-0 flex items-center justify-center" style={anim("md-entra-der", 750, { curva: "cubic-bezier(0.2, 0.9, 0.3, 1.1)" })}>
-            {p.fotos && x.foto ? (
+            {p.fotos && x.foto && x.fotoSinFondo ? (
+              <div style={anim("md-flotar", 3200, { repetir: true, curva: "ease-in-out" })}>
+                <Imagen plato={x} datos={datos} lado={340} conFoto />
+              </div>
+            ) : p.fotos && x.foto ? (
               <img
                 src={datos.url(x.foto)}
                 alt=""
@@ -870,7 +901,21 @@ function Mosaico({
                     className="relative flex shrink-0 items-center justify-center overflow-hidden"
                     style={{ height: altoImagen, background: `radial-gradient(circle at 50% 55%, ${conAlfa(c.acento, 0.3)}, transparent 70%)` }}
                   >
-                    {x.foto ? (
+                    {x.foto && x.fotoSinFondo ? (
+                      // Sin fondo: el plato entero y suelto; en foco se agranda y
+                      // se ladea como el ícono.
+                      <img
+                        src={datos.url(x.foto)}
+                        alt=""
+                        className="md-foco-foto object-contain"
+                        style={{
+                          width: "92%",
+                          height: "88%",
+                          transform: enFoco ? "scale(1.14) rotate(-4deg)" : "none",
+                          filter: `${x.agotado ? "opacity(0.55) " : ""}${fotoSuelta(x.agotado, altoImagen)}`,
+                        }}
+                      />
+                    ) : x.foto ? (
                       <img
                         src={datos.url(x.foto)}
                         alt=""
