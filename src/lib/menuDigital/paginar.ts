@@ -159,14 +159,24 @@ export function simboloMoneda(moneda?: string): string {
  * (`menuPublico`): los que están en el menú, no escondidos en esta TV, de sus
  * categorías (ninguna elegida = todas) y, si la TV no tacha los agotados, sin
  * ellos. La vista previa del editor tiene que mostrar lo mismo que la TV.
+ *
+ * Agotado es EN ESTA TV: lo marcado a mano siempre, lo que dice el stock sólo
+ * si la TV lo toma en cuenta (`agotadoPorStock`). Sin `agotadoHoy` (los platos
+ * de la TV pública) el `agotado` ya viene resuelto por el servidor.
  */
 export function platosDeLaPantalla(
   pantalla: PantallaMenu,
-  platos: (PlatoTv & { enMenu: boolean })[],
+  todos: (PlatoTv & { enMenu: boolean; agotadoHoy?: boolean })[],
   categorias: { id: number; nombre: string }[],
 ): { platos: PlatoTv[]; categorias: { id: number; nombre: string }[] } {
   const cats = new Set(pantalla.categorias);
   const ocultos = new Set(pantalla.ocultos);
+  const porStock = pantalla.agotadoPorStock !== false;
+  const platos = todos.map((p) => {
+    if (p.agotadoHoy === undefined) return p;
+    const agotado = p.agotadoHoy || (porStock && p.agotado);
+    return agotado === p.agotado ? p : { ...p, agotado };
+  });
   const visibles = platos.filter(
     (p) =>
       p.enMenu &&

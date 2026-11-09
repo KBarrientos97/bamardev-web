@@ -41,6 +41,11 @@ export interface PantallaMenu {
   descripciones: boolean;
   etiquetas: boolean;
   agotadosTachados: boolean;
+  /**
+   * Sin stock en Inventario cuenta como agotado (9-nov). Apagado sale normal;
+   * lo marcado "Agotado hoy" sale agotado igual. Ausente (backend anterior) = sí.
+   */
+  agotadoPorStock?: boolean;
   // Del 8-nov. Opcionales a propósito: un backend anterior no los manda, y la
   // TV tiene que seguir andando con los de fábrica (`conAnimacion`).
   /** Null o ausente = el `diseno` de siempre, quieto. */

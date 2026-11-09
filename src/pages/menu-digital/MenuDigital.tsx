@@ -749,12 +749,7 @@ function EditorPantalla({
           <SiNo etiqueta="Mostrar fotos" activo={p.fotos} onCambiar={(v) => onCambiar({ fotos: v })} />
           <SiNo etiqueta="Mostrar descripciones" activo={p.descripciones} onCambiar={(v) => onCambiar({ descripciones: v })} />
           <SiNo etiqueta="Etiquetas (Más vendido…)" activo={p.etiquetas} onCambiar={(v) => onCambiar({ etiquetas: v })} />
-          <SiNo
-            etiqueta="Agotados tachados"
-            detalle="Apagado, el agotado no sale"
-            activo={p.agotadosTachados}
-            onCambiar={(v) => onCambiar({ agotadosTachados: v })}
-          />
+          <AjusteAgotados p={p} onCambiar={onCambiar} />
           {((p.diseno === "fotos" && !ani.animado) || ani.animado === "mosaico") && (
             <FilaAjuste etiqueta="Columnas">
               <Segmentado
@@ -793,6 +788,54 @@ function EditorPantalla({
           </Boton>
         </Tarjeta>
       </div>
+    </div>
+  );
+}
+
+type ModoAgotados = "tachados" | "ocultos" | "normales";
+
+/**
+ * Cómo salen en esta TV los platos agotados (Kevin, 9-nov): tachados en gris,
+ * fuera de la TV, o normales. "Normales" es para el local que no lleva el
+ * stock al día: la TV de la pollería tenía media fila de gaseosas en gris con
+ * "AGOTADO" porque Inventario decía cero. Lo marcado "Agotado hoy" sale
+ * agotado igual, porque eso lo dijo el dueño; si no, ese botón no haría nada
+ * en esta TV.
+ *
+ * Son dos campos y no uno por la app Android, que conoce sólo
+ * `agotadosTachados` y manda la lista entera: `agotadoPorStock` va aparte y
+ * la app no lo pisa.
+ */
+function AjusteAgotados({ p, onCambiar }: { p: PantallaMenu; onCambiar: (parcial: Partial<PantallaMenu>) => void }) {
+  const modo: ModoAgotados = p.agotadoPorStock === false ? "normales" : p.agotadosTachados ? "tachados" : "ocultos";
+  const detalle =
+    modo === "tachados"
+      ? "Salen en gris, con «Agotado»."
+      : modo === "ocultos"
+        ? "No salen en la TV hasta que vuelva a haber."
+        : `Salen como siempre, aunque Inventario diga que no hay stock. Lo que marques «Agotado hoy» ${p.agotadosTachados ? "sí sale tachado" : "no sale"}.`;
+  const elegir = (m: ModoAgotados) => {
+    if (m === modo) return;
+    if (m === "tachados") onCambiar({ agotadosTachados: true, agotadoPorStock: true });
+    else if (m === "ocultos") onCambiar({ agotadosTachados: false, agotadoPorStock: true });
+    else onCambiar({ agotadosTachados: true, agotadoPorStock: false });
+  };
+  return (
+    <div className="py-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <span className="text-sm font-semibold text-texto">Agotados</span>
+        <Segmentado
+          etiqueta="Agotados"
+          valor={modo}
+          onCambiar={elegir}
+          opciones={[
+            { valor: "tachados", texto: "Tachados" },
+            { valor: "ocultos", texto: "No salen" },
+            { valor: "normales", texto: "Normales" },
+          ]}
+        />
+      </div>
+      <p className="mt-1 text-[12px] text-texto-3">{detalle}</p>
     </div>
   );
 }

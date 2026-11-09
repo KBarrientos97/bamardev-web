@@ -325,6 +325,23 @@ describe("Menú digital: los diseños animados y los atajos (8-nov)", () => {
     expect(await ultimoGuardado()).toMatchObject({ orden: [2, 1] });
     vi.useRealTimers();
   });
+
+  it("los agotados: tachados, no salen o normales, y cada uno se guarda (9-nov)", async () => {
+    // La TV de la pollería tenía las gaseosas en gris con "AGOTADO" porque
+    // el stock de Inventario decía cero, y el local no lo lleva al día.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    const agotados = screen.getByRole("radiogroup", { name: "Agotados" });
+    expect(within(agotados).getByRole("radio", { name: "Tachados" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(within(agotados).getByRole("radio", { name: "Normales" }));
+    expect(await ultimoGuardado()).toMatchObject({ agotadosTachados: true, agotadoPorStock: false });
+    expect(screen.getByText(/aunque Inventario diga que no hay stock/)).toBeInTheDocument();
+
+    fireEvent.click(within(agotados).getByRole("radio", { name: "No salen" }));
+    expect(await ultimoGuardado()).toMatchObject({ agotadosTachados: false, agotadoPorStock: true });
+    vi.useRealTimers();
+  });
 });
 
 describe("Configuración del recibo", () => {
