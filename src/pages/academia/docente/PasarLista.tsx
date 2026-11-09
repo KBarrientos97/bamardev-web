@@ -185,7 +185,7 @@ function Lista({
           ? "La lista de ese día ya cerró: para corregirla, pedíselo a la administración."
           : e instanceof ApiError && e.codigo === "LISTA_FUTURA"
             ? "Todavía no es el día de esa clase."
-            : // CLASE_DE_OTRO_DOCENTE (403) y el resto: el mensaje del backend, tal cual.
+            : // CLASE_DE_OTRO_DOCENTE (403), CLASE_SUSPENDIDA (409) y el resto: el mensaje del backend, tal cual.
               mensajeDelBackend(e, "No se pudo guardar la lista"),
       );
       return false;
@@ -214,6 +214,9 @@ function Lista({
         .join(" · ")
     : null;
   const aula = g?.aula ?? d?.grupo?.aula ?? null;
+  // Tanda 2 del 08-nov: la suspendida se mira pero no se pasa; el reemplazo se nombra.
+  const suspendida = d?.sesion.suspendida === true || d?.sesion.estado === "SUSPENDIDA";
+  const reemplazo = d?.sesion.reemplazo ? (d.sesion.docente?.nombre ?? null) : null;
 
   return (
     // Con cambios, los enlaces de adentro preguntan (el menú lateral queda afuera, como en Notas).
@@ -227,6 +230,12 @@ function Lista({
               <>
                 <span className="block font-semibold text-texto-2">{deQueClase}</span>
                 {aula && <span className="block">{aula}</span>}
+                {reemplazo && (
+                  <span className="block">
+                    La da {reemplazo}
+                    {d?.sesion.titular ? `, en lugar de ${d.sesion.titular.nombre}` : ""} (reemplazo)
+                  </span>
+                )}
               </>
             )
           }
@@ -286,6 +295,11 @@ function Lista({
               </Chip>
             )}
           </div>
+          {suspendida && (
+            <p role="status" className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-sm font-semibold text-danger-text">
+              Esta clase está suspendida{d.sesion.motivoSuspension ? ` (${d.sesion.motivoSuspension})` : ""}: no se pasa lista y a nadie le cuenta como falta.
+            </p>
+          )}
           {d.editable && <p className="text-[13px] text-texto-3">Todos arrancan presentes: tocá sólo a quien faltó o llegó tarde.</p>}
 
           {deben > 0 && (
@@ -360,7 +374,9 @@ function Lista({
                 {guardando ? "Guardando…" : "Guardar lista"}
               </Boton>
             ) : (
-              <p className="text-center text-[13px] text-texto-3">La lista de ese día ya cerró.</p>
+              <p className="text-center text-[13px] text-texto-3">
+                {suspendida ? "Clase suspendida: no hay lista que pasar." : "La lista de ese día ya cerró."}
+              </p>
             )}
             {(guardadaEn || (d.guardada && !guardadaEn && d.editable)) && (
               <p role="status" className="text-center text-[13px] text-texto-3">

@@ -10,7 +10,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { capitalizar, diaCorto, fechaLarga } from "../../../lib/agenda/horaAgenda";
 import { ApiError } from "../../../lib/api";
 import { fmtHora } from "../../../lib/format";
-import { tienePermiso } from "../../../lib/permisos";
+import { soloLoSuyo, tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonFila, Chip, claseBotonFila, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "../piezas";
@@ -32,6 +32,12 @@ import NavDocente from "./NavDocente";
  * Al volver a la pestaña se vuelve a pedir: la app queda abierta en el
  * bolsillo y la llegada que marcó la recepción o el «en 25 min» quedaban
  * viejos.
+ *
+ * Tanda 2 del 08-nov: una clase suya suspendida se ve como suspendida (con el
+ * motivo y sin botones), una suya que ese día da otro dice «La da X», y la que
+ * él da como reemplazo lo dice. Las cuentas y la clase grande son sólo de las
+ * que da él. D9: el dueño que también enseña entra acá; para él la lista y las
+ * notas son las del grupo (las rutas del docente piden el alcance PROPIO).
  */
 export default function MisClases() {
   const { usuario } = useAuth();
@@ -49,8 +55,10 @@ export default function MisClases() {
   }, [recargar]);
 
   const clases = d ? [...d.clases].sort((a, b) => aMinutos(a.horaInicio) - aMinutos(b.horaInicio)) : [];
+  // Las que da él de verdad: ni las suspendidas ni las suyas que da otro.
+  const daHoy = clases.filter((c) => c.mia !== false && !c.suspendida);
   // La que se está dando o la que sigue; si ya terminaron todas, ninguna va grande.
-  const principal = clases.find((c) => cuandoEs(c) !== "terminó") ?? null;
+  const principal = daHoy.find((c) => cuandoEs(c) !== "terminó") ?? null;
   const otras = clases.filter((c) => c !== principal);
 
   return (
@@ -58,9 +66,7 @@ export default function MisClases() {
       <EncabezadoPagina
         sobre={d ? capitalizar(fechaLarga(d.fecha)) : "Hoy"}
         titulo={nombre ? `Hola, ${nombre}` : "Mis clases"}
-        bajada={
-          d && (d.clases.length === 0 ? "Hoy no tenés clases" : d.clases.length === 1 ? "Hoy das 1 clase" : `Hoy das ${d.clases.length} clases`)
-        }
+        bajada={d && (daHoy.length === 0 ? "Hoy no tenés clases" : daHoy.length === 1 ? "Hoy das 1 clase" : `Hoy das ${daHoy.length} clases`)}
       />
 
       {datos.error && !d ? (
@@ -117,11 +123,43 @@ function duracionTexto(min: number): string {
  */
 function Clase({ c, grande = false, onLlegada }: { c: ClaseDelDia; grande?: boolean; onLlegada: () => void }) {
   const p = usePalabras();
+  const { usuario } = useAuth();
   const cuando = cuandoEs(c);
   const modulo = `M${c.materia.orden} ${c.materia.nombre}`;
   const lugar = [c.aula, nombreDe(c.sede)].filter(Boolean).join(" · ");
   // B7: el docente ve sólo el semáforo. Sin él en la respuesta, el cuadrito no va.
   const deben = c.semaforos ? c.semaforos.rojo + c.semaforos.amarillo : null;
+  // D9: quien no es docente (el dueño que da clases) usa las rutas del grupo.
+  const delGrupo = !soloLoSuyo(usuario, "asistencia.registrar");
+  const aLista = delGrupo ? `/academia/grupos/${c.grupoId}/lista` : `/academia/lista?grupo=${c.grupoId}`;
+  const aNotas = delGrupo ? `/academia/grupos/${c.grupoId}/notas` : `/academia/notas?grupo=${c.grupoId}`;
+  const otro = typeof c.docente === "object" && c.docente ? c.docente.nombre : typeof c.docente === "string" ? c.docente : null;
+
+  // Suspendida o la da otro ese día: se dice y no hay nada que hacer.
+  if (c.suspendida || c.mia === false) {
+    return (
+      <article aria-label={`Clase de las ${c.horaInicio}`} className="card space-y-2 p-4 opacity-90">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <p className="text-lg font-bold tabular-nums tracking-tight text-texto-3 line-through">
+              {c.horaInicio} a {c.horaFin}
+            </p>
+            <p className="text-[15px] font-semibold text-texto-2">
+              {nombreDe(c.carrera)} · {modulo}
+            </p>
+          </div>
+          <Chip tono={c.suspendida ? "rojo" : "azul"} className="shrink-0 text-[13px]">
+            {c.suspendida ? "suspendida" : "reemplazo"}
+          </Chip>
+        </div>
+        <p className="text-[13px] text-texto-2">
+          {c.suspendida
+            ? `Hoy no hay clase${c.motivoSuspension ? `: ${c.motivoSuspension}` : ""}. No se pasa lista.`
+            : `Hoy la da ${otro ?? `otro ${p.docente}`}. No tenés que hacer nada.`}
+        </p>
+      </article>
+    );
+  }
 
   return (
     <article
@@ -131,6 +169,13 @@ function Clase({ c, grande = false, onLlegada }: { c: ClaseDelDia; grande?: bool
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           {grande && <p className="text-[12px] font-bold uppercase tracking-wide text-primary-700">Tu próxima clase</p>}
+          {c.reemplazo && (
+            <p>
+              <Chip tono="azul" className="text-[12px]">
+                Reemplazás{c.titular ? ` a ${c.titular.nombre}` : ""}
+              </Chip>
+            </p>
+          )}
           <p className={`font-bold tabular-nums tracking-tight text-texto ${grande ? "text-3xl" : "text-lg"}`}>
             {c.horaInicio} a {c.horaFin}
           </p>
@@ -180,7 +225,7 @@ function Clase({ c, grande = false, onLlegada }: { c: ClaseDelDia; grande?: bool
 
       <div className={`flex gap-2 ${grande ? "flex-col sm:flex-row" : ""}`}>
         <Link
-          to={`/academia/lista?grupo=${c.grupoId}`}
+          to={aLista}
           className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-boton px-4 font-semibold text-white hover:bg-primary-boton-hover ${
             grande ? "min-h-13 text-base" : "min-h-11 text-sm"
           }`}
@@ -188,7 +233,7 @@ function Clase({ c, grande = false, onLlegada }: { c: ClaseDelDia; grande?: bool
           <Icon name="lista" size={grande ? 19 : 17} />
           Pasar lista
         </Link>
-        <Link to={`/academia/notas?grupo=${c.grupoId}`} className={`${claseBotonFila("ghost")} !min-h-11 flex-1 rounded-xl text-sm`}>
+        <Link to={aNotas} className={`${claseBotonFila("ghost")} !min-h-11 flex-1 rounded-xl text-sm`}>
           <Icon name="edit" size={16} />
           Notas del {p.materia}
         </Link>
@@ -299,6 +344,14 @@ function Llegada({ c, onLlegada }: { c: ClaseDelDia; onLlegada: () => void }) {
 function Proxima({ x }: { x: ProximaClase }) {
   const materia = typeof x.materia === "string" ? x.materia : `M${x.materia.orden} ${x.materia.nombre}`;
   const dia = Number(x.fecha.slice(8, 10));
+  // Tanda 2 del 08-nov: lo que cambió, para que no llegue a una clase que no va.
+  const cambio = x.suspendida
+    ? { texto: "suspendida", tono: "rojo" as const }
+    : x.mia === false
+      ? { texto: `la da ${x.docente?.nombre ?? "otro"}`, tono: "azul" as const }
+      : x.reemplazo
+        ? { texto: "reemplazo", tono: "azul" as const }
+        : null;
   return (
     <li className={`flex items-center gap-3 ${LISTA.item}`}>
       <span
@@ -321,6 +374,11 @@ function Proxima({ x }: { x: ProximaClase }) {
           {x.aula ? ` · ${x.aula}` : ""}
         </span>
       </span>
+      {cambio && (
+        <Chip tono={cambio.tono} className="shrink-0 text-[12px]">
+          {cambio.texto}
+        </Chip>
+      )}
     </li>
   );
 }
