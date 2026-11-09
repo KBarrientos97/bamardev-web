@@ -1076,6 +1076,64 @@ export type EstadoPlanilla = "EN_CURSO" | "CERRADA" | "PAGADA";
 /** Cómo se le paga al docente: lo que acepta `POST /academia/planilla/:id/pagar` (contrato, cambio 22). */
 export type MetodoPagoPlanilla = "EFECTIVO" | "TRANSFERENCIA" | "QR" | "TARJETA";
 
+/**
+ * Si el docente dio sus clases del mes (ítem 15 de la revisión del 08-nov).
+ * D2: los atrasos no descuentan, se muestran. D7: la clase que dio un
+ * reemplazo cuenta en el titular como `porReemplazo` (no como faltada).
+ */
+export interface ResumenClasesDocente {
+  /** Las de sus módulos en el mes, sin las suspendidas. */
+  programadas: number;
+  suspendidas: number;
+  /** De las programadas, las que dio un reemplazo (no cambia el pago). */
+  porReemplazo: number;
+  /** De las que le tocaban, las que todavía no llegaron. */
+  porDar: number;
+  conLista: number;
+  conLlegada: number;
+  /** De las que le tocaban y ya pasaron, sin lista. */
+  sinLista: number;
+  /** Clases de otro docente que dio él. */
+  comoReemplazo: number;
+  atrasos: { cantidad: number; minutos: number; justificados: number; minutosJustificados: number };
+}
+
+/** Un grupo que dio en el mes, con días y horario (ítem 4). */
+export interface GrupoDelMesDocente {
+  grupoId: number;
+  materiaId: number;
+  nombre: string;
+  carrera: Ref;
+  materia: { orden: number; nombre: string };
+  dias: number[];
+  horaInicio: string;
+  horaFin: string;
+  clases: number;
+  /** El módulo es de otro docente: sólo reemplazó. */
+  comoReemplazo: boolean;
+}
+
+/** Con qué y quién le pagó la planilla (ítem 3). Sin gasto (líquido ≤ 0), método y quién en null. */
+export interface PagoPlanilla {
+  pagadaEn: string | null;
+  metodoPago: MetodoPagoPlanilla | null;
+  pagadoPor: string | null;
+}
+
+/** Una planilla cerrada del historial de un docente (ítem 17). */
+export interface PagoHistorialDocente extends PagoPlanilla {
+  mes: string;
+  estado: "CERRADA" | "PAGADA";
+  liquido: number;
+  cerradaEn: string;
+}
+
+/** `GET /academia/planilla/:personalId/pagos`. */
+export interface HistorialPagosDocente {
+  docente: { personalId: number; nombre: string; telefono: string | null };
+  pagos: PagoHistorialDocente[];
+}
+
 export interface FilaPlanillaMes {
   personalId: number;
   nombre: string;
@@ -1092,6 +1150,10 @@ export interface FilaPlanillaMes {
   sinPagar?: number;
   /** Bug 4: cuántos ajustes trae el mes. */
   ajustes?: number;
+  /** Ítem 15; un backend anterior no lo manda. */
+  clases?: ResumenClasesDocente;
+  /** Ítem 3: sólo en una pagada. */
+  pago?: PagoPlanilla | null;
 }
 
 export interface PlanillaMes {
@@ -1144,7 +1206,8 @@ export interface LineaPlanilla {
 }
 
 export interface PlanillaDocente {
-  docente: { personalId: number; nombre: string };
+  /** `telefono` (ítem 17) para mandarle el comprobante; un backend anterior no lo manda. */
+  docente: { personalId: number; nombre: string; telefono?: string | null };
   mes: string;
   estado: EstadoPlanilla;
   /** QA 23-oct: `modo` y `monto` (A5) en cada curso; un backend anterior no los manda. */
@@ -1154,7 +1217,25 @@ export interface PlanillaDocente {
   /** Cambio #19: los módulos del mes, también para el docente. */
   cerradaEn?: string | null;
   pagadaEn?: string | null;
-  grupos?: { grupoId: number; nombre: string; carrera: Ref; materia: { orden: number; nombre: string }; sede: Ref; estudiantes: number; pct: number }[];
+  /** Ítem 4: `dias` y el horario; un backend anterior no los manda. */
+  grupos?: {
+    grupoId: number;
+    nombre: string;
+    carrera: Ref;
+    materia: { orden: number; nombre: string };
+    sede: Ref;
+    estudiantes: number;
+    pct: number;
+    dias?: number[];
+    horaInicio?: string;
+    horaFin?: string;
+  }[];
+  /** Ítem 3: con qué se pagó y quién; null si no está pagada. */
+  pago?: PagoPlanilla | null;
+  /** Ítem 15: si dio sus clases del mes. */
+  clases?: ResumenClasesDocente;
+  /** Ítem 4: los grupos que dio en el mes (por las clases, también los que reemplazó). */
+  gruposDelMes?: GrupoDelMesDocente[];
   resumen: {
     cuentan: number;
     postergados: number;

@@ -30,6 +30,7 @@ import type {
   GrupoDetalle,
   GrupoInput,
   GrupoResumen,
+  HistorialPagosDocente,
   HoyAcademia,
   InscripcionDetalle,
   InscripcionInput,
@@ -309,6 +310,8 @@ export const apiAcademia = {
   planilla: (mes: string, sede?: number | null) => request<PlanillaMes>(`/academia/planilla${qs({ mes, sede })}`),
   planillaDocente: (personalId: number, mes: string) =>
     request<PlanillaDocente>(`/academia/planilla/${personalId}${qs({ mes })}`),
+  /** Ítem 17: el historial de pagos de un docente, para mandarle el comprobante. */
+  pagosDocente: (personalId: number) => request<HistorialPagosDocente>(`/academia/planilla/${personalId}/pagos`),
   cerrarPlanilla: (personalId: number, mes: string, forzar = false) =>
     request<unknown>(`/academia/planilla/${personalId}/cerrar`, {
       method: "POST",
