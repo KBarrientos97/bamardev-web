@@ -74,7 +74,25 @@ describe("iconosArticulo", () => {
     for (const llave of viejos) {
       expect(iconoPorLlave(llave)?.categoria, llave).toBe("polleria");
     }
-    expect(ICONOS_ARTICULO).toHaveLength(193);
+    expect(ICONOS_ARTICULO).toHaveLength(207);
+  });
+
+  it("las bebidas de marca están en Bebidas y el buscador las encuentra por marca", () => {
+    const llaves = iconosDeCategoria("bebidas").map((i) => i.llave);
+    expect(llaves).toEqual(
+      expect.arrayContaining(["coca_cola_2lt", "agua_vital_personal", "salvietti_2lt", "tropifrut_1lt"]),
+    );
+    // Cada tamaño es un producto distinto con su propio precio: la marca tiene
+    // que traer los cinco para elegir el que corresponde. (Con "coca" a secas
+    // sale además la hoja de coca de licorería.)
+    expect(buscarIconos("coca-cola").map((i) => i.llave)).toEqual([
+      "coca_cola_mini", "coca_cola_pequena", "coca_cola_personal", "coca_cola_1_5lt", "coca_cola_2lt",
+    ]);
+    // "agua" sigue trayendo la genérica y la de licorería, además de las Vital.
+    expect(buscarIconos("agua").map((i) => i.llave)).toEqual(
+      expect.arrayContaining(["agua", "agua_botella", "agua_vital_1lt"]),
+    );
+    expect(buscarIconos("cabaña").map((i) => i.llave)).toEqual(["limonada_cabana_personal", "limonada_cabana_2lt"]);
   });
 
   it("la licorería (para el billar) tiene sus 18 íconos y abre ahí", () => {

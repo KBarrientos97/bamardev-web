@@ -104,6 +104,13 @@ export interface IconoArticulo {
  * el fondo) y 4 íconos planos con contorno. Todos al mismo formato que los
  * Fluent — 192 px transparente, 12 px de margen, centrados — y con el tamaño
  * parejo: ninguno más grande que los demás.
+ *
+ * Bebidas de marca (14, nov-2026): fotos de las botellas, igual que las de
+ * licorería. Las de plástico transparente (las aguas, el cuello vacío de la
+ * Coca-Cola) conservan el interior claro: con el fondo quitado a secas
+ * quedaban agujereadas, y sobre una card oscura se leían como botellas rotas.
+ * Todas van a la misma altura aunque sean de 2 L o de bolsillo: el tamaño se
+ * lee en la etiqueta, no en el dibujo.
  */
 const DATOS: Omit<IconoArticulo, "src">[] = [
   // Pollería
@@ -162,6 +169,22 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "whisky", etiqueta: "Whisky", categoria: "bebidas" },
   { llave: "champan", etiqueta: "Champán", categoria: "bebidas" },
   { llave: "hielo", etiqueta: "Hielo", categoria: "bebidas" },
+  // Bebidas de marca: las que vende la pollería, por tamaño (cada tamaño es un
+  // producto con su precio, y en el POS se tienen que distinguir de un vistazo)
+  { llave: "agua_vital_personal", etiqueta: "Agua Vital personal", categoria: "bebidas" },
+  { llave: "agua_vital_1lt", etiqueta: "Agua Vital 1 L", categoria: "bebidas" },
+  { llave: "agua_vital_2lt", etiqueta: "Agua Vital 2 L", categoria: "bebidas" },
+  { llave: "aquarius", etiqueta: "Aquarius", categoria: "bebidas" },
+  { llave: "coca_cola_mini", etiqueta: "Coca-Cola mini", categoria: "bebidas" },
+  { llave: "coca_cola_pequena", etiqueta: "Coca-Cola pequeña", categoria: "bebidas" },
+  { llave: "coca_cola_personal", etiqueta: "Coca-Cola personal", categoria: "bebidas" },
+  { llave: "coca_cola_1_5lt", etiqueta: "Coca-Cola 1.5 L", categoria: "bebidas" },
+  { llave: "coca_cola_2lt", etiqueta: "Coca-Cola 2 L", categoria: "bebidas" },
+  { llave: "limonada_cabana_personal", etiqueta: "Limonada La Cabaña personal", categoria: "bebidas" },
+  { llave: "limonada_cabana_2lt", etiqueta: "Limonada La Cabaña 2 L", categoria: "bebidas" },
+  { llave: "mendocina_1lt", etiqueta: "Mendocina 1 L", categoria: "bebidas" },
+  { llave: "salvietti_2lt", etiqueta: "Salvietti 2 L", categoria: "bebidas" },
+  { llave: "tropifrut_1lt", etiqueta: "Tropifrut 1 L", categoria: "bebidas" },
   // Almacén
   { llave: "pan", etiqueta: "Pan", categoria: "almacen" },
   { llave: "baguette", etiqueta: "Baguette", categoria: "almacen" },
