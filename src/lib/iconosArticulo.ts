@@ -111,6 +111,12 @@ export interface IconoArticulo {
  * quedaban agujereadas, y sobre una card oscura se leían como botellas rotas.
  * Todas van a la misma altura aunque sean de 2 L o de bolsillo: el tamaño se
  * lee en la etiqueta, no en el dibujo.
+ *
+ * Estas fotos (las de marca, los grupos y las jarras) van a 512 px y no a 192,
+ * con el mismo margen proporcional (32 px). El menú digital las muestra a 300
+ * px en la TV, y a 192 la pantalla las estiraba y se veían borrosas. Donde un
+ * producto se vende "por sabor" sin que importe cuál (Simba, las popular de
+ * vidrio), el ícono es el grupo entero: un solo producto, todas las botellas.
  */
 const DATOS: Omit<IconoArticulo, "src">[] = [
   // Pollería
@@ -185,6 +191,14 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "mendocina_1lt", etiqueta: "Mendocina 1 L", categoria: "bebidas" },
   { llave: "salvietti_2lt", etiqueta: "Salvietti 2 L", categoria: "bebidas" },
   { llave: "tropifrut_1lt", etiqueta: "Tropifrut 1 L", categoria: "bebidas" },
+  // Grupos: un producto con varios sabores, todas las botellas en un ícono.
+  // La etiqueta nombra las marcas para que el buscador las encuentre.
+  { llave: "simba_2lt", etiqueta: "Simba 2 L (4 sabores)", categoria: "bebidas" },
+  { llave: "gaseosas_popular", etiqueta: "Popular de vidrio: Sprite, Coca-Cola y Fanta", categoria: "bebidas" },
+  { llave: "gaseosas_popular_sabores", etiqueta: "Popular de vidrio: Coca-Cola, 3 Fanta y Sprite", categoria: "bebidas" },
+  // Refrescos de la casa, en jarra
+  { llave: "jarra_limonada", etiqueta: "Jarra de limonada", categoria: "bebidas" },
+  { llave: "jarra_mocochinchi", etiqueta: "Jarra de mocochinchi", categoria: "bebidas" },
   // Almacén
   { llave: "pan", etiqueta: "Pan", categoria: "almacen" },
   { llave: "baguette", etiqueta: "Baguette", categoria: "almacen" },

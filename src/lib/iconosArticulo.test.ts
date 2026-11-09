@@ -74,7 +74,7 @@ describe("iconosArticulo", () => {
     for (const llave of viejos) {
       expect(iconoPorLlave(llave)?.categoria, llave).toBe("polleria");
     }
-    expect(ICONOS_ARTICULO).toHaveLength(207);
+    expect(ICONOS_ARTICULO).toHaveLength(212);
   });
 
   it("las bebidas de marca están en Bebidas y el buscador las encuentra por marca", () => {
@@ -83,16 +83,38 @@ describe("iconosArticulo", () => {
       expect.arrayContaining(["coca_cola_2lt", "agua_vital_personal", "salvietti_2lt", "tropifrut_1lt"]),
     );
     // Cada tamaño es un producto distinto con su propio precio: la marca tiene
-    // que traer los cinco para elegir el que corresponde. (Con "coca" a secas
-    // sale además la hoja de coca de licorería.)
+    // que traer los cinco para elegir el que corresponde, y además las popular
+    // de vidrio, que también son Coca-Cola. (Con "coca" a secas sale además la
+    // hoja de coca de licorería.)
     expect(buscarIconos("coca-cola").map((i) => i.llave)).toEqual([
       "coca_cola_mini", "coca_cola_pequena", "coca_cola_personal", "coca_cola_1_5lt", "coca_cola_2lt",
+      "gaseosas_popular", "gaseosas_popular_sabores",
     ]);
     // "agua" sigue trayendo la genérica y la de licorería, además de las Vital.
     expect(buscarIconos("agua").map((i) => i.llave)).toEqual(
       expect.arrayContaining(["agua", "agua_botella", "agua_vital_1lt"]),
     );
     expect(buscarIconos("cabaña").map((i) => i.llave)).toEqual(["limonada_cabana_personal", "limonada_cabana_2lt"]);
+  });
+
+  it("los grupos de sabores y las jarras están en Bebidas y se encuentran por marca", () => {
+    const llaves = iconosDeCategoria("bebidas").map((i) => i.llave);
+    expect(llaves).toEqual(
+      expect.arrayContaining(["simba_2lt", "gaseosas_popular", "gaseosas_popular_sabores", "jarra_limonada", "jarra_mocochinchi"]),
+    );
+    // El grupo es UN ícono con las tres marcas: buscando cualquiera de ellas
+    // tiene que aparecer, si no el que busca "fanta" no lo encuentra nunca.
+    for (const marca of ["sprite", "fanta"]) {
+      expect(buscarIconos(marca).map((i) => i.llave), marca).toEqual(["gaseosas_popular", "gaseosas_popular_sabores"]);
+    }
+    expect(buscarIconos("simba").map((i) => i.llave)).toEqual(["simba_2lt"]);
+    expect(buscarIconos("jarra").map((i) => i.llave)).toEqual(
+      expect.arrayContaining(["jarra_limonada", "jarra_mocochinchi", "cerveza_jarra"]),
+    );
+    // "limonada" trae la de botella y la de jarra: son dos productos distintos.
+    expect(buscarIconos("limonada").map((i) => i.llave)).toEqual(
+      expect.arrayContaining(["limonada_cabana_personal", "limonada_cabana_2lt", "jarra_limonada"]),
+    );
   });
 
   it("la licorería (para el billar) tiene sus 18 íconos y abre ahí", () => {
