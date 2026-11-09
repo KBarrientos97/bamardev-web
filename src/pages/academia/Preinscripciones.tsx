@@ -16,7 +16,7 @@ import { abrirWhatsapp, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
-import { tienePermiso } from "../../lib/permisos";
+import { revisaPagosEnLinea, tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import PagosPorRevisar from "./PagosPorRevisar";
@@ -39,6 +39,9 @@ export default function Preinscripciones() {
   const p = usePalabras();
   // L9: quien revisa fotos (el administrador, o la recepción si él se lo dio) las ve y las aprueba acá.
   const veFotos = tienePermiso(usuario, "academia.fotos");
+  // Los comprobantes de los pagos en línea, con su permiso (08-nov): la
+  // recepción los revisa acá aunque no vea las fotos.
+  const vePagos = revisaPagosEnLinea(usuario);
   const navigate = useNavigate();
   const sede = useFiltroSede();
   const [aviso, setAviso] = useAviso(5000);
@@ -109,8 +112,8 @@ export default function Preinscripciones() {
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
 
-      {/* M5: los comprobantes de pago que suben desde la página; los revisa quien revisa fotos. */}
-      {veFotos && !descartadas && <PagosPorRevisar sede={sede.sucursalId} />}
+      {/* M5: los comprobantes de pago que suben desde la página; los revisa quien tiene `academia.pagos_en_linea`. */}
+      {vePagos && !descartadas && <PagosPorRevisar sede={sede.sucursalId} />}
 
       <Tarjeta etiqueta="Inscripciones online" barra={filtros} sinRelleno>
         {lista.error && !lista.items.length ? (

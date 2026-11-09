@@ -14,10 +14,11 @@ import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
-import { cobraCuotas } from "../../lib/permisos";
+import { cobraCuotas, revisaPagosEnLinea } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import BuscadorEstudiante from "./BuscadorEstudiante";
+import PagosPorRevisar from "./PagosPorRevisar";
 import {
   BotonFila,
   Chip,
@@ -73,7 +74,7 @@ const claveDe = (f: FilaCobranza) => String(f.inscripcionId ?? `${f.alumno.id}-$
  * ruta. En el menú queda una sola entrada para la plata de los estudiantes.
  */
 export default function Cobranza() {
-  const { usuario, negocio, rubro } = useAuth();
+  const { usuario, negocio, rubro, puede } = useAuth();
   const p = usePalabras();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -124,6 +125,11 @@ export default function Cobranza() {
     permisos: usuario?.permisos,
     permisosPropios: usuario?.permisosPropios,
   });
+  // Los comprobantes de los pagos en línea viven en «Inscripciones online».
+  // Sin el formulario de la página (feature `preinscripcion_online`) esa
+  // entrada no existe, pero el estudiante igual paga con su carnet: acá, con la
+  // plata de los estudiantes, la recepción los sigue encontrando.
+  const pagosAca = revisaPagosEnLinea(usuario) && !puede("academia_preinscripciones");
 
   const actual = cola[pos] ?? null;
   const t = totales;
@@ -214,6 +220,8 @@ export default function Cobranza() {
       />
 
       {sede.selector}
+
+      {pagosAca && <PagosPorRevisar sede={sede.sucursalId} />}
 
       {/* Los indicadores SON los filtros: tocar uno cambia la lista de abajo. */}
       <div role="group" aria-label="Filtrar deudas">

@@ -311,11 +311,14 @@ function NoIncluidos({
  * (L9, 28-oct): el de las fotos de la academia se le puede dar a la recepción
  * para que apruebe inscripciones, pero entrega la cara y el carnet de todos.
  * El del recibo (31-oct) cambia también el logo de la página pública, que en
- * Mi página sólo toca quien configura el negocio.
+ * Mi página sólo toca quien configura el negocio. Los pagos en línea (08-nov)
+ * tienen su permiso, sin las fotos, y aprobar uno registra un cobro.
  */
 const ADVERTENCIAS: Record<string, string> = {
   "academia.fotos":
-    "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos. También revisará los comprobantes de los pagos en línea: al aprobarlos se registra un cobro.",
+    "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos.",
+  "academia.pagos_en_linea":
+    "Quien tenga este rol verá los comprobantes que suben los estudiantes y podrá aprobarlos o rechazarlos. Al aprobar uno se registra el cobro (sin caja) y, si era una preinscripción, queda inscrito. No ve las fotos de los inscritos.",
   "recibo.configurar": "Quien tenga este rol podrá cambiar o quitar el logo del negocio, que es también el de tu página pública.",
 };
 
