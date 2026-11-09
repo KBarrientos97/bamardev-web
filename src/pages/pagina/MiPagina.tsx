@@ -34,6 +34,7 @@ import type {
   FormaBotones,
   ItemCatalogoEditor,
   ProductoFijado,
+  Sitio,
   SucursalEditor,
   TipoEnlace,
   Tipografia,
@@ -56,6 +57,8 @@ import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, Select
 import { Trazo } from "./VistaPagina";
 import Seccion from "./Seccion";
 import SelectorEstilo from "./SelectorEstilo";
+import SitioEditor from "./SitioEditor";
+import { estiloTextoSitio } from "../../lib/pagina/sitio";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
 const MAX_DESCRIPCION = 160;
@@ -480,6 +483,8 @@ export default function MiPagina() {
   const [borrador, setBorrador] = useState<CambiosPagina>({});
   // Sólo las sucursales cambiadas: una que vuelve a su valor guardado sale.
   const [borradorSucursales, setBorradorSucursales] = useState<Record<number, BorradorSucursal>>({});
+  // El sitio del Profesional entero, si cambió y todavía no llegó al borrador.
+  const [sitioPendiente, setSitioPendiente] = useState<Sitio | undefined>(undefined);
   const [aviso, setAviso] = useAviso();
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -525,7 +530,11 @@ export default function MiPagina() {
   // Roboto; la letra del nombre la carga su selector (sólo las que se ven).
   useEffect(() => cargarFuentesPagina(), []);
   // La letra del texto del estilo que se está viendo en la vista previa.
-  const estiloVisto = borrador.estiloClave ?? carga.datos?.pagina.estiloClave;
+  // Con sitio, la de su plantilla.
+  const plantillaVista = (sitioPendiente ?? (carga.datos?.sitio?.disponible ? carga.datos.sitio.actual : null))?.plantilla;
+  const estiloVisto = plantillaVista
+    ? estiloTextoSitio(plantillaVista)
+    : (borrador.estiloClave ?? carga.datos?.pagina.estiloClave);
   useEffect(() => cargarFuentesPagina(undefined, estiloVisto), [estiloVisto]);
 
   // Los colores del logo ya subido. Se lee del API con CORS (ver
@@ -544,7 +553,8 @@ export default function MiPagina() {
 
   // Lo escrito que todavía no llegó al borrador del servidor. Con eso, el
   // navegador pregunta antes de cerrar o recargar.
-  const haySinGuardar = Object.keys(borrador).length > 0 || Object.keys(borradorSucursales).length > 0;
+  const haySinGuardar =
+    Object.keys(borrador).length > 0 || Object.keys(borradorSucursales).length > 0 || sitioPendiente !== undefined;
   useEffect(() => {
     if (!haySinGuardar) return;
     const avisar = (ev: BeforeUnloadEvent) => ev.preventDefault();
@@ -553,8 +563,8 @@ export default function MiPagina() {
   }, [haySinGuardar]);
 
   const [guardandoBorrador, setGuardandoBorrador] = useState(false);
-  const pendiente = useRef({ borrador, borradorSucursales });
-  pendiente.current = { borrador, borradorSucursales };
+  const pendiente = useRef({ borrador, borradorSucursales, sitioPendiente });
+  pendiente.current = { borrador, borradorSucursales, sitioPendiente };
   const montado = useRef(true);
 
   /**
@@ -562,9 +572,10 @@ export default function MiPagina() {
    * respuesta viajaba queda en pantalla y sale en la próxima vuelta.
    */
   const enviar = async () => {
-    const { borrador: cambios, borradorSucursales: sucursales } = pendiente.current;
+    const { borrador: cambios, borradorSucursales: sucursales, sitioPendiente: sitio } = pendiente.current;
     const conAjustes = Object.keys(cambios).length > 0;
-    if (!conAjustes && Object.keys(sucursales).length === 0) return;
+    const conSucursales = Object.keys(sucursales).length > 0;
+    if (!conAjustes && !conSucursales && sitio === undefined) return;
     let actual = ultimo.current;
     if (!actual) return;
     const vivo = () => montado.current;
@@ -591,6 +602,17 @@ export default function MiPagina() {
             return resto;
           });
         }
+      }
+      // El sitio va entero (PLAN-PAGINA-PRO M1): un 400 trae el motivo, y lo
+      // escrito sigue en pantalla.
+      if (sitio !== undefined) {
+        actual = conCatalogo(await apiPagina.guardarSitio(sitio), actual);
+        ultimo.current = actual;
+        if (vivo()) {
+          carga.setDatos(actual);
+          setSitioPendiente((s) => (s === sitio ? undefined : s));
+        }
+        if (!conAjustes && !conSucursales) return;
       }
       // El estado que vuelve dice si quedó algo sin publicar (`borrador.hay`).
       const nuevo = conCatalogo(conAjustes ? await apiPagina.guardar(cambios) : await apiPagina.estado(), actual);
@@ -624,7 +646,7 @@ export default function MiPagina() {
       encolar().catch((err: unknown) => montado.current && setError(mensaje(err)));
     }, 800);
     return () => clearTimeout(t);
-  }, [borrador, borradorSucursales, haySinGuardar, encolar]);
+  }, [borrador, borradorSucursales, sitioPendiente, haySinGuardar, encolar]);
 
   // Al irse a otra pantalla, lo que faltaba se manda igual.
   useEffect(() => {
@@ -661,7 +683,14 @@ export default function MiPagina() {
   const sucursalesEditadas = e.sucursales.map((s) =>
     borradorSucursales[s.id] ? { ...s, ...limpio(borradorSucursales[s.id]) } : s,
   );
-  const editado: EstadoEditor = { ...e, pagina: ajustes, sucursales: sucursalesEditadas };
+  // El sitio que se está editando, aunque no haya llegado al borrador.
+  const sitioVisto = sitioPendiente ?? e.sitio?.actual ?? null;
+  const editado: EstadoEditor = {
+    ...e,
+    pagina: ajustes,
+    sucursales: sucursalesEditadas,
+    sitio: e.sitio ? { ...e.sitio, actual: sitioVisto } : undefined,
+  };
   const vista = {
     ...vistaDesdeEditor(editado),
     // La sección Cursos sale con el interruptor prendido (lo decide el backend
@@ -781,7 +810,8 @@ export default function MiPagina() {
     setConfirmarDescarte(false);
     setBorrador({});
     setBorradorSucursales({});
-    pendiente.current = { borrador: {}, borradorSucursales: {} };
+    setSitioPendiente(undefined);
+    pendiente.current = { borrador: {}, borradorSucursales: {}, sitioPendiente: undefined };
     setOpcionPrincipal(null);
     setAvisoEstilo(null);
     if (!e.borrador?.hay) return;
@@ -972,6 +1002,22 @@ export default function MiPagina() {
                 )}
               </p>
             </Seccion>
+          )}
+
+          {e.sitio?.disponible && (
+            <SitioEditor
+              estado={e.sitio}
+              sitio={sitioVisto}
+              onCambiar={setSitioPendiente}
+              onEstado={(nuevo) => {
+                const n = conCatalogo(nuevo, ultimo.current);
+                ultimo.current = n;
+                carga.setDatos(n);
+              }}
+              antes={encolar}
+              onError={setError}
+              onAviso={setAviso}
+            />
           )}
 
           <Seccion titulo="Apariencia">
