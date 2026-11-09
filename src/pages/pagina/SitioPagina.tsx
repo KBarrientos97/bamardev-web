@@ -55,8 +55,10 @@ export interface PiezasSitio {
   colorIconoLleno: string;
   whatsapp: EnlacePublico | null;
   clic: (e: EnlacePublico) => (ev?: { preventDefault?: () => void }) => void;
-  /** Hay carrito («Pedí por WhatsApp»): su burbuja ocupa la esquina de abajo a la izquierda. */
+  /** Hay carrito («Pedí por WhatsApp»): su barra va abajo, a todo el ancho. */
   conPedido: boolean;
+  /** El pedido ya tiene algo: la barra está a la vista y el WhatsApp flotante se esconde. */
+  hayPedido?: boolean;
 }
 
 const ICONO_PLAY = "M8 5v14l11-7z";
@@ -1155,11 +1157,11 @@ export default function SitioPagina(x: PiezasSitio) {
   });
 
   // Belleza: la barra fija de abajo con "Reservar" (como en el diseño). Si
-  // hay carrito, su burbuja va en esa esquina: entonces va el botón redondo.
+  // hay carrito, abajo va su barra: entonces va el botón redondo.
   const barraReservar = belleza && p.reservar && !x.conPedido;
   const principal = p.sucursales[0];
   const pie = (
-    <footer style={{ background: t.pie, color: t.textoPie, padding: `28px 0 ${barraReservar || wa ? 100 : 28}px` }}>
+    <footer style={{ background: t.pie, color: t.textoPie, padding: `28px 0 ${barraReservar || wa || x.conPedido ? 100 : 28}px` }}>
       <Contenedor escritorio={escritorio} style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 14 }}>
         <span style={{ ...estiloLetra(x.letra, 24), color: "#ffffff" }}>{p.nombre}</span>
         {principal?.direccion && <span>{principal.direccion}</span>}
@@ -1192,9 +1194,11 @@ export default function SitioPagina(x: PiezasSitio) {
     </footer>
   );
 
-  // El WhatsApp flotante: arriba del botón del asistente si lo hay.
+  // El WhatsApp flotante: arriba del botón del asistente si lo hay. Con el
+  // pedido armado se va: la barra del pedido ya lleva al WhatsApp, y dos
+  // botones verdes abajo se pisan.
   const flotante =
-    wa && !barraReservar ? (
+    wa && !barraReservar && !x.hayPedido ? (
       <Enlace
         href={wa.url}
         onClick={x.clic(wa)}

@@ -214,6 +214,8 @@ export default function PaginaPublica() {
         urlMiCuenta={urlMiCuentaDe(pagina.subdominio)}
         alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
         alAgregarAlPedido={conPedidos ? pedido.agregar : undefined}
+        lineasPedido={conPedidos ? pedido.lineas : undefined}
+        alCambiarPedido={conPedidos ? pedido.cambiar : undefined}
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
       />
@@ -225,6 +227,8 @@ export default function PaginaPublica() {
           pedido={pedido}
           sucursal={nombreSucursal}
           rubro={pagina.rubroClave}
+          subdominio={pagina.subdominio}
+          asistente={!!pagina.asistente}
         />
       )}
       {conRegalos && pagina.regalos && (
