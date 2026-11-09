@@ -10,20 +10,22 @@ import { esDatoViejo, mensajeDelBackend, tieneCodigo } from "../../lib/academia/
 import { avisoFotosPendientes, avisoInscripcionHecha } from "../../lib/academia/fotos";
 import { etiquetaParentesco, fechaCorta, horarioGrupo, horasEntre, nombreAlumno, nombreDe, SEMANA } from "../../lib/academia/formato";
 import { useChoques } from "../../lib/academia/choques";
-import type { AlumnoDelGrupo, ConsultaChoques, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
+import type { AlumnoDelGrupo, ConsultaChoques, Docente, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { ApiError } from "../../lib/api";
-import { fmtMoney } from "../../lib/format";
+import { fmtMoney, isoDia } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { veMontosAcademia } from "../../lib/permisosAcademia";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { AvisoChoques } from "./AvisoChoques";
+import ClasesDelGrupo from "./ClasesDelGrupo";
 import { DialogoCompartir } from "./CompartirInscripcion";
 import Inscribir from "./Inscribir";
+import { NuevoDocenteRapido } from "./NuevoDocenteRapido";
 import {
   BotonFila,
   EncabezadoPagina,
@@ -352,6 +354,10 @@ export default function Grupo() {
           />
         )}
       </Tarjeta>
+
+      {/* Ítem 14: las clases del grupo, debajo de los estudiantes (que es lo que más se mira):
+          para corregir la lista de otro día y el «No vino». */}
+      <ClasesDelGrupo g={g} />
 
       {inscribe && !g.cancelado && g.estado !== "TERMINADO" && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-borde-soft bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:hidden">
@@ -770,7 +776,18 @@ function PanelAlumno({
   );
 }
 
-/** Editar el grupo: aula, cupo, la inscripción y la página, y el docente de cada materia. */
+/** El valor de la opción «+ Nuevo docente…» del desplegable: no es un id. */
+const NUEVO_DOCENTE = "nuevo-docente";
+
+/**
+ * Editar el grupo: aula, cupo, la inscripción y la página, y el docente de cada materia.
+ *
+ * Ítem 11 de la revisión del 08-nov: como en Abrir grupo, el alta rápida de un
+ * docente («+ Nuevo docente…»), «El mismo en todos» y sólo los docentes de la
+ * sede del grupo (más el que ya tenía, aunque sea de otra). D6: cambiar el
+ * docente de un módulo que ya empezó le pasa el pago del módulo entero al
+ * nuevo; se avisa al lado, con el camino para un solo día («No vino»).
+ */
 function EditarGrupo({
   g,
   onCerrar,
@@ -781,7 +798,14 @@ function EditarGrupo({
   onGuardado: (g: GrupoDetalle) => void;
 }) {
   const p = usePalabras();
+  const { usuario } = useAuth();
   const docentes = useApi(() => apiAcademia.docentes().catch(() => []), []);
+  // C9: los dados de alta desde acá (la lista del backend ya estaba cargada).
+  const [altasDocente, setAltasDocente] = useState<Docente[]>([]);
+  const [altaDocentePara, setAltaDocentePara] = useState<number | null>(null);
+  const [avisoDocente, setAvisoDocente] = useState("");
+  // Dar de alta pide lo mismo que Personal (`personal.gestionar`).
+  const puedeAltaDocente = tienePermiso(usuario, "personal.gestionar");
   // El aula se elige de la lista de la sede (BACK-5). Un grupo viejo con el texto
   // sin enlazar lo conserva mientras no se toque el selector.
   const aulaInicial: ValorAula = g.aulaId ?? (g.aula ? AULA_TEXTO_ANTERIOR : null);
@@ -806,6 +830,26 @@ function EditarGrupo({
   const [confirmarPasado, setConfirmarPasado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+
+  const delBackend = docentes.datos ?? [];
+  const conocidos = [...delBackend, ...altasDocente.filter((n) => !delBackend.some((d) => d.personalId === n.personalId))];
+  const asignados = new Set(g.materiasGrupo.map((m) => m.docente?.personalId).filter((x): x is number => x != null));
+  // Los de la sede del grupo (o sin sede); el que ya dicta un módulo queda aunque sea de otra.
+  const libres = conocidos.filter((d) => asignados.has(d.personalId) || !d.sedes.length || d.sedes.some((s) => s.id === g.sede.id));
+  const nombreDe_ = (id: number | null | undefined) => conocidos.find((d) => d.personalId === id)?.nombre ?? null;
+  const materiasOrden = [...g.materiasGrupo].sort((a, b) => a.materia.orden - b.materia.orden);
+  /** «El mismo docente en todos»: el elegido en un módulo pasa a los demás. */
+  const mismoEnTodos = (docenteId: number) =>
+    setDocentePor(Object.fromEntries(g.materiasGrupo.map((m) => [m.materia.id, docenteId])) as Record<number, number | null>);
+  const elegirDocente = (materiaId: number, valor: string) => {
+    if (valor === NUEVO_DOCENTE) return setAltaDocentePara(materiaId);
+    setDocentePor({ ...docentePor, [materiaId]: valor ? Number(valor) : null });
+  };
+  // D6: los módulos ya empezados (o terminados) a los que se les cambia el docente.
+  const hoyIso = isoDia(new Date());
+  const cambiosEmpezados = materiasOrden.filter(
+    (m) => (docentePor[m.materia.id] ?? null) !== (m.docente?.personalId ?? null) && m.desde <= hoyIso,
+  );
 
   const cambiaDias = claveDias(dias) !== claveDias(g.dias);
   const cambiaHorario = cambiaDias || horaInicio !== g.horaInicio || horaFin !== g.horaFin;
@@ -1000,27 +1044,71 @@ function EditarGrupo({
             <p className="text-[13px] font-semibold text-texto-2">
               {p.Docente} por {p.materia}
             </p>
-            {[...g.materiasGrupo]
-              .sort((a, b) => a.materia.orden - b.materia.orden)
-              .map((m) => (
-                <div key={m.id} className="grid items-center gap-2 sm:grid-cols-[1fr_14rem]">
-                  <span className="text-sm text-texto">
-                    M{m.materia.orden} · {m.materia.nombre}
-                  </span>
-                  <Select
-                    aria-label={`${p.Docente} de M${m.materia.orden}`}
-                    value={docentePor[m.materia.id] ?? ""}
-                    onChange={(e) => setDocentePor({ ...docentePor, [m.materia.id]: e.target.value ? Number(e.target.value) : null })}
-                  >
-                    <option value="">Sin asignar</option>
-                    {(docentes.datos ?? []).map((d) => (
-                      <option key={d.personalId} value={d.personalId}>
-                        {d.nombre}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              ))}
+            {materiasOrden.map((m) => (
+              <div key={m.id} className="grid items-center gap-2 sm:grid-cols-[1fr_14rem]">
+                <span className="text-sm text-texto">
+                  M{m.materia.orden} · {m.materia.nombre}
+                </span>
+                <Select
+                  aria-label={`${p.Docente} de M${m.materia.orden}`}
+                  value={docentePor[m.materia.id] ?? ""}
+                  onChange={(e) => elegirDocente(m.materia.id, e.target.value)}
+                >
+                  <option value="">Sin asignar</option>
+                  {libres.map((d) => (
+                    <option key={d.personalId} value={d.personalId}>
+                      {d.nombre}
+                    </option>
+                  ))}
+                  {puedeAltaDocente && <option value={NUEVO_DOCENTE}>+ Nuevo {p.docente}…</option>}
+                </Select>
+                {/* C9: el docente elegido en un módulo, en todos los demás. */}
+                {docentePor[m.materia.id] != null &&
+                  g.materiasGrupo.length > 1 &&
+                  g.materiasGrupo.some((x) => (docentePor[x.materia.id] ?? null) !== docentePor[m.materia.id]) && (
+                    <div className="flex justify-end sm:col-span-2">
+                      <BotonFila variante="ghost" onClick={() => mismoEnTodos(docentePor[m.materia.id]!)}>
+                        El mismo {p.docente} en todos
+                      </BotonFila>
+                    </div>
+                  )}
+                {altaDocentePara === m.materia.id && (
+                  <div className="sm:col-span-2">
+                    <NuevoDocenteRapido
+                      modulo={`M${m.materia.orden} ${m.materia.nombre}`}
+                      sede={{ id: g.sede.id, nombre: nombreDe(g.sede) }}
+                      onCerrar={() => setAltaDocentePara(null)}
+                      onCreado={(nuevo, avisoAlta) => {
+                        setAltasDocente((xs) => [...xs, nuevo]);
+                        setDocentePor((por) => ({ ...por, [m.materia.id]: nuevo.personalId }));
+                        setAvisoDocente(avisoAlta ?? "");
+                        setAltaDocentePara(null);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+            {avisoDocente && (
+              <p role="status" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+                {avisoDocente}
+              </p>
+            )}
+            {cambiosEmpezados.map((m) => {
+              const nuevo = nombreDe_(docentePor[m.materia.id]);
+              const terminado = m.hasta < hoyIso;
+              return (
+                <p key={`d6-${m.id}`} role="note" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+                  <strong>
+                    M{m.materia.orden} ya {terminado ? "terminó" : "empezó"}.
+                  </strong>{" "}
+                  {nuevo
+                    ? `${nuevo} ${terminado ? "" : "da las clases que faltan y "}se lleva el pago de todo el ${p.materia}, también de las clases que ya se dieron.`
+                    : `Sin ${p.docente}, el pago de todo el ${p.materia} queda sin nadie.`}{" "}
+                  Si sólo faltó un día, usá «No vino» en la lista de clases del grupo.
+                </p>
+              );
+            })}
           </div>
         )}
         <ErrorMsg>{error}</ErrorMsg>
