@@ -6,6 +6,7 @@ import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Sel
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
+import { datosClases, textoAtrasos, textoPagado } from "../../../lib/academia/pagosDocente";
 import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, MotivoNoPagoLinea } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import {
@@ -41,6 +42,7 @@ import {
   Tarjeta,
   type TonoChip,
 } from "../piezas";
+import ComprobantePago from "./ComprobantePago";
 
 type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar" | "ajustes";
 
@@ -75,6 +77,11 @@ const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_
  * A6 (reunión con Derick, 22-oct): es sólo del admin, abre en "Cuentan", y en
  * las líneas que no le suman al docente (postergados y sin pagar) quien
  * liquida anota por qué: no pagó, se retiró, beca, un acuerdo u otro motivo.
+ *
+ * Tanda 2 de la revisión del 08-nov: la tarjeta de los atrasos dice cuántos
+ * hubo en el mes (D2: no descuentan solos, decide el admin) y, pagada, la
+ * planilla dice con qué y quién pagó (ítem 3) y ofrece «Mandar el
+ * comprobante» (ítem 17).
  */
 export default function PlanillaDocente() {
   const p = usePalabras();
@@ -106,6 +113,7 @@ export default function PlanillaDocente() {
    * hoja, y una hoja sobre otra tapaba de qué línea era el motivo.
    */
   const [editandoMotivo, setEditandoMotivo] = useState(false);
+  const [comprobante, setComprobante] = useState(false);
 
   /** Abre el panel de una línea; con `motivo`, ya con el motivo para anotar. */
   function elegir(l: LineaPlanilla | null, motivo = false) {
@@ -154,6 +162,8 @@ export default function PlanillaDocente() {
           : "Pago registrado como gasto de sueldos.",
       );
       setPagando(false);
+      // Ítem 17: recién pagado, el comprobante para mandárselo.
+      if (d && d.resumen.liquido > 0) setComprobante(true);
       carga.recargar();
     } catch (e) {
       setPagando(false);
@@ -164,6 +174,7 @@ export default function PlanillaDocente() {
   }
 
   const r = d.resumen;
+  const clases = datosClases(d.clases);
   // Con líquido en 0 o negativo no sale dinero: no hay nada que pagar ni gasto de
   // sueldos que registrar. Lo que quedó en contra se resuelve en la planilla del
   // mes siguiente (ronda 1, D2). Se dice así sin importar cómo la cierre el backend.
@@ -265,15 +276,37 @@ export default function PlanillaDocente() {
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
+      {clases && (
+        // Ítem 15: si dio sus clases del mes, arriba de la plata.
+        <p role="status" aria-label="Clases del mes" className="card flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-[13px] text-texto-3">
+          <b className="text-texto-2">{clases.titulo}</b>
+          {clases.datos.map((x) =>
+            x.tono === "aviso" ? (
+              <Chip key={x.texto} tono="ambar">
+                {x.texto}
+              </Chip>
+            ) : (
+              <span key={x.texto}>· {x.texto}</span>
+            ),
+          )}
+        </p>
+      )}
       {d.estado !== "EN_CURSO" && (
         <p role="status" className="card flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-texto-2">
           <Chip tono={CHIP_ESTADO[d.estado]}>Planilla {TEXTO_ESTADO[d.estado]}</Chip>
           <span>
             líquido <b className="tabular-nums text-texto">{fmtMoney(r.liquido)}</b>
-            {r.atrasos == null ? " · los atrasos siguen por confirmar" : ""}
+            {/* Ítem 3: con qué se pagó y quién lo registró. */}
+            {d.estado === "PAGADA" && r.liquido > 0 ? ` · ${[textoPagado(d.pago, d.pagadaEn), d.pago?.pagadoPor ? `pagó ${d.pago.pagadoPor}` : null].filter(Boolean).join(" · ")}` : ""}
           </span>
+          {d.estado === "PAGADA" && r.liquido > 0 && (
+            <BotonFila icono="phone" className="min-h-11 sm:ml-auto sm:min-h-0" onClick={() => setComprobante(true)}>
+              Mandar el comprobante
+            </BotonFila>
+          )}
         </p>
       )}
+      {comprobante && <ComprobantePago personalId={personalId} mes={d.mes} onClose={() => setComprobante(false)} />}
 
       {/* Sin retención (dueño, 08-nov) el bruto y el líquido eran el mismo número: queda uno. */}
       <section aria-label="Resumen de la planilla" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
@@ -283,11 +316,12 @@ export default function PlanillaDocente() {
           valor={`${r.cuentan} ${r.cuentan === 1 ? p.alumno : p.alumnos}`}
           pie={r.atrasados ? `+ ${r.atrasados} de meses anteriores` : undefined}
         />
+        {/* D2 (dueño, 08-nov): los atrasos no descuentan solos; se cuentan para que decida el admin. */}
         <KpiTarjeta
           icono="clock"
           etiqueta="Atrasos"
-          valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : "—"}
-          pie={r.atrasos != null ? undefined : "Por confirmar con el instituto"}
+          valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : d.clases ? String(d.clases.atrasos.cantidad) : "—"}
+          pie={r.atrasos != null ? undefined : d.clases ? `${textoAtrasos(d.clases.atrasos)} · no se descuentan solos` : undefined}
         />
         <div className="col-span-2 grid lg:col-span-1">
           <KpiTarjeta
@@ -347,7 +381,7 @@ export default function PlanillaDocente() {
                   <span>Forma de pago</span>
                   <span className="text-right">{columnaCobrado}</span>
                   <span className="text-right">{esAjustes ? "Pago" : "% o fijo"}</span>
-                  <span className="text-right">Para el docente</span>
+                  <span className="text-right">Para el {p.docente}</span>
                 </div>
                 <ul className={`${LISTA.lista} border-t border-borde-soft`}>
                   {visibles.map((l) => (

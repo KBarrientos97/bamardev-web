@@ -30,12 +30,21 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
       pagarPlanilla: vi.fn(),
       guardarMotivoNoPago: vi.fn(),
       quitarMotivoNoPago: vi.fn(),
+      pagosDocente: vi.fn(),
     },
   };
 });
 
+vi.mock("../../../lib/compartirTicket", () => ({
+  compartirComoImagen: vi.fn().mockResolvedValue({ ok: true }),
+  enviarPorWhatsapp: vi.fn().mockResolvedValue({ ok: true }),
+  puedeCompartirImagen: () => false,
+}));
+
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import type { HistorialPagosDocente, ResumenClasesDocente } from "../../../lib/academia/tipos";
 import { ApiError } from "../../../lib/api";
+import { enviarPorWhatsapp } from "../../../lib/compartirTicket";
 import PlanillaDocente from "./PlanillaDocente";
 import PlanillaMes from "./PlanillaMes";
 
@@ -69,6 +78,28 @@ const PLANILLA: TPlanillaDocente = {
   meses: [],
 };
 
+/** El historial de Marco: octubre pagado por QR y septiembre por transferencia (ítem 17). */
+const HISTORIAL: HistorialPagosDocente = {
+  docente: { personalId: 9, nombre: "Marco Rojas", telefono: "70412386" },
+  pagos: [
+    { mes: "2026-10", estado: "PAGADA", liquido: 1850, cerradaEn: "2026-11-02T14:00:00.000Z", pagadaEn: "2026-11-03T15:00:00.000Z", metodoPago: "QR", pagadoPor: "Hugo Salinas" },
+    { mes: "2026-09", estado: "PAGADA", liquido: 1640, cerradaEn: "2026-10-02T14:00:00.000Z", pagadaEn: "2026-10-04T15:00:00.000Z", metodoPago: "TRANSFERENCIA", pagadoPor: "Hugo Salinas" },
+    { mes: "2026-08", estado: "CERRADA", liquido: 900, cerradaEn: "2026-09-02T14:00:00.000Z", pagadaEn: null, metodoPago: null, pagadoPor: null },
+  ],
+};
+
+const CLASES: ResumenClasesDocente = {
+  programadas: 12,
+  suspendidas: 1,
+  porReemplazo: 1,
+  porDar: 2,
+  conLista: 7,
+  conLlegada: 8,
+  sinLista: 2,
+  comoReemplazo: 0,
+  atrasos: { cantidad: 2, minutos: 25, justificados: 1, minutosJustificados: 10 },
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -84,6 +115,7 @@ beforeEach(() => {
   });
   vi.mocked(apiAcademia.planillaDocente).mockResolvedValue(PLANILLA);
   vi.mocked(apiAcademia.cerrarPlanilla).mockResolvedValue({});
+  vi.mocked(apiAcademia.pagosDocente).mockResolvedValue(HISTORIAL);
 });
 
 afterEach(() => vi.useRealTimers());
@@ -135,7 +167,8 @@ describe("E14 · Pagos a docentes (el mes)", () => {
           },
     );
     await montarMes();
-    expect(tarjeta("Marco Rojas")).toHaveTextContent("1 grupo · Barbería");
+    // Un backend sin el horario: el curso y el nombre del grupo (que sigue al horario).
+    expect(tarjeta("Marco Rojas")).toHaveTextContent("Barbería · L-M-V 09–11");
     // 450 + 500 cobrados de sus estudiantes, al 20 %.
     expect(tarjeta("Marco Rojas")).toHaveTextContent("Cobrado de sus estudiantes: Bs 950,00 × 20 %");
     expect(tarjeta("Diego Mamani")).toHaveTextContent("2 módulos × Bs 90,00");
@@ -203,6 +236,7 @@ describe("E14 · Pagos a docentes (el mes)", () => {
     vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
     await montarMes();
     expect(screen.getByRole("region", { name: "Resumen del mes" })).toHaveTextContent(/Ya pagado.*2\.190/);
+    // Sin `pago` (un backend anterior) dice la fecha de la planilla.
     const diego = tarjeta("Diego Mamani");
     expect(within(diego).queryByRole("button", { name: /Pagar/ })).not.toBeInTheDocument();
     expect(diego).toHaveTextContent("Pagado el 12-oct");
@@ -650,5 +684,207 @@ describe("Bug 4 · los ajustes de cobros anulados o repuestos", () => {
     );
     await act(async () => {});
     expect(screen.getByRole("listitem", { name: "Marco Rojas" })).toHaveTextContent("2 ajustes");
+  });
+});
+
+describe("Tanda 2 · si dio sus clases, con qué se pagó y el comprobante (revisión del 08-nov)", () => {
+  const GRUPO_DEL_MES = {
+    grupoId: 7,
+    materiaId: 12,
+    nombre: "L-M-V 09–11",
+    carrera: { id: 3, nombre: "Barbería" },
+    materia: { orden: 2, nombre: "Degradados" },
+    dias: [1, 3, 5],
+    horaInicio: "09:00",
+    horaFin: "11:00",
+    clases: 12,
+    comoReemplazo: false,
+  };
+
+  async function montarMes(entrada = "/academia/planilla") {
+    render(
+      <MemoryRouter initialEntries={[entrada]}>
+        <Routes>
+          <Route path="/academia/planilla" element={<PlanillaMes />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+  const tarjeta = (nombre: string) => screen.getByRole("listitem", { name: nombre });
+  const pagada = (extra: object = {}) => ({
+    mes: "2026-10",
+    retencionActiva: false,
+    docentes: [
+      {
+        personalId: 9,
+        nombre: "Marco Rojas",
+        grupos: 1,
+        cuentan: 17,
+        total: 22,
+        bruto: 1850,
+        retencion: null,
+        liquido: 1850,
+        estado: "PAGADA" as const,
+        clases: CLASES,
+        pago: { pagadaEn: "2026-11-03T15:00:00.000Z", metodoPago: "QR" as const, pagadoPor: "Hugo Salinas" },
+        ...extra,
+      },
+    ],
+    totales: { bruto: 1850, liquido: 1850 },
+  });
+
+  it("ítem 15: cada tarjeta dice si dio sus clases, al lado del monto; los atrasos no descuentan (D2) y el reemplazo no es faltar (D7)", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({
+      mes: "2026-10",
+      retencionActiva: false,
+      docentes: [{ personalId: 9, nombre: "Marco Rojas", grupos: 1, cuentan: 17, total: 22, bruto: 1850, retencion: null, liquido: 1850, estado: "EN_CURSO", clases: CLASES }],
+      totales: { bruto: 1850, liquido: 1850 },
+    });
+    await montarMes();
+    const clases = within(tarjeta("Marco Rojas")).getByRole("group", { name: "Clases del mes" });
+    expect(clases).toHaveTextContent("12 clases en el mes");
+    expect(clases).toHaveTextContent("7 con lista");
+    expect(clases).toHaveTextContent("8 con llegada");
+    expect(clases).toHaveTextContent("2 sin lista");
+    expect(clases).toHaveTextContent("1 la dio un reemplazo");
+    expect(clases).toHaveTextContent("2 todavía no llegan");
+    expect(clases).toHaveTextContent("2 atrasos · 25 min (1 justificado, 10 min)");
+    expect(clases).toHaveTextContent("no se descuentan solos");
+    expect(clases).toHaveTextContent(/se le paga igual al docente del módulo/);
+    // El monto no cambia: lo que se paga es lo de siempre.
+    expect(tarjeta("Marco Rojas")).toHaveTextContent(/A pagar.*1\.850,00/);
+  });
+
+  it("ítem 4: los grupos que dio, con días y horario", async () => {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({
+      ...PLANILLA,
+      gruposDelMes: [GRUPO_DEL_MES, { ...GRUPO_DEL_MES, grupoId: 8, materia: { orden: 1, nombre: "Cortes" }, dias: [6], horaInicio: "14:00", horaFin: "18:00", clases: 1, comoReemplazo: true }],
+    });
+    await montarMes();
+    const grupos = within(tarjeta("Marco Rojas")).getByRole("list", { name: "Grupos de Marco Rojas" });
+    expect(within(grupos).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Barbería · M2 Degradados · L Mi V 09:00–11:00 · 12 clases",
+      "Barbería · M1 Cortes · Sáb 14:00–18:00 · 1 clase · como reemplazo",
+    ]);
+  });
+
+  it("ítem 3: la tarjeta pagada dice con qué se pagó", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue(pagada());
+    await montarMes();
+    expect(tarjeta("Marco Rojas")).toHaveTextContent("Pagado el 03-nov · QR");
+  });
+
+  it("ítem 17: «Mandar el comprobante» abre la imagen y la manda por WhatsApp al docente, con el mensaje", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue(pagada());
+    await montarMes();
+    await act(async () => {
+      fireEvent.click(within(tarjeta("Marco Rojas")).getByRole("button", { name: "Mandar el comprobante a Marco Rojas" }));
+    });
+    expect(apiAcademia.pagosDocente).toHaveBeenCalledWith(9);
+    const dialogo = screen.getByRole("dialog", { name: "Comprobante de pago" });
+    const papel = within(dialogo).getByRole("article", { name: "Comprobante" });
+    expect(papel).toHaveTextContent("Marco Rojas");
+    expect(papel).toHaveTextContent("Octubre 2026");
+    expect(papel).toHaveTextContent("Bs 1.850,00");
+    expect(papel).toHaveTextContent("QR");
+    expect(papel).toHaveTextContent("Pagó: Hugo Salinas");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Mandar por WhatsApp" }));
+    });
+    const [nodo, archivo, mensaje, url] = vi.mocked(enviarPorWhatsapp).mock.calls[0];
+    expect(nodo).toBe(papel);
+    expect(archivo).toBe("comprobante-marco-rojas-2026-10");
+    expect(mensaje).toMatch(/^Hola Marco, te pagamos Bs 1\.850,00 por tus clases de octubre 2026, por QR/);
+    expect(url).toMatch(/^https:\/\/wa\.me\/59170412386\?text=/);
+  });
+
+  it("ítem 17: recién pagado, se abre el comprobante para mandárselo", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({
+      mes: "2026-10",
+      retencionActiva: false,
+      docentes: [{ personalId: 9, nombre: "Marco Rojas", grupos: 1, cuentan: 17, total: 22, bruto: 1850, retencion: null, liquido: 1850, estado: "CERRADA" }],
+      totales: { bruto: 1850, liquido: 1850 },
+    });
+    vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
+    await montarMes();
+    fireEvent.click(within(tarjeta("Marco Rojas")).getByRole("button", { name: /^Pagar/ }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Pagar a Marco Rojas" })).getByRole("button", { name: /^Pagar/ }));
+    });
+    expect(screen.getByRole("dialog", { name: "Comprobante de pago" })).toHaveTextContent("Bs 1.850,00");
+  });
+
+  it("?docente=: sólo ese docente, con su historial de pagos (el botón «Pagos» de Docentes)", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({
+      ...pagada(),
+      docentes: [...pagada().docentes, { personalId: 10, nombre: "Diego Mamani", grupos: 1, cuentan: 15, total: 18, bruto: 2190, retencion: null, liquido: 2190, estado: "EN_CURSO" as const }],
+    });
+    await montarMes("/academia/planilla?docente=9");
+    expect(screen.getByRole("heading", { name: "Pagos a Marco Rojas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Todos los docentes/ })).toHaveAttribute("href", "/academia/planilla");
+    expect(screen.queryByRole("listitem", { name: "Diego Mamani" })).not.toBeInTheDocument();
+    // Ya está mirando su historial: la tarjeta no ofrece abrirlo otra vez.
+    expect(within(tarjeta("Marco Rojas")).queryByRole("button", { name: /Historial de pagos/ })).not.toBeInTheDocument();
+    expect(apiAcademia.pagosDocente).toHaveBeenCalledWith(9);
+    const historial = screen.getByRole("list", { name: "Pagos a Marco Rojas" });
+    const filas = within(historial).getAllByRole("listitem");
+    expect(filas.map((f) => f.getAttribute("aria-label"))).toEqual(["Octubre 2026", "Septiembre 2026", "Agosto 2026"]);
+    expect(filas[1]).toHaveTextContent("Pagado el 04-oct · Transferencia · pagó Hugo Salinas");
+    expect(filas[1]).toHaveTextContent("Bs 1.640,00");
+    // Cerrada sin pagar: no hay comprobante que mandar.
+    expect(filas[2]).toHaveTextContent("Cerrada, falta pagarla");
+    expect(within(filas[2]).queryByRole("button")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(filas[1]).getByRole("button", { name: "Mandar el comprobante de Septiembre 2026" }));
+    });
+    // El historial ya cargado: no se vuelve a pedir.
+    expect(apiAcademia.pagosDocente).toHaveBeenCalledTimes(1);
+    expect(within(screen.getByRole("dialog", { name: "Comprobante de pago" })).getByRole("article")).toHaveTextContent("Bs 1.640,00");
+  });
+
+  it("?docente= de alguien sin nada este mes: igual su historial", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({ mes: "2026-10", retencionActiva: false, docentes: [], totales: { bruto: 0, liquido: 0 } });
+    await montarMes("/academia/planilla?docente=9");
+    expect(screen.getByText("En octubre 2026 no tiene nada que cobrar.")).toBeInTheDocument();
+    // El nombre sale del historial.
+    expect(screen.getByRole("heading", { name: "Pagos a Marco Rojas" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Pagos a Marco Rojas" })).toBeInTheDocument();
+  });
+
+  it("desde la lista, «Historial de pagos» lleva a ese docente", async () => {
+    await montarMes();
+    await act(async () => {
+      fireEvent.click(within(tarjeta("Marco Rojas")).getByRole("button", { name: "Historial de pagos de Marco Rojas" }));
+    });
+    expect(screen.getByRole("heading", { name: "Pagos a Marco Rojas" })).toBeInTheDocument();
+    expect(screen.queryByRole("listitem", { name: "Diego Mamani" })).not.toBeInTheDocument();
+  });
+
+  it("la planilla del docente: con qué se pagó, quién, el comprobante y los atrasos", async () => {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({
+      ...PLANILLA,
+      estado: "PAGADA",
+      pagadaEn: "2026-11-03T15:00:00.000Z",
+      pago: { pagadaEn: "2026-11-03T15:00:00.000Z", metodoPago: "QR", pagadoPor: "Hugo Salinas" },
+      clases: CLASES,
+    });
+    render(
+      <MemoryRouter initialEntries={["/academia/planilla/9?mes=2026-10"]}>
+        <Routes>
+          <Route path="/academia/planilla/:id" element={<PlanillaDocente />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByText(/Pagado el 03-nov · QR · pagó Hugo Salinas/)).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Clases del mes" })).toHaveTextContent(/12 clases en el mes.*7 con lista.*2 sin lista/);
+    const resumen = screen.getByRole("region", { name: "Resumen de la planilla" });
+    expect(resumen).toHaveTextContent("2 atrasos · 25 min (1 justificado, 10 min) · no se descuentan solos");
+    expect(document.body).not.toHaveTextContent(/Por confirmar/);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mandar el comprobante" }));
+    });
+    expect(screen.getByRole("dialog", { name: "Comprobante de pago" })).toHaveTextContent("Bs 1.850,00");
   });
 });
