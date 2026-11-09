@@ -561,10 +561,7 @@ function EditorPantalla({
               );
             })}
           </div>
-          <p className="mb-1.5 mt-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-texto-3">
-            Animados
-            <span className="rounded-full bg-amber-100 px-1.5 py-px text-[10px] tracking-normal text-amber-800">Nuevo</span>
-          </p>
+          <p className="mb-1.5 mt-3 text-[11px] font-bold uppercase tracking-[0.1em] text-texto-3">Animados</p>
           <div className="grid grid-cols-3 gap-2">
             {ANIMADOS_MENU.map((a) => {
               const elegido = ani.animado === a;
