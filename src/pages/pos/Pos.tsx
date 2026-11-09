@@ -83,6 +83,7 @@ import {
 } from "../../lib/agenda/ventaDirecta";
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
 import type { ProfesionalesDelCarrito } from "./PantallaVenta";
+import PublicarEnSitio from "./PublicarEnSitio";
 
 type Pantalla =
   | "venta"
@@ -197,6 +198,11 @@ function PuntoDeVenta() {
   // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
   const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
+  // «Publicar en tu sitio» (PLAN-PAGINA-PRO M4): lo diario se publica desde la
+  // caja. Con la feature explícita (no falla abierto: un plan sin sitio no
+  // tiene que ver el botón) y el permiso que pide el backend.
+  const [publicandoSitio, setPublicandoSitio] = useState(false);
+  const conSitio = !!negocio?.features?.includes("sitio_web") && tienePermiso(usuario, "negocio.configurar");
   /**
    * Plan Emprendedor (§5.2): el cupo de ventas del día. En un negocio sin
    * cupo (Omar, cualquier Básico o Profesional) deja pasar todo y no pide
@@ -1174,6 +1180,21 @@ function PuntoDeVenta() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
+            {conSitio && (
+              <BotonTipo
+                icono="compartir"
+                etiqueta="Publicar en tu sitio"
+                titulo="El almuerzo, la oferta o los turnos libres de hoy, en tu sitio"
+                onClick={() => setPublicandoSitio(true)}
+              />
+            )}
+            {conSitio && (
+              <PublicarEnSitio
+                abierto={publicandoSitio}
+                onCerrar={() => setPublicandoSitio(false)}
+                sucursalId={abierta.almacenId ?? null}
+              />
+            )}
             {permiteDelivery && (
               <BotonTipo
                 icono="truck"
@@ -1496,7 +1517,7 @@ function BotonTipo({
   onClick,
   deshabilitado,
 }: {
-  icono: "truck" | "clock" | "fileText" | "lock" | "grid" | "calendar";
+  icono: "truck" | "clock" | "fileText" | "lock" | "grid" | "calendar" | "compartir";
   etiqueta: string;
   titulo: string;
   onClick: () => void;
