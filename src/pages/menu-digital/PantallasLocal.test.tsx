@@ -18,6 +18,12 @@ vi.mock("../../lib/api", async (original) => {
   const real = await original<typeof import("../../lib/api")>();
   return { ...real, request };
 });
+// jsdom no tiene canvas: el quitado de fondo se prueba aparte (quitarFondo.test).
+const prepararLogo = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/pagina/imagen", async (original) => {
+  const real = await original<typeof import("../../lib/pagina/imagen")>();
+  return { ...real, prepararLogo };
+});
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
@@ -444,6 +450,44 @@ describe("Configuración del recibo: lo que se saca del papel (8-nov)", () => {
       },
       { timeout: 3000 },
     );
+  });
+});
+
+describe("Configuración del recibo: el logo sin fondo (9-nov)", () => {
+  it("al subirlo se le saca el fondo, y se puede volver a subir con su fondo sin buscar el archivo", async () => {
+    // El logo de la pollería, con fondo negro o blanco, era un cuadrado
+    // pegado encima del rojo de la TV. Si la varita se come algo del dibujo,
+    // el dueño lo vuelve a subir tal cual con un toque.
+    prepararLogo.mockImplementation(async (_f: File, sacarFondo: boolean) => ({
+      blob: new Blob(["logo"], { type: "image/webp" }),
+      fondoQuitado: sacarFondo,
+    }));
+    request.mockImplementation((ruta: string, op?: RequestInit) =>
+      ruta === "/pantallas/logo" && op?.method === "POST" ? Promise.resolve({ logo: "/pantallas/logo/7/abcdef123" }) : responder(ruta),
+    );
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    const { container } = render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+    fireEvent.click(screen.getByRole("tab", { name: /Logo y datos/ }));
+
+    const archivo = new File(["jpg"], "logo-tio-fabio.jpg", { type: "image/jpeg" });
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [archivo] } });
+
+    expect(await screen.findByText("Le sacamos el fondo para que en las TVs se vea sólo el dibujo.")).toBeInTheDocument();
+    expect(prepararLogo).toHaveBeenLastCalledWith(archivo, true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dejarlo con su fondo" }));
+    expect(await screen.findByText("Quedó con su fondo, tal cual el archivo.")).toBeInTheDocument();
+    expect(prepararLogo).toHaveBeenLastCalledWith(archivo, false);
+    expect(request.mock.calls.filter(([ruta, op]) => ruta === "/pantallas/logo" && (op as RequestInit).method === "POST")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sacarle el fondo" }));
+    expect(await screen.findByText("Le sacamos el fondo para que en las TVs se vea sólo el dibujo.")).toBeInTheDocument();
+    expect(prepararLogo).toHaveBeenLastCalledWith(archivo, true);
   });
 });
 

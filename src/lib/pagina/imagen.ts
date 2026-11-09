@@ -6,6 +6,8 @@
  * foto). El backend igual valida tipo, tamaño y los quita.
  */
 
+import { LADO_MINIMO_LOGO, quitarFondo } from "./quitarFondo";
+
 export const TOPE_ORIGINAL = 10 * 1024 * 1024;
 
 /**
@@ -87,6 +89,87 @@ function cargar(archivo: Blob): Promise<HTMLImageElement> {
     };
     img.src = url;
   });
+}
+
+/** El backend rechaza un logo de más de 300 KB. */
+const TOPE_LOGO = 300 * 1024;
+
+function blobDe(canvas: HTMLCanvasElement, tipoMime: string, calidad?: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, tipoMime, calidad));
+}
+
+export interface LogoPreparado {
+  blob: Blob;
+  /** Se le borró el fondo (blanco, negro o los cuadritos dibujados). */
+  fondoQuitado: boolean;
+}
+
+/**
+ * El logo del negocio para las TVs y el recibo (`marca`), sin el fondo si se
+ * pide y el borde es parejo (`quitarFondo`). Después se recorta lo vacío de
+ * alrededor: en la TV el dibujo sale más grande en el mismo lugar.
+ */
+export async function prepararLogo(archivo: File, sacarFondo: boolean): Promise<LogoPreparado> {
+  if (!archivo.type.startsWith("image/")) throw new Error("Elegí una imagen (PNG, JPG o WebP).");
+  if (archivo.size > TOPE_ORIGINAL) throw new Error("La imagen pesa más de 10 MB.");
+  const img = await cargar(archivo);
+  const m = medidas("marca", img.naturalWidth, img.naturalHeight);
+  let canvas = document.createElement("canvas");
+  canvas.width = m.ancho;
+  canvas.height = m.alto;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Tu navegador no pudo procesar la imagen.");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, m.sx, m.sy, m.sw, m.sh, 0, 0, m.ancho, m.alto);
+
+  let fondoQuitado = false;
+  let conTransparencia = false;
+  if (sacarFondo) {
+    const pixeles = ctx.getImageData(0, 0, m.ancho, m.alto);
+    const r = quitarFondo(pixeles);
+    if (r.tipo !== "sin-cambios") {
+      fondoQuitado = r.tipo === "quitado";
+      conTransparencia = true;
+      ctx.putImageData(pixeles, 0, 0);
+      const c = r.recorte;
+      if (c.ancho !== m.ancho || c.alto !== m.alto) {
+        const recortado = document.createElement("canvas");
+        recortado.width = c.ancho;
+        recortado.height = c.alto;
+        recortado.getContext("2d")?.drawImage(canvas, c.x, c.y, c.ancho, c.alto, 0, 0, c.ancho, c.alto);
+        canvas = recortado;
+      }
+    }
+  }
+
+  let blob = await blobDe(canvas, "image/webp", 0.9);
+  if (!blob || blob.type !== "image/webp") {
+    // Safari no sabe hacer WebP. El JPG de siempre pinta de NEGRO lo
+    // transparente, que es justo lo que se acaba de borrar: va en PNG, que
+    // pesa más y se achica hasta entrar en el tope del backend.
+    blob = conTransparencia ? await pngQueEntre(canvas) : await blobDe(canvas, "image/jpeg", 0.85);
+  }
+  if (!blob) throw new Error("Tu navegador no pudo procesar la imagen.");
+  return { blob, fondoQuitado };
+}
+
+async function pngQueEntre(original: HTMLCanvasElement): Promise<Blob | null> {
+  let canvas = original;
+  for (let vuelta = 0; vuelta < 5; vuelta++) {
+    const blob = await blobDe(canvas, "image/png");
+    const ancho = Math.round(canvas.width * 0.8);
+    const alto = Math.round(canvas.height * 0.8);
+    if (!blob || blob.size <= TOPE_LOGO || Math.min(ancho, alto) < LADO_MINIMO_LOGO) return blob;
+    const chico = document.createElement("canvas");
+    chico.width = ancho;
+    chico.height = alto;
+    const ctx = chico.getContext("2d");
+    if (!ctx) return blob;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(canvas, 0, 0, ancho, alto);
+    canvas = chico;
+  }
+  return blobDe(canvas, "image/png");
 }
 
 /** Devuelve la imagen lista para subir (WebP; JPG si el navegador no sabe). */

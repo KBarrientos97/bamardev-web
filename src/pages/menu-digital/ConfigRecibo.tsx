@@ -6,7 +6,7 @@ import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { olvidarReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
-import { prepararImagen } from "../../lib/pagina/imagen";
+import { prepararLogo } from "../../lib/pagina/imagen";
 import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
@@ -369,14 +369,21 @@ function LogoYDatos({
   const [error, setError] = useState("");
   const [quitar, setQuitar] = useState(false);
   const [encima, setEncima] = useState(false);
+  // El archivo que se acaba de subir, para volver a subirlo con o sin fondo
+  // sin pedirle al dueño que lo busque otra vez.
+  const [ultimo, setUltimo] = useState<File | null>(null);
+  const [fondo, setFondo] = useState<"quitado" | "con-fondo" | null>(null);
 
-  const subir = async (f: File | undefined) => {
+  const subir = async (f: File | undefined, sacarFondo = true) => {
     if (!f) return;
     setSubiendo(true);
     setError("");
     try {
-      const r = await apiMenuDigital.subirLogo(await prepararImagen(f, "marca"));
+      const preparado = await prepararLogo(f, sacarFondo);
+      const r = await apiMenuDigital.subirLogo(preparado.blob);
       onLogo(r.logo);
+      setUltimo(f);
+      setFondo(!sacarFondo ? "con-fondo" : preparado.fondoQuitado ? "quitado" : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo subir el logo");
     } finally {
@@ -389,6 +396,8 @@ function LogoYDatos({
       await apiMenuDigital.quitarLogo();
       onLogo(null);
       setQuitar(false);
+      setUltimo(null);
+      setFondo(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo quitar el logo");
     }
@@ -417,9 +426,12 @@ function LogoYDatos({
         >
           {logo ? (
             <>
-              <figure className="flex flex-col items-center justify-center rounded-xl bg-white p-4">
+              {/* Sobre oscuro, como en las TVs: sobre blanco, un logo con su
+                  fondo blanco se veía perfecto acá y en la TV era un cuadrado
+                  pegado encima del rojo (Kevin, 9-nov). */}
+              <figure className="flex flex-col items-center justify-center rounded-xl p-4" style={{ background: "linear-gradient(135deg, #3a2a26, #1a1210)" }}>
                 <img src={urlApi(logo)} alt="Logo" className="max-h-28 max-w-full object-contain" />
-                <figcaption className="mt-2 text-[12px] text-texto-3">En color · menú y pantallas</figcaption>
+                <figcaption className="mt-2 text-[12px] text-white/75">En color · menú y pantallas</figcaption>
               </figure>
               <figure className="flex flex-col items-center justify-center rounded-xl bg-white p-4">
                 <img src={urlApi(logo)} alt="" className="max-h-28 max-w-full object-contain grayscale contrast-125" />
@@ -450,8 +462,25 @@ function LogoYDatos({
             </Boton>
           )}
         </div>
+        {logo && ultimo && fondo && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted px-3 py-2 text-[13px] text-texto-2">
+            <span>
+              {fondo === "quitado"
+                ? "Le sacamos el fondo para que en las TVs se vea sólo el dibujo."
+                : "Quedó con su fondo, tal cual el archivo."}
+            </span>
+            <button
+              type="button"
+              disabled={subiendo}
+              onClick={() => void subir(ultimo, fondo !== "quitado")}
+              className="font-semibold text-primary-700 underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              {fondo === "quitado" ? "Dejarlo con su fondo" : "Sacarle el fondo"}
+            </button>
+          </div>
+        )}
         <p className="mt-2 text-[12px] text-texto-3">
-          Mejor PNG o JPG con fondo blanco o transparente. Es el mismo logo de tu página, si la tenés.
+          PNG o JPG, con fondo blanco, negro o transparente: el fondo se saca solo. Es el mismo logo de tu página, si la tenés.
         </p>
         <Confirmar
           abierto={quitar}
