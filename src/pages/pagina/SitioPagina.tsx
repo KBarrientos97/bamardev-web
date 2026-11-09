@@ -187,7 +187,7 @@ function Encabezado({ x, accion }: { x: PiezasSitio; accion: ReactNode }) {
     >
       <Contenedor
         escritorio={x.escritorio}
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, minHeight: 68, padding: undefined }}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, minHeight: 68 }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <LogoNegocio
