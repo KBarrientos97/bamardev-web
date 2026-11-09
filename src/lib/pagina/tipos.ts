@@ -581,7 +581,12 @@ export interface EstadoEditor {
    * estado ya viene con el borrador encima. Opcional: un backend anterior
    * no lo manda.
    */
-  borrador?: { hay: boolean; actualizadoEn: string | null };
+  borrador?: {
+    hay: boolean;
+    actualizadoEn: string | null;
+    /** "Te la armamos" (M5): el borrador lo armó BamarDev y el dueño todavía no lo publicó. */
+    armadoPorBamarDev?: boolean;
+  };
   imagenes: { logo: string | null; portada: string | null };
   enlaces: EnlaceEditor[];
   sucursales: SucursalEditor[];

@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { capturarEntradaDeSoporte } from "./lib/armado";
 import { enHostLink, esRutaDePaginaPublica } from "./lib/pagina/rutas";
 import { reportarError } from "./lib/telemetria";
 import RutasPaginaPublica from "./pages/pagina/RutasPagina";
@@ -19,6 +20,7 @@ import RutasPaginaPublica from "./pages/pagina/RutasPagina";
  */
 
 const AppNegocio = lazy(() => import("./AppNegocio"));
+const SoporteNegocio = lazy(() => import("./pages/pagina/SoporteNegocio"));
 /** La reserva online del cliente final (`/r/<subdominio>…`). */
 const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
 /** Todo `link(-qa).bamardev.com`: la página y la reserva, sin la app. */
@@ -28,6 +30,10 @@ const RutasTv = lazy(() => import("./publico/tv/TvBillar"));
 
 /** El gris de la página pública mientras llega su pantalla. */
 const ESPERA_PAGINA = <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} />;
+
+// El panel abre `app…/#soporte=<token>&armado=1` (lib/armado.ts): antes del
+// primer render, el token pasa a la pestaña y la barra queda en /soporte.
+capturarEntradaDeSoporte();
 
 export default function App() {
   // En el host link no existe la app: ni login, ni sesión, ni sus pantallas.
@@ -65,6 +71,17 @@ export default function App() {
             element={
               <Suspense fallback={<div className="min-h-dvh bg-[#06281D]" />}>
                 <RutasTv />
+              </Suspense>
+            }
+          />
+          {/* El soporte de BamarDev (y "Te la armamos"): fuera del AuthProvider,
+              con el token de esa pestaña. Un 401 de acá no cierra la sesión
+              que el navegador tenga guardada. */}
+          <Route
+            path="/soporte"
+            element={
+              <Suspense fallback={<div className="min-h-dvh bg-fondo" aria-busy="true" />}>
+                <SoporteNegocio />
               </Suspense>
             }
           />

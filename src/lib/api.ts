@@ -90,6 +90,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import { reportarError } from "./telemetria";
+import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
@@ -123,7 +124,8 @@ export const BLOQUEO_KEY = "bamardev_web_bloqueo";
 export const SESION_VENCIDA_KEY = "bamardev_web_sesion_vencida";
 
 export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
+  // Bajo `/soporte`, el token de esa pestaña (lib/armado.ts); si no, la sesión de siempre.
+  get: () => tokenDeSoporte() ?? localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
@@ -172,6 +174,13 @@ function limpiarSesion() {
  * que el usuario adivinara que tiene que salir y entrar.
  */
 function cerrarSesionVencida(huboToken: boolean) {
+  // El acceso de soporte venció: se olvida el de la pestaña y nada más. La
+  // sesión del dueño en este navegador (si la hay) no se toca.
+  if (tokenDeSoporte()) {
+    olvidarTokenDeSoporte();
+    window.location.assign(`${RUTA_SOPORTE}?vencido=1`);
+    return;
+  }
   limpiarSesion();
   // Sólo si había sesión: un 401 sin token (cerró sesión en otra pestaña) no
   // es una sesión que venció, como en la app.
@@ -220,6 +229,9 @@ const CODIGOS_LICENCIA = ["LICENCIA_VENCIDA", "LICENCIA_SUSPENDIDA"];
  * de dejar al cajero frente a un formulario que no sabe por qué lo expulsó.
  */
 function bloquearPorLicencia(cuerpo: Record<string, unknown>) {
+  // En soporte la licencia del cliente no cierra la sesión de nadie: el
+  // error se muestra en la pantalla como cualquier otro.
+  if (tokenDeSoporte()) return;
   const motivo = {
     codigo: String(cuerpo.codigo ?? ""),
     mensaje: String(cuerpo.message ?? "La licencia del negocio no está vigente"),

@@ -59,6 +59,7 @@ import Seccion from "./Seccion";
 import SelectorEstilo from "./SelectorEstilo";
 import SitioEditor from "./SitioEditor";
 import { estiloTextoSitio } from "../../lib/pagina/sitio";
+import { textoVence } from "../../lib/armado";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
 const MAX_DESCRIPCION = 160;
@@ -207,6 +208,7 @@ function FilaSucursal({
   onCambio,
   onGuardada,
   onError,
+  sinFicha,
 }: {
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
@@ -218,6 +220,8 @@ function FilaSucursal({
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
+  /** En soporte no se sale del editor: la ficha es otra pantalla. */
+  sinFicha?: boolean;
 }) {
   const actual = borrador ?? borradorDe(s);
   const [guardando, setGuardando] = useState(false);
@@ -258,11 +262,11 @@ function FilaSucursal({
           <ul className="space-y-0.5 text-xs text-texto-3" aria-label={`Ficha de ${s.nombre}`}>
             <li>Horario: {horario ?? "sin cargar"}</li>
             <li>Ubicación en el mapa: {conUbicacion ? "marcada" : "sin marcar"}</li>
-            <li>
+            {!sinFicha && <li>
               <Link to={academia ? RUTA_SEDES : "/configuracion/sucursales"} className="font-semibold" style={{ color: c.oscuro }}>
                 Editar dirección, horario y ubicación
               </Link>
-            </li>
+            </li>}
           </ul>
           {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
           <div className="grid gap-2 sm:grid-cols-2">
@@ -475,7 +479,18 @@ function BotonPrincipal({
  * El catálogo es la excepción que queda: cada ítem se guarda al toque, como
  * antes (sus fotos pasan a borrador en la fase siguiente).
  */
-export default function MiPagina() {
+export interface ModoSoporte {
+  /** "Te la armamos": puede escribir el borrador. Sin esto, sólo lectura. */
+  armado: boolean;
+  vence: number | null;
+}
+
+/**
+ * `soporte`: abierta por BamarDev desde el panel (`/soporte`, lib/armado.ts).
+ * No se publica ni se descarta (eso es del dueño) y no se ofrece nada fuera
+ * del editor, que con ese token respondería 403.
+ */
+export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
   const carga = useApi(() => apiPagina.estado(), []);
   // Opcional: los tests montan el editor sin sesión (sin features = falla abierto).
   const sesion = useAuthOpcional();
@@ -658,6 +673,13 @@ export default function MiPagina() {
   }, [encolar]);
 
   const [confirmarDescarte, setConfirmarDescarte] = useState(false);
+  // La franja de soporte dice cuánto le queda: se refresca cada medio minuto.
+  const [, setReloj] = useState(0);
+  useEffect(() => {
+    if (!soporte) return;
+    const t = setInterval(() => setReloj((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, [soporte]);
   const [personalizar, setPersonalizar] = useState(false);
 
   const e = carga.datos;
@@ -945,6 +967,7 @@ export default function MiPagina() {
             {estadoBadge}
             {e.pagina.publicada && hayBorrador && <Badge tono="amarillo">Cambios sin publicar</Badge>}
             {!ajustes.bloqueada &&
+              !soporte &&
               (e.pagina.publicada ? (
                 <Boton variante="ghost" disabled={guardando} onClick={() => void despublicar()}>
                   Despublicar
@@ -958,6 +981,18 @@ export default function MiPagina() {
         }
       />
 
+      {soporte && (
+        <div role="status" className="sticky top-0 z-30 -mx-4 rounded-none bg-amber-100 px-4 py-2.5 text-sm font-semibold text-amber-900 sm:-mx-5 sm:px-5">
+          {soporte.armado
+            ? `Estás armando el sitio de ${nombreVisible} como BamarDev · ${textoVence(soporte.vence)}. Lo publica el dueño.`
+            : `Modo soporte · sólo lectura · ${textoVence(soporte.vence)}`}
+        </div>
+      )}
+      {!soporte && e.borrador?.armadoPorBamarDev && (
+        <div role="note" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-900">
+          <strong>BamarDev te armó el sitio:</strong> revisalo y apretá «{accionGuardar}» cuando te guste.
+        </div>
+      )}
       {ajustes.bloqueada && (
         <ErrorMsg>
           BamarDev despublicó tu página{e.pagina.motivoBloqueo ? `: ${e.pagina.motivoBloqueo}` : ""}. Podés seguir
@@ -983,16 +1018,20 @@ export default function MiPagina() {
                 <Boton variante="soft" onClick={() => void copiar(e.urlPublica!, "Dirección copiada")}>
                   Copiar
                 </Boton>
-                <Boton variante="ghost" onClick={() => void compartir()}>
-                  Compartir
-                </Boton>
-                <Boton icono="qr" onClick={() => setCartel(true)}>
-                  Descargar cartel QR
-                </Boton>
+                {!soporte && (
+                  <>
+                    <Boton variante="ghost" onClick={() => void compartir()}>
+                      Compartir
+                    </Boton>
+                    <Boton icono="qr" onClick={() => setCartel(true)}>
+                      Descargar cartel QR
+                    </Boton>
+                  </>
+                )}
               </div>
               <p className="text-xs text-texto-3">
                 La dirección la configura BamarDev. Escribinos si querés cambiarla.
-                {e.enlacesCortos && (
+                {e.enlacesCortos && !soporte && (
                   <>
                     {" "}
                     <Link to="/mis-enlaces" className="font-semibold text-primary-700">
@@ -1185,7 +1224,14 @@ export default function MiPagina() {
             />
           </Seccion>
 
-          {modoCatalogo === "PRODUCTOS" ? (
+          {soporte ? (
+            <Seccion titulo="Catálogo">
+              <p className="-mt-2 text-sm text-texto-3">
+                El catálogo se guarda al toque y no pasa por el borrador: lo carga el dueño desde su cuenta. En la vista
+                previa se ve el que ya tiene.
+              </p>
+            </Seccion>
+          ) : modoCatalogo === "PRODUCTOS" ? (
             <CatalogoProductosEditor
               fijados={e.productosCatalogo ?? []}
               tope={e.topeProductos ?? TOPE_CATALOGO}
@@ -1401,6 +1447,7 @@ export default function MiPagina() {
                     borrador={borradorSucursales[s.id]}
                     c={c}
                     academia={e.negocio.rubro === "ACADEMIA"}
+                    sinFicha={!!soporte}
                     sede={sede}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
@@ -1426,6 +1473,8 @@ export default function MiPagina() {
                 {previaCelular ? "Ocultar vista previa" : "Ver vista previa"}
               </Boton>
             )}
+            {!soporte && (
+              <>
             <Boton
               variante="ghost"
               disabled={!hayBorrador || guardando}
@@ -1436,6 +1485,8 @@ export default function MiPagina() {
             <Boton disabled={!hayBorrador || guardando} onClick={() => void publicar()}>
               {guardando ? (e.pagina.publicada ? "Publicando…" : "Guardando…") : accionGuardar}
             </Boton>
+              </>
+            )}
           </div>
           {!previaAncha && previaCelular && <div className="lg:hidden">{previa}</div>}
         </div>
