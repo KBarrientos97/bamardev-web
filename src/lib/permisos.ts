@@ -543,6 +543,12 @@ export interface ContextoPermisos {
    */
   permisos?: string[];
   permisosPropios?: string[];
+  /**
+   * D9 (revisión del 08-nov): quien entra dicta clases aunque no sea docente
+   * (el dueño que también enseña, con módulos asignados). Lo dice
+   * `GET /academia/soy-docente`; sin la respuesta, no.
+   */
+  dictaClases?: boolean;
 }
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
@@ -654,7 +660,10 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
 
   const req = REQUISITOS[seccion];
-  if (!cumplePermiso(ctx, req)) return false;
+  // D9: «Mis clases» pide el alcance PROPIO, que el dueño no tiene (tiene todo
+  // GENERAL). Si dicta clases, la ve igual, con el mismo permiso.
+  const dictaYPasaLista = seccion === "academia_mis_clases" && ctx.dictaClases === true && (ctx.permisos ?? []).includes(req.permiso);
+  if (!cumplePermiso(ctx, req) && !dictaYPasaLista) return false;
   if (req.feature && !(cumpleFeature(ctx, req.feature) || (!!req.oFeature && cumpleFeature(ctx, req.oFeature)))) {
     return false;
   }
