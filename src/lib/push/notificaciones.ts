@@ -12,6 +12,8 @@ const GRUPOS: { grupo: GrupoNotificacion; titulo: string }[] = [
   { grupo: "COBROS", titulo: "Cobros" },
   { grupo: "CUENTA", titulo: "Cuenta y plan" },
   { grupo: "SEGURIDAD", titulo: "Seguridad" },
+  // Los del docente (tanda 2 del 08-nov): grupo asignado, cambios de sus clases y el recordatorio del día.
+  { grupo: "CLASES", titulo: "Clases" },
 ];
 
 /**

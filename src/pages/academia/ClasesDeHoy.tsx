@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Confirmar, ErrorMsg } from "../../components/ui";
-import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { estaSuspendida } from "../../lib/academia/clases";
+import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { aMinutos, minutosDeAtraso } from "../../lib/academia/calendario";
 import { nombreDe } from "../../lib/academia/formato";
 import type { ClaseDelDia } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { capitalizar, fechaLarga } from "../../lib/agenda/horaAgenda";
+import { ApiError } from "../../lib/api";
 import { fmtHora, iniciales } from "../../lib/format";
 import { soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { AccionesClase, ChipsDeClase } from "./AccionesClase";
 import { BotonFila, Chip, LISTA, Tarjeta, type TonoChip } from "./piezas";
 
 /**
@@ -28,6 +31,11 @@ import { BotonFila, Chip, LISTA, Tarjeta, type TonoChip } from "./piezas";
  * docente que llegó y nadie lo marcó), se deshace si quedó mal, y la lista se
  * pasa desde acá cuando el docente no puede.
  *
+ * Tanda 2 del 08-nov: «No vino» (suspender o poner un reemplazo por hoy), las
+ * suspendidas siguen en la lista marcadas (para devolverlas si fue un error),
+ * el reemplazo se nombra, el atraso se justifica, y marcar la llegada a más
+ * de una hora de la clase pide confirmarlo (decisión del dueño).
+ *
  * Sin clases hoy no se dibuja: el Calendario queda como siempre.
  */
 export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null | undefined }) {
@@ -40,16 +48,25 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
   const pasaLista = tienePermiso(usuario, "asistencia.registrar");
   const [marcando, setMarcando] = useState<number | null>(null);
   const [deshaciendo, setDeshaciendo] = useState<ClaseDelDia | null>(null);
+  /** La clase a la que le falta más de una hora: se confirma y se reenvía. */
+  const [temprano, setTemprano] = useState<{ c: ClaseDelDia; minutosAntes: number | null } | null>(null);
   const [error, setError] = useState("");
 
-  async function marcarLlegada(sesionId: number) {
-    setMarcando(sesionId);
+  async function marcarLlegada(c: ClaseDelDia, confirmarTemprano = false) {
+    setMarcando(c.sesionId);
     setError("");
     try {
-      await apiAcademia.llegada(sesionId);
+      await (confirmarTemprano ? apiAcademia.llegada(c.sesionId, true) : apiAcademia.llegada(c.sesionId));
+      setTemprano(null);
       hoy.recargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo marcar la llegada");
+      if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LLEGADA_MUY_TEMPRANO) {
+        // No se registró nada: se pregunta y, si confirma, se reenvía.
+        setTemprano({ c, minutosAntes: typeof e.detalle.minutosAntes === "number" ? e.detalle.minutosAntes : null });
+      } else {
+        setTemprano(null);
+        setError(e instanceof Error ? e.message : "No se pudo marcar la llegada");
+      }
     } finally {
       setMarcando(null);
     }
@@ -79,6 +96,7 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
   const orden = [...clases].sort((a, b) => aMinutos(a.horaInicio) - aMinutos(b.horaInicio));
   // La tolerancia de los ajustes llega en cada clase (revisión del 08-nov); un backend anterior no la manda.
   const tolerancia = clases.find((c) => c.toleranciaMin != null)?.toleranciaMin;
+  const sede = hoy.datos?.sede ?? sucursalId ?? null;
   return (
     <div className="space-y-2">
       <ErrorMsg>{error}</ErrorMsg>
@@ -96,7 +114,8 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
       >
         <ul className={LISTA.lista}>
           {orden.map((c) => {
-            const momento = momentoClase(c, ahora);
+            const suspendida = estaSuspendida(c);
+            const momento = suspendida ? "suspendida" : momentoClase(c, ahora);
             const llegada = estadoLlegada(c);
             const docente = typeof c.docente === "string" ? c.docente : c.docente?.nombre;
             return (
@@ -105,10 +124,10 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
                 className={`grid gap-x-4 gap-y-2.5 ${LISTA.itemHover} sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center`}
               >
                 <span className="flex items-center gap-2 sm:block">
-                  <span className="block text-xl font-bold tabular-nums text-texto">{c.horaInicio}</span>
+                  <span className={`block text-xl font-bold tabular-nums ${suspendida ? "text-texto-4 line-through" : "text-texto"}`}>{c.horaInicio}</span>
                   <span
                     className={`inline-block whitespace-nowrap rounded-full px-2 py-px text-[11px] font-semibold sm:mt-0.5 ${
-                      momento === "en curso" ? "bg-primary-50 text-primary-700" : "bg-slate-100 text-texto-3"
+                      momento === "en curso" ? "bg-primary-50 text-primary-700" : momento === "suspendida" ? "bg-danger-bg text-danger-text" : "bg-slate-100 text-texto-3"
                     }`}
                   >
                     {momento}
@@ -121,7 +140,8 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
                     </Link>
                     <span className="block truncate text-[13px] text-texto-3">
                       M{c.materia.orden} {c.materia.nombre}
-                      {c.aula ? ` · ${c.aula}` : ""} · Lista {c.lista.pasada ? `${c.lista.presentes} de ${c.lista.total}` : "—"}
+                      {c.aula ? ` · ${c.aula}` : ""}
+                      {suspendida ? "" : ` · Lista ${c.lista.pasada ? `${c.lista.presentes} de ${c.lista.total}` : "—"}`}
                     </span>
                   </span>
                   <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -136,15 +156,18 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
                         <span className="truncate">{docente}</span>
                       </span>
                     )}
-                    <Chip tono={llegada.tono} className="text-[12px]">
-                      {llegada.texto}
-                    </Chip>
+                    {!suspendida && (
+                      <Chip tono={llegada.tono} className="text-[12px]">
+                        {llegada.texto}
+                      </Chip>
+                    )}
+                    <ChipsDeClase c={c} />
                   </span>
                 </span>
                 <span className="flex flex-wrap gap-2 sm:justify-end">
                   {/* También pasada la hora de fin: el backend acepta la de hoy (y la de ayer). */}
-                  {marcaLlegadas && !c.llegadaEn && (
-                    <BotonFila icono="check" disabled={marcando === c.sesionId} onClick={() => void marcarLlegada(c.sesionId)}>
+                  {marcaLlegadas && !c.llegadaEn && !suspendida && (
+                    <BotonFila icono="check" disabled={marcando === c.sesionId} onClick={() => void marcarLlegada(c)}>
                       {marcando === c.sesionId ? "Marcando…" : "Marcar llegada"}
                     </BotonFila>
                   )}
@@ -159,11 +182,12 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
                       Deshacer
                     </BotonFila>
                   )}
-                  {pasaLista && (
+                  {pasaLista && !suspendida && (
                     <BotonFila variante="ghost" icono="lista" a={`/academia/grupos/${c.grupoId}/lista`} aria-label={`Pasar lista de las ${c.horaInicio}`}>
                       Pasar lista
                     </BotonFila>
                   )}
+                  <AccionesClase c={c} sedeId={typeof c.sede === "object" && c.sede ? c.sede.id : sede} onCambio={hoy.recargar} />
                 </span>
               </li>
             );
@@ -185,8 +209,31 @@ export default function ClasesDeHoy({ sucursalId }: { sucursalId: number | null 
         onCancel={() => setDeshaciendo(null)}
         onOk={() => deshaciendo && void deshacerLlegada(deshaciendo)}
       />
+      <Confirmar
+        abierto={!!temprano}
+        titulo="Todavía falta para la clase"
+        texto={
+          temprano
+            ? `${
+                temprano.minutosAntes != null ? `Faltan ${duracionTexto(temprano.minutosAntes)} para la clase de las ${temprano.c.horaInicio}` : `La clase es a las ${temprano.c.horaInicio}`
+              }. ¿Seguro que es esta clase? Si confirmás, la llegada queda a esta hora.`
+            : ""
+        }
+        etiquetaOk="Sí, marcar la llegada"
+        procesando={marcando != null}
+        onCancel={() => setTemprano(null)}
+        onOk={() => temprano && void marcarLlegada(temprano.c, true)}
+      />
     </div>
   );
+}
+
+/** «2 h», «1 h 30 min», «45 min». */
+function duracionTexto(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const resto = min % 60;
+  return resto ? `${h} h ${resto} min` : `${h} h`;
 }
 
 /** "terminó", "en curso" o "por empezar", con la hora del equipo. */
@@ -205,6 +252,6 @@ function momentoClase(c: ClaseDelDia, ahora: Date): "terminó" | "en curso" | "p
 function estadoLlegada(c: ClaseDelDia): { texto: string; tono: TonoChip } {
   if (!c.llegadaEn) return { texto: "Todavía no llegó", tono: "gris" };
   const atraso = minutosDeAtraso(c);
-  if (atraso > 0) return { texto: `Llegó ${fmtHora(c.llegadaEn)} · ${atraso} min tarde`, tono: "ambar" };
+  if (atraso > 0) return { texto: `Llegó ${fmtHora(c.llegadaEn)} · ${atraso} min tarde`, tono: c.atrasoJustificado ? "azul" : "ambar" };
   return { texto: `Llegó ${fmtHora(c.llegadaEn)} · a horario`, tono: "verde" };
 }

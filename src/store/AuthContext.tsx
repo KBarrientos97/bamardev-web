@@ -18,6 +18,7 @@ import {
   tokenStore,
 } from "../lib/api";
 import { apiMonedero } from "../lib/apiMonedero";
+import { apiAcademia } from "../lib/academia/apiAcademia";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
 import { olvidarDispositivoPush, sincronizarPushSilencioso } from "../lib/push/registroPush";
 import { fijarMoneda } from "../lib/format";
@@ -108,6 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Se rehidrata por lo mismo que la licencia: tras un F5 el POS tiene que
   // poder decidir si deja cobrar antes de que vuelva el primer chequeo.
   const [cupo, setCupo] = useState<CupoEstado | null>(() => leer<CupoEstado>(CUPO_KEY));
+  /** D9: el dueño (u otro rol que no es docente) que también da clases. */
+  const [dictaClases, setDictaClases] = useState(false);
 
   /**
    * Guarda el snapshot del cupo. Llega de cinco lados (login, estado de la
@@ -395,6 +398,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // D9 (revisión del 08-nov): en un instituto, quien pasa lista sobre todo el
+  // instituto (el dueño, la coordinación) pregunta si además dicta clases: si
+  // tiene módulos asignados, ve «Mis clases». El docente (PROPIO) ya la ve, y
+  // los demás rubros ni preguntan. Si falla, sigue sin la entrada.
+  const preguntaSiDicta =
+    negocio?.tipoNegocio === "ACADEMIA" &&
+    !!usuario?.permisos?.includes("asistencia.registrar") &&
+    !usuario?.permisosPropios?.includes("asistencia.registrar");
+  useEffect(() => {
+    if (!token || !preguntaSiDicta) {
+      setDictaClases(false);
+      return;
+    }
+    let vivo = true;
+    apiAcademia
+      .soyDocente()
+      .then((r) => vivo && setDictaClases(r.dicta === true))
+      .catch(() => vivo && setDictaClases(false));
+    return () => {
+      vivo = false;
+    };
+  }, [token, preguntaSiDicta, usuario?.id]);
+
   const contexto = useMemo<ContextoPermisos | null>(
     () =>
       usuario
@@ -404,9 +430,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Lo único que decide qué ve cada quien (PLAN-ROLES-NEGOCIO).
             permisos: usuario.permisos,
             permisosPropios: usuario.permisosPropios,
+            dictaClases,
           }
         : null,
-    [usuario, negocio],
+    [usuario, negocio, dictaClases],
   );
 
   const puede = useCallback(

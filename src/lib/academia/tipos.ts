@@ -975,6 +975,23 @@ export interface ClaseDelDia {
   /** Cambio #13. */
   fecha?: string;
   estado?: string;
+  /** Tanda 2 del 08-nov (ítem 16): lo que cambió en la clase. Un backend anterior no lo manda. */
+  motivoSuspension?: string | null;
+  suspendida?: boolean;
+  /** El docente del módulo; `docente` es quien la da ese día. */
+  titular?: PersonaClase | null;
+  /** Ese día la da otro, no el del módulo. */
+  reemplazo?: boolean;
+  /** Sólo en Mis clases: la da quien mira (el titular ve la suya reemplazada con false). */
+  mia?: boolean;
+  atrasoJustificado?: boolean;
+  justificacion?: string | null;
+}
+
+/** Un docente como lo nombra una clase. */
+export interface PersonaClase {
+  personalId: number;
+  nombre: string;
 }
 
 export interface ProximaClase {
@@ -988,6 +1005,75 @@ export interface ProximaClase {
   horaInicio: string;
   horaFin: string;
   aula: string | null;
+  /** Tanda 2 del 08-nov: suspendida, reemplazada o de reemplazo (ver `ClaseDelDia`). */
+  docente?: PersonaClase | null;
+  titular?: PersonaClase | null;
+  motivoSuspension?: string | null;
+  suspendida?: boolean;
+  reemplazo?: boolean;
+  mia?: boolean;
+}
+
+/**
+ * Una clase de `GET /academia/grupos/:id/clases` (ítem 14) y lo que responden
+ * suspender, reemplazo y justificar. «Lista 12/14»: presentes sobre los
+ * marcados ese día, o sobre los inscritos si todavía no tiene lista.
+ */
+export interface ClaseDelGrupo {
+  sesionId: number;
+  grupoId: number;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  /** PROGRAMADA · DICTADA · SUSPENDIDA */
+  estado: string;
+  motivoSuspension: string | null;
+  materia: { orden: number; nombre: string };
+  docente: PersonaClase | null;
+  titular: PersonaClase | null;
+  reemplazo: boolean;
+  llegadaEn: string | null;
+  atrasoMin: number | null;
+  toleranciaMin: number;
+  conAtraso: boolean;
+  atrasoJustificado: boolean;
+  justificacion: string | null;
+  lista: { pasada: boolean; presentes: number; total: number };
+}
+
+export interface ClasesDelGrupo {
+  grupoId: number;
+  hoy: string;
+  toleranciaMin: number;
+  clases: ClaseDelGrupo[];
+}
+
+/** Una clase de «Ver su horario» (`GET /academia/docentes/:personalId/horario`). */
+export interface ClaseDelHorario {
+  sesionId: number;
+  grupoId: number;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  estado: string;
+  motivoSuspension: string | null;
+  carrera: Ref;
+  grupo: string;
+  materia: { orden: number; nombre: string };
+  aula: string | null;
+  sede: Ref | null;
+  docente: PersonaClase | null;
+  /** La da él (false: es suya, pero ese día la da otro). */
+  mia: boolean;
+  reemplazo: boolean;
+}
+
+export interface HorarioDocente {
+  personalId: number;
+  nombre: string;
+  desde: string;
+  hasta: string;
+  clases: ClaseDelHorario[];
 }
 
 /** Lo que responde `POST /academia/sesiones/:id/llegada` (D7). El docente nunca ve `descuento`: la UI no lo usa. */
@@ -1021,6 +1107,12 @@ export interface ListaDeClase {
     /** Cambio #14. */
     llegadaEn?: string | null;
     atrasoMin?: number | null;
+    /** Tanda 2 del 08-nov: una suspendida se mira pero no se pasa (`editable` false). */
+    motivoSuspension?: string | null;
+    suspendida?: boolean;
+    docente?: PersonaClase | null;
+    titular?: PersonaClase | null;
+    reemplazo?: boolean;
   };
   /** Cambio #14: el grupo, para el título. */
   grupo?: { id: number; nombre: string; carrera: string | Ref; sede: string | Ref; aula: string | null };
@@ -1076,6 +1168,64 @@ export type EstadoPlanilla = "EN_CURSO" | "CERRADA" | "PAGADA";
 /** Cómo se le paga al docente: lo que acepta `POST /academia/planilla/:id/pagar` (contrato, cambio 22). */
 export type MetodoPagoPlanilla = "EFECTIVO" | "TRANSFERENCIA" | "QR" | "TARJETA";
 
+/**
+ * Si el docente dio sus clases del mes (ítem 15 de la revisión del 08-nov).
+ * D2: los atrasos no descuentan, se muestran. D7: la clase que dio un
+ * reemplazo cuenta en el titular como `porReemplazo` (no como faltada).
+ */
+export interface ResumenClasesDocente {
+  /** Las de sus módulos en el mes, sin las suspendidas. */
+  programadas: number;
+  suspendidas: number;
+  /** De las programadas, las que dio un reemplazo (no cambia el pago). */
+  porReemplazo: number;
+  /** De las que le tocaban, las que todavía no llegaron. */
+  porDar: number;
+  conLista: number;
+  conLlegada: number;
+  /** De las que le tocaban y ya pasaron, sin lista. */
+  sinLista: number;
+  /** Clases de otro docente que dio él. */
+  comoReemplazo: number;
+  atrasos: { cantidad: number; minutos: number; justificados: number; minutosJustificados: number };
+}
+
+/** Un grupo que dio en el mes, con días y horario (ítem 4). */
+export interface GrupoDelMesDocente {
+  grupoId: number;
+  materiaId: number;
+  nombre: string;
+  carrera: Ref;
+  materia: { orden: number; nombre: string };
+  dias: number[];
+  horaInicio: string;
+  horaFin: string;
+  clases: number;
+  /** El módulo es de otro docente: sólo reemplazó. */
+  comoReemplazo: boolean;
+}
+
+/** Con qué y quién le pagó la planilla (ítem 3). Sin gasto (líquido ≤ 0), método y quién en null. */
+export interface PagoPlanilla {
+  pagadaEn: string | null;
+  metodoPago: MetodoPagoPlanilla | null;
+  pagadoPor: string | null;
+}
+
+/** Una planilla cerrada del historial de un docente (ítem 17). */
+export interface PagoHistorialDocente extends PagoPlanilla {
+  mes: string;
+  estado: "CERRADA" | "PAGADA";
+  liquido: number;
+  cerradaEn: string;
+}
+
+/** `GET /academia/planilla/:personalId/pagos`. */
+export interface HistorialPagosDocente {
+  docente: { personalId: number; nombre: string; telefono: string | null };
+  pagos: PagoHistorialDocente[];
+}
+
 export interface FilaPlanillaMes {
   personalId: number;
   nombre: string;
@@ -1092,6 +1242,10 @@ export interface FilaPlanillaMes {
   sinPagar?: number;
   /** Bug 4: cuántos ajustes trae el mes. */
   ajustes?: number;
+  /** Ítem 15; un backend anterior no lo manda. */
+  clases?: ResumenClasesDocente;
+  /** Ítem 3: sólo en una pagada. */
+  pago?: PagoPlanilla | null;
 }
 
 export interface PlanillaMes {
@@ -1144,7 +1298,8 @@ export interface LineaPlanilla {
 }
 
 export interface PlanillaDocente {
-  docente: { personalId: number; nombre: string };
+  /** `telefono` (ítem 17) para mandarle el comprobante; un backend anterior no lo manda. */
+  docente: { personalId: number; nombre: string; telefono?: string | null };
   mes: string;
   estado: EstadoPlanilla;
   /** QA 23-oct: `modo` y `monto` (A5) en cada curso; un backend anterior no los manda. */
@@ -1154,7 +1309,25 @@ export interface PlanillaDocente {
   /** Cambio #19: los módulos del mes, también para el docente. */
   cerradaEn?: string | null;
   pagadaEn?: string | null;
-  grupos?: { grupoId: number; nombre: string; carrera: Ref; materia: { orden: number; nombre: string }; sede: Ref; estudiantes: number; pct: number }[];
+  /** Ítem 4: `dias` y el horario; un backend anterior no los manda. */
+  grupos?: {
+    grupoId: number;
+    nombre: string;
+    carrera: Ref;
+    materia: { orden: number; nombre: string };
+    sede: Ref;
+    estudiantes: number;
+    pct: number;
+    dias?: number[];
+    horaInicio?: string;
+    horaFin?: string;
+  }[];
+  /** Ítem 3: con qué se pagó y quién; null si no está pagada. */
+  pago?: PagoPlanilla | null;
+  /** Ítem 15: si dio sus clases del mes. */
+  clases?: ResumenClasesDocente;
+  /** Ítem 4: los grupos que dio en el mes (por las clases, también los que reemplazó). */
+  gruposDelMes?: GrupoDelMesDocente[];
   resumen: {
     cuentan: number;
     postergados: number;
