@@ -209,3 +209,82 @@ describe("inyectarSeo", () => {
     expect(ldDe(html).name).toBe('Bar "El alert(1) "');
   });
 });
+
+describe("el sitio del Profesional en el HTML (PLAN-PAGINA-PRO M1)", () => {
+  const SITIO = {
+    plantilla: "BELLEZA",
+    bloques: [
+      { tipo: "PORTADA", titulo: "Cortes con oficio", subtitulo: null, fotos: [] },
+      {
+        tipo: "QUIENES",
+        titulo: "Quiénes somos",
+        texto: "Empezamos en 2015 con <b>una</b> silla.\nHoy somos cuatro.",
+        desde: 2015,
+        datos: [{ valor: "4", etiqueta: "estilistas" }],
+        foto: null,
+      },
+      {
+        tipo: "PREGUNTAS",
+        titulo: "Preguntas",
+        items: [
+          { pregunta: "¿Tengo que reservar?", respuesta: "Te recomendamos reservar." },
+          { pregunta: "", respuesta: "sin pregunta no va" },
+        ],
+      },
+    ],
+  };
+
+  it("sin sitio no cambia nada", () => {
+    expect(pagina().sitio).toBeNull();
+    expect(pagina({ sitio: null }).sitio).toBeNull();
+  });
+
+  it("valida quiénes somos y las preguntas como el resto: texto plano y lo que tiene forma", () => {
+    const p = pagina({ sitio: SITIO });
+    expect(p.sitio?.quienes).toEqual({
+      titulo: "Quiénes somos",
+      texto: "Empezamos en 2015 con una silla.\nHoy somos cuatro.",
+      desde: 2015,
+      datos: [{ valor: "4", etiqueta: "estilistas" }],
+    });
+    expect(p.sitio?.preguntas).toEqual({
+      titulo: "Preguntas",
+      items: [{ pregunta: "¿Tengo que reservar?", respuesta: "Te recomendamos reservar." }],
+    });
+  });
+
+  it("los recorta a los topes del backend y descarta lo que no tiene forma", () => {
+    const largo = "x".repeat(900);
+    const items = Array.from({ length: 12 }, (_, i) => ({ pregunta: `P${i}`, respuesta: "R" }));
+    const p = pagina({
+      sitio: { plantilla: "COMERCIO", bloques: [{ tipo: "QUIENES", texto: largo, desde: "2015", datos: "no" }, { tipo: "PREGUNTAS", items }] },
+    });
+    expect(p.sitio?.quienes?.texto).toHaveLength(600);
+    expect(p.sitio?.quienes?.desde).toBeNull();
+    expect(p.sitio?.quienes?.datos).toEqual([]);
+    expect(p.sitio?.preguntas?.items).toHaveLength(8);
+    expect(pagina({ sitio: "raro" }).sitio).toBeNull();
+    expect(pagina({ sitio: { bloques: [{ tipo: "GALERIA" }] } }).sitio).toBeNull();
+  });
+
+  it("va escrito en el HTML visible, escapado", () => {
+    const html = inyectarSeo(INDEX, pagina({ sitio: SITIO }), { base: BASE, indexable: true });
+    expect(html).toContain(
+      "<h2>Quiénes somos</h2><p>Desde 2015.</p><p>Empezamos en 2015 con una silla.</p><p>Hoy somos cuatro.</p>",
+    );
+    expect(html).toContain("<li>4 estilistas</li>");
+    expect(html).toContain("<h2>Preguntas</h2><dl><dt>¿Tengo que reservar?</dt><dd>Te recomendamos reservar.</dd></dl>");
+    const raro = inyectarSeo(
+      INDEX,
+      pagina({ sitio: { plantilla: "COMERCIO", bloques: [{ tipo: "PREGUNTAS", items: [{ pregunta: "¿A & B?", respuesta: '"sí"' }] }] } }),
+      { base: BASE, indexable: true },
+    );
+    expect(raro).toContain("<dt>¿A &amp; B?</dt><dd>&quot;sí&quot;</dd>");
+  });
+
+  it("un quiénes somos largo también cuenta como algo que leer", () => {
+    const vacia = { descripcion: null, catalogo: null };
+    expect(esIndexable(pagina(vacia))).toBe(false);
+    expect(esIndexable(pagina({ ...vacia, sitio: SITIO }))).toBe(true);
+  });
+});

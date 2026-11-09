@@ -190,3 +190,37 @@ describe("en link-qa.bamardev.com", () => {
     expect(pedirApi).toHaveBeenCalledWith("https://api.bamardev.com/api/publico/pagina/bellavista");
   });
 });
+
+describe("sitemap.xml", () => {
+  it("en PROD lo arma con las páginas del API, con la caché de borde", async () => {
+    const api = vi.fn(() => json({ paginas: [{ url: "https://link.bamardev.com/bellavista", actualizado: "2026-11-08" }] }));
+    const { ctx, pedirApi, siguiente } = contexto("https://link.bamardev.com/sitemap.xml", { api });
+    const r = await responderLink(ctx);
+    expect(pedirApi).toHaveBeenCalledWith("https://api.bamardev.com/api/publico/paginas/sitemap");
+    expect(siguiente).not.toHaveBeenCalled();
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("application/xml");
+    expect(await r.text()).toContain("<loc>https://link.bamardev.com/bellavista</loc><lastmod>2026-11-08</lastmod>");
+  });
+
+  it("en QA y en la PC no hay sitemap: 404 sin preguntar al API", async () => {
+    for (const url of ["https://link-qa.bamardev.com/sitemap.xml", "http://link.localhost:8788/sitemap.xml"]) {
+      const { ctx, pedirApi } = contexto(url);
+      const r = await responderLink(ctx);
+      expect(r.status).toBe(404);
+      expect(pedirApi).not.toHaveBeenCalled();
+    }
+  });
+
+  it("si el API falla, un 503 que no se cachea (no un sitemap vacío)", async () => {
+    const { ctx } = contexto("https://link.bamardev.com/sitemap.xml", { api: () => json({}, 500) });
+    const r = await responderLink(ctx);
+    expect(r.status).toBe(503);
+    expect(r.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("el robots de PROD lo anuncia", async () => {
+    const r = await responderLink(contexto("https://link.bamardev.com/robots.txt").ctx);
+    expect(await r.text()).toContain("Sitemap: https://link.bamardev.com/sitemap.xml");
+  });
+});

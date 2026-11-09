@@ -12,8 +12,16 @@
  * eso pase con los archivos del build, `public/_routes.json` los deja afuera
  * de las Functions.
  */
-import { destinoLink, esHostLink, RAIZ_LINK, ROBOTS_LINK } from "../lib/pagina/link";
-import { cabecerasSeguridad, esHostIndexable, inyectarNoDisponible, pedirApiConCache, responder, type Contexto } from "./og";
+import { destinoLink, esHostLink, paginasDeSitemap, RAIZ_LINK, robotsLink, sitemapXml } from "../lib/pagina/link";
+import {
+  baseApi,
+  cabecerasSeguridad,
+  esHostIndexable,
+  inyectarNoDisponible,
+  pedirApiConCache,
+  responder,
+  type Contexto,
+} from "./og";
 
 /**
  * `robots.txt` de QA, de las copias de Pages y de la PC: nada se indexa
@@ -54,7 +62,9 @@ export async function responderLink(ctx: ContextoLink): Promise<Response> {
       // Como la raíz del acortador (`go.bamardev.com/`, bloque de Caddy).
       return redirigir(RAIZ_LINK, 302);
     case "robots":
-      return textoPlano(ROBOTS_LINK);
+      return textoPlano(robotsLink(url.hostname));
+    case "sitemap":
+      return responderSitemap(ctx, url);
     case "vieja":
       // `link…/p/<sub>` pegado a mano o reescrito: a la forma corta, en el
       // mismo host (la dirección vieja sigue viva en `app…`).
@@ -76,6 +86,35 @@ export async function responderLink(ctx: ContextoLink): Promise<Response> {
       cabeceras.delete("content-length");
       return new Response(inyectarNoDisponible(await index.text()), { status: 404, headers: cabeceras });
     }
+  }
+}
+
+/**
+ * `link.bamardev.com/sitemap.xml` (PLAN-PAGINA-PRO M0): las páginas que se
+ * ven hoy, de `GET /publico/paginas/sitemap`, con la caché de borde de
+ * siempre. Fuera de PROD no hay sitemap (404): QA y las copias de Pages no
+ * se indexan. Si el API falla, un 503 corto: Google vuelve a pedirlo, y un
+ * sitemap vacío le diría que las páginas ya no existen.
+ */
+async function responderSitemap(ctx: ContextoLink, url: URL): Promise<Response> {
+  if (!esHostIndexable(url.hostname)) {
+    return new Response("No hay sitemap en este ambiente.\n", {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8", "X-Robots-Tag": "noindex, nofollow" },
+    });
+  }
+  try {
+    const r = await ctx.pedirApi(`${baseApi(ctx.env, url.hostname)}/publico/paginas/sitemap`);
+    if (!r.ok) throw new Error(`API ${r.status}`);
+    const paginas = paginasDeSitemap(await r.json(), url.hostname.toLowerCase());
+    return new Response(sitemapXml(paginas), {
+      headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=600" },
+    });
+  } catch {
+    return new Response("El sitemap no está disponible ahora. Probá en un rato.\n", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8", "retry-after": "600", "cache-control": "no-store" },
+    });
   }
 }
 

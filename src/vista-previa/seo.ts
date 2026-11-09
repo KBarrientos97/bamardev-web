@@ -59,6 +59,16 @@ export interface EnlaceSeo {
   url: string;
 }
 
+/**
+ * Lo escrito del sitio del Profesional (PLAN-PAGINA-PRO M1) que también va al
+ * HTML: "Quiénes somos" y las preguntas frecuentes. Sólo si el bloque está en
+ * la página (el backend ya manda sólo los prendidos y con contenido).
+ */
+export interface SitioSeo {
+  quienes: { titulo: string; texto: string; desde: number | null; datos: { valor: string; etiqueta: string }[] } | null;
+  preguntas: { titulo: string; items: { pregunta: string; respuesta: string }[] } | null;
+}
+
 /** Lo que se usa de la página pública (`PaginaPublica` del backend). */
 export interface PaginaSeo {
   subdominio: string;
@@ -74,6 +84,8 @@ export interface PaginaSeo {
   botones: EnlaceSeo[];
   sucursales: SucursalSeo[];
   catalogo: { titulo: string; items: ItemSeo[] } | null;
+  /** null = la página de siempre, o un sitio sin esos bloques. */
+  sitio: SitioSeo | null;
   og: { titulo: string; descripcion: string; imagen: string | null; url: string };
 }
 
@@ -133,6 +145,43 @@ function aEnlaces(v: unknown): EnlaceSeo[] {
     .filter((e): e is EnlaceSeo => !!e.etiqueta && !!e.url);
 }
 
+/** Los topes del backend (`pagina/sitio/sitio.ts`): lo que venga más largo se recorta. */
+const MAX_PREGUNTAS = 8;
+
+/**
+ * "Quiénes somos" y las preguntas del sitio, validados como el resto: texto
+ * plano, recortado a los topes del backend. Un sitio sin ninguno de los dos
+ * es null.
+ */
+export function aSitioSeo(v: unknown): SitioSeo | null {
+  const bloques = lista(objeto(v).bloques).map(objeto);
+  const q = bloques.find((b) => b.tipo === "QUIENES");
+  const f = bloques.find((b) => b.tipo === "PREGUNTAS");
+  // Los párrafos del "Quiénes somos" se separan con saltos: se conservan.
+  const parrafos = typeof q?.texto === "string"
+    ? q.texto
+        .split(/\n+/)
+        .map((l) => plano(l, 600))
+        .filter(Boolean)
+        .join("\n")
+        .slice(0, 600)
+    : "";
+  const desde = typeof q?.desde === "number" && Number.isInteger(q.desde) && q.desde >= 1900 && q.desde <= 2100 ? q.desde : null;
+  const datos = lista(q?.datos)
+    .map(objeto)
+    .map((d) => ({ valor: plano(d.valor, 12), etiqueta: plano(d.etiqueta, 30) }))
+    .filter((d) => d.valor && d.etiqueta)
+    .slice(0, 3);
+  const quienes = q && (parrafos || datos.length) ? { titulo: plano(q.titulo, 60) || "Quiénes somos", texto: parrafos, desde, datos } : null;
+  const items = lista(f?.items)
+    .map(objeto)
+    .map((i) => ({ pregunta: plano(i.pregunta, 140), respuesta: plano(i.respuesta, 500) }))
+    .filter((i) => i.pregunta && i.respuesta)
+    .slice(0, MAX_PREGUNTAS);
+  const preguntas = items.length ? { titulo: plano(f?.titulo, 60) || "Preguntas frecuentes", items } : null;
+  return quienes || preguntas ? { quienes, preguntas } : null;
+}
+
 /**
  * La respuesta de `GET /publico/pagina/:sub`, validada. Lo que no tiene la
  * forma esperada es null (y se sirve sin este HTML, como antes).
@@ -182,6 +231,7 @@ export function aPaginaSeo(cuerpo: unknown): PaginaSeo | null {
       }))
       .filter((s) => !!s.nombre),
     catalogo: items.length ? { titulo: plano(catalogo.titulo, 80) || "Catálogo", items } : null,
+    sitio: aSitioSeo(c.sitio),
     og: {
       titulo: plano(og.titulo, 120) || nombre,
       descripcion: plano(og.descripcion, 300),
@@ -334,7 +384,9 @@ export function jsonLd(p: PaginaSeo, base: string): Record<string, unknown> {
 export function esIndexable(p: PaginaSeo): boolean {
   const conLugar = p.sucursales.some((s) => s.direccion || s.ubicacion);
   const conHorario = p.sucursales.some((s) => s.horarioSemanal?.length || s.horario);
-  const conContenido = (p.catalogo?.items.length ?? 0) >= 3 || (p.descripcion?.length ?? 0) >= 40;
+  // El "Quiénes somos" del sitio también es algo que leer.
+  const conContenido =
+    (p.catalogo?.items.length ?? 0) >= 3 || (p.descripcion?.length ?? 0) >= 40 || (p.sitio?.quienes?.texto.length ?? 0) >= 40;
   return conLugar && conHorario && conContenido;
 }
 
@@ -387,6 +439,24 @@ export function htmlVisible(p: PaginaSeo, base: string): string {
       partes.push(`<li><strong>${e(i.titulo)}</strong>${e(precio)}${detalle}</li>`);
     }
     partes.push("</ul></section>");
+  }
+
+  const quienes = p.sitio?.quienes;
+  if (quienes) {
+    partes.push(`<section><h2>${e(quienes.titulo)}</h2>`);
+    if (quienes.desde) partes.push(`<p>Desde ${quienes.desde}.</p>`);
+    for (const l of quienes.texto.split("\n").filter(Boolean)) partes.push(`<p>${e(l)}</p>`);
+    if (quienes.datos.length) {
+      partes.push(`<ul>${quienes.datos.map((d) => `<li>${e(d.valor)} ${e(d.etiqueta)}</li>`).join("")}</ul>`);
+    }
+    partes.push("</section>");
+  }
+
+  const preguntas = p.sitio?.preguntas;
+  if (preguntas) {
+    partes.push(`<section><h2>${e(preguntas.titulo)}</h2><dl>`);
+    for (const i of preguntas.items) partes.push(`<dt>${e(i.pregunta)}</dt><dd>${e(i.respuesta)}</dd>`);
+    partes.push("</dl></section>");
   }
 
   const enlaces = [...p.botones, ...p.redes];
