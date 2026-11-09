@@ -10,6 +10,8 @@ import type {
   Aula,
   AulaInput,
   Calendario,
+  ClaseDelGrupo,
+  ClasesDelGrupo,
   Carrera,
   CarreraInput,
   CarreraSimpleInput,
@@ -31,6 +33,7 @@ import type {
   GrupoInput,
   GrupoResumen,
   HistorialPagosDocente,
+  HorarioDocente,
   HoyAcademia,
   InscripcionDetalle,
   InscripcionInput,
@@ -298,6 +301,29 @@ export const apiAcademia = {
   borrarLlegada: (sesionId: number) =>
     request<LlegadaRegistrada>(`/academia/sesiones/${sesionId}/llegada`, { method: "DELETE" }),
 
+  // ── Una clase puntual (tanda 2 de la revisión del 08-nov) ─────────────────
+  /** Ítem 14: todas las clases del grupo, con quién la da, la llegada y la lista. */
+  clasesDelGrupo: (grupoId: number) => request<ClasesDelGrupo>(`/academia/grupos/${grupoId}/clases`),
+  /** «No vino → Suspender» (academia.grupos). 409 CLASE_CON_LISTA / CLASE_CON_LLEGADA si ya se dio. */
+  suspenderClase: (sesionId: number, motivo: string) =>
+    request<ClaseDelGrupo>(`/academia/sesiones/${sesionId}/suspender`, { method: "POST", body: json({ motivo }) }),
+  quitarSuspension: (sesionId: number) =>
+    request<ClaseDelGrupo>(`/academia/sesiones/${sesionId}/suspension`, { method: "DELETE" }),
+  /** «No vino → Poner reemplazo» por ese día (D7: no cambia el pago). Elegir al titular lo quita. */
+  ponerReemplazo: (sesionId: number, personalId: number) =>
+    request<ClaseDelGrupo>(`/academia/sesiones/${sesionId}/reemplazo`, { method: "PUT", body: json({ personalId }) }),
+  quitarReemplazo: (sesionId: number) =>
+    request<ClaseDelGrupo>(`/academia/sesiones/${sesionId}/reemplazo`, { method: "DELETE" }),
+  /** Justificar el atraso del docente (asistencia.justificar). 400 SIN_ATRASO si llegó a horario. */
+  justificarAtraso: (sesionId: number, justificacion: string) =>
+    request<ClaseDelGrupo>(`/academia/sesiones/${sesionId}/justificar`, { method: "POST", body: json({ justificacion }) }),
+  quitarJustificacion: (sesionId: number) =>
+    request<ClaseDelGrupo>(`/academia/sesiones/${sesionId}/justificacion`, { method: "DELETE" }),
+  /** «Ver su horario»: sus clases de hoy y de las dos semanas que vienen. */
+  horarioDocente: (personalId: number) => request<HorarioDocente>(`/academia/docentes/${personalId}/horario`),
+  /** D9: ¿quien entra dicta clases? (el dueño que también enseña tiene «Mis clases»). */
+  soyDocente: () => request<{ dicta: boolean; personalId: number | null }>("/academia/soy-docente"),
+
   // ── Notas (F1b) ────────────────────────────────────────────────────────────
   notas: (grupoId: number, materiaId?: number) =>
     request<NotasDelGrupo>(`/academia/grupos/${grupoId}/notas${qs({ materiaId })}`),
@@ -391,6 +417,14 @@ export const CODIGOS_ACADEMIA = {
   LLEGADA_MUY_TEMPRANO: "LLEGADA_MUY_TEMPRANO",
   /** 400 (ronda 1, P4): la llegada propia sólo se marca desde 3 horas antes y hasta que termina la clase. */
   LLEGADA_FUERA_DE_HORARIO: "LLEGADA_FUERA_DE_HORARIO",
+  // ── Tanda 2 del 08-nov ──
+  /** 409: la clase está suspendida (no se pasa lista ni lleva reemplazo). */
+  CLASE_SUSPENDIDA: "CLASE_SUSPENDIDA",
+  /** 409: la clase ya tiene lista o llegada: se dio, no se suspende. */
+  CLASE_CON_LISTA: "CLASE_CON_LISTA",
+  CLASE_CON_LLEGADA: "CLASE_CON_LLEGADA",
+  /** 400: la llegada fue a horario (o no está): no hay atraso que justificar. */
+  SIN_ATRASO: "SIN_ATRASO",
   // ── Sedes y franjas (BACK-6) ──
   /** 409: el plan no incluye más sedes; el mensaje ya dice cómo ampliarlo. */
   CUPO_SEDES: "CUPO_SEDES",

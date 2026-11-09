@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Calendario } from "../../lib/academia/tipos";
+import type { Calendario, ClaseDelHorario } from "../../lib/academia/tipos";
 import type { Persona } from "../../lib/personal";
 
 /**
@@ -34,7 +34,7 @@ vi.mock("../../lib/personal", () => ({
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { calendario: vi.fn() } };
+  return { ...real, apiAcademia: { calendario: vi.fn(), horarioDocente: vi.fn() } };
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
@@ -98,6 +98,25 @@ const CALENDARIO: Calendario = {
   ],
 };
 
+const claseHorario = (extra: Partial<ClaseDelHorario>): ClaseDelHorario => ({
+  sesionId: 1,
+  grupoId: 8,
+  fecha: "2026-11-09",
+  horaInicio: "19:00",
+  horaFin: "21:00",
+  estado: "PROGRAMADA",
+  motivoSuspension: null,
+  carrera: { id: 3, nombre: "Barbería" },
+  grupo: "L-M-V 19:00–21:00",
+  materia: { orden: 2, nombre: "Degradados" },
+  aula: "Aula 2",
+  sede: { id: 1, nombre: "Central" },
+  docente: { personalId: 21, nombre: "Lucía Fernández" },
+  mia: true,
+  reemplazo: false,
+  ...extra,
+});
+
 let abrir: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.clearAllMocks();
@@ -152,8 +171,48 @@ describe("Docentes", () => {
     expect(within(pedro).queryByRole("button", { name: /WhatsApp/ })).not.toBeInTheDocument();
     // Darle acceso es la ficha de Personal, ya abierta.
     expect(within(pedro).getByRole("link", { name: /Darle acceso/ })).toHaveAttribute("href", "/personal?persona=22");
-    // No hay «Ver su horario»: el Calendario no filtra por docente.
-    expect(screen.queryByText(/Ver su horario/)).not.toBeInTheDocument();
+    // Tanda 2 del 08-nov: «Ver su horario» y «Pagos» en cada tarjeta.
+    expect(within(pedro).getByRole("button", { name: /Ver su horario/ })).toBeInTheDocument();
+    expect(within(pedro).getByRole("link", { name: /Pagos/ })).toHaveAttribute("href", "/academia/planilla?docente=22");
+  });
+
+  it("«Ver su horario» muestra sus clases por día, con las suspendidas y las que da otro marcadas", async () => {
+    vi.mocked(apiAcademia.horarioDocente).mockResolvedValue({
+      personalId: 21,
+      nombre: "Lucía Fernández",
+      desde: "2026-11-09",
+      hasta: "2026-11-22",
+      clases: [
+        claseHorario({ sesionId: 1, fecha: "2026-11-09" }),
+        claseHorario({ sesionId: 2, fecha: "2026-11-11", estado: "SUSPENDIDA", motivoSuspension: "Feriado" }),
+        claseHorario({ sesionId: 3, fecha: "2026-11-13", mia: false, reemplazo: true, docente: { personalId: 22, nombre: "Pedro Gil" } }),
+      ],
+    });
+    await montar();
+    const lucia = screen.getByRole("listitem", { name: "Lucía Fernández" });
+    await act(async () => {
+      fireEvent.click(within(lucia).getByRole("button", { name: /Ver su horario/ }));
+    });
+    expect(apiAcademia.horarioDocente).toHaveBeenCalledWith(21);
+    const horario = within(lucia).getByLabelText("Horario de Lucía Fernández");
+    expect(horario).toHaveTextContent("Lun 09-nov");
+    expect(horario).toHaveTextContent("19:00–21:00");
+    expect(horario).toHaveTextContent("Barbería · L-M-V 19:00–21:00 · M2 Degradados · Aula 2");
+    expect(horario).toHaveTextContent("suspendida");
+    expect(horario).toHaveTextContent("la da Pedro Gil");
+    // Se cierra con el mismo botón.
+    fireEvent.click(within(lucia).getByRole("button", { name: /Ocultar horario/ }));
+    expect(within(lucia).queryByLabelText("Horario de Lucía Fernández")).not.toBeInTheDocument();
+  });
+
+  it("sin clases en dos semanas lo dice", async () => {
+    vi.mocked(apiAcademia.horarioDocente).mockResolvedValue({ personalId: 22, nombre: "Pedro Gil", desde: "2026-11-09", hasta: "2026-11-22", clases: [] });
+    await montar();
+    const pedro = screen.getByRole("listitem", { name: "Pedro Gil" });
+    await act(async () => {
+      fireEvent.click(within(pedro).getByRole("button", { name: /Ver su horario/ }));
+    });
+    expect(pedro).toHaveTextContent("Pedro Gil no tiene clases en las próximas dos semanas.");
   });
 
   it("«Mandarle el acceso por WhatsApp» abre wa.me con el enlace al login (negocio y usuario puestos), sin la clave", async () => {

@@ -24,10 +24,26 @@ vi.mock("../../store/AuthContext", async () => {
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { hoy: vi.fn(), llegada: vi.fn(), borrarLlegada: vi.fn() } };
+  return {
+    ...real,
+    apiAcademia: {
+      hoy: vi.fn(),
+      llegada: vi.fn(),
+      borrarLlegada: vi.fn(),
+      // Tanda 2 del 08-nov.
+      suspenderClase: vi.fn(),
+      quitarSuspension: vi.fn(),
+      ponerReemplazo: vi.fn(),
+      quitarReemplazo: vi.fn(),
+      justificarAtraso: vi.fn(),
+      quitarJustificacion: vi.fn(),
+      docentes: vi.fn(),
+    },
+  };
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { ApiError } from "../../lib/api";
 import ClasesDeHoy from "./ClasesDeHoy";
 
 const clase = (extra: Partial<ClaseDelDia>): ClaseDelDia => ({
@@ -208,5 +224,143 @@ describe("Clases de hoy (arriba del Calendario)", () => {
     vi.mocked(apiAcademia.hoy).mockResolvedValue({ ...HOY, clases: [] });
     const { container } = await montar();
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+/** La administración: arma grupos (No vino) y justifica atrasos. */
+const ADMIN = ["academia.ver", "academia.grupos", "asistencia.registrar", "asistencia.llegadas", "asistencia.justificar"];
+const filasDeHoy = () => within(screen.getByRole("region", { name: /Clases de hoy/ })).getAllByRole("listitem");
+
+describe("Clases de hoy · tanda 2 del 08-nov", () => {
+  it("«No vino» es de quien arma grupos: la recepción no lo ve", async () => {
+    await montar();
+    expect(screen.queryByRole("button", { name: /No vino/ })).not.toBeInTheDocument();
+  });
+
+  it("«No vino → Suspender» pide el motivo, lo manda y recarga", async () => {
+    quien.permisos = ADMIN;
+    vi.mocked(apiAcademia.suspenderClase).mockResolvedValue({} as never);
+    await montar();
+    // La de las 07:00 ya tiene llegada y lista: se dio, no se ofrece.
+    expect(within(filasDeHoy()[0]).queryByRole("button", { name: /No vino/ })).not.toBeInTheDocument();
+    fireEvent.click(within(filasDeHoy()[1]).getByRole("button", { name: "No vino el docente de las 09:00" }));
+    const dialogo = screen.getByRole("dialog", { name: "No vino Marco Rojas" });
+    fireEvent.click(within(dialogo).getByRole("button", { name: /No hay clase ese día/ }));
+    const confirmar = () => within(dialogo).getByRole("button", { name: "Suspender la clase" });
+    // Sin motivo no se manda.
+    fireEvent.click(confirmar());
+    expect(apiAcademia.suspenderClase).not.toHaveBeenCalled();
+    expect(dialogo).toHaveTextContent("Escribí el motivo");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Feriado" }));
+    await act(async () => {
+      fireEvent.click(confirmar());
+    });
+    expect(apiAcademia.suspenderClase).toHaveBeenCalledWith(2, "Feriado");
+    expect(apiAcademia.hoy).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("«No vino → Poner reemplazo» ofrece los docentes de la sede, menos el que no vino", async () => {
+    quien.permisos = ADMIN;
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([
+      { personalId: 9, nombre: "Marco Rojas", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true },
+      { personalId: 10, nombre: "Ana Paz", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true },
+      { personalId: 11, nombre: "Otra Sede", sedes: [{ id: 2, nombre: "Norte" }], pctDocente: null, retencionPct: null, tieneLogin: false },
+    ]);
+    vi.mocked(apiAcademia.ponerReemplazo).mockResolvedValue({} as never);
+    vi.mocked(apiAcademia.hoy).mockResolvedValue({ ...HOY, sede: 1 });
+    await montar();
+    fireEvent.click(within(filasDeHoy()[1]).getByRole("button", { name: /No vino/ }));
+    const dialogo = screen.getByRole("dialog");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: /Otro docente da esta clase/ }));
+    });
+    expect(dialogo).toHaveTextContent("El pago no cambia");
+    const select = within(dialogo).getByRole("combobox", { name: "Docente de reemplazo" });
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Elegí un docente…", "Ana Paz"]);
+    fireEvent.change(select, { target: { value: "10" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Poner reemplazo" }));
+    });
+    expect(apiAcademia.ponerReemplazo).toHaveBeenCalledWith(2, 10);
+  });
+
+  it("una suspendida sigue en la lista, marcada, sin llegada ni lista; se deshace con confirmación", async () => {
+    quien.permisos = ADMIN;
+    vi.mocked(apiAcademia.hoy).mockResolvedValue({
+      ...HOY,
+      clases: [clase({ sesionId: 2, estado: "SUSPENDIDA", suspendida: true, motivoSuspension: "Feriado" })],
+    });
+    vi.mocked(apiAcademia.quitarSuspension).mockResolvedValue({} as never);
+    await montar();
+    const [fila] = filasDeHoy();
+    expect(fila).toHaveTextContent("suspendida");
+    expect(fila).toHaveTextContent("Suspendida · Feriado");
+    expect(fila).not.toHaveTextContent("Todavía no llegó");
+    expect(within(fila).queryByRole("button", { name: "Marcar llegada" })).not.toBeInTheDocument();
+    expect(within(fila).queryByRole("link", { name: /Pasar lista/ })).not.toBeInTheDocument();
+    fireEvent.click(within(fila).getByRole("button", { name: "Deshacer la suspensión de las 09:00" }));
+    const dialogo = screen.getByRole("dialog", { name: "Deshacer la suspensión" });
+    expect(dialogo).toHaveTextContent("Se le avisa al docente");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Sí, la clase va" }));
+    });
+    expect(apiAcademia.quitarSuspension).toHaveBeenCalledWith(2);
+  });
+
+  it("el reemplazo se nombra y se quita", async () => {
+    quien.permisos = ADMIN;
+    vi.mocked(apiAcademia.hoy).mockResolvedValue({
+      ...HOY,
+      clases: [clase({ sesionId: 2, docente: { personalId: 10, nombre: "Ana Paz" }, titular: { personalId: 9, nombre: "Marco Rojas" }, reemplazo: true })],
+    });
+    await montar();
+    const [fila] = filasDeHoy();
+    expect(fila).toHaveTextContent("Ana Paz");
+    expect(fila).toHaveTextContent("Reemplazo de Marco Rojas");
+    expect(within(fila).getByRole("button", { name: "Quitar el reemplazo de las 09:00" })).toBeInTheDocument();
+  });
+
+  it("«Justificar» un atraso de verdad, con su motivo; el justificado se ve", async () => {
+    quien.permisos = ADMIN;
+    vi.mocked(apiAcademia.hoy).mockResolvedValue({
+      ...HOY,
+      clases: [
+        clase({ sesionId: 1, llegadaEn: "2026-10-16T13:14:00.000Z", atrasoMin: 14, conAtraso: true, toleranciaMin: 10 }),
+        clase({ sesionId: 2, horaInicio: "10:00", llegadaEn: "2026-10-16T14:03:00.000Z", atrasoMin: 3, conAtraso: false, toleranciaMin: 10 }),
+        clase({ sesionId: 3, horaInicio: "11:00", llegadaEn: "2026-10-16T15:20:00.000Z", atrasoMin: 20, conAtraso: true, atrasoJustificado: true, justificacion: "Trancadera" }),
+      ],
+    });
+    vi.mocked(apiAcademia.justificarAtraso).mockResolvedValue({} as never);
+    await montar();
+    const filas = filasDeHoy();
+    // A horario no hay nada que justificar.
+    expect(within(filas[1]).queryByRole("button", { name: /Justificar/ })).not.toBeInTheDocument();
+    expect(filas[2]).toHaveTextContent("Atraso justificado · Trancadera");
+    expect(within(filas[2]).getByRole("button", { name: /Quitar la justificación/ })).toBeInTheDocument();
+    fireEvent.click(within(filas[0]).getByRole("button", { name: "Justificar el atraso de las 09:00" }));
+    const dialogo = screen.getByRole("dialog", { name: "Justificar el atraso" });
+    fireEvent.change(within(dialogo).getByRole("textbox"), { target: { value: "Avisó por WhatsApp" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Justificar" }));
+    });
+    expect(apiAcademia.justificarAtraso).toHaveBeenCalledWith(1, "Avisó por WhatsApp");
+  });
+
+  it("la recepción confirma la llegada a más de una hora de la clase (decisión del dueño)", async () => {
+    vi.mocked(apiAcademia.llegada)
+      .mockRejectedValueOnce(new ApiError("Faltan 320 minutos", 409, { codigo: "LLEGADA_MUY_TEMPRANO", minutosAntes: 320 }))
+      .mockResolvedValueOnce({} as never);
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(filasDeHoy()[2]).getByRole("button", { name: "Marcar llegada" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Todavía falta para la clase" });
+    expect(dialogo).toHaveTextContent("Faltan 5 h 20 min para la clase de las 15:00. ¿Seguro que es esta clase?");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Sí, marcar la llegada" }));
+    });
+    expect(apiAcademia.llegada).toHaveBeenLastCalledWith(3, true);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

@@ -975,6 +975,23 @@ export interface ClaseDelDia {
   /** Cambio #13. */
   fecha?: string;
   estado?: string;
+  /** Tanda 2 del 08-nov (ítem 16): lo que cambió en la clase. Un backend anterior no lo manda. */
+  motivoSuspension?: string | null;
+  suspendida?: boolean;
+  /** El docente del módulo; `docente` es quien la da ese día. */
+  titular?: PersonaClase | null;
+  /** Ese día la da otro, no el del módulo. */
+  reemplazo?: boolean;
+  /** Sólo en Mis clases: la da quien mira (el titular ve la suya reemplazada con false). */
+  mia?: boolean;
+  atrasoJustificado?: boolean;
+  justificacion?: string | null;
+}
+
+/** Un docente como lo nombra una clase. */
+export interface PersonaClase {
+  personalId: number;
+  nombre: string;
 }
 
 export interface ProximaClase {
@@ -988,6 +1005,75 @@ export interface ProximaClase {
   horaInicio: string;
   horaFin: string;
   aula: string | null;
+  /** Tanda 2 del 08-nov: suspendida, reemplazada o de reemplazo (ver `ClaseDelDia`). */
+  docente?: PersonaClase | null;
+  titular?: PersonaClase | null;
+  motivoSuspension?: string | null;
+  suspendida?: boolean;
+  reemplazo?: boolean;
+  mia?: boolean;
+}
+
+/**
+ * Una clase de `GET /academia/grupos/:id/clases` (ítem 14) y lo que responden
+ * suspender, reemplazo y justificar. «Lista 12/14»: presentes sobre los
+ * marcados ese día, o sobre los inscritos si todavía no tiene lista.
+ */
+export interface ClaseDelGrupo {
+  sesionId: number;
+  grupoId: number;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  /** PROGRAMADA · DICTADA · SUSPENDIDA */
+  estado: string;
+  motivoSuspension: string | null;
+  materia: { orden: number; nombre: string };
+  docente: PersonaClase | null;
+  titular: PersonaClase | null;
+  reemplazo: boolean;
+  llegadaEn: string | null;
+  atrasoMin: number | null;
+  toleranciaMin: number;
+  conAtraso: boolean;
+  atrasoJustificado: boolean;
+  justificacion: string | null;
+  lista: { pasada: boolean; presentes: number; total: number };
+}
+
+export interface ClasesDelGrupo {
+  grupoId: number;
+  hoy: string;
+  toleranciaMin: number;
+  clases: ClaseDelGrupo[];
+}
+
+/** Una clase de «Ver su horario» (`GET /academia/docentes/:personalId/horario`). */
+export interface ClaseDelHorario {
+  sesionId: number;
+  grupoId: number;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  estado: string;
+  motivoSuspension: string | null;
+  carrera: Ref;
+  grupo: string;
+  materia: { orden: number; nombre: string };
+  aula: string | null;
+  sede: Ref | null;
+  docente: PersonaClase | null;
+  /** La da él (false: es suya, pero ese día la da otro). */
+  mia: boolean;
+  reemplazo: boolean;
+}
+
+export interface HorarioDocente {
+  personalId: number;
+  nombre: string;
+  desde: string;
+  hasta: string;
+  clases: ClaseDelHorario[];
 }
 
 /** Lo que responde `POST /academia/sesiones/:id/llegada` (D7). El docente nunca ve `descuento`: la UI no lo usa. */
@@ -1021,6 +1107,12 @@ export interface ListaDeClase {
     /** Cambio #14. */
     llegadaEn?: string | null;
     atrasoMin?: number | null;
+    /** Tanda 2 del 08-nov: una suspendida se mira pero no se pasa (`editable` false). */
+    motivoSuspension?: string | null;
+    suspendida?: boolean;
+    docente?: PersonaClase | null;
+    titular?: PersonaClase | null;
+    reemplazo?: boolean;
   };
   /** Cambio #14: el grupo, para el título. */
   grupo?: { id: number; nombre: string; carrera: string | Ref; sede: string | Ref; aula: string | null };
