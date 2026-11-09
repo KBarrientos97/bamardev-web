@@ -10,6 +10,7 @@ import {
   rutaApi,
   type Contexto,
 } from "./og";
+import { paginaDePrueba } from "./paginaDePrueba";
 
 /** B06: la vista previa de `/p/<sub>` y `/r/<sub>` (Pages Function). */
 
@@ -97,18 +98,15 @@ describe("inyectarOg", () => {
 describe("responder", () => {
   it("a WhatsApp le da la página con su Open Graph", async () => {
     const { ctx, pedirApi } = contexto("/p/bellavista", WHATSAPP, () =>
-      json({
-        titulo: "Salón Bella Vista",
-        descripcion: "Peluquería · Reservas",
-        imagen: "/publico/pagina/bellavista/imagen/PORTADA?v=9",
-        url: "https://app-qa.bamardev.com/p/bellavista",
-      }),
+      json(paginaDePrueba("https://app-qa.bamardev.com/p")),
     );
     const r = await responder(ctx);
-    expect(pedirApi).toHaveBeenCalledWith("https://api-qa.bamardev.com/api/publico/pagina/bellavista/og");
+    // La portada se pide entera: de ahí sale también el HTML para buscadores.
+    expect(pedirApi).toHaveBeenCalledWith("https://api-qa.bamardev.com/api/publico/pagina/bellavista");
     const html = await r.text();
     expect(r.status).toBe(200);
-    expect(html).toContain("<title>Salón Bella Vista</title>");
+    expect(html).toContain("<title>Salón Bella Vista · Peluquería</title>");
+    expect(html).toContain('<meta property="og:title" content="Salón Bella Vista" />');
     // La imagen relativa del API sale absoluta: WhatsApp no la resuelve.
     expect(html).toContain(
       'content="https://api-qa.bamardev.com/api/publico/pagina/bellavista/imagen/PORTADA?v=9"',
@@ -116,6 +114,48 @@ describe("responder", () => {
     expect(r.headers.get("etag")).toBeNull();
     expect(r.headers.get("x-frame-options")).toBe("DENY");
     expect(r.headers.get("vary")).toContain("User-Agent");
+    // app-qa no se indexa nunca.
+    expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    expect(html).toContain('<meta name="robots" content="noindex, follow" />');
+  });
+
+  it("si la respuesta de la página no sirve para el HTML, igual va su Open Graph", async () => {
+    const { ctx } = contexto("/p/bellavista", WHATSAPP, () =>
+      json({ og: { titulo: "Salón Bella Vista", descripcion: "x", imagen: null, url: "https://app-qa.bamardev.com/p/bellavista" } }),
+    );
+    const html = await (await responder(ctx)).text();
+    expect(html).toContain("<title>Salón Bella Vista</title>");
+    expect(html).toContain('<div id="root"></div>');
+  });
+
+  it("los lectores de IA que antes no se reconocían reciben la página escrita", async () => {
+    for (const ua of [
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-User/1.0; +Claude-User@anthropic.com)",
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)",
+      "Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)",
+      "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)",
+    ]) {
+      const { ctx } = contexto("/p/bellavista", ua, () => json(paginaDePrueba()));
+      const html = await (await responder(ctx)).text();
+      expect(html).toContain("<h1>Salón Bella Vista</h1>");
+    }
+  });
+
+  it("en PROD la página completa se indexa; una casi vacía, no", async () => {
+    const prod = (cuerpo: unknown) => {
+      const ctx: Contexto = {
+        request: new Request("https://app.bamardev.com/p/bellavista", { headers: { "user-agent": "Googlebot/2.1" } }),
+        traerIndex: async () => new Response(INDEX, { status: 200, headers: { "content-type": "text/html" } }),
+        pedirApi: () => json(cuerpo),
+      };
+      return responder(ctx);
+    };
+    const completa = await prod(paginaDePrueba("https://link.bamardev.com"));
+    expect(completa.headers.get("x-robots-tag")).toBeNull();
+    expect(await completa.text()).toContain('content="index, follow, max-image-preview:large"');
+    const vacia = await prod(paginaDePrueba("https://link.bamardev.com", { sucursales: [], catalogo: null, descripcion: null }));
+    expect(await vacia.text()).toContain('<meta name="robots" content="noindex, follow" />');
   });
 
   it("la reserva: su propio Open Graph y sigue sin indexarse", async () => {

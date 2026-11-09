@@ -13,7 +13,21 @@
  * de las Functions.
  */
 import { destinoLink, esHostLink, RAIZ_LINK, ROBOTS_LINK } from "../lib/pagina/link";
-import { cabecerasSeguridad, inyectarNoDisponible, pedirApiConCache, responder, type Contexto } from "./og";
+import { cabecerasSeguridad, esHostIndexable, inyectarNoDisponible, pedirApiConCache, responder, type Contexto } from "./og";
+
+/**
+ * `robots.txt` de QA, de las copias de Pages y de la PC: nada se indexa
+ * (PLAN-PAGINA-PRO M0). Antes `app-qa` dejaba indexar `/p/` con datos de
+ * prueba (IDEAS/7 §1).
+ */
+export const ROBOTS_PRUEBA = `User-agent: *
+Disallow: /
+`;
+
+const textoPlano = (cuerpo: string) =>
+  new Response(cuerpo, {
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },
+  });
 
 export interface ContextoLink extends Omit<Contexto, "ruta"> {
   /** Lo que habría respondido Pages sin este middleware. */
@@ -26,6 +40,8 @@ const redirigir = (destino: string, status: 301 | 302) =>
 /** Lo que responde el middleware a cualquier pedido. */
 export async function responderLink(ctx: ContextoLink): Promise<Response> {
   const url = new URL(ctx.request.url);
+  // Va antes que todo: también en `app-qa`, que no es host link.
+  if (url.pathname === "/robots.txt" && !esHostIndexable(url.hostname)) return textoPlano(ROBOTS_PRUEBA);
   if (!esHostLink(url.hostname)) return ctx.siguiente();
   // Sólo se leen páginas: cualquier otro método sigue su camino de siempre.
   if (ctx.request.method !== "GET" && ctx.request.method !== "HEAD") return ctx.siguiente();
@@ -38,9 +54,7 @@ export async function responderLink(ctx: ContextoLink): Promise<Response> {
       // Como la raíz del acortador (`go.bamardev.com/`, bloque de Caddy).
       return redirigir(RAIZ_LINK, 302);
     case "robots":
-      return new Response(ROBOTS_LINK, {
-        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },
-      });
+      return textoPlano(ROBOTS_LINK);
     case "vieja":
       // `link…/p/<sub>` pegado a mano o reescrito: a la forma corta, en el
       // mismo host (la dirección vieja sigue viva en `app…`).

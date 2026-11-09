@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { baseApi } from "./og";
-import { responderLink, type ContextoLink } from "./link";
+import { responderLink, ROBOTS_PRUEBA, type ContextoLink } from "./link";
+import { paginaDePrueba } from "./paginaDePrueba";
 
 /** El middleware de la raíz: el host link y el resto que no se toca. */
 
@@ -63,16 +64,30 @@ describe("fuera del host link no hace nada", () => {
 });
 
 describe("en link-qa.bamardev.com", () => {
-  it("la raíz va a la landing y robots.txt deja indexar la página", async () => {
+  it("la raíz va a la landing; robots.txt deja indexar la página sólo en PROD", async () => {
     const raiz = await responderLink(contexto("https://link-qa.bamardev.com/").ctx);
     expect(raiz.status).toBe(302);
     expect(raiz.headers.get("location")).toBe("https://bamardev.com");
 
-    const robots = await responderLink(contexto("https://link-qa.bamardev.com/robots.txt").ctx);
+    const robots = await responderLink(contexto("https://link.bamardev.com/robots.txt").ctx);
     expect(robots.headers.get("content-type")).toContain("text/plain");
     const texto = await robots.text();
     expect(texto).toContain("Allow: /");
     expect(texto).toContain("Disallow: /*/reservar");
+
+    // QA, la app de QA y las copias de Pages: nada se indexa.
+    for (const url of [
+      "https://link-qa.bamardev.com/robots.txt",
+      "https://app-qa.bamardev.com/robots.txt",
+      "https://qa.bamar-app.pages.dev/robots.txt",
+    ]) {
+      const { ctx, siguiente } = contexto(url);
+      expect(await (await responderLink(ctx)).text()).toBe(ROBOTS_PRUEBA);
+      expect(siguiente).not.toHaveBeenCalled();
+    }
+    // La app de PROD sigue con su public/robots.txt.
+    const app = contexto("https://app.bamardev.com/robots.txt");
+    expect(await (await responderLink(app.ctx)).text()).toBe(SIGUIENTE);
   });
 
   it("los archivos del build y lo que no es GET siguen de largo", async () => {
@@ -95,8 +110,10 @@ describe("en link-qa.bamardev.com", () => {
     expect(pagina.pedirApi).not.toHaveBeenCalled();
     expect(pagina.siguiente).not.toHaveBeenCalled();
     expect(r.headers.get("x-frame-options")).toBe("DENY");
-    // La página se indexa.
-    expect(r.headers.get("x-robots-tag")).toBeNull();
+    // En QA no se indexa; en PROD, sí.
+    expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    const prod = await responderLink(contexto("https://link.bamardev.com/bellavista").ctx);
+    expect(prod.headers.get("x-robots-tag")).toBeNull();
 
     // La reserva y el enlace de gestión, como `/r/*` en la app.
     for (const ruta of ["/bellavista/reservar", "/bellavista/c/TOKENSECRETO"]) {
@@ -110,20 +127,15 @@ describe("en link-qa.bamardev.com", () => {
   it("a WhatsApp: el mismo Open Graph que en la app, pedido al API de QA", async () => {
     const pagina = contexto("https://link-qa.bamardev.com/bellavista", {
       ua: WHATSAPP,
-      api: () =>
-        json({
-          titulo: "Salón Bella Vista",
-          descripcion: "Peluquería · Reservas",
-          imagen: "/publico/pagina/bellavista/imagen/LOGO?v=1",
-          url: "https://link-qa.bamardev.com/bellavista",
-        }),
+      api: () => json(paginaDePrueba()),
     });
     const html = await (await responderLink(pagina.ctx)).text();
-    expect(pagina.pedirApi).toHaveBeenCalledWith("https://api-qa.bamardev.com/api/publico/pagina/bellavista/og");
-    expect(html).toContain("<title>Salón Bella Vista</title>");
+    expect(pagina.pedirApi).toHaveBeenCalledWith("https://api-qa.bamardev.com/api/publico/pagina/bellavista");
+    expect(html).toContain("<title>Salón Bella Vista · Peluquería</title>");
     expect(html).toContain('<meta property="og:url" content="https://link-qa.bamardev.com/bellavista" />');
+    expect(html).toContain('<link rel="canonical" href="https://link-qa.bamardev.com/bellavista" />');
     expect(html).toContain(
-      'content="https://api-qa.bamardev.com/api/publico/pagina/bellavista/imagen/LOGO?v=1"',
+      'content="https://api-qa.bamardev.com/api/publico/pagina/bellavista/imagen/PORTADA?v=9"',
     );
 
     const reserva = contexto("https://link-qa.bamardev.com/bellavista/reservar", { ua: WHATSAPP, api: () => json({}) });
@@ -175,6 +187,6 @@ describe("en link-qa.bamardev.com", () => {
     expect(baseApi(undefined, "link-qa.bamardev.com")).toBe("https://api-qa.bamardev.com/api");
     const { ctx, pedirApi } = contexto("https://link.bamardev.com/bellavista", { ua: WHATSAPP, api: () => json({}) });
     await responderLink(ctx);
-    expect(pedirApi).toHaveBeenCalledWith("https://api.bamardev.com/api/publico/pagina/bellavista/og");
+    expect(pedirApi).toHaveBeenCalledWith("https://api.bamardev.com/api/publico/pagina/bellavista");
   });
 });

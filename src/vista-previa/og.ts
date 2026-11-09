@@ -18,6 +18,8 @@
  * vitest; wrangler lo empaqueta al armar las funciones.
  */
 
+import { aPaginaSeo, escapar, esIndexable, inyectarSeo, plano, type PaginaSeo } from "./seo";
+
 export interface DatosOg {
   titulo: string;
   descripcion: string;
@@ -59,7 +61,7 @@ export function destinoDe(pathname: string): DestinoOg | null {
  * la página respondan igual a los mismos lectores.
  */
 const BOTS =
-  /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|googlebot|bingbot|applebot|embedly|skypeuripreview|pinterest|redditbot|yandex|baiduspider|duckduckbot|ia_archiver|bot\b|crawler|spider|preview/i;
+  /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|googlebot|bingbot|applebot|embedly|skypeuripreview|pinterest|redditbot|yandex|baiduspider|duckduckbot|ia_archiver|bot\b|crawler|spider|preview|claude-user|claude-searchbot|chatgpt-user|perplexity-user|google-inspectiontool|google-extended|meta-externalagent|duckassistbot/i;
 
 export function esLectorDeVistaPrevia(userAgent: string | null | undefined): boolean {
   return !!userAgent && BOTS.test(userAgent);
@@ -91,7 +93,24 @@ export function rutaApi(d: DestinoOg): string {
 const absoluta = (url: string | null | undefined, base: string) =>
   !url ? null : /^https?:\/\//.test(url) ? url : `${base}${url.startsWith("/") ? "" : "/"}${url}`;
 
-const texto = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+// Sin etiquetas: una descripción con `<b>` salía literal en WhatsApp (IDEAS/7 §1).
+const texto = (v: unknown, max: number) => plano(v, max);
+
+/**
+ * ¿Este host puede salir en Google? Sólo los de PROD. QA, las copias de
+ * Pages (`*.pages.dev`) y la PC llevan `noindex` siempre: los datos de prueba
+ * no tienen que aparecer en un buscador, y la copia de PROD en pages.dev
+ * duplicaría la página (la canónica ya apunta a `link…`).
+ */
+export function esHostIndexable(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === "link.bamardev.com" || h === "app.bamardev.com";
+}
+
+/** La página entera (`GET /publico/pagina/:sub`): de ahí sale el HTML para buscadores. */
+export function rutaPagina(sub: string): string {
+  return `/publico/pagina/${encodeURIComponent(sub)}`;
+}
 
 /**
  * La respuesta del API, validada: lo que no tiene la forma esperada es null
@@ -127,14 +146,8 @@ export function aDatosOg(d: DestinoOg, cuerpo: unknown, base: string): DatosOg |
   };
 }
 
-export function escapar(t: string): string {
-  return t
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// Vive en seo.ts (que la usa más) y se re-exporta para los que ya la importan de acá.
+export { escapar };
 
 /**
  * El `index.html` con el título y las etiquetas Open Graph. Texto y no
@@ -243,17 +256,28 @@ export async function responder(ctx: Contexto): Promise<Response> {
   // La misma URL responde distinto a un lector de vista previa y a una
   // persona: lo que se cachee en el medio tiene que separarlos.
   cabeceras.append("vary", "User-Agent");
+  const indexableHost = esHostIndexable(url.hostname);
+  if (!indexableHost) cabeceras.set("X-Robots-Tag", "noindex, nofollow");
   const destino = destinoDe(ruta);
   const sinTocar = () => new Response(index.body, { status: index.status, headers: cabeceras });
   if (!index.ok || !destino || !esLectorDeVistaPrevia(ctx.request.headers.get("user-agent"))) {
     return sinTocar();
   }
   const base = baseApi(ctx.env, url.hostname);
+  // La portada de la página (`/p/<sub>`, sin más tramos) va escrita entera
+  // para buscadores (`seo.ts`); lo demás (privacidad, promo, reserva) sigue
+  // con sólo la vista previa.
+  const esPortada = destino.de === "pagina" && ruta.split("/").filter(Boolean).length === 2;
   let og: DatosOg | null = null;
+  let seo: PaginaSeo | null = null;
   let noExiste = false;
   try {
-    const r = await ctx.pedirApi(`${base}${rutaApi(destino)}`);
-    if (r.ok) og = aDatosOg(destino, await r.json(), base);
+    const r = await ctx.pedirApi(`${base}${esPortada ? rutaPagina(destino.sub) : rutaApi(destino)}`);
+    if (r.ok && esPortada) {
+      const cuerpo = (await r.json()) as Record<string, unknown> | null;
+      seo = aPaginaSeo(cuerpo);
+      if (!seo) og = aDatosOg(destino, cuerpo?.og, base);
+    } else if (r.ok) og = aDatosOg(destino, await r.json(), base);
     // Sólo un 404 dice "no existe"; un 5xx o un 429 es el backend, y para eso
     // sigue la SPA tal cual (una vista previa pobre, no un enlace "muerto").
     else noExiste = r.status === 404 && respondeNoExiste(destino, ruta);
@@ -272,6 +296,10 @@ export async function responder(ctx: Contexto): Promise<Response> {
     cabeceras.set("X-Robots-Tag", "noindex, nofollow");
     // Poco tiempo en caché: la página puede publicarse en un rato.
     return cambiado(inyectarNoDisponible(await index.text()), 404, 60);
+  }
+  if (seo) {
+    const html = inyectarSeo(await index.text(), seo, { base, indexable: indexableHost && esIndexable(seo) });
+    return cambiado(html, 200, 300);
   }
   if (!og) return sinTocar();
   return cambiado(inyectarOg(await index.text(), og), 200, 300);
