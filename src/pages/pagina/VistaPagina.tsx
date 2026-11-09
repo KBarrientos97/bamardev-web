@@ -34,6 +34,8 @@ import {
   type PiezaAccion,
 } from "./piezasPagina";
 import { MapaPagina } from "./MapaPagina";
+import SitioPagina from "./SitioPagina";
+import { estiloCatalogoSitio, tonosSitio } from "../../lib/pagina/sitio";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
 export { MarcaBamarDev, Trazo } from "./piezasPagina";
@@ -345,17 +347,22 @@ export default function VistaPagina({
   const palabraSucursales = termino(p.rubroClave, "sucursales");
   const palabraSucursal = termino(p.rubroClave, "sucursal");
   const c = paleta(p.color.hex);
-  const estilo = estiloPagina(p.estilo);
-  const clasico = estilo.clave === "CLASICO";
+  // El sitio del Profesional (PLAN-PAGINA-PRO M1) se arma por bloques con la
+  // plantilla de su rubro; nunca en las miniaturas del selector de estilos.
+  // De la plantilla salen los tonos y cómo va el catálogo.
+  const sitio = miniatura ? null : (p.sitio ?? null);
+  const estilo = estiloPagina(sitio ? estiloCatalogoSitio(sitio.plantilla) : p.estilo);
+  const clasico = !sitio && estilo.clave === "CLASICO";
   const logo = urlDeImagen(p.logoUrl);
   const portada = urlDeImagen(p.portadaUrl);
-  const t = tonosPagina(estilo.clave, c, !!portada);
+  const tSitio = sitio ? tonosSitio(sitio.plantilla, c) : null;
+  const t = tSitio ?? tonosPagina(estilo.clave, c, !!portada);
   // La portada es lo más grande que se pinta arriba: se pide antes que el
   // resto. Donde es fondo de CSS (Clásico, Vitrina, Noche) el navegador la
   // descubre tarde; el preload la adelanta sin tocar cómo se ve. Donde es
   // <img> (Vivo, Boutique) lleva `fetchpriority` ella misma.
   const portadaDeFondo = ["CLASICO", "VITRINA", "NOCHE"].includes(estilo.clave);
-  if (portada && portadaDeFondo && !miniatura) preload(portada, { as: "image", fetchPriority: "high" });
+  if (portada && portadaDeFondo && !miniatura && !sitio) preload(portada, { as: "image", fetchPriority: "high" });
   // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de
   // acá. La superficie (el fondo del estilo) decide cómo se leen sobre él.
   const b = estiloBotones(p.formaBotones, c, t.superficie);
@@ -695,6 +702,90 @@ export default function VistaPagina({
   );
   const etiquetaPrincipal = enCaja ? "Vista previa de la página" : undefined;
   const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
+
+  if (sitio && tSitio) {
+    const tarjetas = p.sucursales.map((s, i) => (
+      <TarjetaSucursal
+        key={`${s.nombre}-${i}`}
+        s={s}
+        acciones={accionesDe(s)}
+        pieza={botonSucursal}
+        t={t}
+        letra={letraNombre}
+        presentacion="tarjeta"
+        radio={radioTarjeta}
+        primera={i === 0}
+        estado={<EstadoSucursal tramos={s.horarioSemanal} t={t} />}
+      />
+    ));
+    // El catálogo con el título del bloque ("La carta", "Servicios") escrito
+    // como los demás títulos del sitio; los cursos de un instituto, antes.
+    const catalogoSitio = (titulo: string | null) => {
+      if (!cursos && !(p.catalogo && catalogoVisto && p.catalogo.items.length > 0)) return null;
+      return (
+        <>
+          {cursos}
+          {p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
+            <CatalogoPagina
+              catalogo={{ ...catalogoVisto, titulo: titulo || catalogoVisto.titulo }}
+              selector={selectorSucursal}
+              colorVacio={t.texto3}
+              sucursal={palabraSucursal}
+              c={c}
+              escritorio={escritorio}
+              enMarco={enCaja}
+              radio={radioTarjeta}
+              accion={accionCatalogo}
+              estiloBoton={{ ...tamanoPrincipal, ...bVisor.principal.estilo }}
+              colorIconoBoton={bVisor.principal.icono}
+              aspecto={aspectoCatalogo}
+              renderTitulo={(id, texto) => (
+                <h2 id={id} style={{ ...estiloLetra(letraNombre, escritorio ? 44 : 30), color: t.titulo, margin: 0, lineHeight: 1.05 }}>
+                  {texto}
+                </h2>
+              )}
+            />
+          )}
+        </>
+      );
+    };
+    return (
+      <>
+        <SitioPagina
+          p={p}
+          sitio={sitio}
+          c={c}
+          t={tSitio}
+          letra={letraNombre}
+          escritorio={escritorio}
+          enCaja={enCaja}
+          chico={chico}
+          logo={logo}
+          portada={portada}
+          prioridad={!miniatura}
+          Titulo={Titulo}
+          Principal={Principal}
+          etiquetaPrincipal={etiquetaPrincipal}
+          raiz={raiz}
+          testId={testId}
+          anuncio={anuncio}
+          botones={botones}
+          catalogo={catalogoSitio}
+          mapa={mapa}
+          tarjetasSucursal={tarjetas}
+          tituloSucursales={unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`}
+          pie={<PiePagina p={p} urlPrivacidad={urlPrivacidad} color={tSitio.textoPie} />}
+          urlReservar={urlReservar}
+          botonLleno={b.principal.estilo}
+          colorIconoLleno={b.principal.icono}
+          whatsapp={enlaceWhatsapp(p)}
+          clic={clic}
+          conPedido={!!alAgregarAlPedido}
+        />
+        {hojaWhatsapp}
+      </>
+    );
+  }
 
   if (!clasico) {
     const tituloSucursales = unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`;

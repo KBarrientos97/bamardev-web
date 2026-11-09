@@ -13,6 +13,7 @@ import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { tonosPagina } from "../../lib/pagina/estilosPagina";
 import { paleta } from "../../lib/pagina/aspecto";
+import { estiloTextoSitio, tonosSitio } from "../../lib/pagina/sitio";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 import ChatPagina from "./ChatPagina";
@@ -41,7 +42,8 @@ function useMetadatosPagina(p: Pagina | null) {
     poner("property", "og:title", p.og.titulo);
     poner("property", "og:description", p.og.descripcion);
     // La barra del navegador del color del estilo (Noche, oscura; Boutique, marfil).
-    poner("name", "theme-color", tonosPagina(p.estilo, paleta(p.color.hex), !!p.portadaUrl).barra);
+    const c = paleta(p.color.hex);
+    poner("name", "theme-color", (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra);
     return () => {
       document.title = anterior;
       metas.forEach((m) => m.remove());
@@ -161,7 +163,8 @@ export default function PaginaPublica() {
   // La letra del texto del estilo y sólo la que eligió el negocio para su
   // nombre, no las 30.
   const tipografia = pagina?.tipografia;
-  const estilo = pagina?.estilo;
+  // Con sitio, la letra del texto es la de su plantilla.
+  const estilo = pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
   useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
   useMetadatosPagina(pagina);
   const pedido = usePedido(subdominio ?? "");

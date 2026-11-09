@@ -11,6 +11,7 @@ import type {
 } from "./tipos";
 import { numeroInternacional } from "./whatsapp";
 import { iniciales } from "../format";
+import { sitioDeVistaPrevia } from "./sitio";
 
 /** El `wa.me` del WhatsApp de una sucursal, como lo arma el backend. */
 function urlWhatsappSucursal(numero: string | null | undefined): string | null {
@@ -178,6 +179,9 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
     catalogo: catalogoVisible(e),
+    // El sitio del Profesional como lo armaría el backend (`sitioPublico`),
+    // con lo del borrador: sin la feature, la página de siempre.
+    sitio: sitioDeVistaPrevia(e.sitio, e.sitio?.actual),
     pie: { atribucionUrl: "https://bamardev.com" },
     og: { titulo: e.negocio.nombre, descripcion: descripcion ?? "", imagen: null, url: e.urlPublica ?? "" },
   };

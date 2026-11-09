@@ -249,8 +249,153 @@ export interface PaginaPublica {
    * despliegan por separado y un backend anterior no lo manda.
    */
   catalogo?: CatalogoPublico | null;
+  /**
+   * El sitio del Profesional (PLAN-PAGINA-PRO M1): null = la página de
+   * siempre, sin tocar nada. Opcional: un backend anterior no lo manda.
+   */
+  sitio?: SitioPublico | null;
+  /** El destacado del día que se publica desde la caja (M4). Ausente o null = no hay. */
+  destacadoDia?: DestacadoDia | null;
   pie: { atribucionUrl: string };
   og: { titulo: string; descripcion: string; imagen: string | null; url: string };
+}
+
+// ── El sitio del Profesional (PLAN-PAGINA-PRO M1) ──────────────────────────
+// Las formas de `pagina/sitio/sitio.ts` del backend.
+
+export type PlantillaSitio = "GASTRONOMIA" | "BELLEZA" | "COMERCIO";
+
+export type TipoBloque =
+  | "PORTADA"
+  | "DESTACADO"
+  | "CATALOGO"
+  | "QUIENES"
+  | "GALERIA"
+  | "UBICACION"
+  | "PREGUNTAS"
+  | "RESENAS"
+  | "VIDEO";
+
+/** Una foto del sitio ya resuelta a URL (relativa al API, como `logoUrl`). */
+export interface FotoPublica {
+  url: string;
+  leyenda: string | null;
+}
+
+export interface DatoDestacado {
+  valor: string;
+  etiqueta: string;
+}
+
+export interface PreguntaFrecuente {
+  pregunta: string;
+  respuesta: string;
+}
+
+/** Un bloque como lo dibuja la página: sólo los prendidos y con contenido, en orden. */
+export type BloquePublico =
+  | { tipo: "PORTADA"; titulo: string | null; subtitulo: string | null; fotos: FotoPublica[] }
+  | { tipo: "DESTACADO" }
+  | { tipo: "CATALOGO"; titulo: string | null }
+  | {
+      tipo: "QUIENES";
+      titulo: string | null;
+      texto: string | null;
+      desde: number | null;
+      datos: DatoDestacado[];
+      foto: FotoPublica | null;
+    }
+  | { tipo: "GALERIA"; titulo: string | null; fotos: FotoPublica[] }
+  | { tipo: "UBICACION"; titulo: string | null }
+  | { tipo: "PREGUNTAS"; titulo: string | null; items: PreguntaFrecuente[] }
+  | { tipo: "RESENAS"; googleUrl: string }
+  | { tipo: "VIDEO"; titulo: string | null; url: string };
+
+export interface SitioPublico {
+  plantilla: PlantillaSitio | string;
+  bloques: BloquePublico[];
+}
+
+/** Lo que se publica desde la caja ("Almuerzo de hoy", "Turnos libres hoy"; M4). */
+export interface DestacadoDia {
+  tipo: string;
+  etiqueta: string;
+  items: { titulo: string; precio: number | null; fotoUrl: string | null }[];
+  restante: number | null;
+  texto: string | null;
+  descuentoPct: number | null;
+  turnos: { hora: string; profesional: string | null }[] | null;
+  hasta: string;
+  publicadoEn: string;
+}
+
+/** Una foto en el editor: `FOTO_<n>`. */
+export interface FotoConLeyenda {
+  foto: string;
+  leyenda: string | null;
+}
+
+export interface DatosPorBloque {
+  PORTADA: { titulo: string | null; subtitulo: string | null; fotos: string[] };
+  DESTACADO: Record<string, never>;
+  CATALOGO: { titulo: string | null };
+  QUIENES: {
+    titulo: string | null;
+    texto: string | null;
+    desde: number | null;
+    datos: DatoDestacado[];
+    foto: string | null;
+  };
+  GALERIA: { titulo: string | null; fotos: FotoConLeyenda[] };
+  UBICACION: { titulo: string | null };
+  PREGUNTAS: { titulo: string | null; items: PreguntaFrecuente[] };
+  RESENAS: { googleUrl: string | null };
+  VIDEO: { titulo: string | null; url: string | null };
+}
+
+/** Un bloque del editor, con sus datos según el tipo. */
+export type Bloque = {
+  [T in TipoBloque]: { tipo: T; visible: boolean; datos: DatosPorBloque[T] };
+}[TipoBloque];
+
+/** El sitio como lo guarda el borrador (`PUT /pagina/borrador/sitio`). */
+export interface Sitio {
+  plantilla: PlantillaSitio;
+  bloques: Bloque[];
+}
+
+export interface LimitesSitio {
+  titulo: number;
+  subtitulo: number;
+  texto: number;
+  leyenda: number;
+  datoValor: number;
+  datoEtiqueta: number;
+  datos: number;
+  fotosPortada: number;
+  fotosGaleria: number;
+  pregunta: number;
+  respuesta: number;
+  preguntas: number;
+  fotos: number;
+}
+
+/** `GET /pagina` › `sitio`. */
+export interface EstadoSitio {
+  /** Sin la feature `sitio_web`, false: el editor no ofrece nada del sitio. */
+  disponible: boolean;
+  plantillaSugerida: PlantillaSitio;
+  plantillas: PlantillaSitio[];
+  tiposBloque: TipoBloque[];
+  limites: LimitesSitio;
+  /** El del borrador si lo hay; si no, el publicado. null = no eligió plantilla. */
+  actual: Sitio | null;
+  publicado: boolean;
+  enBorrador: boolean;
+  /** Todas las fotos subidas, usadas o no. */
+  fotos: { foto: string; url: string | null }[];
+  /** Las que usa el sitio publicado: no se pueden borrar. */
+  fotosPublicadas: string[];
 }
 
 export interface EnlaceEditor {
@@ -436,7 +581,12 @@ export interface EstadoEditor {
    * estado ya viene con el borrador encima. Opcional: un backend anterior
    * no lo manda.
    */
-  borrador?: { hay: boolean; actualizadoEn: string | null };
+  borrador?: {
+    hay: boolean;
+    actualizadoEn: string | null;
+    /** "Te la armamos" (M5): el borrador lo armó BamarDev y el dueño todavía no lo publicó. */
+    armadoPorBamarDev?: boolean;
+  };
   imagenes: { logo: string | null; portada: string | null };
   enlaces: EnlaceEditor[];
   sucursales: SucursalEditor[];
@@ -453,6 +603,8 @@ export interface EstadoEditor {
   productosVendibles?: number;
   /** Cuántos productos se pueden fijar (60). */
   topeProductos?: number;
+  /** El sitio del Profesional. Opcional: un backend anterior no lo manda (= no disponible). */
+  sitio?: EstadoSitio;
 }
 
 export type CambiosPagina = Partial<

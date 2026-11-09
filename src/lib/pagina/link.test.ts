@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { destinoLink, esHostLink, ROBOTS_LINK, rutaCortaDeVieja, rutaLargaDeLink } from "./link";
+import { destinoLink, esHostLink, paginasDeSitemap, ROBOTS_LINK, robotsLink, rutaCortaDeVieja, rutaLargaDeLink, sitemapXml } from "./link";
 
 /** Qué es cada dirección en `link(-qa).bamardev.com`. */
 
@@ -95,5 +95,55 @@ describe("qué hace la Function con cada pedido", () => {
     expect(ROBOTS_LINK).toContain("Disallow: /*/reservar");
     expect(ROBOTS_LINK).toContain("Disallow: /*/c/");
     expect(ROBOTS_LINK).not.toMatch(/^Disallow: \/$/m);
+  });
+});
+
+describe("sitemap del host link (PLAN-PAGINA-PRO M0)", () => {
+  it("/sitemap.xml no es un archivo del build", () => {
+    expect(destinoLink("/sitemap.xml")).toEqual({ tipo: "sitemap" });
+    expect(destinoLink("/bellavista/sitemap.xml")).toEqual({ tipo: "archivo" });
+  });
+
+  it("el robots de PROD anuncia el sitemap; el de los demás, no", () => {
+    expect(robotsLink("link.bamardev.com")).toBe(`${ROBOTS_LINK}Sitemap: https://link.bamardev.com/sitemap.xml\n`);
+    expect(robotsLink("link-qa.bamardev.com")).toBe(ROBOTS_LINK);
+  });
+
+  it("valida lo que viene del API: https de este host y la fecha AAAA-MM-DD", () => {
+    const paginas = paginasDeSitemap({
+      paginas: [
+        { url: "https://link.bamardev.com/bellavista", actualizado: "2026-11-08" },
+        { url: "https://link.bamardev.com/elfogon", actualizado: "ayer" },
+        { url: "http://link.bamardev.com/x", actualizado: "2026-11-08" },
+        { url: "https://otro.com/x", actualizado: "2026-11-08" },
+        { url: 3 },
+        "basura",
+      ],
+    });
+    expect(paginas).toEqual([
+      { url: "https://link.bamardev.com/bellavista", actualizado: "2026-11-08" },
+      { url: "https://link.bamardev.com/elfogon", actualizado: null },
+    ]);
+    expect(paginasDeSitemap(null)).toEqual([]);
+    expect(paginasDeSitemap({ paginas: "no" })).toEqual([]);
+  });
+
+  it("arma un XML válido y escapado", () => {
+    const xml = sitemapXml([
+      { url: "https://link.bamardev.com/a?x=1&y='2'", actualizado: "2026-11-08" },
+      { url: "https://link.bamardev.com/b", actualizado: null },
+    ]);
+    expect(xml).toBe(
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+        "  <url><loc>https://link.bamardev.com/a?x=1&amp;y=&apos;2&apos;</loc><lastmod>2026-11-08</lastmod></url>",
+        "  <url><loc>https://link.bamardev.com/b</loc></url>",
+        "</urlset>",
+        "",
+      ].join("\n"),
+    );
+    expect(new DOMParser().parseFromString(xml, "application/xml").querySelectorAll("url")).toHaveLength(2);
+    expect(sitemapXml([])).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>');
   });
 });
