@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MenuPublicoApi, PantallaMenu } from "../../types/menuDigital";
@@ -91,7 +91,10 @@ describe("la TV del menú en la vista previa de la app", () => {
   it("dibuja la pantalla en edición al toque, sin volver a preguntar", async () => {
     abrir(`/tv/menu/${LLAVE}/1?vista=previa`);
     expect(await screen.findByText("Nuestro menú")).toBeInTheDocument();
-    expect(window.bamardevTv?.fase()).toBe("lista");
+    // La fase la copia un efecto, que corre un momento después de pintar: con
+    // la máquina cargada (toda la suite a la vez) a veces todavía decía
+    // "cargando" al preguntar. Se espera, como la espera la app.
+    await waitFor(() => expect(window.bamardevTv?.fase()).toBe("lista"));
 
     act(() => {
       window.bamardevTv?.pantalla({ titulo: "Combos de hoy" });
@@ -129,9 +132,66 @@ describe("la TV del menú en la vista previa de la app", () => {
     expect(screen.getByText("Combos de hoy")).toBeInTheDocument();
   });
 
+  it("si en la app eligen otro diseño quieto, la TV animada se queda quieta al toque", async () => {
+    // La app no conoce los diseños animados: manda sólo `diseno`. Sin la
+    // regla, la vista previa seguía animada aunque el celular dijera "Lista".
+    menuMock.mockResolvedValue({ ...menu(), pantalla: { ...PANTALLA, diseno: "destacado", animado: "carrusel", intro: false } });
+    abrir(`/tv/menu/${LLAVE}/1?vista=previa`);
+    // El carrusel no repite el título de la categoría arriba del plato: la lista sí.
+    expect(await screen.findAllByText("Brasa cuarto")).toHaveLength(2);
+
+    act(() => {
+      window.bamardevTv?.pantalla({ diseno: "lista" });
+    });
+
+    // Lista: el plato una sola vez, en su renglón.
+    expect(screen.getAllByText("Brasa cuarto")).toHaveLength(1);
+  });
+
   it("una TV de verdad no le deja nada a la página que la contiene", async () => {
     abrir(`/tv/menu/${LLAVE}/1`);
     await screen.findByText("Nuestro menú");
     expect(window.bamardevTv).toBeUndefined();
+  });
+});
+
+describe("la TV animada (8-nov)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("arranca con el nombre del negocio en grande y después pasa sola a los platos", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    menuMock.mockResolvedValue({ ...menu(), pantalla: { ...PANTALLA, animado: "presentacion" } });
+    abrir(`/tv/menu/${LLAVE}/1`);
+
+    // El nombre entra letra por letra, pero se lee entero.
+    expect(await screen.findByRole("heading", { name: "Pollos Don Omar" })).toBeInTheDocument();
+    expect(screen.queryByText("Brasa cuarto")).not.toBeInTheDocument();
+    // El reloj se programa en un efecto, que React corre después de pintar:
+    // se lo deja correr antes de adelantar el tiempo.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Después de la presentación, el cartel de la categoría…
+    await act(async () => {
+      vi.advanceTimersByTime(6600);
+    });
+    expect(screen.getByRole("heading", { name: "Pollos" })).toBeInTheDocument();
+    // …y el plato solo, en grande, con su precio.
+    await act(async () => {
+      vi.advanceTimersByTime(2900);
+    });
+    expect(screen.getByRole("heading", { name: "Brasa cuarto" })).toBeInTheDocument();
+    expect(screen.getByText("26")).toBeInTheDocument();
+  });
+
+  it("un backend anterior no manda los campos nuevos: la TV sigue quieta como siempre", async () => {
+    // `animado` ausente = el diseño de siempre. Si no, una TV vieja cambiaba
+    // sola al publicar la web antes que el backend.
+    abrir(`/tv/menu/${LLAVE}/1`);
+    expect(await screen.findByText("Nuestro menú")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Pollos Don Omar" })).not.toBeInTheDocument();
   });
 });

@@ -121,6 +121,31 @@ describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
     vi.mocked(api.getSucursales).mockResolvedValue([]);
   });
 
+  it("vendiendo sin stock: ni «Sin stock» en rojo ni el negativo, y el aviso de por qué", async () => {
+    // Configuración › Inventario y stock (09-nov). La venta sigue descontando,
+    // así que el número queda en negativo: "−4" y "Sin stock" sobre cada
+    // bebida decían lo contrario de lo que pasa (se vende igual).
+    getProductos.mockResolvedValue([
+      producto({ nombre: "Coca Cola 2L", stockTotal: -4, vendeSinStock: true }),
+    ]);
+    render(<Productos />);
+    await screen.findByText("Coca Cola 2L");
+
+    expect(screen.queryByText("Sin stock")).not.toBeInTheDocument();
+    expect(screen.queryByText(/-4|−4/)).not.toBeInTheDocument();
+    expect(screen.getByText("Estás vendiendo sin control de stock")).toBeInTheDocument();
+    // Filtrar por un número que nadie mira daría siempre la lista vacía.
+    expect(screen.queryByRole("button", { name: "Bajo stock" })).not.toBeInTheDocument();
+  });
+
+  it("controlando el stock (el de siempre), sin aviso y con «Sin stock»", async () => {
+    getProductos.mockResolvedValue([producto({ nombre: "Coca Cola 2L", stockTotal: 0 })]);
+    render(<Productos />);
+    await screen.findByText("Coca Cola 2L");
+    expect(screen.getByText("Sin stock", { selector: "span" })).toBeInTheDocument();
+    expect(screen.queryByText("Estás vendiendo sin control de stock")).not.toBeInTheDocument();
+  });
+
   it("buscar algo que no está dice 'Sin resultados'", async () => {
     getProductos.mockResolvedValue([producto()]);
     render(<Productos />);

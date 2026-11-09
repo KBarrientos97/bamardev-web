@@ -34,6 +34,10 @@ import {
   type PiezaAccion,
 } from "./piezasPagina";
 import { MapaPagina } from "./MapaPagina";
+import SitioPagina from "./SitioPagina";
+import CartaSitio, { type PedidoCarta } from "./CartaSitio";
+import { cantidadDe, type LineaPedido } from "../../lib/pagina/pedido";
+import { estiloCatalogoSitio, tonosSitio } from "../../lib/pagina/sitio";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
 export { MarcaBamarDev, Trazo } from "./piezasPagina";
@@ -300,6 +304,19 @@ export interface PropsVista {
    */
   alAgregarAlPedido?: (item: ItemCatalogoPublico) => void;
   /**
+   * El pedido armado y cómo cambiar una cantidad: la carta del sitio muestra
+   * «− n +» en cada fila y el WhatsApp flotante sube para no tapar la barra.
+   */
+  lineasPedido?: LineaPedido[];
+  alCambiarPedido?: (id: number, delta: number) => void;
+  /** A dónde lleva «Ver toda la carta» del sitio (la tienda, 09-nov). Sin esto, la portada muestra todo. */
+  urlTienda?: string;
+  /**
+   * La tienda del sitio (`/tienda`): sólo el catálogo entero, con buscador y
+   * categorías; el menú lleva a las secciones de la portada (`urlInicio`).
+   */
+  tienda?: { urlInicio: string; categoria: string | null };
+  /**
    * La sucursal elegida en el catálogo («Mis productos» con más de una), si
    * la maneja quien la usa (la página pública, para que el pedido sepa de
    * cuál son los precios). Sin esto la vista lleva la suya.
@@ -324,6 +341,10 @@ export default function VistaPagina({
   modo = "auto",
   miniatura,
   alAgregarAlPedido,
+  lineasPedido,
+  alCambiarPedido,
+  urlTienda,
+  tienda,
   sucursalCatalogo,
   onSucursalCatalogo,
   urlInscribirme,
@@ -345,17 +366,22 @@ export default function VistaPagina({
   const palabraSucursales = termino(p.rubroClave, "sucursales");
   const palabraSucursal = termino(p.rubroClave, "sucursal");
   const c = paleta(p.color.hex);
-  const estilo = estiloPagina(p.estilo);
-  const clasico = estilo.clave === "CLASICO";
+  // El sitio del Profesional (PLAN-PAGINA-PRO M1) se arma por bloques con la
+  // plantilla de su rubro; nunca en las miniaturas del selector de estilos.
+  // De la plantilla salen los tonos y cómo va el catálogo.
+  const sitio = miniatura ? null : (p.sitio ?? null);
+  const estilo = estiloPagina(sitio ? estiloCatalogoSitio(sitio.plantilla) : p.estilo);
+  const clasico = !sitio && estilo.clave === "CLASICO";
   const logo = urlDeImagen(p.logoUrl);
   const portada = urlDeImagen(p.portadaUrl);
-  const t = tonosPagina(estilo.clave, c, !!portada);
+  const tSitio = sitio ? tonosSitio(sitio.plantilla, c) : null;
+  const t = tSitio ?? tonosPagina(estilo.clave, c, !!portada);
   // La portada es lo más grande que se pinta arriba: se pide antes que el
   // resto. Donde es fondo de CSS (Clásico, Vitrina, Noche) el navegador la
   // descubre tarde; el preload la adelanta sin tocar cómo se ve. Donde es
   // <img> (Vivo, Boutique) lleva `fetchpriority` ella misma.
   const portadaDeFondo = ["CLASICO", "VITRINA", "NOCHE"].includes(estilo.clave);
-  if (portada && portadaDeFondo && !miniatura) preload(portada, { as: "image", fetchPriority: "high" });
+  if (portada && portadaDeFondo && !miniatura && !sitio) preload(portada, { as: "image", fetchPriority: "high" });
   // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de
   // acá. La superficie (el fondo del estilo) decide cómo se leen sobre él.
   const b = estiloBotones(p.formaBotones, c, t.superficie);
@@ -695,6 +721,110 @@ export default function VistaPagina({
   );
   const etiquetaPrincipal = enCaja ? "Vista previa de la página" : undefined;
   const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
+
+  if (sitio && tSitio) {
+    const tarjetas = p.sucursales.map((s, i) => (
+      <TarjetaSucursal
+        key={`${s.nombre}-${i}`}
+        s={s}
+        acciones={accionesDe(s)}
+        pieza={botonSucursal}
+        t={t}
+        letra={letraNombre}
+        presentacion="tarjeta"
+        radio={radioTarjeta}
+        primera={i === 0}
+        estado={<EstadoSucursal tramos={s.horarioSemanal} t={t} />}
+      />
+    ));
+    // El catálogo con el título del bloque ("La carta", "Servicios") escrito
+    // como los demás títulos del sitio; los cursos de un instituto, antes.
+    // La carta del sitio: lista con «+» si hay pedido. En la vista previa del
+    // editor el «+» se ve (para que el dueño vea lo mismo) pero no suma.
+    const lineas = lineasPedido ?? [];
+    const pedidoCarta: PedidoCarta | null = alAgregarAlPedido
+      ? { cantidadDe: (id) => cantidadDe(lineas, id), agregar: alAgregarAlPedido, cambiar: alCambiarPedido ?? null }
+      : p.pedidos && enCaja && contactos.length > 0
+        ? { cantidadDe: () => 0, agregar: null, cambiar: null }
+        : null;
+    const catalogoSitio = (titulo: string | null) => {
+      if (!cursos && !(p.catalogo && catalogoVisto && p.catalogo.items.length > 0)) return null;
+      return (
+        <>
+          {cursos}
+          {p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
+            <CartaSitio
+              key={tienda ? `tienda-${tienda.categoria ?? ""}` : "portada"}
+              items={catalogoVisto.items}
+              plantilla={sitio.plantilla}
+              letra={letraNombre}
+              lleno={b.principal.estilo}
+              colorIconoLleno={b.principal.icono}
+              urlReservar={p.reservar ? urlReservar : null}
+              modo={tienda ? "tienda" : "portada"}
+              urlTienda={urlTienda ?? null}
+              categoriaInicial={tienda?.categoria ?? null}
+              titulo={(id) => (
+                <h2 id={id} style={{ ...estiloLetra(letraNombre, escritorio ? 44 : 30), color: tSitio.titulo, margin: 0, lineHeight: 1.05 }}>
+                  {titulo || catalogoVisto.titulo}
+                </h2>
+              )}
+              selector={selectorSucursal}
+              t={tSitio}
+              c={c}
+              escritorio={escritorio}
+              enMarco={enCaja}
+              radio={radioTarjeta}
+              pedido={pedidoCarta}
+              accionVisor={accionCatalogo}
+              estiloBoton={{ ...tamanoPrincipal, ...bVisor.principal.estilo }}
+              colorIconoBoton={bVisor.principal.icono}
+              colorVacio={tSitio.texto3}
+              sucursal={palabraSucursal}
+            />
+          )}
+        </>
+      );
+    };
+    return (
+      <>
+        <SitioPagina
+          p={p}
+          sitio={sitio}
+          c={c}
+          t={tSitio}
+          letra={letraNombre}
+          escritorio={escritorio}
+          enCaja={enCaja}
+          chico={chico}
+          logo={logo}
+          portada={portada}
+          prioridad={!miniatura}
+          Titulo={Titulo}
+          Principal={Principal}
+          etiquetaPrincipal={etiquetaPrincipal}
+          raiz={raiz}
+          testId={testId}
+          anuncio={anuncio}
+          botones={botones}
+          catalogo={catalogoSitio}
+          mapa={mapa}
+          tarjetasSucursal={tarjetas}
+          tituloSucursales={unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`}
+          pie={<PiePagina p={p} urlPrivacidad={urlPrivacidad} color={tSitio.textoPie} />}
+          urlReservar={urlReservar}
+          botonLleno={b.principal.estilo}
+          colorIconoLleno={b.principal.icono}
+          whatsapp={enlaceWhatsapp(p)}
+          clic={clic}
+          conPedido={!!alAgregarAlPedido}
+          hayPedido={lineas.length > 0}
+          tienda={tienda ?? null}
+        />
+        {hojaWhatsapp}
+      </>
+    );
+  }
 
   if (!clasico) {
     const tituloSucursales = unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`;

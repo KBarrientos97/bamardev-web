@@ -137,11 +137,17 @@ const HOY = {
         // hasta el 08-nov; desde entonces va con la configuración general en
         // todos los rubros (pedido del dueño), y con la ficha de sucursales
         // arma la carpeta Configuración. Finanzas vuelve a un solo hijo.
+        // Desde el 09-nov, además, «Inventario y stock» (pedido de Kevin: la
+        // otra mitad de la configuración, para vender sin stock). Es una
+        // pantalla más y nada cambia mientras el control siga prendido. Al ser
+        // el primer hijo visible sin los extras de pantallas, la carpeta lleva
+        // ahí.
         items: [
           "Usuarios /usuarios",
           "Cuentas por cobrar /creditos",
           "Reportes /reportes",
-          "Configuración /configuracion/sucursales",
+          "Configuración /configuracion/inventario",
+          "  Inventario y stock /configuracion/inventario",
           "  Datos de las sucursales /configuracion/sucursales",
           "  QR de cobro /configuracion/qr-cobro",
         ],
@@ -182,7 +188,8 @@ const HOY = {
           "Reportes /reportes",
           // Lo que se arma una vez, abajo.
           "Mesas del salón /mesas",
-          "Configuración /configuracion/sucursales",
+          "Configuración /configuracion/inventario",
+          "  Inventario y stock /configuracion/inventario",
           "  Datos de las sucursales /configuracion/sucursales",
           "  QR de cobro /configuracion/qr-cobro",
         ],
@@ -215,13 +222,17 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
   it("la división por tema (11-oct) cambia de lugar las pantallas, no cuáles ve", () => {
     // Lo único que se suma desde el 06-oct es Almacenes (15-oct, pedido de
     // Kevin), la ficha de Sucursales (02-nov, para todos los rubros) y el QR
-    // de cobro (04-nov, pedido de Kevin).
+    // de cobro (04-nov, pedido de Kevin), e Inventario y stock (09-nov, pedido
+    // de Kevin: vender sin stock; prendido, nada cambia).
     const SUCURSALES = "Datos de las sucursales /configuracion/sucursales";
     const QR = "QR de cobro /configuracion/qr-cobro";
+    const STOCK = "Inventario y stock /configuracion/inventario";
     expect(pantallas("ADMIN", OMAR)).toEqual(
-      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR].sort(),
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR, STOCK].sort(),
     );
-    expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR].sort());
+    expect(pantallas("ADMIN", COMPLETO)).toEqual(
+      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR, STOCK].sort(),
+    );
   });
 
   it("los permisos nuevos sólo le suman la pantalla de Roles, al lado de Usuarios", () => {
@@ -240,7 +251,8 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
                 "  Roles /roles",
                 "Cuentas por cobrar /creditos",
                 "Reportes /reportes",
-                "Configuración /configuracion/sucursales",
+                "Configuración /configuracion/inventario",
+                "  Inventario y stock /configuracion/inventario",
                 "  Datos de las sucursales /configuracion/sucursales",
                 "  QR de cobro /configuracion/qr-cobro",
               ],

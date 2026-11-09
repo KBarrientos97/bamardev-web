@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic, urlDeImagen } from "../../lib/pagina/apiPagina";
 import { catalogoEnSucursal, enlaceWhatsapp } from "../../lib/pagina/catalogo";
@@ -8,11 +8,12 @@ import type { EnlacePublico } from "../../lib/pagina/tipos";
 import PedidoPagina from "./PedidoPagina";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
-import { urlInscribirmeDe, urlMiCuentaDe, urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
+import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { tonosPagina } from "../../lib/pagina/estilosPagina";
 import { paleta } from "../../lib/pagina/aspecto";
+import { estiloTextoSitio, tonosSitio } from "../../lib/pagina/sitio";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 import ChatPagina from "./ChatPagina";
@@ -41,7 +42,8 @@ function useMetadatosPagina(p: Pagina | null) {
     poner("property", "og:title", p.og.titulo);
     poner("property", "og:description", p.og.descripcion);
     // La barra del navegador del color del estilo (Noche, oscura; Boutique, marfil).
-    poner("name", "theme-color", tonosPagina(p.estilo, paleta(p.color.hex), !!p.portadaUrl).barra);
+    const c = paleta(p.color.hex);
+    poner("name", "theme-color", (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra);
     return () => {
       document.title = anterior;
       metas.forEach((m) => m.remove());
@@ -155,13 +157,16 @@ const BOTON_REGALO: EnlacePublico = {
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
  * al login. También en `link.bamardev.com/<subdominio>` (RutasLink.tsx).
  */
-export default function PaginaPublica() {
+export default function PaginaPublica({ tienda = false }: { tienda?: boolean } = {}) {
   const { subdominio } = useParams();
+  // `/tienda?categoria=Bebidas`: llega desde una categoría de la portada.
+  const [busqueda] = useSearchParams();
   const { pagina, error } = usePaginaPublica(subdominio);
   // La letra del texto del estilo y sólo la que eligió el negocio para su
   // nombre, no las 30.
   const tipografia = pagina?.tipografia;
-  const estilo = pagina?.estilo;
+  // Con sitio, la letra del texto es la de su plantilla.
+  const estilo = pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
   useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
   useMetadatosPagina(pagina);
   const pedido = usePedido(subdominio ?? "");
@@ -201,6 +206,8 @@ export default function PaginaPublica() {
 
   if (error) return <NoDisponible mensaje={error} />;
   if (!pagina || !vista) return <Cargando />;
+  // La tienda es del sitio del Profesional: sin sitio, la página de siempre.
+  if (tienda && !pagina.sitio) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
   return (
     <>
       <VistaPagina
@@ -211,6 +218,10 @@ export default function PaginaPublica() {
         urlMiCuenta={urlMiCuentaDe(pagina.subdominio)}
         alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
         alAgregarAlPedido={conPedidos ? pedido.agregar : undefined}
+        lineasPedido={conPedidos ? pedido.lineas : undefined}
+        alCambiarPedido={conPedidos ? pedido.cambiar : undefined}
+        urlTienda={urlTiendaDe(pagina.subdominio)}
+        tienda={tienda ? { urlInicio: urlPaginaDe(pagina.subdominio), categoria: busqueda.get("categoria") } : undefined}
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
       />
@@ -222,6 +233,8 @@ export default function PaginaPublica() {
           pedido={pedido}
           sucursal={nombreSucursal}
           rubro={pagina.rubroClave}
+          subdominio={pagina.subdominio}
+          asistente={!!pagina.asistente}
         />
       )}
       {conRegalos && pagina.regalos && (

@@ -411,6 +411,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // restaurante). En un restaurante es el único hijo y se ve suelto,
       // como "Configuración", que es lo que es.
       { a: "/configuracion/recibo", label: "Configuración", icono: "settings", seccion: "config_recibo" },
+      // La otra mitad de la configuración del restaurante (09-nov): si el
+      // stock frena la venta, y el conteo para volver a controlarlo.
+      { a: "/configuracion/inventario", label: "Inventario y stock", icono: "box", seccion: "config_inventario" },
       // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
       {
         a: "/configuracion/sucursales",

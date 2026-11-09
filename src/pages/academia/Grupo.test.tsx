@@ -36,9 +36,21 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       recordatorio: vi.fn(),
       editarGrupo: vi.fn(),
       docentes: vi.fn(async () => []),
+      // Ítem 14: la lista de clases del grupo (se prueba en ClasesDelGrupo.test).
+      clasesDelGrupo: vi.fn(async () => ({ grupoId: 7, hoy: "2026-10-16", toleranciaMin: 10, clases: [] })),
     },
   };
 });
+
+// El alta rápida de docente en Editar grupo (ítem 11) lee los cargos y la gente de Personal.
+vi.mock("../../lib/personal", () => ({
+  apiPersonal: {
+    cargos: vi.fn(async () => [{ id: 5, nombre: "Docente", esAdministrador: false, permisos: [{ codigo: "asistencia.registrar", alcance: "PROPIO" }] }]),
+    listar: vi.fn(async () => []),
+    crear: vi.fn(),
+    darAcceso: vi.fn(),
+  },
+}));
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { ESPERA_CHOQUES_MS } from "../../lib/academia/choques";
@@ -516,5 +528,56 @@ describe("BACK-5 y C10 · editar el aula y los docentes del grupo", () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(apiAcademia.editarGrupo).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Ítem 11 y D6 de la revisión del 08-nov ──────────────────────────────
+
+  const MARCO = { personalId: 9, nombre: "Marco Rojas", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true };
+  const DE_NORTE = { personalId: 11, nombre: "Rosa Norte", sedes: [{ id: 2, nombre: "Norte" }], pctDocente: null, retencionPct: null, tieneLogin: false };
+
+  it("ítem 11: sólo los docentes de la sede del grupo, «El mismo en todos» y el alta rápida", async () => {
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([MARCO, LUCIA, DE_NORTE]);
+    sesion.permisos = [...COORDINACION, "personal.gestionar"];
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Editar grupo" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Editar grupo" });
+    const m3 = within(dialogo).getByLabelText("Docente de M3");
+    expect(within(m3).getAllByRole("option").map((o) => o.textContent)).toEqual(["Sin asignar", "Marco Rojas", "Lucía Paz", "+ Nuevo docente…"]);
+    // «El mismo en todos»: el elegido en M3 pasa a M1 y M2.
+    fireEvent.change(m3, { target: { value: "10" } });
+    // El de la fila de M3 (cada módulo con otro docente tiene el suyo).
+    fireEvent.click(within(dialogo).getAllByRole("button", { name: "El mismo docente en todos" }).at(-1)!);
+    expect(within(dialogo).getByLabelText("Docente de M1")).toHaveValue("10");
+    expect(within(dialogo).getByLabelText("Docente de M2")).toHaveValue("10");
+    // El alta rápida, con la sede del grupo.
+    await act(async () => {
+      fireEvent.change(within(dialogo).getByLabelText("Docente de M3"), { target: { value: "nuevo-docente" } });
+    });
+    expect(within(dialogo).getByLabelText("Nombre y apellido")).toBeInTheDocument();
+  });
+
+  it("D6: cambiar el docente de un módulo empezado avisa que el nuevo se lleva el pago entero", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // El 1-oct: M1 ya terminó, M2 está en curso y M3 todavía no empezó.
+    vi.setSystemTime(new Date(2026, 9, 1, 10, 0));
+    try {
+      vi.mocked(apiAcademia.docentes).mockResolvedValue([MARCO, LUCIA]);
+      const dialogo = await abrirEdicion();
+      expect(dialogo).not.toHaveTextContent(/se lleva el pago/);
+      fireEvent.change(within(dialogo).getByLabelText("Docente de M2"), { target: { value: "10" } });
+      expect(dialogo).toHaveTextContent(
+        "M2 ya empezó. Lucía Paz da las clases que faltan y se lleva el pago de todo el módulo, también de las clases que ya se dieron. Si sólo faltó un día, usá «No vino» en la lista de clases del grupo.",
+      );
+      fireEvent.change(within(dialogo).getByLabelText("Docente de M1"), { target: { value: "10" } });
+      expect(dialogo).toHaveTextContent("M1 ya terminó. Lucía Paz se lleva el pago de todo el módulo");
+      // El que todavía no empezó no avisa nada.
+      fireEvent.change(within(dialogo).getByLabelText("Docente de M3"), { target: { value: "10" } });
+      expect(dialogo).not.toHaveTextContent(/M3 ya/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

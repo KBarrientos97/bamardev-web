@@ -5,6 +5,7 @@ import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
+import { AvisoVendeSinStock } from "../../components/AvisoVendeSinStock";
 import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import {
   AvisoOk,
@@ -92,6 +93,17 @@ const CONDICIONES: Record<
  */
 function etiquetaTipo(t: TipoProducto, rubro: string | null | undefined): string {
   return t === "SERVICIO" && esBelleza(rubro) ? "Servicio" : TIPOS[t].label;
+}
+
+/**
+ * Si el artículo muestra su stock acá. El elaborado nunca; el producto y el
+ * combo, salvo que el negocio venda sin stock (Configuración › Inventario y
+ * stock, 09-nov): ahí el número está en negativo de tanto vender sin cargar,
+ * y "Sin stock" en rojo sobre cada bebida decía lo contrario de lo que pasa
+ * —se vende igual—.
+ */
+function muestraStock(p: Pick<Producto, "tipoProducto" | "vendeSinStock">): boolean {
+  return TIPOS[p.tipoProducto].conStock && !p.vendeSinStock;
 }
 
 type FiltroStock = "todos" | "activos" | "bajo" | "sin" | "papelera";
@@ -231,6 +243,14 @@ export default function Productos() {
   }, [servidorSinNada, catalogoTildes, q]);
 
   const lista = productos.datos ?? [];
+  // El negocio vende sin stock (09-nov): lo dice cada artículo con stock, así
+  // que basta uno. Sin artículos así no hay stock que esconder ni aviso que dar.
+  const vendeSinStock = lista.some((p) => p.vendeSinStock);
+  // "Bajo stock" y "Sin stock" filtrarían por un número que ya no se mira:
+  // vendiendo sin stock darían siempre la lista vacía.
+  const opcionesEstado = vendeSinStock
+    ? OPC_STOCK.filter(([k]) => k !== "bajo" && k !== "sin")
+    : OPC_STOCK;
 
   // El chip de Combo se ofrece si el plan los incluye o si ya hay alguno
   // cargado de antes: filtrar por un tipo que no existe no le sirve a nadie.
@@ -275,7 +295,7 @@ export default function Productos() {
         return false;
       if (filtroTipo !== "todos" && p.tipoProducto !== filtroTipo) return false;
 
-      const conStock = TIPOS[p.tipoProducto].conStock;
+      const conStock = muestraStock(p);
       if (filtroStock === "activos") return p.habilitado;
       // "Bajo stock" y "Sin stock" se leen contra el almacén elegido: con el
       // depósito puesto, "sin stock" es lo que hay que reponer AHÍ, aunque en
@@ -413,7 +433,7 @@ export default function Productos() {
           {suc.elegir && (
             <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
-          <Chips titulo="Estado" valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+          <Chips titulo="Estado" valor={filtroStock} opciones={opcionesEstado} onChange={setFiltroStock} />
           {/* Producto / Elaborado / Combo no existe en una farmacia: no hay nada
               que se prepare al vender, así que el chip filtraba una sola opción
               contra sí misma. Y en modo servidor sólo podría filtrar la tanda que
@@ -424,6 +444,7 @@ export default function Productos() {
         </FilaFiltros>
       </div>
 
+      {vendeSinStock && !enPapelera && <AvisoVendeSinStock />}
       <ErrorMsg>{errorAccion || errorCarga}</ErrorMsg>
       <AvisoOk>{aviso}</AvisoOk>
 
@@ -580,8 +601,9 @@ function BotonCargarExcel() {
 function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick: () => void }) {
   const { rubro } = useAuth();
   const tipo = TIPOS[p.tipoProducto];
-  const sinStock = tipo.conStock && p.stockTotal <= 0;
-  const bajoStock = tipo.conStock && p.stockTotal > 0 && p.stockTotal <= p.stockMinimo;
+  const conStock = muestraStock(p);
+  const sinStock = conStock && p.stockTotal <= 0;
+  const bajoStock = conStock && p.stockTotal > 0 && p.stockTotal <= p.stockMinimo;
   // En una farmacia el laboratorio y la forma distinguen dos artículos que se
   // llaman casi igual ("Paracetamol 500 BAGÓ" vs "… IFA"). Es más útil ahí que
   // la descripción, que casi nadie carga.
@@ -626,10 +648,10 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
 
         <div
           className={`mt-3 grid gap-2 rounded-xl bg-muted p-2.5 ${
-            tipo.conStock ? "grid-cols-2" : "grid-cols-1"
+            conStock ? "grid-cols-2" : "grid-cols-1"
           }`}
         >
-          {tipo.conStock && (
+          {conStock && (
             <div>
               <p className="text-[11px] font-semibold uppercase text-texto-4">Stock</p>
               <p className="text-sm font-bold text-texto">
@@ -749,7 +771,7 @@ function DetalleProducto({
           {veCosto && <Dato label="Costo" valor={fmtMoney(p.costo)} />}
           {margen != null && <Dato label="Margen" valor={fmtPct(margen)} />}
           <Dato label="Categoría" valor={p.categoria?.nombre ?? "—"} />
-          {tipo.conStock && (
+          {muestraStock(p) && (
             <>
               <Dato
                 label="Stock actual"

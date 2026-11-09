@@ -14,6 +14,7 @@ import { iniciales } from "../../lib/format";
 import { apiPersonal, type CargoRol, type Persona } from "../../lib/personal";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { HorarioDocente } from "./HorarioDocente";
 import { NuevoDocenteRapido, type AltaDocente } from "./NuevoDocenteRapido";
 import { Chip, EncabezadoPagina, PaginaAcademia, Tarjeta } from "./piezas";
 
@@ -37,6 +38,10 @@ interface GrupoDelDocente {
  * Pide lo mismo que Personal (`personal.gestionar`): es la misma gente. Dar el
  * acceso sigue siendo la ficha de Personal (`?persona=`), y el alta es la
  * rápida de «Abrir grupo», con el usuario propuesto por el nombre.
+ *
+ * Tanda 2 del 08-nov: cada tarjeta tiene «Ver su horario» (sus clases de las
+ * dos semanas que vienen, abajo de la tarjeta) y «Pagos», que abre su planilla
+ * (`/academia/planilla?docente=`), para quien la ve.
  */
 export default function Docentes() {
   const p = usePalabras();
@@ -145,7 +150,9 @@ function TarjetaDocente({
   grupos: GrupoDelDocente[] | null;
   whatsapp: string | null;
 }) {
+  const { puede } = useAuth();
   const tel = telefonoOculto(x.telefono);
+  const [verHorario, setVerHorario] = useState(false);
   return (
     <li aria-label={x.nombre} className="card space-y-3 p-4 sm:p-5">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
@@ -187,6 +194,18 @@ function TarjetaDocente({
       {grupos && grupos.length === 0 && <p className="text-[13px] text-texto-3">Este mes no dicta ningún grupo.</p>}
 
       <div className="flex flex-wrap gap-2">
+        <Boton variante="ghost" icono="calendar" className="min-h-11" aria-expanded={verHorario} onClick={() => setVerHorario((v) => !v)}>
+          {verHorario ? "Ocultar horario" : "Ver su horario"}
+        </Boton>
+        {puede("academia_planilla") && (
+          <Link
+            to={`/academia/planilla?docente=${x.id}`}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 text-sm font-semibold text-texto-2 hover:bg-muted"
+          >
+            <Icon name="billetera" size={16} />
+            Pagos
+          </Link>
+        )}
         {whatsapp && (
           <Boton variante="soft" icono="phone" className="min-h-11" onClick={() => abrirWhatsapp(whatsapp)}>
             Mandarle el acceso por WhatsApp
@@ -202,6 +221,7 @@ function TarjetaDocente({
           </Link>
         )}
       </div>
+      {verHorario && <HorarioDocente personalId={x.id} nombre={x.nombre} />}
     </li>
   );
 }

@@ -11,6 +11,16 @@ export type TemaMenu = (typeof TEMAS_MENU)[number];
 
 export type TamanoMenu = "s" | "m" | "l";
 
+/**
+ * Los diseños que se mueven (Kevin, 8-nov). Van aparte de `diseno` por la app
+ * Android: un diseño que no conoce lo lee como "fotos" y lo guarda así (ver
+ * `pantallas-menu.ts` del backend).
+ */
+export const ANIMADOS_MENU = ["presentacion", "carrusel", "mosaico"] as const;
+export type AnimadoMenu = (typeof ANIMADOS_MENU)[number];
+
+export type LadoLogo = "izquierda" | "derecha";
+
 export interface PantallaMenu {
   numero: number;
   nombre: string;
@@ -31,6 +41,26 @@ export interface PantallaMenu {
   descripciones: boolean;
   etiquetas: boolean;
   agotadosTachados: boolean;
+  /**
+   * Sin stock en Inventario cuenta como agotado (9-nov). Apagado sale normal;
+   * lo marcado "Agotado hoy" sale agotado igual. Ausente (backend anterior) = sí.
+   */
+  agotadoPorStock?: boolean;
+  // Del 8-nov. Opcionales a propósito: un backend anterior no los manda, y la
+  // TV tiene que seguir andando con los de fábrica (`conAnimacion`).
+  /** Null o ausente = el `diseno` de siempre, quieto. */
+  animado?: AnimadoMenu | null;
+  /** El logo en grande con el nombre al empezar cada vuelta. */
+  intro?: boolean;
+  /** El nombre de la presentación; vacío = el del negocio. */
+  textoIntro?: string;
+  /** Segundos de cada plato en grande (Presentación y Carrusel). */
+  segPlato?: number;
+  /** Las bebidas pasan por la cinta de abajo (Carrusel y Mosaico). */
+  bebidasEnCinta?: boolean;
+  ladoLogo?: LadoLogo;
+  /** El orden de los platos en ESTA TV, dentro de su categoría. Vacío = por nombre. */
+  orden?: number[];
 }
 
 export const ETIQUETAS_PLATO = ["MAS_VENDIDO", "NUEVO", "PROMO"] as const;

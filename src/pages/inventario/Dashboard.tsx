@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { AvisoVendeSinStock } from "../../components/AvisoVendeSinStock";
 import { Icon } from "../../components/Icon";
 import { Badge, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { Chips } from "../../components/filtros";
@@ -31,6 +32,10 @@ export default function Dashboard() {
       </div>
     );
   if (!datos) return null;
+  // Vendiendo sin stock (Configuración › Inventario y stock, 09-nov) el valor
+  // del inventario, el "bajo stock" y el stock crítico miden un número que el
+  // local no está cargando: se cambian por el aviso. Sin el dato, como siempre.
+  const sinControl = datos.controlaStock === false;
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-5">
@@ -47,7 +52,9 @@ export default function Dashboard() {
         <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {sinControl && <AvisoVendeSinStock />}
+
+      <div className={`grid grid-cols-2 gap-3 ${sinControl ? "" : "lg:grid-cols-4"}`}>
         <Kpi
           etiqueta="Artículos"
           valor={fmtNum(datos.articulos)}
@@ -61,51 +68,57 @@ export default function Dashboard() {
           icono="warehouse"
           pie="Ubicaciones"
         />
-        <Kpi
-          etiqueta="Valor inventario"
-          valor={fmtMoney(datos.totalInventario)}
-          icono="dollar"
-          pie="Total en stock"
-        />
-        <Kpi
-          etiqueta="Bajo stock"
-          valor={fmtNum(datos.bajoStock)}
-          icono="alert"
-          tono={datos.bajoStock > 0 ? "amarillo" : "verde"}
-          pie={datos.bajoStock > 0 ? "Requiere atención" : "Todo en orden"}
-        />
+        {!sinControl && (
+          <>
+            <Kpi
+              etiqueta="Valor inventario"
+              valor={fmtMoney(datos.totalInventario)}
+              icono="dollar"
+              pie="Total en stock"
+            />
+            <Kpi
+              etiqueta="Bajo stock"
+              valor={fmtNum(datos.bajoStock)}
+              icono="alert"
+              tono={datos.bajoStock > 0 ? "amarillo" : "verde"}
+              pie={datos.bajoStock > 0 ? "Requiere atención" : "Todo en orden"}
+            />
+          </>
+        )}
       </div>
 
-      <section className="card p-5">
-        <div className="mb-3">
-          <h2 className="text-[15px] font-bold text-texto">Stock crítico</h2>
-          <p className="mt-0.5 text-xs font-medium text-primary">
-            Artículos con bajo inventario
-          </p>
-        </div>
-        {datos.stockCritico.length === 0 ? (
-          <p className="py-4 text-center text-[13px] text-texto-3">
-            Sin artículos en estado crítico
-          </p>
-        ) : (
-          <ul className="divide-y divide-borde-soft">
-            {datos.stockCritico.map((a) => (
-              <li key={a.id} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-texto">{a.nombre}</p>
-                  <p className="mt-0.5 text-xs text-texto-3">
-                    Mínimo: {fmtCantidad(a.stockMinimo)}
-                  </p>
-                </div>
-                <Badge tono={a.stock <= 0 ? "rojo" : "amarillo"}>
-                  {/* Con fmtNum, 0,4 kg de un insumo salía "0 restantes": parecía agotado y no lo estaba. */}
-                  {a.stock <= 0 ? "Sin stock" : `${fmtCantidad(a.stock)} restantes`}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {!sinControl && (
+        <section className="card p-5">
+          <div className="mb-3">
+            <h2 className="text-[15px] font-bold text-texto">Stock crítico</h2>
+            <p className="mt-0.5 text-xs font-medium text-primary">
+              Artículos con bajo inventario
+            </p>
+          </div>
+          {datos.stockCritico.length === 0 ? (
+            <p className="py-4 text-center text-[13px] text-texto-3">
+              Sin artículos en estado crítico
+            </p>
+          ) : (
+            <ul className="divide-y divide-borde-soft">
+              {datos.stockCritico.map((a) => (
+                <li key={a.id} className="flex items-center gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-texto">{a.nombre}</p>
+                    <p className="mt-0.5 text-xs text-texto-3">
+                      Mínimo: {fmtCantidad(a.stockMinimo)}
+                    </p>
+                  </div>
+                  <Badge tono={a.stock <= 0 ? "rojo" : "amarillo"}>
+                    {/* Con fmtNum, 0,4 kg de un insumo salía "0 restantes": parecía agotado y no lo estaba. */}
+                    {a.stock <= 0 ? "Sin stock" : `${fmtCantidad(a.stock)} restantes`}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section>
         <div className="mb-3 flex items-center justify-between">

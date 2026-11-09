@@ -86,6 +86,7 @@ const TicketsPedidos = lazy(() => import("./pages/tickets/TicketsPedidos"));
 const Despacho = lazy(() => import("./pages/tickets/Despacho"));
 const MenuDigital = lazy(() => import("./pages/menu-digital/MenuDigital"));
 const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
+const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 // Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
@@ -724,6 +725,18 @@ function Rutas() {
             <Protegida seccion="config_recibo">
               <Suspense fallback={null}>
                 <ConfigRecibo />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Si el stock frena la venta, y el conteo para volver a controlarlo (09-nov). */}
+        <Route
+          path="/configuracion/inventario"
+          element={
+            <Protegida seccion="config_inventario">
+              <Suspense fallback={null}>
+                <ConfigInventario />
               </Suspense>
             </Protegida>
           }

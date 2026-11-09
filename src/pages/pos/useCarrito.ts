@@ -64,9 +64,15 @@ export function paraVender(p: Producto): number {
  * combo nunca decía cuántos quedaban, se cargaban los que se quisieran y el
  * cobro rebotaba al confirmar con "Stock insuficiente de …", con el cliente
  * enfrente. Mismo criterio que `ProductoPuntoVenta.controlaStock` en la app.
+ *
+ * Y tampoco se agota nada cuando el negocio vende sin stock (Configuración ›
+ * Inventario y stock, 09-nov): el local que todavía no contó sus bebidas
+ * tenía todo en cero y el POS no le dejaba cobrar ni una gaseosa. El backend
+ * lo avisa en cada artículo (`vendeSinStock`) y la venta lo deja pasar. Así
+ * el tope, la tarjeta del POS, la carta del salón y el carrito cambian juntos.
  */
-export function controlaStock(p: Pick<Producto, "tipoProducto">): boolean {
-  return p.tipoProducto !== "SERVICIO";
+export function controlaStock(p: Pick<Producto, "tipoProducto" | "vendeSinStock">): boolean {
+  return p.tipoProducto !== "SERVICIO" && !p.vendeSinStock;
 }
 
 /** Hasta cuánto se puede cargar de un artículo: lo que no se agota, sin tope. */

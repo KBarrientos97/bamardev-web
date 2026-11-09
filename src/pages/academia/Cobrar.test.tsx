@@ -147,7 +147,7 @@ describe("A1 · cobrar a estudiante", () => {
 
     expect(apiAcademia.carrito).toHaveBeenCalledWith(103);
     // Sin volver a pedir el monto ni elegir módulos: lo acordado al inscribir.
-    expect(screen.getByLabelText("Paga hoy")).toHaveValue("400");
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("400,00");
     expect(screen.getByText("Grupo de Norte · se cobra en Central")).toBeInTheDocument();
     // Primero la vencida entera (333), el resto (67) como abono de la siguiente.
     const reparto = within(screen.getByRole("region", { name: "Cómo se reparte" }));
@@ -204,6 +204,15 @@ describe("A1 · cobrar a estudiante", () => {
     ]);
   });
 
+  it("el monto de «Paga hoy» se escribe como en la caja: miles con punto y centavos con coma", async () => {
+    await montar("/academia/cobrar?inscripcion=103&monto=400");
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("400,00");
+    fireEvent.change(screen.getByLabelText("Paga hoy"), { target: { value: "1500" } });
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("1.500");
+    fireEvent.blur(screen.getByLabelText("Paga hoy"));
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("1.500,00");
+  });
+
   it("D2: el buscador es el de Estudiantes (mismo rótulo)", async () => {
     await montar("/academia/cobrar");
     expect(screen.getByLabelText("Buscar estudiante")).toHaveAttribute("placeholder", "Nombre, CI, código o teléfono");
@@ -219,7 +228,7 @@ describe("A1 · cobrar a estudiante", () => {
     await act(async () => {
       fireEvent.click(fila);
     });
-    expect(screen.getByLabelText("Paga hoy")).toHaveValue("333");
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("333,00");
     fireEvent.click(within(screen.getByRole("radiogroup", { name: "Quién paga" })).getByRole("radio", { name: /Joaquín/ }));
     await pagarEnEfectivo("333");
     const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0];
@@ -257,7 +266,7 @@ describe("A1 · cobrar a estudiante", () => {
       fireEvent.click(screen.getByRole("button", { name: "Abrir caja en 2" }));
     });
     await act(async () => {});
-    expect(screen.getByLabelText("Paga hoy")).toHaveValue("400");
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("400,00");
     expect(api.crearVenta).not.toHaveBeenCalled();
   });
 
@@ -399,7 +408,7 @@ describe("pagar el completo con descuento desde Cobrar (Derick, 04-nov)", () => 
     expect(screen.getByText(/Pagar el resto del curso completo · Bs\s1\.050/)).toBeInTheDocument();
     expect(screen.getByText(/ahorra Bs 150/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cobrar el completo" }));
-    expect(screen.getByLabelText("Paga hoy")).toHaveValue("1050");
+    expect(screen.getByLabelText("Paga hoy")).toHaveValue("1.050,00");
     expect(apiAcademia.cambiarPlan).not.toHaveBeenCalled();
     // Al confirmar: el plan cambia y las cuotas son las del completo.
     vi.mocked(apiAcademia.carrito).mockResolvedValue({ ...CON_ADELANTO, lineas: [COMPLETO] });

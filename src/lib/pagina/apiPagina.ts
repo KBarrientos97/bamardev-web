@@ -12,8 +12,10 @@ import type {
   ItemCatalogoEditor,
   ItemCatalogoInput,
   PaginaPublica,
+  PlantillaSitio,
   ProductoFijado,
   ProductoParaPagina,
+  Sitio,
   SucursalEditor,
 } from "./tipos";
 
@@ -113,6 +115,20 @@ export const apiPagina = {
       archivo,
       tipo === "logo" ? "logo.webp" : "portada.webp",
     ),
+
+  // ── El sitio del Profesional (PLAN-PAGINA-PRO M1): todo al borrador ──
+  /** La primera vez arma el sitio del rubro; después cambia de plantilla sin perder lo cargado. */
+  elegirPlantillaSitio: (plantilla: PlantillaSitio) =>
+    request<EstadoEditor>("/pagina/borrador/sitio/plantilla", { method: "POST", body: json({ plantilla }) }),
+  /** El sitio entero (400 con el motivo si algo no vale). */
+  guardarSitio: (sitio: Sitio) => request<EstadoEditor>("/pagina/borrador/sitio", { method: "PUT", body: json(sitio) }),
+  /** Volver a la página de siempre: se aplica al publicar. */
+  quitarSitio: () => request<EstadoEditor>("/pagina/borrador/sitio", { method: "DELETE" }),
+  subirFotoSitio: (archivo: Blob) =>
+    subirArchivo<{ foto: string; estado: EstadoEditor }>("/pagina/borrador/sitio/fotos", archivo, nombreDeFoto(archivo)),
+  /** 400 si la usa el sitio publicado. */
+  borrarFotoSitio: (foto: string) =>
+    request<EstadoEditor>(`/pagina/borrador/sitio/fotos/${encodeURIComponent(foto)}`, { method: "DELETE" }),
 
   // ── Catálogo: cada acción se guarda al toque, como los enlaces ──
   crearItemCatalogo: (input: ItemCatalogoInput) =>

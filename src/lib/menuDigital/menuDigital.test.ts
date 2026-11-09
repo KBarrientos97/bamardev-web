@@ -55,7 +55,7 @@ const pantalla = (p: Partial<PantallaMenu> = {}): PantallaMenu => ({
   ...p,
 });
 
-const plato = (id: number, categoriaId: number, extra: Partial<PlatoTv & { enMenu: boolean }> = {}) => ({
+const plato = (id: number, categoriaId: number, extra: Partial<PlatoTv & { enMenu: boolean; agotadoHoy: boolean }> = {}) => ({
   id,
   nombre: `Plato ${String(id).padStart(2, "0")}`,
   precio: 18,
@@ -87,6 +87,31 @@ describe("qué platos muestra cada TV", () => {
   it("sin categorías elegidas muestra todas; los agotados, tachados o fuera", () => {
     expect(platosDeLaPantalla(pantalla(), platos, CATS).platos.map((p) => p.id)).toEqual([1, 3, 4, 5]);
     expect(platosDeLaPantalla(pantalla({ agotadosTachados: false }), platos, CATS).platos.map((p) => p.id)).toEqual([1, 3, 5]);
+  });
+
+  it("con «Normales», lo que no tiene stock sale como siempre; lo marcado a mano, agotado igual (9-nov)", () => {
+    // La pollería no lleva el stock de las gaseosas al día: media TV en gris
+    // con "AGOTADO". Lo que el dueño marcó "Agotado hoy" sí lo dijo él.
+    const editor = [
+      plato(1, 1, { agotado: true, agotadoHoy: false }),
+      plato(2, 1, { agotado: true, agotadoHoy: true }),
+      plato(3, 2, { agotado: false, agotadoHoy: false }),
+    ];
+    const normales = platosDeLaPantalla(pantalla({ agotadoPorStock: false }), editor, CATS).platos;
+    expect(normales.map((p) => [p.id, p.agotado])).toEqual([
+      [1, false],
+      [2, true],
+      [3, false],
+    ]);
+    // Con "no salen" + normales, el de stock sale y el marcado a mano no.
+    const sinTachar = platosDeLaPantalla(pantalla({ agotadoPorStock: false, agotadosTachados: false }), editor, CATS).platos;
+    expect(sinTachar.map((p) => p.id)).toEqual([1, 3]);
+    // Sin el campo (un backend anterior), el stock cuenta como siempre.
+    expect(platosDeLaPantalla(pantalla(), editor, CATS).platos.map((p) => [p.id, p.agotado])).toEqual([
+      [1, true],
+      [2, true],
+      [3, false],
+    ]);
   });
 
   it("las categorías salen en el orden que eligió el dueño", () => {

@@ -15,6 +15,14 @@ const TEMAS: Record<Exclude<TemaMenu, "personalizado">, { fondo: string; acento:
   verde: { fondo: "#0B4D2C", acento: "#FFC800", texto: "#FFFFFF" },
 };
 
+/** "#FFC800" + 0.2 → "rgba(255,200,0,0.2)". Lo que no es un hex de 6 queda gris. */
+export function conAlfa(hex: string, alfa: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return `rgba(128,128,128,${alfa})`;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alfa})`;
+}
+
 export function coloresMenu(p: Pick<PantallaMenu, "tema" | "colores">) {
   const c = p.tema === "personalizado" ? p.colores : TEMAS[p.tema];
   const claro = esClaro(c.fondo);

@@ -41,6 +41,12 @@ describe("agrupar los avisos", () => {
     expect(g[0].avisos.map((a) => a.tipo)).toEqual(["CAJA_ABIERTA", "CAJA_CERRADA"]);
   });
 
+  it("tanda 2 del 08-nov: los avisos del docente van al final, en «Clases»", () => {
+    const g = agrupar([aviso("CLASES_DE_HOY", "CLASES"), aviso("GRUPO_ASIGNADO", "CLASES"), aviso("PIN_ALERTA", "SEGURIDAD")]);
+    expect(g.map((x) => x.titulo)).toEqual(["Seguridad", "Clases"]);
+    expect(g[1].avisos.map((a) => a.tipo)).toEqual(["CLASES_DE_HOY", "GRUPO_ASIGNADO"]);
+  });
+
   it("B9: la preinscripción nueva entra sola en Ventas (la pantalla no tiene lista fija de tipos)", () => {
     const g = agrupar([aviso("VENTA_ANULADA", "VENTAS"), aviso("PREINSCRIPCION_NUEVA", "VENTAS")]);
     expect(g).toHaveLength(1);

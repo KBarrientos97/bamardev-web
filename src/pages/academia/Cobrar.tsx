@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { AvisoOk, Boton, Cargando, ErrorMsg, Input, Select, Vacio } from "../../components/ui";
+import InputMonto from "../../components/InputMonto";
+import { AvisoOk, Boton, Cargando, ErrorMsg, Select, Vacio } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import {
   cuotasIniciales,
@@ -23,8 +24,8 @@ import { usePalabras } from "../../lib/academia/usePalabras";
 import { RUTA_CAJA } from "../../lib/academia/vista";
 import { ApiError, api } from "../../lib/api";
 import { quedoEnDuda } from "../../lib/cupo";
-import { parsearMontoO } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { useApi } from "../../lib/useApi";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
@@ -172,7 +173,7 @@ export default function Cobrar() {
           },
           { replace: true },
         );
-        setMonto(String(montoSugerido(carrito, acordado)));
+        setMonto(montoParaEditar(montoSugerido(carrito, acordado)));
         setPagadorId(pagadorPorDefecto(carrito.pagadores));
       } catch (e) {
         setError(e instanceof Error ? e.message : "No se pudieron traer sus cuotas");
@@ -190,7 +191,8 @@ export default function Cobrar() {
   }, [inicial, elegir]);
 
   const conCompleto = usarCompleto && !!completo;
-  const montoNum = conCompleto ? completo.monto : Math.round(parsearMontoO(monto, NaN) * 100) / 100;
+  // El campo muestra el monto como se escribe en Bolivia ("1.500,00"): se lee con las mismas reglas del resto de la caja.
+  const montoNum = conCompleto ? completo.monto : Math.round((leerMonto(monto) ?? NaN) * 100) / 100;
   const tope = elegido ? saldoTotal(elegido.carrito) : 0;
   const montoOk = montoValido(montoNum, tope);
   const reparto = useMemo(
@@ -446,15 +448,11 @@ export default function Cobrar() {
       <label htmlFor="monto-hoy" className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
         Paga hoy
       </label>
-      <Input
+      <InputMonto
         id="monto-hoy"
-        type="number"
-        inputMode="decimal"
-        step="0.01"
-        min="0"
-        value={conCompleto ? String(montoNum) : monto}
+        value={conCompleto ? montoParaEditar(montoNum) : monto}
         disabled={conCompleto}
-        onChange={(e) => setMonto(e.target.value)}
+        onChange={setMonto}
         className={`text-lg font-bold ${montoOk || monto === "" ? "" : "border-danger"}`}
       />
       {conCompleto ? (

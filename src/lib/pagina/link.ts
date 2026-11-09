@@ -63,6 +63,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (segundo === "privacidad" && tercero === undefined) return `/p/${sub}/privacidad`;
   // «Pagar mi inscripción» de una academia (M5): sin más tramos.
   if (segundo === "mi-cuenta" && tercero === undefined) return `/p/${sub}/mi-cuenta`;
+  // La tienda del sitio del Profesional (09-nov): el catálogo entero.
+  if (segundo === "tienda" && tercero === undefined) return `/p/${sub}/tienda`;
   if (segundo === "reservar") {
     if (tercero === undefined) return `/r/${sub}/reservar`;
     return RESTO.test(tercero) ? `/r/${sub}/reservar/${tercero}` : null;
@@ -100,6 +102,7 @@ export function rutaCortaDeVieja(pathname: string): string | null {
 export type DestinoLink =
   | { tipo: "raiz" }
   | { tipo: "robots" }
+  | { tipo: "sitemap" }
   | { tipo: "archivo" }
   | { tipo: "publica"; larga: string }
   | { tipo: "vieja"; corta: string }
@@ -119,6 +122,9 @@ function esArchivo(pathname: string): boolean {
 export function destinoLink(pathname: string): DestinoLink {
   if (pathname === "/" || pathname === "") return { tipo: "raiz" };
   if (pathname === "/robots.txt") return { tipo: "robots" };
+  // Antes que los archivos: lleva un punto, pero no es del build (lo arma el
+  // middleware con las páginas publicadas, PLAN-PAGINA-PRO M0).
+  if (pathname === "/sitemap.xml") return { tipo: "sitemap" };
   if (esArchivo(pathname)) return { tipo: "archivo" };
   // Primero las viejas: `p` y `r` están reservados, nunca son un negocio.
   const corta = rutaCortaDeVieja(pathname);
@@ -142,6 +148,68 @@ Disallow: /*/pagar/
 Disallow: /*/mi-cuenta
 Allow: /
 `;
+
+/** El host de PROD: el único que se indexa y el único que anuncia su sitemap. */
+export const HOST_LINK_PROD = "link.bamardev.com";
+
+/** El robots del host link: en PROD, con su sitemap (PLAN-PAGINA-PRO M0). */
+export function robotsLink(hostname: string): string {
+  return hostname.toLowerCase() === HOST_LINK_PROD
+    ? `${ROBOTS_LINK}Sitemap: https://${HOST_LINK_PROD}/sitemap.xml
+`
+    : ROBOTS_LINK;
+}
+
+/** Una entrada del sitemap como la manda `GET /publico/paginas/sitemap`. */
+export interface PaginaSitemap {
+  url: string;
+  actualizado: string | null;
+}
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Lo que vino del API, validado: sólo URLs https de este host (un sitemap no
+ * puede listar otro dominio) y la fecha si es `AAAA-MM-DD`. Lo demás se
+ * descarta. Tope de 50.000, el de un sitemap.
+ */
+export function paginasDeSitemap(cuerpo: unknown, hostname = HOST_LINK_PROD): PaginaSitemap[] {
+  const lista = cuerpo && typeof cuerpo === "object" ? (cuerpo as { paginas?: unknown }).paginas : null;
+  if (!Array.isArray(lista)) return [];
+  const salida: PaginaSitemap[] = [];
+  for (const crudo of lista) {
+    if (!crudo || typeof crudo !== "object") continue;
+    const { url, actualizado } = crudo as Record<string, unknown>;
+    if (typeof url !== "string") continue;
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      continue;
+    }
+    if (u.protocol !== "https:" || u.hostname !== hostname) continue;
+    salida.push({ url: u.toString(), actualizado: typeof actualizado === "string" && FECHA.test(actualizado) ? actualizado : null });
+    if (salida.length >= 50_000) break;
+  }
+  return salida;
+}
+
+const escaparXml = (t: string) =>
+  t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+
+/** El `sitemap.xml` (protocolo sitemaps.org 0.9). */
+export function sitemapXml(paginas: PaginaSitemap[]): string {
+  const urls = paginas
+    .map(
+      (p) =>
+        `  <url><loc>${escaparXml(p.url)}</loc>${p.actualizado ? `<lastmod>${p.actualizado}</lastmod>` : ""}</url>`,
+    )
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}${urls ? "\n" : ""}</urlset>
+`;
+}
 
 /** A dónde va la raíz: como `go.bamardev.com/`, a la landing. */
 export const RAIZ_LINK = "https://bamardev.com";

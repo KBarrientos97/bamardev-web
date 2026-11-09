@@ -18,6 +18,12 @@ vi.mock("../../lib/api", async (original) => {
   const real = await original<typeof import("../../lib/api")>();
   return { ...real, request };
 });
+// jsdom no tiene canvas: el quitado de fondo se prueba aparte (quitarFondo.test).
+const prepararLogo = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/pagina/imagen", async (original) => {
+  const real = await original<typeof import("../../lib/pagina/imagen")>();
+  return { ...real, prepararLogo };
+});
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
@@ -244,6 +250,100 @@ describe("Menú digital", () => {
   });
 });
 
+describe("Menú digital: los diseños animados y los atajos (8-nov)", () => {
+  /** Lo último que se mandó a guardar, ya con el reloj de 700 ms vencido. */
+  async function ultimoGuardado() {
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+    await waitFor(() => expect(request).toHaveBeenCalledWith("/menu-digital/pantallas", expect.objectContaining({ method: "PUT" })));
+    const llamadas = request.mock.calls.filter((c) => c[0] === "/menu-digital/pantallas");
+    return (JSON.parse((llamadas.at(-1)![1] as { body: string }).body) as { pantallas: Record<string, unknown>[] }).pantallas[0];
+  }
+
+  async function abrirEditor() {
+    const { default: MenuDigital } = await import("./MenuDigital");
+    render(
+      <MemoryRouter>
+        <MenuDigital />
+      </MemoryRouter>,
+    );
+    await screen.findByDisplayValue("Pollos a la brasa y broaster");
+  }
+
+  it("los tres de siempre quedan; un animado se guarda con su quieto de respaldo y volver a uno quieto lo apaga", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    for (const nombre of ["Fotos", "Lista", "Destacado", "Presentación", "Carrusel", "Mosaico"]) {
+      expect(screen.getByRole("button", { name: nombre })).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Carrusel" }));
+    // El quieto de al lado es lo que dibuja una pestaña de la web de antes.
+    expect(await ultimoGuardado()).toMatchObject({ animado: "carrusel", diseno: "destacado" });
+    expect(screen.getByRole("button", { name: "Carrusel" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Destacado" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Animación")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Lista" }));
+    expect(await ultimoGuardado()).toMatchObject({ animado: null, diseno: "lista" });
+    expect(screen.queryByText("Animación")).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("«Sólo bebidas» elige la categoría, no apaga plato por plato", async () => {
+    // Kevin: "destiquear todo lo que es bebidas rápido". Por categoría, una
+    // gaseosa nueva de Inventario no aparece sola en la TV de los pollos.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    // La TV de la prueba muestra sólo Pollos: el atajo prendido es «Sólo comida».
+    expect(screen.getByRole("button", { name: "Sólo comida" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sólo bebidas" }));
+    expect(await ultimoGuardado()).toMatchObject({ categorias: [2], ocultos: [] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Todo" }));
+    expect(await ultimoGuardado()).toMatchObject({ categorias: [] });
+    vi.useRealTimers();
+  });
+
+  it("el interruptor de una categoría apaga y prende todos sus platos en esta TV", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    fireEvent.click(screen.getByRole("switch", { name: "Todos los de Pollos" }));
+    expect(await ultimoGuardado()).toMatchObject({ ocultos: [1, 2] });
+
+    fireEvent.click(screen.getByRole("switch", { name: "Todos los de Pollos" }));
+    expect(await ultimoGuardado()).toMatchObject({ ocultos: [] });
+    vi.useRealTimers();
+  });
+
+  it("las flechas cambian el orden de los platos y queda guardado para esa TV", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    fireEvent.click(screen.getByRole("button", { name: "Bajar Brasa cuarto" }));
+    expect(await ultimoGuardado()).toMatchObject({ orden: [2, 1] });
+    vi.useRealTimers();
+  });
+
+  it("los agotados: tachados, no salen o normales, y cada uno se guarda (9-nov)", async () => {
+    // La TV de la pollería tenía las gaseosas en gris con "AGOTADO" porque
+    // el stock de Inventario decía cero, y el local no lo lleva al día.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await abrirEditor();
+    const agotados = screen.getByRole("radiogroup", { name: "Agotados" });
+    expect(within(agotados).getByRole("radio", { name: "Tachados" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(within(agotados).getByRole("radio", { name: "Normales" }));
+    expect(await ultimoGuardado()).toMatchObject({ agotadosTachados: true, agotadoPorStock: false });
+    expect(screen.getByText(/aunque Inventario diga que no hay stock/)).toBeInTheDocument();
+
+    fireEvent.click(within(agotados).getByRole("radio", { name: "No salen" }));
+    expect(await ultimoGuardado()).toMatchObject({ agotadosTachados: false, agotadoPorStock: true });
+    vi.useRealTimers();
+  });
+});
+
 describe("Configuración del recibo", () => {
   it("la vista previa usa los datos cargados: lema, dirección, total en letras y tiempo estimado", async () => {
     const { default: ConfigRecibo } = await import("./ConfigRecibo");
@@ -367,6 +467,44 @@ describe("Configuración del recibo: lo que se saca del papel (8-nov)", () => {
       },
       { timeout: 3000 },
     );
+  });
+});
+
+describe("Configuración del recibo: el logo sin fondo (9-nov)", () => {
+  it("al subirlo se le saca el fondo, y se puede volver a subir con su fondo sin buscar el archivo", async () => {
+    // El logo de la pollería, con fondo negro o blanco, era un cuadrado
+    // pegado encima del rojo de la TV. Si la varita se come algo del dibujo,
+    // el dueño lo vuelve a subir tal cual con un toque.
+    prepararLogo.mockImplementation(async (_f: File, sacarFondo: boolean) => ({
+      blob: new Blob(["logo"], { type: "image/webp" }),
+      fondoQuitado: sacarFondo,
+    }));
+    request.mockImplementation((ruta: string, op?: RequestInit) =>
+      ruta === "/pantallas/logo" && op?.method === "POST" ? Promise.resolve({ logo: "/pantallas/logo/7/abcdef123" }) : responder(ruta),
+    );
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    const { container } = render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+    fireEvent.click(screen.getByRole("tab", { name: /Logo y datos/ }));
+
+    const archivo = new File(["jpg"], "logo-tio-fabio.jpg", { type: "image/jpeg" });
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [archivo] } });
+
+    expect(await screen.findByText("Le sacamos el fondo para que en las TVs se vea sólo el dibujo.")).toBeInTheDocument();
+    expect(prepararLogo).toHaveBeenLastCalledWith(archivo, true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dejarlo con su fondo" }));
+    expect(await screen.findByText("Quedó con su fondo, tal cual el archivo.")).toBeInTheDocument();
+    expect(prepararLogo).toHaveBeenLastCalledWith(archivo, false);
+    expect(request.mock.calls.filter(([ruta, op]) => ruta === "/pantallas/logo" && (op as RequestInit).method === "POST")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sacarle el fondo" }));
+    expect(await screen.findByText("Le sacamos el fondo para que en las TVs se vea sólo el dibujo.")).toBeInTheDocument();
+    expect(prepararLogo).toHaveBeenLastCalledWith(archivo, true);
   });
 });
 

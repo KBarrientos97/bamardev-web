@@ -1,0 +1,183 @@
+/*
+ * Las animaciones de las TVs del menú (TableroAnimado).
+ *
+ * Todo se mueve con transform y opacity: las TVs suelen ser un TV box o una
+ * mini PC de pocos recursos, y eso lo resuelve la placa de video sin trabarse.
+ * Nada de animar filtros ni sombras grandes.
+ *
+ * Regla de cada clase: el estilo de base es como queda la cosa quieta; la
+ * animación sólo dice de dónde viene. Así `.md-quieto` (las miniaturas del
+ * editor) apaga todo y se ve la escena terminada, no a medio entrar.
+ */
+
+.md-anim {
+  animation-fill-mode: both;
+}
+
+@keyframes md-entra-arriba {
+  from { opacity: 0; transform: translateY(46px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes md-entra-izq {
+  from { opacity: 0; transform: translateX(-110px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes md-entra-der {
+  from { opacity: 0; transform: translateX(110px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes md-entra-zoom {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes md-pop {
+  0% { opacity: 0; transform: scale(0) rotate(-24deg); }
+  60% { opacity: 1; transform: scale(1.16) rotate(5deg); }
+  80% { transform: scale(0.95) rotate(-2deg); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes md-latido {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+@keyframes md-flotar {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+@keyframes md-girar {
+  to { transform: rotate(360deg); }
+}
+@keyframes md-ken {
+  from { transform: scale(1.02) translate(0, 0); }
+  to { transform: scale(1.16) translate(-2.5%, -1.5%); }
+}
+@keyframes md-brillo {
+  0% { transform: translateX(-160%) skewX(-22deg); }
+  45%, 100% { transform: translateX(260%) skewX(-22deg); }
+}
+@keyframes md-onda {
+  from { opacity: 0.6; transform: scale(0.8); }
+  to { opacity: 0; transform: scale(1.75); }
+}
+@keyframes md-letra {
+  from { opacity: 0; transform: translateY(70px) rotate(12deg) scale(0.5); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes md-barra {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes md-subir {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  12% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(-980px) scale(1.1); }
+}
+@keyframes md-cinta {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes md-sello {
+  0% { opacity: 0; transform: scale(2.6) rotate(-14deg); }
+  70% { opacity: 1; transform: scale(0.92) rotate(-14deg); }
+  100% { opacity: 1; transform: rotate(-14deg); }
+}
+@keyframes md-mecer {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  25% { transform: translateY(-7px) rotate(-2deg); }
+  75% { transform: translateY(-4px) rotate(2deg); }
+}
+@keyframes md-salto {
+  0%, 84%, 100% { transform: scale(1) rotate(0); }
+  88% { transform: scale(1.14) rotate(-5deg); }
+  92% { transform: scale(0.95) rotate(4deg); }
+  96% { transform: scale(1.04) rotate(-1deg); }
+}
+@keyframes md-deriva {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(140px, -70px) scale(1.18); }
+}
+@keyframes md-salida {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(1.06); }
+}
+
+/* El brillo que cruza el logo de vez en cuando. Va enmascarado con el mismo
+   logo: en uno con fondo transparente pasa sólo por el dibujo, no por el aire.
+   Si la máscara no carga, no se ve (no queda una franja suelta). */
+.md-brillo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+.md-brillo::after {
+  content: "";
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 38%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+  animation: md-brillo 5s ease-in-out 1.2s infinite both;
+}
+
+/* El destello que cruza la tarjeta del Mosaico cuando le llega el foco: una vez. */
+.md-destello {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.md-destello::after {
+  content: "";
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: md-brillo 1.5s ease-out 0.15s 1 both;
+}
+
+/* La cinta que corre: dos copias seguidas y se corre la mitad, así no salta. */
+.md-cinta-pista {
+  display: flex;
+  width: max-content;
+  animation-name: md-cinta;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* El foco del Mosaico: la tarjeta que se agranda. Va en un elemento distinto
+   del que entra en cascada: una animación con fill-mode pisa el transform de
+   la transición y la tarjeta no crecía. */
+.md-foco {
+  transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.5s ease, border-color 0.5s ease;
+}
+.md-foco-foto {
+  transition: transform 1.4s ease-out;
+}
+.md-renglon {
+  transition: background-color 0.45s ease, transform 0.45s ease;
+}
+
+.md-quieto *,
+.md-quieto *::before,
+.md-quieto *::after {
+  animation: none !important;
+  transition: none !important;
+}
+.md-quieto .md-particula {
+  display: none;
+}
+
+/* A propósito NO se respeta `prefers-reduced-motion`: Windows lo prende solo
+   con "Ajustar para obtener el mejor rendimiento", que es justo lo que tiene la
+   PC vieja que maneja el televisor. La TV animada quedaba quieta y parecía rota.
+   Esto es un cartel para el cliente del local, no una pantalla para leer. */

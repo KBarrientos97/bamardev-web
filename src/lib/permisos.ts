@@ -83,6 +83,11 @@ export type Seccion =
    */
   | "config_recibo"
   /**
+   * Configuración › Inventario y stock (09-nov): si el stock frena la venta.
+   * Para el local que todavía no contó su mercadería.
+   */
+  | "config_inventario"
+  /**
    * El resumen de la farmacia como primer ítem DENTRO de Inventario. Es la
    * misma ruta que Inventario (`/inventario`): el grupo lleva a su primera
    * pantalla, y el sub-ítem dice cuál es. Sólo farmacia: en los demás rubros
@@ -350,6 +355,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
   // Para todos los rubros y sin feature: el dueño, como Mi página.
   config_sucursales: { permiso: "negocio.configurar", feature: null },
+  // Vender sin stock (09-nov): cómo trabaja el local, no algo que se venda
+  // aparte. El dueño, sin feature, como el backend (`control-stock`).
+  config_inventario: { permiso: "negocio.configurar", feature: null },
   // ── Educación (PLAN-ACADEMIAS-TECNICO §5.2) ──
   // Hoy es de la secretaría y la dirección: el docente (academia.ver PROPIO)
   // entra a sus grupos, como el profesional entra a "Mi agenda".
@@ -498,6 +506,10 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   despacho: ["RESTAURANTE"],
   menu_digital: ["RESTAURANTE"],
   config_recibo: ["RESTAURANTE"],
+  // Vender sin stock nació para la pollería que no tiene un día para contar
+  // sus bebidas (09-nov). La farmacia no puede (el lote sale del stock) y el
+  // resto de los rubros no lo pidió: ante la duda, no se ve.
+  config_inventario: ["RESTAURANTE"],
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
   // ahí carga a sus docentes y su NIT (sin retención desde el 08-nov).
@@ -543,6 +555,12 @@ export interface ContextoPermisos {
    */
   permisos?: string[];
   permisosPropios?: string[];
+  /**
+   * D9 (revisión del 08-nov): quien entra dicta clases aunque no sea docente
+   * (el dueño que también enseña, con módulos asignados). Lo dice
+   * `GET /academia/soy-docente`; sin la respuesta, no.
+   */
+  dictaClases?: boolean;
 }
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
@@ -664,7 +682,10 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
 
   const req = REQUISITOS[seccion];
-  if (!cumplePermiso(ctx, req)) return false;
+  // D9: «Mis clases» pide el alcance PROPIO, que el dueño no tiene (tiene todo
+  // GENERAL). Si dicta clases, la ve igual, con el mismo permiso.
+  const dictaYPasaLista = seccion === "academia_mis_clases" && ctx.dictaClases === true && (ctx.permisos ?? []).includes(req.permiso);
+  if (!cumplePermiso(ctx, req) && !dictaYPasaLista) return false;
   if (req.feature && !(cumpleFeature(ctx, req.feature) || (!!req.oFeature && cumpleFeature(ctx, req.oFeature)))) {
     return false;
   }
@@ -874,6 +895,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["tickets", "/tickets"],
   ["menu_digital", "/menu-digital"],
   ["config_recibo", "/configuracion/recibo"],
+  ["config_inventario", "/configuracion/inventario"],
   ["config_negocio", "/configuracion/negocio"],
   ["config_sucursales", "/configuracion/sucursales"],
   ["mi_pagina", "/mi-pagina"],

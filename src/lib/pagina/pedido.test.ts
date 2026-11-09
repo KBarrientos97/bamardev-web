@@ -103,3 +103,15 @@ describe("pedido por WhatsApp", () => {
     );
   });
 });
+
+describe("servicios en el pedido", () => {
+  it("un servicio de agenda va una sola vez, sin cantidad", () => {
+    const corte = { ...item(9, "Corte", 60), servicioId: 191, duracionMin: 45 };
+    let l = agregarLinea([], corte);
+    l = agregarLinea(l, corte);
+    expect(l).toHaveLength(1);
+    expect(l[0]).toMatchObject({ cantidad: 1, servicio: true });
+    expect(cambiarCantidad(l, 9, 1)[0].cantidad).toBe(1);
+    expect(cambiarCantidad(l, 9, -1)).toEqual([]);
+  });
+});
