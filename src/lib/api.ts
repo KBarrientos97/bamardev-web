@@ -22,6 +22,8 @@ import type {
   Credito,
   CrearUsuarioInput,
   Dashboard,
+  EstadoControlStock,
+  LineaConteo,
   HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
@@ -827,6 +829,24 @@ export const api = {
 
   getDashboard: (sucursalId?: number | null) =>
     request<Dashboard>(`/dashboard${qs({ sucursalId: sucursalId ?? undefined })}`),
+
+  // ── Configuración › Inventario y stock (vender sin stock, 09-nov) ─────────
+  controlStock: () => request<EstadoControlStock>("/control-stock"),
+  /** Apagar el control: se vende sin mirar el stock. */
+  venderSinStock: () =>
+    request<EstadoControlStock>("/control-stock", {
+      method: "PATCH",
+      body: JSON.stringify({ controlaStock: false }),
+    }),
+  /**
+   * Prenderlo con lo contado en un local: el backend lo fija con un ajuste
+   * aprobado y pone en 0 lo que quedó en negativo sin contar.
+   */
+  controlarStock: (almacenId: number, conteo: LineaConteo[]) =>
+    request<EstadoControlStock & { contados: number; puestosEnCero: number }>("/control-stock", {
+      method: "PATCH",
+      body: JSON.stringify({ controlaStock: true, almacenId, conteo }),
+    }),
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),

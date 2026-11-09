@@ -432,6 +432,14 @@ export interface Producto extends FichaFarmaceutica {
   ubicacion?: string | null;
   /** Agenda fase 3: paquete de sesiones (se vende a un cliente con ficha). */
   esPaquete?: boolean;
+  /**
+   * El negocio vende sin stock (Configuración › Inventario y stock, 09-nov):
+   * este artículo no se agota ni tiene tope en el POS, aunque su stock diga 0
+   * o menos (vendiendo así, queda en negativo). Sólo lo manda el backend
+   * cuando es así; el elaborado nunca lo trae porque nunca tuvo stock. Ver
+   * `controlaStock` en `pos/useCarrito.ts`.
+   */
+  vendeSinStock?: boolean;
 }
 
 /**
@@ -1754,6 +1762,11 @@ export interface ActualizarUsuarioInput {
 export interface Dashboard {
   articulos: number;
   almacenes: number;
+  /**
+   * Si el negocio controla su stock (Configuración › Inventario y stock).
+   * Sin el dato (un backend anterior), sí: es como funcionó siempre.
+   */
+  controlaStock?: boolean;
   totalInventario: number;
   bajoStock: number;
   stockCritico: {
@@ -1774,6 +1787,19 @@ export interface Dashboard {
     items: number;
     monto: number;
   }[];
+}
+
+/** Configuración › Inventario y stock: si el stock frena la venta (09-nov). */
+export interface EstadoControlStock {
+  controlaStock: boolean;
+  /** En una farmacia no: el lote y el vencimiento salen del stock. */
+  sePuedeApagar: boolean;
+}
+
+/** Lo contado de un artículo en un local, para volver a controlar el stock. */
+export interface LineaConteo {
+  productoId: number;
+  cantidad: number;
 }
 
 export type SituacionLicencia =

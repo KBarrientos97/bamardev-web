@@ -191,6 +191,20 @@ describe("useCarrito", () => {
     expect(controlaStock({ tipoProducto: "SERVICIO" })).toBe(false);
   });
 
+  it("vendiendo sin stock, nada se agota ni tiene tope aunque el stock esté en negativo", () => {
+    // Configuración › Inventario y stock (09-nov): la pollería que no contó sus
+    // bebidas tenía todo en cero y el POS no le dejaba cobrar ni una gaseosa.
+    const coca = producto({ stockTotal: -12, vendeSinStock: true });
+    expect(controlaStock(coca)).toBe(false);
+    expect(topeStock(coca)).toBe(Number.POSITIVE_INFINITY);
+    expect(controlaStock({ tipoProducto: "COMPUESTO", vendeSinStock: true })).toBe(false);
+
+    const { result } = renderHook(() => useCarrito());
+    act(() => result.current.agregar(coca));
+    act(() => result.current.setCantidad(coca.id, 24));
+    expect(result.current.lineas[0].cantidad).toBe(24);
+  });
+
   it("farmacia: el tope sigue siendo lo vendible, sin lo vencido", () => {
     // Guarda: el tope del combo usa la misma cuenta, así que lo de siempre no
     // cambia — un almacenable con lotes vencidos se topa en lo que se vende.

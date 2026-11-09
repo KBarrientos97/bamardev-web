@@ -341,6 +341,36 @@ describe("POS-2: el combo tiene su propio stock, como en la app", () => {
   });
 });
 
+describe("vender sin stock (Configuración › Inventario y stock, 09-nov)", () => {
+  // La pollería que todavía no contó sus bebidas: con el control apagado, el
+  // backend marca cada artículo con stock (`vendeSinStock`) y la venta lo deja
+  // pasar. La caja no puede decir "Agotado" a una gaseosa que está en la
+  // heladera, ni un "-3 disp." que no significa nada.
+  const coca = med({
+    id: 30,
+    nombre: "Coca Cola 2L",
+    stockTotal: -3,
+    stockMinimo: 5,
+    manejaLote: false,
+    vendeSinStock: true,
+  });
+
+  it("la bebida en negativo se ofrece igual, sin Agotado y sin cuántos quedan", async () => {
+    const carrito = await montarRestaurante([coca]);
+    const c = card("Coca Cola 2L");
+    expect(c.queryByText("Agotado")).not.toBeInTheDocument();
+    expect(c.queryByText(/disp\./)).not.toBeInTheDocument();
+    fireEvent.click(c.getByText("Coca Cola 2L").closest("button")!);
+    expect(carrito.agregar).toHaveBeenCalledWith(coca);
+  });
+
+  it("el «+» no se apaga por stock", async () => {
+    await montarRestaurante([coca], [linea(coca, 12)]);
+    expect(card("Coca Cola 2L").getByRole("button", { name: "Uno más" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Agregar una unidad" })).toBeEnabled();
+  });
+});
+
 describe("POS-10: el «+» se apaga al llegar al stock disponible", () => {
   it("en la card y en la línea del carrito, cuando ya está todo lo que hay", async () => {
     // Antes el "+" se veía igual y el carrito ignoraba el toque en silencio:

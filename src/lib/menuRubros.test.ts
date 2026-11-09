@@ -374,3 +374,23 @@ describe("menú: Configuración del recibo y el logo", () => {
     expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(false);
   });
 });
+
+/**
+ * Configuración › Inventario y stock (09-nov): vender sin stock. Nació para la
+ * pollería que no tiene un día para contar sus bebidas.
+ */
+describe("menú: Configuración del inventario y stock", () => {
+  it("la ve el dueño del restaurante, sin ningún extra: es cómo trabaja el local", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_inventario")).toBe(true);
+  });
+
+  it("la caja no: apagar el stock cambia cómo vende todo el local", () => {
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", ["pos", "caja"]), "config_inventario")).toBe(false);
+  });
+
+  it("fuera del restaurante no existe: la farmacia vive del lote, y el resto no la pidió", () => {
+    const todo = ["pos", "caja", "catalogo", "inventario", "lotes"];
+    expect(puedeVer(ctxDe("ADMIN", "FARMACIA", todo), "config_inventario")).toBe(false);
+    expect(puedeVer(ctxDe("ADMIN", "MINIMARKET", todo), "config_inventario")).toBe(false);
+  });
+});
