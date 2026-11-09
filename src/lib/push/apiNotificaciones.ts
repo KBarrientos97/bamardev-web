@@ -7,7 +7,7 @@ import { request } from "../api";
  * La lista ya viene filtrada por el backend (rol, permisos, features, rubro):
  * la pantalla no decide qué avisos le tocan a quién, sólo los muestra.
  */
-export type GrupoNotificacion = "CAJA" | "VENTAS" | "COBROS" | "CUENTA" | "SEGURIDAD";
+export type GrupoNotificacion = "CAJA" | "VENTAS" | "COBROS" | "CUENTA" | "SEGURIDAD" | "CLASES";
 
 export interface PreferenciaNotificacion {
   tipo: string;
