@@ -11,16 +11,31 @@ import type { RespuestaCobranza } from "../../lib/academia/tipos";
  * varios, "1 de N · Siguiente". Cobrar lleva a "Cobrar a estudiante" (A1) con la inscripción.
  */
 
+/** 08-nov: la recepción con `academia.pagos_en_linea`, con o sin «Inscripciones online». */
+const sesion = vi.hoisted(() => ({ conPagos: false, inscripcionesOnline: true }));
+
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_SECRETARIA: s } = await import("../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: () => true }) };
+  return {
+    useAuth: () => ({
+      ...s,
+      usuario: { ...s.usuario, permisos: [...s.usuario.permisos, ...(sesion.conPagos ? ["academia.pagos_en_linea"] : [])] },
+      puede: (seccion: string) => (seccion === "academia_preinscripciones" ? sesion.inscripcionesOnline : true),
+    }),
+  };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { cobranza: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []), ajustes: vi.fn(async () => null) },
+    apiAcademia: {
+      cobranza: vi.fn(),
+      recordatorio: vi.fn(),
+      carreras: vi.fn(async () => []),
+      ajustes: vi.fn(async () => null),
+      pagosEnLinea: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 50 })),
+    },
   };
 });
 
@@ -100,7 +115,36 @@ afterEach(() => {
 beforeEach(() => {
   relojDeLaDemora();
   vi.clearAllMocks();
+  sesion.conPagos = false;
+  sesion.inscripcionesOnline = true;
   vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
+});
+
+/**
+ * 08-nov: los comprobantes viven en «Inscripciones online». Sin el formulario
+ * de la página esa entrada no existe, pero el estudiante igual paga con su
+ * carnet: la recepción con el permiso los encuentra en Cobranza.
+ */
+describe("08-nov · los pagos en línea sin «Inscripciones online»", () => {
+  it("con el permiso y sin «Inscripciones online», la bandeja aparece en Cobranza", async () => {
+    sesion.conPagos = true;
+    sesion.inscripcionesOnline = false;
+    await montar();
+    expect(screen.getByRole("heading", { name: /Pagos por revisar/ })).toBeInTheDocument();
+    expect(apiAcademia.pagosEnLinea).toHaveBeenCalled();
+  });
+
+  it("con «Inscripciones online» la bandeja se queda allá, y sin el permiso no aparece", async () => {
+    sesion.conPagos = true;
+    await montar();
+    expect(screen.queryByRole("heading", { name: /Pagos por revisar/ })).not.toBeInTheDocument();
+    cleanup();
+    sesion.conPagos = false;
+    sesion.inscripcionesOnline = false;
+    await montar();
+    expect(screen.queryByRole("heading", { name: /Pagos por revisar/ })).not.toBeInTheDocument();
+    expect(apiAcademia.pagosEnLinea).not.toHaveBeenCalled();
+  });
 });
 
 describe("D6 · la cuota con el nombre del módulo", () => {

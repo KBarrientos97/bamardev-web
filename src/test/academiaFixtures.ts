@@ -219,6 +219,7 @@ export const SESION_ADMIN = {
       "academia.becas",
       "academia.cobranza",
       "academia.fotos",
+      "academia.pagos_en_linea",
       "academia.control",
       "asistencia.registrar",
       "asistencia.llegadas",

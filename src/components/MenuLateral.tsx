@@ -20,6 +20,7 @@ import {
 import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
 import { useContadorBillar } from "../lib/billar/contador";
 import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
+import { revisaPagosEnLinea } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 import { textoInstalar } from "../lib/pwa/guia";
@@ -82,7 +83,7 @@ export default function MenuLateral({
   /** Mientras se pregunta por la caja: el botón no admite otro toque. */
   cerrandoSesion?: boolean;
 }) {
-  const { logout } = useAuth();
+  const { logout, usuario } = useAuth();
   const uid = useId();
   const navRef = useRef<HTMLElement>(null);
   const { bloques, pathname } = menu;
@@ -94,8 +95,11 @@ export default function MenuLateral({
   // Billar: las mesas abiertas, en ámbar si alguna está por vencer (§2).
   const billar = useContadorBillar(menu.planos.some((n) => n.item.seccion === "billar"));
   // Educación: las preinscripciones que llegaron por la página (E20).
+  // Con `academia.pagos_en_linea` suma los comprobantes por revisar, que
+  // esperan en la misma pantalla (08-nov).
   const preinscripciones = useContadorPreinscripciones(
     menu.planos.some((n) => n.item.seccion === "academia_preinscripciones"),
+    revisaPagosEnLinea(usuario),
   );
   const contadorDe = (n: NodoMenu) =>
     n.item.seccion === "solicitudes"

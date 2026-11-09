@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Preinscripcion } from "../../lib/academia/tipos";
+import type { PagoEnLinea, Preinscripcion } from "../../lib/academia/tipos";
 
 /**
  * E20 · Inscripciones online: las que pagan en el instituto, con sus fotos
@@ -9,15 +9,25 @@ import type { Preinscripcion } from "../../lib/academia/tipos";
  * única acción a la vista y abre N5 con la forma de pago marcada.
  */
 
-/** L9: la recepción a la que el administrador le dio `academia.fotos` desde Roles. */
-const quien = vi.hoisted(() => ({ conFotos: false }));
+/**
+ * L9: la recepción a la que el administrador le dio `academia.fotos` desde
+ * Roles. 08-nov: o `academia.pagos_en_linea`, que es otro permiso.
+ */
+const quien = vi.hoisted(() => ({ conFotos: false, conPagos: false }));
 
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_SECRETARIA: s } = await import("../../test/academiaFixtures");
   return {
     useAuth: () => ({
       ...s,
-      usuario: { ...s.usuario, permisos: quien.conFotos ? [...s.usuario.permisos, "academia.fotos"] : s.usuario.permisos },
+      usuario: {
+        ...s.usuario,
+        permisos: [
+          ...s.usuario.permisos,
+          ...(quien.conFotos ? ["academia.fotos"] : []),
+          ...(quien.conPagos ? ["academia.pagos_en_linea"] : []),
+        ],
+      },
       puede: () => true,
     }),
   };
@@ -38,6 +48,8 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       fotoComoUrl: vi.fn(),
       revisarFotos: vi.fn(),
       pagosEnLinea: vi.fn(),
+      comprobanteComoUrl: vi.fn(),
+      aprobarPagoEnLinea: vi.fn(),
     },
   };
 });
@@ -64,6 +76,7 @@ const THIAGO: Preinscripcion = {
 beforeEach(() => {
   vi.clearAllMocks();
   quien.conFotos = false;
+  quien.conPagos = false;
   vi.mocked(apiAcademia.pagosEnLinea).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 });
   vi.mocked(apiAcademia.preinscripciones).mockResolvedValue({ items: [THIAGO, { ...THIAGO, id: 45, fotos: 1 }], total: 2, page: 1, pageSize: 20 });
   vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle());
@@ -174,5 +187,67 @@ describe("L9 · la recepción con el permiso de fotos las revisa desde acá", ()
     });
     expect(apiAcademia.revisarFotos).toHaveBeenCalledWith(61, { ok: false, observacion: "El carnet no coincide" });
     expect(screen.getByText("Fotos observadas")).toBeInTheDocument();
+  });
+});
+
+/**
+ * 08-nov (Drick): los comprobantes de los pagos en línea tienen su permiso,
+ * `academia.pagos_en_linea`. La recepción a la que el dueño se lo da los
+ * revisa acá aunque no vea las fotos de los inscritos (`academia.fotos`) ni
+ * el Panel de control.
+ */
+describe("08-nov · los pagos en línea, con su permiso", () => {
+  const PAGO: PagoEnLinea = {
+    id: 7,
+    estado: "POR_REVISAR",
+    opcion: "CUOTA",
+    etiqueta: "Primer mes",
+    monto: 500,
+    creadoEn: new Date().toISOString(),
+    revisadoEn: null,
+    motivoRechazo: null,
+    inscripcionId: 31,
+    estadoInscripcion: "PREINSCRITA",
+    alumno: "Montaño Ríos, Sofía",
+    curso: "Barbería",
+    grupo: "L-M-V 07:00",
+    sede: "Central",
+    whatsapp: null,
+  };
+
+  it("con el permiso y sin las fotos: ve la bandeja con su contador, abre el comprobante y lo aprueba", async () => {
+    quien.conPagos = true;
+    vi.mocked(apiAcademia.pagosEnLinea).mockResolvedValue({ items: [PAGO], total: 1, page: 1, pageSize: 50 });
+    vi.mocked(apiAcademia.comprobanteComoUrl).mockResolvedValue("blob:comprobante");
+    vi.mocked(apiAcademia.aprobarPagoEnLinea).mockResolvedValue({ ...PAGO, estado: "APROBADO" });
+    await montar();
+    const tarjeta = screen.getByRole("heading", { name: /Pagos por revisar/ });
+    expect(tarjeta).toHaveTextContent("1");
+    // Las fotos de los inscritos siguen con candado.
+    expect(screen.queryByRole("button", { name: /Ver en grande/ })).not.toBeInTheDocument();
+    expect(apiAcademia.fotoComoUrl).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Revisar el comprobante de Montaño/ }));
+    await act(async () => {});
+    expect(apiAcademia.comprobanteComoUrl).toHaveBeenCalledWith(7);
+    expect(screen.getByRole("img", { name: "Comprobante de pago" })).toHaveAttribute("src", "blob:comprobante");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+    });
+    expect(apiAcademia.aprobarPagoEnLinea).toHaveBeenCalledWith(7, {});
+    expect(screen.getByRole("status")).toHaveTextContent("Aprobado");
+  });
+
+  it("con las fotos pero sin el permiso de los pagos: la bandeja no aparece ni se pide", async () => {
+    quien.conFotos = true;
+    await montar();
+    expect(screen.queryByRole("heading", { name: /Pagos por revisar/ })).not.toBeInTheDocument();
+    expect(apiAcademia.pagosEnLinea).not.toHaveBeenCalled();
+  });
+
+  it("la recepción de fábrica (sin ninguno de los dos) tampoco la ve", async () => {
+    await montar();
+    expect(screen.queryByRole("heading", { name: /Pagos por revisar/ })).not.toBeInTheDocument();
+    expect(apiAcademia.pagosEnLinea).not.toHaveBeenCalled();
   });
 });

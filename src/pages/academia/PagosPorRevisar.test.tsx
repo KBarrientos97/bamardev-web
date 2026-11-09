@@ -4,7 +4,7 @@ import type { PagoEnLinea } from "../../lib/academia/tipos";
 
 /**
  * M5 · Pagos por revisar: los comprobantes del QR fijo. La recepción (con
- * `academia.fotos`) los ve en grande y los aprueba o los rechaza con motivo; el
+ * `academia.pagos_en_linea`) los ve en grande y los aprueba o los rechaza con motivo; el
  * aviso al estudiante es un botón de WhatsApp. Un grupo que se llenó en el
  * medio pide confirmar el cupo.
  */

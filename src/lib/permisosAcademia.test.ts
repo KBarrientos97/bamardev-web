@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe } from "../test/sesiones";
-import { cobraCuotas, puedeVer, rutaInicial, type Seccion } from "./permisos";
+import { cobraCuotas, puedeVer, revisaPagosEnLinea, rutaInicial, type Seccion } from "./permisos";
 import { veMontosAcademia } from "./permisosAcademia";
 
 /**
@@ -209,5 +209,29 @@ describe("veMontosAcademia (la misma regla que veMontos del backend)", () => {
   it("sin sesión o sin academia.ver no esconde nada (no es docente)", () => {
     expect(veMontosAcademia(null)).toBe(true);
     expect(veMontosAcademia(con([]))).toBe(true);
+  });
+});
+
+/**
+ * 08-nov (Drick): los comprobantes de los pagos en línea tienen su permiso. La
+ * Recepción de fábrica no lo trae (lo da el dueño en Roles) y las fotos de los
+ * inscritos no lo dan.
+ */
+describe("revisaPagosEnLinea", () => {
+  it("el Administrador sí; la Recepción de fábrica no", () => {
+    expect(revisaPagosEnLinea(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe(true);
+    expect(revisaPagosEnLinea(ctxDe("CAJERO", "ACADEMIA", FEATURES))).toBe(false);
+  });
+
+  it("la Recepción con el permiso, sí, aunque no vea las fotos", () => {
+    const recepcion = ctxDe("CAJERO", "ACADEMIA", FEATURES, { extra: ["academia.pagos_en_linea"] });
+    expect(revisaPagosEnLinea(recepcion)).toBe(true);
+    expect(recepcion.permisos).not.toContain("academia.fotos");
+    // Y sigue llegando a «Inscripciones online», donde está la bandeja.
+    expect(puedeVer(recepcion, "academia_preinscripciones")).toBe(true);
+  });
+
+  it("academia.fotos ya no alcanza", () => {
+    expect(revisaPagosEnLinea(ctxDe("CAJERO", "ACADEMIA", FEATURES, { extra: ["academia.fotos"] }))).toBe(false);
   });
 });

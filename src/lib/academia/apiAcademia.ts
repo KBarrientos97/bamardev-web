@@ -188,9 +188,11 @@ export const apiAcademia = {
     request<unknown>(`/academia/alumnos/${alumnoId}/fotos/revisar`, { method: "POST", body: json(input) }),
 
   // ── Pagos en línea (M5) ─────────────────────────────────────────────────────
-  /** La bandeja de comprobantes (`academia.fotos`): por defecto los que esperan revisión. */
+  /** La bandeja de comprobantes (`academia.pagos_en_linea`): por defecto los que esperan revisión. */
   pagosEnLinea: (f: { estado?: "POR_REVISAR" | "APROBADO" | "RECHAZADO"; sede?: number | null } & PedidoPagina = {}) =>
     request<Paginado<PagoEnLinea>>(`/academia/pagos-en-linea${qs(f)}`),
+  /** Cuántos comprobantes esperan revisión (el número del menú), de las sedes que ve. */
+  pagosPorRevisar: () => request<{ total: number }>("/academia/pagos-en-linea/por-revisar"),
   /** El comprobante como URL de objeto (dato del estudiante: con la sesión). El que la pide la libera. */
   async comprobanteComoUrl(pagoId: number): Promise<string> {
     const token = tokenStore.get();

@@ -590,6 +590,34 @@ describe("L9 · el permiso de las fotos de la academia avisa qué entrega", () =
     fireEvent.click(within(editor()).getByLabelText(/Ver y aprobar las fotos/));
     expect(within(editor()).queryByRole("note")).not.toBeInTheDocument();
   });
+
+  it("08-nov · los pagos en línea son otro permiso: el admin se lo da a la Recepción sin las fotos, y avisa que registra cobros", async () => {
+    const conPagos: DominioPermisos = {
+      ...ACADEMICO,
+      permisos: [
+        ...ACADEMICO.permisos,
+        permiso("academia.pagos_en_linea", "Ver y aprobar los pagos en línea", { sensible: true }),
+      ],
+    };
+    vi.mocked(apiRoles.catalogo).mockResolvedValue([...CATALOGO, conPagos]);
+    vi.mocked(apiRoles.editar).mockResolvedValue(CAJERO);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Cajero/ }));
+    abrirDominio("Académico");
+    fireEvent.click(within(editor()).getByLabelText(/Ver y aprobar los pagos en línea/));
+    const aviso = within(editor()).getByRole("note");
+    expect(aviso).toHaveTextContent("verá los comprobantes que suben los estudiantes");
+    expect(aviso).toHaveTextContent("se registra el cobro");
+    expect(aviso).not.toHaveTextContent("menores");
+    // Las fotos siguen apagadas: son otro renglón.
+    expect(within(editor()).getByLabelText(/Ver y aprobar las fotos/)).not.toBeChecked();
+    await act(async () => {
+      fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
+    });
+    const enviados = vi.mocked(apiRoles.editar).mock.calls[0][1].permisos!.map((p) => p.codigo);
+    expect(enviados).toContain("academia.pagos_en_linea");
+    expect(enviados).not.toContain("academia.fotos");
+  });
 });
 
 describe("31-oct · «Recibo y logo» avisa que el logo es el de la página pública", () => {

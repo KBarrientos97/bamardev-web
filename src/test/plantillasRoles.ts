@@ -97,8 +97,10 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "academia.inscribir": "academia",
   "academia.becas": "academia",
   "academia.cobranza": "academia",
-  // Ronda 2: sólo la plantilla Administrador.
+  // Ronda 2: sólo la plantilla Administrador. Los pagos en línea (08-nov),
+  // también: a la Recepción se los da el dueño desde Roles.
   "academia.fotos": "academia",
+  "academia.pagos_en_linea": "academia",
   "academia.control": "academia",
   "asistencia.registrar": "asistencia",
   "asistencia.llegadas": "asistencia",
@@ -198,6 +200,7 @@ export const PLANTILLAS = {
     "academia.becas",
     "academia.cobranza",
     "academia.fotos",
+    "academia.pagos_en_linea",
     "academia.control",
     "asistencia.registrar",
     "asistencia.llegadas",
