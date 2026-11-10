@@ -168,7 +168,7 @@ export function AnularItem({
     >
       <div className="space-y-3">
         {enCocina && (
-          <p className="rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+          <p className="rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
             Ya está en cocina: avisales para que no lo preparen.
           </p>
         )}

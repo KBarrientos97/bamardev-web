@@ -75,7 +75,7 @@ export default function PorServir() {
                     tiene que leerse sin frenar. */}
                 <span
                   className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-extrabold ${
-                    lista ? "bg-[#ECFDF5] text-[#059669]" : "bg-[#FFFBEB] text-[#D97706]"
+                    lista ? "bg-primary-50 text-primary-700" : "bg-warning-suave text-warning-text"
                   }`}
                 >
                   {mesa.codigo}

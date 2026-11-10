@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import type { Mesa } from "../../types/salon";
-import TarjetaMesa from "./TarjetaMesa";
+import type { EstadoMesa, Mesa } from "../../types/salon";
+import TarjetaMesa, { TarjetaMesaLibre } from "./TarjetaMesa";
 import {
   filtrarMesas,
   inicialesDe,
   porServir,
   primerNombre,
   resumirSalon,
+  tandasDelSalon,
 } from "./logicaSalon";
 
 /**
@@ -18,9 +20,9 @@ import {
  *
  * Orden de arriba hacia abajo = orden en que se mira:
  *   1. quién soy y qué tengo pendiente (barra + aviso)
- *   2. cómo está el salón en números (libres / ocupadas / por cobrar)
- *   3. filtros de zona
- *   4. las mesas
+ *   2. filtros: "Mis mesas" primero, después las zonas
+ *   3. cómo está el salón en números, que también filtran
+ *   4. las mesas, en tandas: para atender, con gente, libres (chicas)
  *
  * Una sola regla de navegación, para que no haya que pensarla: mesa **libre**
  * → se abre directo el flujo de sentar gente; cualquier otra → hoja de detalle
@@ -53,7 +55,6 @@ export default function Salon({
 }) {
   const { usuario } = useAuth();
   const salon = useApi(() => api.salon(), []);
-  const turno = useApi(() => api.turnoMesero(), []);
 
   /**
    * El salón se refresca solo cada medio minuto.
@@ -86,6 +87,12 @@ export default function Salon({
 
   const [zona, setZona] = useState<string | null>(null);
   const [soloMias, setSoloMias] = useState(false);
+  /**
+   * El contador tocado ("5 Ocupadas"): filtra el salón a ese estado. Parecían
+   * botones y no hacían nada (UX-MESEROS §1). Uno a la vez: combinar estados
+   * no le sirve al mesero y complica entender qué está viendo.
+   */
+  const [estado, setEstado] = useState<EstadoMesa | null>(null);
 
   const mesas = useMemo(() => salon.datos?.mesas ?? [], [salon.datos]);
   useEffect(() => {
@@ -99,16 +106,43 @@ export default function Salon({
     if (salon.datos) onMeserosCobran?.(meserosCobran);
   }, [salon.datos, meserosCobran, onMeserosCobran]);
   const zonas = salon.datos?.zonas ?? [];
-  const resumen = useMemo(() => resumirSalon(mesas), [mesas]);
   const pendientes = useMemo(() => porServir(mesas), [mesas]);
 
-  const visibles = useMemo(
+  // Los números cuentan lo que hay en la zona y en "mis mesas" elegidas: en la
+  // terraza, "Ocupadas" dice cuántas hay en la terraza. Si no, el contador y lo
+  // que muestra al tocarlo no coincidirían.
+  const delFiltro = useMemo(
     () => filtrarMesas(mesas, { zonaCodigo: zona, soloMias, miMeseroId: usuario?.id }),
     [mesas, zona, soloMias, usuario?.id],
   );
+  const resumen = useMemo(() => resumirSalon(delFiltro), [delFiltro]);
+  const visibles = useMemo(
+    () => (estado ? delFiltro.filter((m) => m.estado === estado) : delFiltro),
+    [delFiltro, estado],
+  );
+  const tandas = useMemo(() => tandasDelSalon(visibles), [visibles]);
+  const mias = useMemo(
+    () => mesas.filter((m) => m.meseroId != null && m.meseroId === usuario?.id).length,
+    [mesas, usuario?.id],
+  );
 
   const nombre = usuario?.nombre ?? usuario?.username ?? "";
-  const nombreTurno = turno.datos?.turno ?? "";
+  const alTocarMesa = (mesa: Mesa) =>
+    // Una mesa libre no necesita hoja de detalle: no hay nada que contar de
+    // ella. Se entra directo a sentar gente, que es lo único que se puede
+    // hacer, y así se ahorra un toque en el momento de más apuro del turno.
+    mesa.estado === "LIBRE" ? onAbrirMesa(mesa) : onVerMesa(mesa);
+
+  const contadores: { estado: EstadoMesa; etiqueta: string; valor: number; color: string }[] = [
+    { estado: "OCUPADA", etiqueta: "Ocupadas", valor: resumen.ocupadas, color: "text-primary-700" },
+    { estado: "CUENTA", etiqueta: "Por cobrar", valor: resumen.porCobrar, color: "text-danger-text" },
+    { estado: "PAGADA", etiqueta: "Por liberar", valor: resumen.porLiberar, color: "text-texto-2" },
+    { estado: "LIBRE", etiqueta: "Libres", valor: resumen.libres, color: "text-texto" },
+  ];
+  const elegido = contadores.find((c) => c.estado === estado);
+  const tarjeta = (m: Mesa) => (
+    <TarjetaMesa key={m.id} mesa={m} miMeseroId={usuario?.id} onClick={alTocarMesa} />
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-fondo">
@@ -117,16 +151,18 @@ export default function Salon({
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-extrabold text-texto">Salón</h1>
           <p className="truncate text-xs text-texto-3">
-            {/* El turno lo dice el servidor (sale del reloj del NEGOCIO, no
-                del navegador): escrito a mano decía "turno tarde" también a
-                las tres de la mañana. */}
-            {nombreTurno ? `${primerNombre(nombre)} · ${nombreTurno}` : primerNombre(nombre)}
+            {/* Iba el nombre del turno de la CAJA ("Turno mañana" a las tres
+                de la tarde, porque la caja abrió a la mañana): al mesero le
+                parecía un error. Cuántas mesas tiene sí le dice algo. */}
+            {primerNombre(nombre)}
+            {mias > 0 && ` · ${mias} ${mias === 1 ? "mesa tuya" : "mesas tuyas"}`}
           </p>
         </div>
         <button
           onClick={onIrAMiTurno}
           title="Mi turno"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white"
+          aria-label="Mi turno"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-boton text-sm font-bold text-white"
         >
           {inicialesDe(nombre)}
         </button>
@@ -137,14 +173,15 @@ export default function Salon({
         {pendientes.length > 0 && (
           <button
             onClick={onIrAPorServir}
-            className="mb-3 flex w-full items-center gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-left text-[13px] text-[#D97706]"
+            className="mb-3 flex min-h-12 w-full items-center gap-2 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-left text-[14px] text-warning-text"
           >
+            <Icon name="bell" size={18} />
             <span className="font-bold">
               {pendientes.length === 1
                 ? "1 pedido para llevar a la mesa"
                 : `${pendientes.length} pedidos para llevar a las mesas`}
             </span>
-            <span className="ml-auto shrink-0 text-xs">tocá para verlos</span>
+            <span className="ml-auto shrink-0 text-[13px] font-semibold">Ver</span>
           </button>
         )}
 
@@ -155,26 +192,15 @@ export default function Salon({
           <Cargando />
         ) : (
           <>
-            {/* ══════ KPIs ══════ */}
-            <div className="grid grid-cols-3 gap-2">
-              <Kpi valor={resumen.libres} etiqueta="Libres" color="text-primary" />
-              <Kpi valor={resumen.ocupadas} etiqueta="Ocupadas" color="text-[#D97706]" />
-              <Kpi valor={resumen.porCobrar} etiqueta="Por cobrar" color="text-[#DC2626]" />
-            </div>
-            {/* Sólo cuando hay: una mesa ya cobrada esperando es una acción
-                pendiente, no un número más del tablero. */}
-            {resumen.porLiberar > 0 && (
-              <div className="mt-2">
-                <Kpi
-                  valor={resumen.porLiberar}
-                  etiqueta="Por liberar"
-                  color="text-[#059669]"
-                />
-              </div>
-            )}
-
             {/* ══════ Filtros ══════ */}
-            <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
+            <div className="sin-barra -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+              {/* "Mis mesas" va primero: es el filtro que más usa un mesero, y
+                  al final de la fila quedaba fuera de la pantalla. Se cruza con
+                  la zona en vez de reemplazarla: "mis mesas de la terraza" es
+                  una pregunta real. */}
+              <Chip activo={soloMias} onClick={() => setSoloMias((v) => !v)}>
+                Mis mesas
+              </Chip>
               <Chip activo={zona === null} onClick={() => setZona(null)}>
                 Todas
               </Chip>
@@ -183,37 +209,75 @@ export default function Salon({
                   {z.nombre}
                 </Chip>
               ))}
-              {/* "Mis mesas" se cruza con la zona en vez de reemplazarla:
-                  "mis mesas de la terraza" es una pregunta real. */}
-              <Chip activo={soloMias} onClick={() => setSoloMias((v) => !v)}>
-                Mis mesas
-              </Chip>
             </div>
+
+            {/* ══════ Contadores (filtran) ══════ */}
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {contadores.map((c) => (
+                <Kpi
+                  key={c.estado}
+                  valor={c.valor}
+                  etiqueta={c.etiqueta}
+                  color={c.color}
+                  activo={estado === c.estado}
+                  onClick={() => setEstado((e) => (e === c.estado ? null : c.estado))}
+                />
+              ))}
+            </div>
+
+            {/* Qué se está viendo: sin esto, con un contador tocado parecía
+                que se habían perdido mesas. */}
+            {elegido && (
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-primary-50 px-3.5 py-2 text-[13px]">
+                <span className="font-bold text-primary-700">
+                  Viendo: {elegido.etiqueta} · {visibles.length}
+                </span>
+                <button onClick={() => setEstado(null)} className="font-bold text-primary-700 underline">
+                  Ver todas
+                </button>
+              </div>
+            )}
 
             {/* ══════ Mesas ══════ */}
             {visibles.length === 0 ? (
-              <p className="py-12 text-center text-[13px] text-texto-3">
-                {soloMias
-                  ? "Todavía no tenés ninguna mesa abierta."
-                  : "No hay mesas en esta zona."}
-              </p>
-            ) : (
-              <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-                {visibles.map((m) => (
-                  <TarjetaMesa
-                    key={m.id}
-                    mesa={m}
-                    miMeseroId={usuario?.id}
-                    onClick={(mesa) =>
-                      // Una mesa libre no necesita hoja de detalle: no hay nada
-                      // que contar de ella. Se entra directo a sentar gente,
-                      // que es lo único que se puede hacer, y así se ahorra un
-                      // toque en el momento de más apuro del turno.
-                      mesa.estado === "LIBRE" ? onAbrirMesa(mesa) : onVerMesa(mesa)
-                    }
-                  />
-                ))}
+              <div className="py-12 text-center text-[13px] text-texto-3">
+                <p>
+                  {elegido
+                    ? `No hay mesas en «${elegido.etiqueta}».`
+                    : soloMias
+                      ? "Todavía no tenés ninguna mesa abierta."
+                      : "No hay mesas en esta zona."}
+                </p>
+                {elegido && (
+                  <button
+                    onClick={() => setEstado(null)}
+                    className="mt-2 font-bold text-primary-700 underline"
+                  >
+                    Ver todas
+                  </button>
+                )}
               </div>
+            ) : (
+              <>
+                <Tanda titulo="Para atender" mesas={tandas.atender}>
+                  {tarjeta}
+                </Tanda>
+                <Tanda titulo={tandas.atender.length > 0 ? "Con gente" : ""} mesas={tandas.enUso}>
+                  {tarjeta}
+                </Tanda>
+                {tandas.libres.length > 0 && (
+                  <section className="mt-4">
+                    <h2 className="mb-2 text-[12px] font-extrabold uppercase tracking-wide text-texto-2">
+                      Libres · {tandas.libres.length}
+                    </h2>
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+                      {tandas.libres.map((m) => (
+                        <TarjetaMesaLibre key={m.id} mesa={m} onClick={alTocarMesa} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </>
             )}
           </>
         )}
@@ -222,22 +286,55 @@ export default function Salon({
   );
 }
 
+/** Una tanda de mesas con gente, con su título. Sin mesas no se dibuja. */
+function Tanda({
+  titulo,
+  mesas,
+  children,
+}: {
+  titulo: string;
+  mesas: Mesa[];
+  children: (m: Mesa) => React.ReactNode;
+}) {
+  if (mesas.length === 0) return null;
+  return (
+    <section className="mt-4">
+      {titulo && (
+        <h2 className="mb-2 text-[12px] font-extrabold uppercase tracking-wide text-texto-2">{titulo}</h2>
+      )}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">{mesas.map(children)}</div>
+    </section>
+  );
+}
+
+/**
+ * Un contador del salón, que además filtra. El número va grande y arriba
+ * porque es lo único que se mira; la etiqueta va chica debajo.
+ */
 function Kpi({
   valor,
   etiqueta,
   color,
+  activo,
+  onClick,
 }: {
   valor: number;
   etiqueta: string;
   color: string;
+  activo: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-borde bg-white px-3 py-2.5 text-center">
-      {/* El número va grande y arriba porque es lo único que se mira; la
-          etiqueta va chica debajo. */}
-      <p className={`text-xl font-extrabold ${color}`}>{valor}</p>
-      <p className="truncate text-[10px] uppercase tracking-wide text-texto-3">{etiqueta}</p>
-    </div>
+    <button
+      onClick={onClick}
+      aria-pressed={activo}
+      className={`min-h-[60px] rounded-xl border-[1.5px] px-1 py-2 text-center transition-colors ${
+        activo ? "border-primary-boton bg-primary-50" : "border-borde bg-white hover:bg-muted"
+      }`}
+    >
+      <span className={`block text-xl font-extrabold ${color}`}>{valor}</span>
+      <span className="block truncate text-[11px] font-semibold text-texto-2">{etiqueta}</span>
+    </button>
   );
 }
 
@@ -258,7 +355,8 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+      aria-pressed={activo}
+      className={`min-h-10 shrink-0 whitespace-nowrap rounded-full border px-4 text-[14px] font-semibold transition-colors ${
         activo
           ? "border-primary-boton bg-primary-boton text-white"
           : "border-borde bg-white text-texto-2 hover:bg-muted"

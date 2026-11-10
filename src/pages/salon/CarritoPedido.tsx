@@ -71,7 +71,7 @@ export default function CarritoPedido({
               cantar. */}
           <button
             onClick={() => setVaciando(true)}
-            className="mr-2 shrink-0 rounded-lg px-2 py-1 text-[13px] font-semibold text-[#DC2626] hover:bg-[#FEF2F2]"
+            className="mr-2 shrink-0 rounded-lg px-2 py-1 text-[13px] font-semibold text-danger-text hover:bg-danger-suave"
           >
             Vaciar
           </button>
@@ -146,7 +146,7 @@ function Linea({
               // En la última unidad el "−" se vuelve tacho: avisa que el
               // próximo toque saca el producto del pedido.
               linea.cantidad === 1
-                ? "text-[#DC2626] hover:bg-[#FEF2F2]"
+                ? "text-danger-text hover:bg-danger-suave"
                 : "text-texto-2 hover:bg-muted"
             }`}
           >
@@ -180,7 +180,7 @@ function Linea({
       {/* La indicación ya elegida se ve siempre, aunque el panel esté cerrado:
           es lo que hay que revisar antes de llevar el plato a la mesa. */}
       {linea.nota && (
-        <p className="mt-1 text-xs font-semibold text-[#D97706]">{linea.nota}</p>
+        <p className="mt-1 text-xs font-semibold text-warning-text">{linea.nota}</p>
       )}
 
       {/* Las indicaciones rápidas se despliegan y no están siempre a la vista:

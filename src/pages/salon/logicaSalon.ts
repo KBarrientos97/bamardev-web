@@ -146,14 +146,51 @@ export function resumirSalon(mesas: Mesa[]): ResumenSalon {
  */
 export function filtrarMesas(
   mesas: Mesa[],
-  opciones: { zonaCodigo?: string | null; soloMias?: boolean; miMeseroId?: number | null },
+  opciones: {
+    zonaCodigo?: string | null;
+    soloMias?: boolean;
+    miMeseroId?: number | null;
+    /**
+     * Sólo las de un estado: es lo que hace tocar un contador ("5 Ocupadas").
+     * Se cruza con la zona y con "mis mesas" igual que ellos entre sí.
+     */
+    estado?: EstadoMesa | null;
+  },
 ): Mesa[] {
-  const { zonaCodigo, soloMias, miMeseroId } = opciones;
+  const { zonaCodigo, soloMias, miMeseroId, estado } = opciones;
   return mesas.filter((m) => {
     if (zonaCodigo && m.zonaCodigo !== zonaCodigo) return false;
     if (soloMias && (m.meseroId == null || m.meseroId !== miMeseroId)) return false;
+    if (estado && m.estado !== estado) return false;
     return true;
   });
+}
+
+/**
+ * Las mesas del salón en tres tandas, en el orden en que el mesero las mira.
+ *
+ * Hasta el 10-nov iban todas en una grilla por número, del mismo tamaño: con
+ * 14 mesas la primera pantalla eran 6 libres y lo que pedía moverse quedaba
+ * abajo (UX-MESEROS §1).
+ *  - **atender**: con algo para llevar o con la cuenta pedida;
+ *  - **enUso**: el resto de las que tienen gente, más las reservadas;
+ *  - **libres**: van chicas, porque de ellas no hay nada que leer.
+ * Dentro de cada tanda se respeta el orden del backend (por número).
+ */
+export function tandasDelSalon(mesas: Mesa[]): {
+  atender: Mesa[];
+  enUso: Mesa[];
+  libres: Mesa[];
+} {
+  const atender: Mesa[] = [];
+  const enUso: Mesa[] = [];
+  const libres: Mesa[] = [];
+  for (const m of mesas) {
+    if (m.estado === "LIBRE") libres.push(m);
+    else if (m.estado === "CUENTA" || comandasPendientes(m).length > 0) atender.push(m);
+    else enUso.push(m);
+  }
+  return { atender, enUso, libres };
 }
 
 /**
@@ -215,14 +252,47 @@ export function hace(iso: string | null | undefined, ahora = Date.now()): string
   return `${horas}h ${minutos % 60}m`;
 }
 
-/** Los colores de cada estado, tal cual `colors.xml`. */
-export const COLOR_MESA: Record<
-  EstadoMesa,
-  { texto: string; fondo: string; borde: string }
-> = {
-  LIBRE: { texto: "text-texto-3", fondo: "bg-white", borde: "border-[#CBD5E1]" },
-  OCUPADA: { texto: "text-[#D97706]", fondo: "bg-[#FFFBEB]", borde: "border-[#FCD34D]" },
-  CUENTA: { texto: "text-[#DC2626]", fondo: "bg-[#FEF2F2]", borde: "border-[#FCA5A5]" },
-  PAGADA: { texto: "text-[#059669]", fondo: "bg-[#ECFDF5]", borde: "border-[#6EE7B7]" },
-  RESERVADA: { texto: "text-[#2563EB]", fondo: "bg-[#EFF6FF]", borde: "border-[#93C5FD]" },
+/**
+ * Qué tan larga viene la mesa, para pintar el tiempo.
+ *
+ * Antes "5m" y "693h" salían del mismo gris, y una mesa olvidada abierta desde
+ * ayer no llamaba la atención de nadie (UX-MESEROS §1). Hasta la hora es lo
+ * normal de una comida; de 1 a 2 horas, ámbar; más, rojo. Una mesa ya cobrada
+ * no se pinta: lo que espera es que la levanten, no el reloj.
+ */
+export type NivelDeEspera = "normal" | "larga" | "muyLarga";
+
+export function nivelDeEspera(
+  iso: string | null | undefined,
+  ahora = Date.now(),
+): NivelDeEspera {
+  if (!iso) return "normal";
+  const desde = new Date(iso).getTime();
+  if (Number.isNaN(desde)) return "normal";
+  const minutos = (ahora - desde) / 60000;
+  if (minutos >= 120) return "muyLarga";
+  if (minutos >= 60) return "larga";
+  return "normal";
+}
+
+/**
+ * Los colores de cada estado.
+ *
+ * Desde el 10-nov siguen al color del NEGOCIO (UX-MESEROS §6): la ocupada va
+ * con el tono de la paleta (`primary-*`), la cobrada y la reservada en gris,
+ * y sólo dos colores fijos avisan, por token: ámbar (falta algo) y rojo (la
+ * cuenta pedida). Antes eran los hex de `colors.xml`, con un verde y un azul
+ * fijos que en un negocio ciruela parecían un segundo color de marca.
+ *
+ * `chip` es la píldora del estado; `borde`, el de la tarjeta.
+ */
+export const COLOR_MESA: Record<EstadoMesa, { chip: string; borde: string }> = {
+  LIBRE: { chip: "bg-white text-texto-3", borde: "border-texto-4 border-dashed" },
+  OCUPADA: { chip: "bg-primary-100 text-primary-700", borde: "border-borde" },
+  CUENTA: { chip: "bg-danger-bg text-danger-text", borde: "border-danger-borde" },
+  PAGADA: { chip: "bg-borde-soft text-texto-2", borde: "border-borde" },
+  RESERVADA: {
+    chip: "border border-dashed border-texto-4 bg-white text-texto-2",
+    borde: "border-texto-4 border-dashed",
+  },
 };

@@ -201,7 +201,7 @@ export default function PanelMesero() {
       )}
 
       {aviso && (
-        <p className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-white shadow-lg">
+        <p className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-primary-boton px-4 py-2 text-[13px] font-semibold text-white shadow-lg">
           {aviso}
         </p>
       )}
@@ -216,7 +216,7 @@ export default function PanelMesero() {
               key={p.id}
               onClick={() => setPestana(p.id)}
               className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors ${
-                activa ? "text-primary" : "text-texto-3 hover:text-texto-2"
+                activa ? "text-primary-700" : "text-texto-3 hover:text-texto-2"
               }`}
             >
               <span className="relative">
@@ -224,7 +224,7 @@ export default function PanelMesero() {
                 {/* Cuántos pedidos esperan: es lo único de la barra que exige
                     moverse ahora mismo. */}
                 {p.id === "servir" && pendientes > 0 && (
-                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#DC2626] px-1 text-[10px] font-bold text-white">
+                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-text px-1 text-[10px] font-bold text-white">
                     {pendientes}
                   </span>
                 )}

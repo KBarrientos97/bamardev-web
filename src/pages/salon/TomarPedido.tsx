@@ -84,6 +84,29 @@ export default function TomarPedido({
     [productos, categoria, busqueda],
   );
 
+  /**
+   * La carta en grupos, en el orden de las categorías.
+   *
+   * En "Todos" iba en orden alfabético y mezclaba Agua, Cerveza, Chairo y
+   * Coca-Cola: el mesero buscaba el plato entre las bebidas. Agrupada, cada
+   * cosa queda siempre en el mismo lugar y se aprende dónde está
+   * (UX-MESEROS §2). Lo que no tiene categoría va al final, en "Otros".
+   */
+  const grupos = useMemo(() => {
+    const porNombre = new Map<string, typeof visibles>();
+    for (const p of visibles) {
+      const n = p.categoria?.nombre ?? "Otros";
+      const g = porNombre.get(n);
+      if (g) g.push(p);
+      else porNombre.set(n, [p]);
+    }
+    const orden = [...categorias, "Otros"];
+    return [...porNombre.entries()]
+      .sort(([a], [b]) => orden.indexOf(a) - orden.indexOf(b))
+      .map(([titulo, items]) => ({ titulo, items }));
+  }, [visibles, categorias]);
+  const [buscando, setBuscando] = useState(false);
+
   const total = totalPedido(lineas);
   const items = cantidadPedido(lineas);
 
@@ -110,7 +133,7 @@ export default function TomarPedido({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-fondo">
+    <div className="relative flex h-full min-h-0 flex-col bg-fondo">
       {/* La flecha de atrás está donde cae el pulgar, y el pedido vive sólo en
           este componente: salir lo perdía entero, sin aviso ni forma de
           recuperarlo. Con el pedido vacío no pregunta nada. */}
@@ -145,26 +168,42 @@ export default function TomarPedido({
             {mesa.comensales === 1 ? "persona" : "personas"}
           </p>
         </div>
-        {items > 0 && (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
-            {items}
-          </span>
-        )}
+        {/* La búsqueda es una lupa y no un campo fijo: el mesero casi siempre
+            elige por categoría, y el campo se comía una fila entera de carta
+            (UX-MESEROS §2). */}
+        <button
+          onClick={() => {
+            if (buscando) setBusqueda("");
+            setBuscando((v) => !v);
+          }}
+          aria-label={buscando ? "Cerrar la búsqueda" : "Buscar en la carta"}
+          aria-pressed={buscando}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
+            buscando
+              ? "border-primary-boton bg-primary-50 text-primary-700"
+              : "border-borde bg-white text-texto-2 hover:bg-muted"
+          }`}
+        >
+          <Icon name={buscando ? "x" : "search"} size={18} />
+        </button>
       </header>
 
-      <div className="border-b border-borde bg-white px-4 pb-3">
-        <div className="relative">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-3">
-            <Icon name="search" size={16} />
-          </span>
-          <input
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar en la carta…"
-            className="w-full rounded-xl border border-borde py-2.5 pl-9 pr-3 text-[15px] outline-none focus:border-primary"
-          />
-        </div>
-        <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4">
+      <div className="border-b border-borde bg-white px-4 pb-2.5 pt-1">
+        {buscando && (
+          <div className="relative mb-2">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-3">
+              <Icon name="search" size={16} />
+            </span>
+            <input
+              autoFocus
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar en la carta…"
+              className="w-full rounded-xl border border-borde py-2.5 pl-9 pr-3 text-[15px] outline-none focus:border-primary"
+            />
+          </div>
+        )}
+        <div className="sin-barra -mx-4 flex gap-2 overflow-x-auto px-4">
           <ChipCat activo={categoria === null} onClick={() => setCategoria(null)}>
             Todos
           </ChipCat>
@@ -176,7 +215,7 @@ export default function TomarPedido({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-24">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-24 pt-2">
         {carta.error && <ErrorMsg>{carta.error}</ErrorMsg>}
         {error && <ErrorMsg>{error}</ErrorMsg>}
         {carta.cargando && !carta.datos ? (
@@ -186,36 +225,48 @@ export default function TomarPedido({
             No hay productos que coincidan.
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-            {visibles.map((p) => (
-              <TarjetaCarta
-                key={p.id}
-                producto={p}
-                cantidad={cantidadDeProducto(lineas, p.id)}
-                onAgregar={() =>
-                  setLineas((l) => agregar(l, p, proximoId.current++))
-                }
-                onQuitar={() => setLineas((l) => quitarUno(l, p.id))}
-              />
-            ))}
-          </ul>
+          grupos.map((g) => (
+            <section key={g.titulo} className="mb-3">
+              {/* Con una categoría elegida el título repetiría el chip. */}
+              {!categoria && (
+                <h2 className="mb-1.5 mt-1 text-[12px] font-extrabold uppercase tracking-wide text-texto-2">
+                  {g.titulo}
+                </h2>
+              )}
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {g.items.map((p) => (
+                  <TarjetaCarta
+                    key={p.id}
+                    producto={p}
+                    cantidad={cantidadDeProducto(lineas, p.id)}
+                    onAgregar={() =>
+                      setLineas((l) => agregar(l, p, proximoId.current++))
+                    }
+                    onQuitar={() => setLineas((l) => quitarUno(l, p.id))}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
       </div>
 
-      {/* Píldora del pedido, igual que en el Punto de Venta. Oculta mientras
-          no haya nada cargado. Enviar se decide en el carrito, que es donde se
-          ven las cantidades y las indicaciones — no acá. */}
+      {/* Barra del pedido, fija abajo y de lado a lado. Era una píldora
+          flotante que tapaba la fila de abajo y no decía qué hacía
+          (UX-MESEROS §2). Enviar se decide en el carrito, que es donde se ven
+          las cantidades y las indicaciones — no acá. */}
       {items > 0 && !abierto && (
-        <button
-          onClick={() => setAbierto(true)}
-          className="absolute bottom-20 left-1/2 flex h-14 -translate-x-1/2 items-center gap-3 rounded-full bg-primary px-6 text-white shadow-xl shadow-primary/30"
-        >
-          <Icon name="cart" size={22} />
-          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
-            {fmtNum(items)}
-          </span>
-          <span className="text-lg font-extrabold">{fmtMoney(total)}</span>
-        </button>
+        <div className="absolute inset-x-0 bottom-0 border-t border-borde bg-white px-3 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
+          <button
+            onClick={() => setAbierto(true)}
+            className="flex h-13 w-full items-center justify-between rounded-2xl bg-primary-boton px-5 text-white hover:bg-primary-boton-hover"
+          >
+            <span className="text-base font-bold">Revisar y enviar</span>
+            <span className="text-base font-extrabold">
+              {fmtNum(items)} · {fmtMoney(total)}
+            </span>
+          </button>
+        </div>
       )}
 
       {abierto && (

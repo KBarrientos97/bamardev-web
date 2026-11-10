@@ -205,12 +205,12 @@ export default function DetalleMesa({
         <div className="min-h-0 flex-1 overflow-y-auto bg-fondo px-4 py-3">
           {/* Hero del consumo: es lo primero que se pregunta el mesero. */}
           {ocupada && (
-            <div className="rounded-2xl bg-slate-800 p-4 text-white">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+            <div className="rounded-2xl border border-borde bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-texto-2">
                 Consumo de la mesa
               </p>
-              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(consumo)}</p>
-              <p className="mt-1 text-xs text-white/90">
+              <p className="mt-1 text-3xl font-extrabold text-texto">{fmtMoney(consumo)}</p>
+              <p className="mt-1 text-xs text-texto-2">
                 {mesa.comensales} {mesa.comensales === 1 ? "persona" : "personas"} · {items}{" "}
                 {items === 1 ? "ítem" : "ítems"} · {fmtMoney(porPersona(mesa))} por persona
               </p>
@@ -225,7 +225,7 @@ export default function DetalleMesa({
           )}
 
           {quitando && (
-            <p className="mt-3 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+            <p className="mt-3 flex items-start gap-2 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
               <Icon name="alert" size={15} />
               <span>
                 Tocá el ícono rojo del producto que querés quitar. Si ya está en cocina,
@@ -235,8 +235,8 @@ export default function DetalleMesa({
           )}
 
           {mesa.reserva && (
-            <div className="mt-3 rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-3.5">
-              <p className="flex items-center gap-1.5 text-sm font-bold text-[#2563EB]">
+            <div className="mt-3 rounded-xl border border-dashed border-texto-4 bg-white p-3.5">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-texto-2">
                 <Icon name="clock" size={14} />
                 {mesa.reserva.hora}
               </p>
@@ -302,7 +302,7 @@ export default function DetalleMesa({
           {aviso && (
             <p
               role="alert"
-              className="mb-2 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] font-semibold text-[#D97706]"
+              className="mb-2 flex items-start gap-2 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] font-semibold text-warning-text"
             >
               <Icon name="alert" size={15} />
               <span>{aviso}</span>
@@ -315,7 +315,7 @@ export default function DetalleMesa({
               className={`mb-2 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-[13px] ${
                 pie.tonoBanner === "exito"
                   ? "border-primary-200 bg-primary-50 text-primary-700"
-                  : "border-[#FCD34D] bg-[#FFFBEB] text-[#D97706]"
+                  : "border-warning-borde bg-warning-suave text-warning-text"
               }`}
             >
               <Icon name={pie.tonoBanner === "exito" ? "check" : "info"} size={15} />
@@ -359,7 +359,7 @@ export default function DetalleMesa({
               variante="ghost"
               onClick={() => ejecutar(pie.terciario!.accion)}
               disabled={procesando}
-              className="mt-1 w-full text-[#DC2626]"
+              className="mt-1 w-full text-danger-text"
             >
               {pie.terciario.texto}
             </Boton>
@@ -494,7 +494,7 @@ function TarjetaComanda({
               <p className="truncate text-texto">{i.nombre}</p>
               {/* La indicación para cocina, en ámbar: es lo que hay que revisar
                   antes de llevar el plato a la mesa. */}
-              {i.nota && <p className="text-[11px] text-[#D97706]">{i.nota}</p>}
+              {i.nota && <p className="text-[11px] text-warning-text">{i.nota}</p>}
             </div>
             <span className="shrink-0 font-bold text-texto">{fmtMoney(subtotalItem(i))}</span>
             {/* Es un modo y no un botón por producto porque quitar es raro:
@@ -505,7 +505,7 @@ function TarjetaComanda({
                 onClick={() => onQuitar(i)}
                 disabled={procesando}
                 aria-label={`Quitar ${i.nombre}`}
-                className="shrink-0 rounded-lg border border-[#FCA5A5] p-1.5 text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-40"
+                className="shrink-0 rounded-lg border border-danger-borde p-1.5 text-danger-text hover:bg-danger-suave disabled:opacity-40"
               >
                 <Icon name="trash" size={13} />
               </button>
@@ -552,9 +552,9 @@ function Badge({ estado }: { estado: "PENDIENTE" | "SERVIDA" | "ANULADA" }) {
   const estilo = {
     // Decir "En cocina" de algo que ya no tiene nada es peor que no decir nada:
     // el mesero se queda esperando un plato que nadie va a preparar.
-    ANULADA: { texto: "Anulado", clase: "bg-[#FEF2F2] text-[#DC2626]" },
+    ANULADA: { texto: "Anulado", clase: "bg-danger-suave text-danger-text" },
     SERVIDA: { texto: "Servido", clase: "bg-muted text-texto-3" },
-    PENDIENTE: { texto: "En cocina", clase: "bg-[#FFFBEB] text-[#D97706]" },
+    PENDIENTE: { texto: "En cocina", clase: "bg-warning-suave text-warning-text" },
   }[estado];
   return (
     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${estilo.clase}`}>

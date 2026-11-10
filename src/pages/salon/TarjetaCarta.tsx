@@ -1,24 +1,25 @@
 import { Icon } from "../../components/Icon";
-import IconoProducto from "../../components/IconoProducto";
-import { Badge } from "../../components/ui";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import type { Producto } from "../../types";
 import { controlaStock } from "../pos/useCarrito";
 
 /**
- * Un producto de la carta.
+ * Un producto de la carta del mesero: un botón chico, sin ícono.
  *
- * Es la misma tarjeta del Punto de Venta: el mesero y la cajera tienen que ver
- * el producto igual, y el stock manda igual en los dos lados — la comanda
- * descuenta inventario cuando la caja cobra la mesa.
+ * Hasta el 10-nov era la tarjeta del Punto de Venta (ícono grande, precio
+ * abajo, stepper debajo) y en un celular entraban 6 por pantalla. El mesero
+ * pide de memoria lo que el cliente le canta: el ícono no le ayuda a encontrar
+ * nada y ocupaba el lugar de dos productos. Así entran unos 16, en 2 columnas
+ * porque en un celular 3 dejaban los nombres ilegibles (decisión del dueño,
+ * UX-MESEROS §2). La caja sigue con su tarjeta con ícono.
  *
  * Tocarla suma uno directo, sin confirmación: en el mostrador el mesero repite
  * lo que el cliente le canta, y pedir una confirmación por producto duplicaría
- * los toques del momento más rápido del turno. Lo que se cargó de más se
- * corrige en el carrito.
+ * los toques del momento más rápido del turno. El "−" aparece sólo sobre lo ya
+ * pedido; las cantidades finas y las indicaciones van en el carrito.
  *
- * Tres estados: normal, **en el pedido** (borde verde, fondo verde claro y el
- * stepper visible debajo) y sin stock (apagada y sin click).
+ * Tres estados: normal, **en el pedido** (borde y fondo del color del negocio,
+ * la cantidad en la esquina) y sin stock (apagada y sin click).
  */
 export default function TarjetaCarta({
   producto,
@@ -40,91 +41,66 @@ export default function TarjetaCarta({
   const controla = controlaStock(producto);
   const agotado = controla && producto.stockTotal <= 0;
   const enPedido = cantidad > 0;
-  // El "+" se apaga al llegar a lo que queda, como en la app (que usa la misma
-  // tarjeta del POS): avisa que ya no hay para prometer. No es un freno, y
-  // tocar la tarjeta sigue sumando, igual que en la app: cobrar la mesa deja
-  // pasar el negativo a propósito, porque lo servido no vuelve a la heladera.
-  const alTope = controla && cantidad >= producto.stockTotal;
+  // Lo que queda para prometer descuenta lo que ya está en ESTE pedido: el
+  // stock de la carta ya resta lo de otras mesas, pero no lo que el mesero
+  // tiene cargado y sin enviar, y con 2 Paceñas en el carrito seguía diciendo
+  // "4 disp." (UX-MESEROS §2). No frena: cobrar la mesa deja pasar el negativo
+  // a propósito, porque lo servido no vuelve a la heladera.
+  const quedan = producto.stockTotal - cantidad;
+  const pocas = quedan <= producto.stockMinimo;
 
   return (
-    <li>
-      <div
+    <li className="relative">
+      <button
+        onClick={onAgregar}
+        disabled={agotado}
+        title={controla && quedan <= 0 && !agotado ? "No quedan más en la carta" : undefined}
         className={[
-          "flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          "flex min-h-[68px] w-full flex-col justify-between rounded-xl border-[1.5px] px-3 py-2 text-left transition-colors disabled:cursor-not-allowed",
           enPedido
-            ? "border-primary bg-primary-50 shadow-sm"
-            : "border-borde bg-white hover:shadow-md",
+            ? "border-primary-boton bg-primary-50"
+            : "border-borde bg-white hover:bg-muted",
           agotado ? "opacity-50" : "",
         ].join(" ")}
       >
-        <button
-          onClick={onAgregar}
-          disabled={agotado}
-          className="flex flex-1 flex-col text-left disabled:cursor-not-allowed"
-        >
-          <div className="flex items-start justify-between gap-1.5">
-            <IconoProducto
-              nombre={producto.nombre}
-              icono={producto.icono}
-              categoria={producto.categoria?.nombre}
-              size={40}
-            />
-            {agotado && <Badge tono="rojo">Sin stock</Badge>}
-            {/* Cuántos quedan siempre, como en el Punto de Venta y en la app:
-                antes sólo bajo el mínimo, y el mesero no sabía qué podía
-                prometer hasta que se agotaba. Un span y no <Badge>: Badge
-                fuerza mayúsculas y "2 DISP." se leía como una sigla. */}
-            {!agotado && controla && (
-              <span
-                className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-bold ${
-                  producto.stockTotal <= producto.stockMinimo
-                    ? "bg-warning-bg text-warning-text"
-                    : "bg-primary-50 text-primary-700"
-                }`}
-              >
-                {fmtCantidad(producto.stockTotal)} disp.
+        {/* El margen derecho deja lugar a la cantidad de la esquina. */}
+        <span className="line-clamp-2 pr-6 text-[15px] font-bold leading-tight text-texto">
+          {producto.nombre}
+        </span>
+        <span className={`mt-1 text-[13px] font-semibold text-texto-2 ${enPedido ? "pr-10" : ""}`}>
+          {fmtMoney(producto.precio)}
+          {agotado ? (
+            <span className="font-bold text-danger-text"> · Sin stock</span>
+          ) : (
+            controla && (
+              // Cuántos quedan siempre, como en el Punto de Venta: antes sólo
+              // bajo el mínimo, y el mesero no sabía qué podía prometer hasta
+              // que se agotaba.
+              <span className={pocas ? "font-bold text-warning-text" : "text-texto-3"}>
+                {" "}· quedan {fmtCantidad(Math.max(0, quedan))}
               </span>
-            )}
-          </div>
-          <h3 className="mt-2 line-clamp-2 min-h-[34px] text-[13px] font-bold leading-snug text-texto">
-            {producto.nombre}
-          </h3>
-          <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
-            {fmtMoney(producto.precio)}
-          </p>
-        </button>
+            )
+          )}
+        </span>
+      </button>
 
-        {/* El stepper sólo existe cuando el producto está en el pedido: hasta
-            entonces no hay nada que ajustar y roba alto a la tarjeta. */}
-        {enPedido && (
-          <div className="mt-2 flex h-9 items-center justify-between rounded-full border border-primary bg-white px-1">
-            <button
-              onClick={onQuitar}
-              aria-label={cantidad === 1 ? "Quitar del pedido" : "Uno menos"}
-              className={`flex h-9 w-9 items-center justify-center rounded-full ${
-                // En la última unidad el "−" se vuelve tacho: avisa que el
-                // próximo toque saca el producto del pedido, no que lo baja a
-                // cero.
-                cantidad === 1
-                  ? "text-[#DC2626] hover:bg-[#FEF2F2]"
-                  : "text-texto-2 hover:bg-muted"
-              }`}
-            >
-              <Icon name={cantidad === 1 ? "trash" : "minus"} size={15} />
-            </button>
-            <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
-            <button
-              onClick={onAgregar}
-              disabled={alTope}
-              aria-label="Uno más"
-              title={alTope ? "No quedan más en la carta" : undefined}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50 disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <Icon name="plus" size={15} />
-            </button>
-          </div>
-        )}
-      </div>
+      {enPedido && (
+        <>
+          <span className="pointer-events-none absolute -right-1 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-primary-boton px-1.5 text-xs font-extrabold text-white">
+            {fmtNum(cantidad)}
+          </span>
+          <button
+            onClick={onQuitar}
+            aria-label={cantidad === 1 ? "Quitar del pedido" : "Uno menos"}
+            className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full border border-primary-200 bg-white text-primary-700 hover:bg-primary-50"
+          >
+            {/* En la última unidad el "−" se vuelve tacho: avisa que el
+                próximo toque saca el producto del pedido, no que lo baja a
+                cero. */}
+            <Icon name={cantidad === 1 ? "trash" : "minus"} size={16} />
+          </button>
+        </>
+      )}
     </li>
   );
 }

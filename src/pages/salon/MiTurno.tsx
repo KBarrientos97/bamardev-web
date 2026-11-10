@@ -95,7 +95,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
       {turno.error && <ErrorMsg>{turno.error}</ErrorMsg>}
       {error && <ErrorMsg>{error}</ErrorMsg>}
 
-      <div className="rounded-2xl bg-slate-800 p-4 text-white">
+      <div className="rounded-2xl bg-primary-boton p-4 text-white">
         <p className="truncate text-lg font-extrabold">{t?.meseroNombre}</p>
         <p className="truncate text-xs text-white/90">
           {/* El turno arranca cuando abrió la caja, no a medianoche: un resto
@@ -111,8 +111,8 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
 
       <div className="mt-3 grid grid-cols-3 gap-2">
         <Kpi valor={t?.mesasCerradas ?? 0} etiqueta="Mesas cerradas" color="text-primary-700" />
-        <Kpi valor={t?.mesasAbiertas ?? 0} etiqueta="Abiertas ahora" color="text-[#D97706]" />
-        <Kpi valor={t?.comensales ?? 0} etiqueta="Comensales" color="text-primary" />
+        <Kpi valor={t?.mesasAbiertas ?? 0} etiqueta="Abiertas ahora" color="text-warning-text" />
+        <Kpi valor={t?.comensales ?? 0} etiqueta="Comensales" color="text-texto" />
       </div>
 
       <p className="mt-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
@@ -122,11 +122,11 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
       {/* Las propinas sólo aparecen si las hubo: una tarjeta grande en Bs 0 le
           recuerda al mesero lo que no ganó cada vez que abre la pantalla. */}
       {(t?.propinas ?? 0) > 0 && (
-        <div className="mt-2 rounded-2xl bg-slate-800 p-3.5 text-white">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+        <div className="mt-2 rounded-2xl border border-borde bg-white p-3.5">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-texto-2">
             Propinas del turno
           </p>
-          <p className="mt-0.5 text-2xl font-extrabold">{fmtMoney(t!.propinas)}</p>
+          <p className="mt-0.5 text-2xl font-extrabold text-texto">{fmtMoney(t!.propinas)}</p>
         </div>
       )}
 
@@ -145,10 +145,10 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
           en la app: es plata del negocio que tiene encima. Sólo aparece si la
           hay; en un negocio donde el mesero no cobra siempre es cero. */}
       {debePlata && (
-        <div className="mt-2 rounded-xl border border-[#FCA5A5] bg-[#FEF2F2] p-3.5">
-          <p className="text-[13px] text-[#B91C1C]">Efectivo sin entregar</p>
-          <p className="text-2xl font-extrabold text-[#B91C1C]">{fmtMoney(sinEntregar)}</p>
-          <p className="mt-0.5 text-[13px] text-[#B91C1C]">
+        <div className="mt-2 rounded-xl border border-danger-borde bg-danger-suave p-3.5">
+          <p className="text-[13px] text-danger-text">Efectivo sin entregar</p>
+          <p className="text-2xl font-extrabold text-danger-text">{fmtMoney(sinEntregar)}</p>
+          <p className="mt-0.5 text-[13px] text-danger-text">
             Es plata del negocio que tenés vos. Llevala a caja y que te la aprueben.
           </p>
           {onIrAEntregas && (
@@ -160,7 +160,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
       )}
 
       {(t?.mesasPorLiberar ?? 0) > 0 && (
-        <p className="mt-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+        <p className="mt-2 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
           {t!.mesasPorLiberar === 1
             ? "1 mesa ya cobrada esperando que la liberes"
             : `${t!.mesasPorLiberar} mesas ya cobradas esperando que las liberes`}
@@ -263,7 +263,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
           Nombra las mesas porque sin los códigos el mesero tiene que recorrer
           el salón adivinando cuáles son suyas. */}
       {sinCerrar.length > 0 && (
-        <p className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+        <p className="mt-4 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
           Para cerrar tu turno no podés tener mesas a tu nombre. Te quedan:{" "}
           {sinCerrar.join(", ")}. Cerralas: que la caja las cobre y
           levantalas.
@@ -279,7 +279,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
           volver a encontrarse con el botón apagado, sin saber por qué, es la
           peor forma de enterarse del otro. */}
       {debePlata && (
-        <p className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+        <p className="mt-4 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
           Para cerrar tu turno tenés que entregar en caja los {fmtMoney(sinEntregar)} que
           cobraste en efectivo.
         </p>
