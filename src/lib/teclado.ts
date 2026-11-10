@@ -34,11 +34,16 @@ export function useAltoTeclado(activo = true): number {
 /**
  * Al enfocar un campo adentro de `contenedor`, lo deja a la vista cuando el
  * teclado termina de subir (tarda unos 250 ms en el iPhone).
+ *
+ * Sólo en pantallas táctiles: en la compu no sube ningún teclado, y centrar el
+ * campo al hacer clic era un salto de la hoja sin motivo (lo usa el `Modal` de
+ * todos los formularios del sistema).
  */
 export function useCampoALaVista(contenedor: { current: HTMLElement | null }, activo = true) {
   useEffect(() => {
     const c = contenedor.current;
     if (!activo || !c) return;
+    if (!window.matchMedia?.("(pointer: coarse)").matches) return;
     let espera = 0;
     const alEnfocar = (e: FocusEvent) => {
       const el = e.target;
