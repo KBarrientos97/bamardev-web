@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
-import { completaGesto, CURVA_IOS, useArrastre } from "../lib/gestos";
+import { useHojaArrastrable } from "../lib/gestos";
 import { Icon, type NombreIcono } from "./Icon";
 
 // Piezas de UI compartidas, con el trazo del diseño: verde esmeralda, bordes
@@ -365,55 +365,49 @@ export function Modal({
   }, [abierto, onClose]);
 
   // En el celular es una hoja que sube desde abajo, y como en iOS se baja con
-  // el dedo desde su cabecera. La que no se cierra con un clic afuera (un
+  // el dedo, desde la cabecera o desde el contenido cuando ya está arriba de
+  // todo (`useHojaArrastrable`). La que no se cierra con un clic afuera (un
   // formulario a medio llenar) tampoco se cierra así: cede un poco y vuelve.
-  const [saliendo, setSaliendo] = useState(false);
   const hoja = useRef<HTMLDivElement>(null);
-  const { delta, handlers } = useArrastre("y", (dy, ms) => {
-    if (!cerrarAlClicAfuera) return;
-    if (!completaGesto(dy, ms, hoja.current?.offsetHeight ?? 400, 0.25)) return;
-    setSaliendo(true);
-    setTimeout(() => {
-      setSaliendo(false);
-      onClose();
-    }, 220);
+  const velo = useRef<HTMLDivElement>(null);
+  useHojaArrastrable({
+    panel: hoja,
+    velo,
+    alCerrar: onClose,
+    puedeCerrar: cerrarAlClicAfuera,
+    activo: abierto,
   });
-  const bajada = delta === null || delta < 0 ? 0 : cerrarAlClicAfuera ? delta : Math.min(60, delta * 0.3);
 
   if (!abierto) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-[velo-aparece_.2s_ease-out] items-end justify-center bg-slate-900/40 p-0 motion-reduce:animate-none sm:items-center sm:p-4"
-      style={saliendo ? { opacity: 0, transition: "opacity 220ms" } : undefined}
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
       onMouseDown={(e) => {
-        if (cerrarAlClicAfuera && e.target === e.currentTarget) onClose();
+        if (cerrarAlClicAfuera && (e.target === e.currentTarget || e.target === velo.current)) onClose();
       }}
     >
+      {/* El velo va aparte del panel: se aclara mientras se baja la hoja. */}
+      <div
+        ref={velo}
+        aria-hidden="true"
+        className="absolute inset-0 animate-[velo-aparece_.2s_ease-out] bg-slate-900/40 motion-reduce:animate-none"
+      />
       <div
         ref={hoja}
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
-        className={`flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:rounded-2xl`}
-        style={
-          saliendo
-            ? { transform: "translateY(100%)", transition: `transform 220ms ${CURVA_IOS}` }
-            : bajada
-              ? { transform: `translateY(${bajada}px)` }
-              : delta === null
-                ? { transition: `transform 220ms ${CURVA_IOS}` }
-                : undefined
-        }
+        className={`relative flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl will-change-transform max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:rounded-2xl`}
       >
         {/* La manija: sólo en el celular, donde la hoja se baja con el dedo.
             Sobre una cabecera propia va encima de su color, sin franja blanca. */}
         {!encabezado && (
-          <div {...handlers} className="flex shrink-0 touch-none justify-center pb-1 pt-2 sm:hidden" aria-hidden="true">
+          <div className="flex shrink-0 justify-center pb-1 pt-2 sm:hidden" aria-hidden="true">
             <span className="h-1.5 w-10 rounded-full bg-slate-300" />
           </div>
         )}
         {encabezado ? (
-          <div {...handlers} className="relative shrink-0 max-sm:touch-none">
+          <div className="relative shrink-0">
             <span
               aria-hidden="true"
               className="absolute left-1/2 top-2 z-10 h-1.5 w-10 -translate-x-1/2 rounded-full bg-white/60 sm:hidden"
@@ -428,10 +422,7 @@ export function Modal({
             </button>
           </div>
         ) : (
-          <div
-            {...handlers}
-            className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 pb-4 pt-2 max-sm:touch-none sm:pt-4"
-          >
+          <div className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 pb-4 pt-2 sm:pt-4">
             <div>
               <h2 className="text-base font-bold text-texto">{titulo}</h2>
               {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}

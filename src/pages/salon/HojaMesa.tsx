@@ -1,16 +1,7 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type TouchEvent,
-} from "react";
+import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Modal } from "../../components/ui";
-import { completaGesto, CURVA_IOS, useArrastre } from "../../lib/gestos";
+import { completaGesto, useArrastre, useHojaArrastrable } from "../../lib/gestos";
 
 /**
  * La hoja de la mesa: UNA sola, que se baja con el dedo, y adentro cambia de
@@ -22,7 +13,9 @@ import { completaGesto, CURVA_IOS, useArrastre } from "../../lib/gestos";
  * del dueño: "no pongamos un modal encima de otro").
  *
  * Gestos, los de iOS:
- *  - bajar la cabecera cierra la hoja entera (desde cualquier vista);
+ *  - bajarla cierra la hoja entera, desde cualquier vista: desde la cabecera
+ *    o desde el contenido cuando ya está arriba de todo (`useHojaArrastrable`,
+ *    que la mueve cuadro a cuadro y respeta la velocidad del dedo);
  *  - en una vista de adentro, deslizar la cabecera hacia la derecha vuelve,
  *    igual que la flecha.
  */
@@ -30,8 +23,6 @@ import { completaGesto, CURVA_IOS, useArrastre } from "../../lib/gestos";
 interface ContextoHoja {
   /** Cierra la hoja con su animación. */
   cerrar: () => void;
-  /** Los handlers del gesto de bajar: van en la cabecera de cada vista. */
-  bajar: ReturnType<typeof useArrastre>["handlers"];
 }
 
 const Contexto = createContext<ContextoHoja | null>(null);
@@ -46,59 +37,36 @@ export function Hoja({
   onCerrar: () => void;
   children: ReactNode;
 }) {
-  const [saliendo, setSaliendo] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
-
-  const cerrar = useCallback(() => {
-    setSaliendo(true);
-    setTimeout(onCerrar, 220);
-  }, [onCerrar]);
-
-  const { delta, handlers } = useArrastre("y", (dy, ms) => {
-    if (completaGesto(dy, ms, panel.current?.offsetHeight ?? 500, 0.25))
-      cerrar();
-  });
-  const bajada = delta === null || delta < 0 ? 0 : delta;
+  const velo = useRef<HTMLDivElement>(null);
+  const { cerrar } = useHojaArrastrable({ panel, velo, alCerrar: onCerrar });
 
   // Escape cierra, como cualquier diálogo.
   useEffect(() => {
     const alTecla = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCerrar();
+      if (e.key === "Escape") cerrar();
     };
     document.addEventListener("keydown", alTecla);
     return () => document.removeEventListener("keydown", alTecla);
-  }, [onCerrar]);
+  }, [cerrar]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex animate-[velo-aparece_.2s_ease-out] items-end justify-center bg-slate-900/40 motion-reduce:animate-none sm:items-center sm:p-4"
-      style={saliendo ? { opacity: 0, transition: "opacity 220ms" } : undefined}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cerrar();
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+      {/* El velo va aparte del panel: se aclara mientras se baja la hoja. */}
+      <div
+        ref={velo}
+        aria-hidden="true"
+        className="absolute inset-0 animate-[velo-aparece_.2s_ease-out] bg-slate-900/40 motion-reduce:animate-none"
+        onMouseDown={cerrar}
+      />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={etiqueta}
-        className="flex h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl"
-        style={
-          saliendo
-            ? {
-                transform: "translateY(100%)",
-                transition: `transform 220ms ${CURVA_IOS}`,
-              }
-            : bajada
-              ? { transform: `translateY(${bajada}px)` }
-              : delta === null
-                ? { transition: `transform 220ms ${CURVA_IOS}` }
-                : undefined
-        }
+        className="relative flex h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl will-change-transform max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl"
       >
-        <Contexto.Provider value={{ cerrar, bajar: handlers }}>
-          {children}
-        </Contexto.Provider>
+        <Contexto.Provider value={{ cerrar }}>{children}</Contexto.Provider>
       </div>
     </div>
   );
@@ -108,32 +76,6 @@ function useHoja(): ContextoHoja {
   const c = useContext(Contexto);
   if (!c) throw new Error("CabeceraHoja va adentro de una <Hoja>");
   return c;
-}
-
-/** Junta los handlers de dos gestos sobre el mismo elemento. */
-function juntar(
-  a: ReturnType<typeof useArrastre>["handlers"],
-  b?: ReturnType<typeof useArrastre>["handlers"],
-) {
-  if (!b) return a;
-  return {
-    onTouchStart: (e: TouchEvent) => {
-      a.onTouchStart(e);
-      b.onTouchStart(e);
-    },
-    onTouchMove: (e: TouchEvent) => {
-      a.onTouchMove(e);
-      b.onTouchMove(e);
-    },
-    onTouchEnd: () => {
-      a.onTouchEnd();
-      b.onTouchEnd();
-    },
-    onTouchCancel: () => {
-      a.onTouchCancel();
-      b.onTouchCancel();
-    },
-  };
 }
 
 /**
@@ -152,11 +94,11 @@ export function CabeceraHoja({
   /** Botones que van antes de la cruz (el "Más acciones" de la mesa). */
   derecha?: ReactNode;
 }) {
-  const { cerrar, bajar } = useHoja();
+  const { cerrar } = useHoja();
+  // Bajar la hoja lo maneja la hoja entera; acá, sólo deslizar para volver.
   const volver = useArrastre("x", (dx, ms) => {
     if (onAtras && completaGesto(dx, ms, 320, 0.3)) onAtras();
   });
-  const handlers = juntar(bajar, onAtras ? volver.handlers : undefined);
   const corrida =
     onAtras && volver.delta && volver.delta > 0
       ? Math.min(volver.delta, 120)
@@ -164,7 +106,7 @@ export function CabeceraHoja({
 
   return (
     <div
-      {...handlers}
+      {...(onAtras ? volver.handlers : {})}
       className="shrink-0 touch-none border-b border-borde-soft bg-white"
     >
       <div
