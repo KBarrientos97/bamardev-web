@@ -174,8 +174,10 @@ export default function ElegirArticulo({
                     </span>
                   )}
                   <span className="ml-auto shrink-0 text-xs text-texto-3">
-                    {/* La unidad sí: dice en qué se compra (kg, litro, bolsa). */}
-                    {a.esInsumo && sinStockInsumos ? (
+                    {/* La unidad sí: dice en qué se compra (kg, litro, bolsa).
+                        Vendiendo sin control de stock tampoco va el número:
+                        "-30 u" no es lo que hay en la heladera. */}
+                    {(a.esInsumo && sinStockInsumos) || a.vendeSinStock ? (
                       a.unidad
                     ) : (
                       <>

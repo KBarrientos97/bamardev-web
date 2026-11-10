@@ -214,7 +214,9 @@ function mensajeDeRed(e: unknown): string {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     return "Sin internet. Revisá la conexión del local.";
   }
-  return "No se pudo conectar con el servidor. Puede estar reiniciándose: probá en un momento.";
+  // El wifi del local puede estar conectado y el internet no: el navegador
+  // dice "en línea" igual. Lo más común en un local es eso, no el servidor.
+  return "No se pudo conectar con el servidor. Revisá el internet del local o probá en un momento.";
 }
 
 /** Códigos con los que el backend marca un 403 de licencia (ver vigencia.ts). */

@@ -341,6 +341,36 @@ function fotoSuelta(agotado: boolean, lado: number): string {
   return `${agotado ? "grayscale(1) " : ""}drop-shadow(0 ${y}px ${borroso}px rgba(0,0,0,0.4))`;
 }
 
+/**
+ * La foto con su fondo en la Presentación, con un marco de la forma de la
+ * foto. El marco era fijo de 720 × 540 (apaisado) y las fotos de platos son
+ * paradas, sacadas desde arriba: object-cover les cortaba arriba y abajo y el
+ * plato salía partido (Kevin, 9-nov). Hasta que carga, el marco de siempre.
+ */
+function FotoEnmarcada({ src, borde, filtro, animacion }: { src: string; borde: string; filtro?: string; animacion: CSSProperties }) {
+  const [proporcion, setProporcion] = useState(4 / 3);
+  const ANCHO_MAX = 720;
+  const ALTO_MAX = 640;
+  const ancho = Math.min(ANCHO_MAX, ALTO_MAX * proporcion);
+  return (
+    <div
+      className="overflow-hidden"
+      style={{ width: ancho, height: ancho / proporcion, borderRadius: 40, border: `6px solid ${borde}`, boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}
+    >
+      <img
+        src={src}
+        alt=""
+        className="h-full w-full object-cover"
+        onLoad={(ev) => {
+          const { naturalWidth: w, naturalHeight: h } = ev.currentTarget;
+          if (w > 0 && h > 0) setProporcion(w / h);
+        }}
+        style={{ filter: filtro, ...animacion }}
+      />
+    </div>
+  );
+}
+
 /** "AGOTADO" como un sello que cae encima de la foto. */
 function Sello({ tam = 64 }: { tam?: number }) {
   return (
@@ -580,14 +610,13 @@ function PlatoGrande({ e, datos, c }: { e: Extract<Escena, { tipo: "plato" }>; d
               <Imagen plato={x} datos={datos} lado={580} conFoto />
             </div>
           ) : p.fotos && x.foto ? (
-            <div className="overflow-hidden" style={{ width: 720, height: 540, borderRadius: 40, border: `6px solid ${conAlfa(c.texto, 0.9)}`, boxShadow: "0 30px 80px rgba(0,0,0,0.45)" }}>
-              <img
-                src={datos.url(x.foto)}
-                alt=""
-                className="h-full w-full object-cover"
-                style={{ filter: x.agotado ? "grayscale(1)" : undefined, ...anim("md-ken", e.ms, { curva: "linear" }) }}
-              />
-            </div>
+            <FotoEnmarcada
+              key={x.foto}
+              src={datos.url(x.foto)}
+              borde={conAlfa(c.texto, 0.9)}
+              filtro={x.agotado ? "grayscale(1)" : undefined}
+              animacion={anim("md-ken", e.ms, { curva: "linear" })}
+            />
           ) : (
             <div style={anim("md-flotar", 3200, { repetir: true, curva: "ease-in-out" })}>
               <Imagen plato={x} datos={datos} lado={440} conFoto={false} />

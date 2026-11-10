@@ -12,7 +12,7 @@ import { Badge, Confirmar } from "../ui";
  * "Sin subir" y su ticket local. Una rechazada dice por qué y se puede sacar
  * de la lista después de cargarla a mano.
  *
- * Fuera de la app instalada del iPhone no dibuja nada.
+ * Fuera de la app instalada (iPhone o compu) no dibuja nada.
  */
 export default function VentasSinSubir({ onVerTicket }: { onVerTicket: (v: Venta) => void }) {
   const cola = useColaOffline();

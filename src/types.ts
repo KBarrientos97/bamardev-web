@@ -684,6 +684,12 @@ export interface ArticuloMovimiento {
   manejaLote?: boolean;
   /** La del medicamento, para mostrarla si el nombre no la trae. */
   concentracion?: string | null;
+  /**
+   * El negocio vende sin control de stock (Configuración › Inventario y
+   * stock): el stock de este artículo no es un conteo, así que no se muestra
+   * ni topea una salida. Sólo viene en ese modo, y nunca en un insumo.
+   */
+  vendeSinStock?: boolean;
 }
 
 export interface MovimientoInput {

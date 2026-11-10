@@ -1,19 +1,27 @@
-import { abiertaComoApp, esIOS, esLaApp } from "../pwa/entorno";
+import { abiertaComoApp, esAndroid, esIOS, esLaApp } from "../pwa/entorno";
 
 /**
  * ¿Esta pantalla vende sin internet? (PLAN-IOS F3, decisión del dueño del
- * 13-oct-2026: "igual que Android, pero sólo en modo iOS").
+ * 13-oct-2026: "igual que Android, pero sólo en modo iOS"; ampliada a la
+ * compu el 09-nov-2026: "debería servir la venta" con la app instalada en la
+ * PC como acceso directo).
  *
- * Sólo la app instalada en un iPhone o iPad (abierta desde el ícono de
- * inicio). En el navegador común —la compu del local, Safari sin instalar,
- * Chrome de Android— la web sigue como siempre: sin señal no vende. Las
- * razones:
+ * Sólo la app instalada, abierta desde su ícono: la del iPhone o iPad, y la
+ * de la compu (Chrome o Edge → "Instalar", que abre en su propia ventana). En
+ * el navegador común —una pestaña en la compu del local, Safari sin
+ * instalar— la web sigue como siempre: sin señal no vende. Las razones:
  *
- *  - en el navegador la pestaña se cierra o se recarga sin aviso y la cola se
- *    quedaría en un equipo que nadie vuelve a abrir;
- *  - en Android ya está el APK, que es el que vende sin señal;
+ *  - en una pestaña la página se cierra o se recarga sin aviso y la cola se
+ *    quedaría en un equipo que nadie vuelve a abrir; el acceso directo es el
+ *    que el cajero abre todos los días;
+ *  - en Android ya está el APK, que es el que vende sin señal: la web
+ *    instalada en un Android sigue sin vender offline, para no tener dos
+ *    colas en el mismo teléfono;
  *  - la app instalada guarda el shell entero (service worker), así que abre
- *    sin internet; el navegador no.
+ *    sin internet.
+ *
+ * En la compu se mira sólo el modo de pantalla: `navigator.standalone` es
+ * cosa de Safari en iOS.
  *
  * Todo puro salvo `ventaSinInternet()`, que lee el navegador una vez.
  */
@@ -28,7 +36,9 @@ export function modoOfflineDe(e: {
 }): boolean {
   if (!esLaApp(e.hostname, e.pathname)) return false;
   if (e.forzado) return true;
-  return esIOS(e.userAgent, e.maxTouchPoints) && abiertaComoApp(e.coincide, e.standaloneIOS);
+  if (esIOS(e.userAgent, e.maxTouchPoints)) return abiertaComoApp(e.coincide, e.standaloneIOS);
+  if (esAndroid(e.userAgent)) return false;
+  return abiertaComoApp(e.coincide, undefined);
 }
 
 /**

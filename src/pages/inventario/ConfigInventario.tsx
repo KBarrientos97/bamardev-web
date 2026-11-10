@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import IconoProducto from "../../components/IconoProducto";
 import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Input, useAviso } from "../../components/ui";
@@ -9,6 +10,7 @@ import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { EstadoControlStock, Producto } from "../../types";
+import { veFicha } from "../reportes/catalogo";
 import { SiNo, Tarjeta } from "../tickets/piezas";
 
 /**
@@ -100,10 +102,10 @@ export default function ConfigInventario() {
                 }
               />
             ) : (
-              // Hoy la pantalla no existe fuera del restaurante; si un día se
-              // abre a otro rubro, la farmacia ve por qué no se puede.
+              // Hoy la pantalla no existe fuera del restaurante (y el backend
+              // no deja apagarlo en otro rubro); si un día se abre, dice por qué.
               <p className="text-sm text-texto-2">
-                En una farmacia el stock siempre se controla: el lote y el vencimiento de cada venta salen de ahí.
+                Vender sin control de stock es sólo para restaurantes: en este negocio el stock siempre se controla.
               </p>
             )}
             {datos.sePuedeApagar && !datos.controlaStock && (
@@ -116,6 +118,7 @@ export default function ConfigInventario() {
                 <Boton className="mt-3" icono="archive" onClick={() => setContando(true)}>
                   Contar y empezar a controlar
                 </Boton>
+                <EnlaceReporte antes="Mientras tanto, lo que se vende sin estar cargado lo ves en " />
               </div>
             )}
           </Tarjeta>
@@ -128,7 +131,8 @@ export default function ConfigInventario() {
               </li>
               <li>
                 <span className="font-semibold text-texto">Lo vendido en cada turno</span> lo ves igual que siempre
-                en el cierre de caja, en «Productos vendidos», y en los reportes.
+                en el cierre de caja, en «Productos vendidos», y en los reportes. Lo que salió sin estar cargado,
+                además, en el reporte «Vendido sin stock», por artículo y venta por venta.
               </li>
               <li>
                 <span className="font-semibold text-texto">Los elaborados</span> (los platos que se preparan al
@@ -408,5 +412,27 @@ function Conteo({
         onOk={() => void guardar()}
       />
     </div>
+  );
+}
+
+/**
+ * "…lo ves en Vendido sin stock": el reporte que reemplaza al stock mientras
+ * no se cuenta. Sólo si el usuario lo ve (pide `reportes.ver` y la entrada a
+ * Reportes): un enlace a un reporte ajeno lo dejaba en la lista sin decirle
+ * por qué. Es un componente aparte para que su `useAuth` no quede debajo del
+ * `if (contando)` de la pantalla.
+ */
+function EnlaceReporte({ antes }: { antes: string }) {
+  const { rubro, negocio, usuario, puede, incluye } = useAuth();
+  const ve = veFicha("vendido-sin-stock", { rubro, features: negocio?.features, permisos: usuario?.permisos, puede, incluye });
+  if (!ve) return null;
+  return (
+    <p className="mt-3 text-[13px] text-texto-3">
+      {antes}
+      <Link to="/reportes/vendido-sin-stock" className="font-semibold text-primary-700 underline underline-offset-2">
+        Reportes › Vendido sin stock
+      </Link>
+      .
+    </p>
   );
 }

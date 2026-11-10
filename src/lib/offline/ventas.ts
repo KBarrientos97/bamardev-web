@@ -15,7 +15,7 @@ import { ventaSinInternet } from "./modo";
  * Cobrar con o sin señal (PLAN-IOS F3). Port de `VentaRepositoryImpl.registrar`
  * de Android:
  *
- *  - fuera de la app instalada del iPhone, es el `crearVenta` de siempre;
+ *  - fuera de la app instalada (iPhone o compu), es el `crearVenta` de siempre;
  *  - con señal, va al servidor; si la red falla (status 0: sin internet o sin
  *    respuesta), la venta se encola con el MISMO `clienteRequestId` y el
  *    cajero recibe su ticket. Si el POST sí había llegado, subirla después

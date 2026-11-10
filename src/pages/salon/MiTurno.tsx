@@ -265,8 +265,8 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
       {sinCerrar.length > 0 && (
         <p className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
           Para cerrar tu turno no podés tener mesas a tu nombre. Te quedan:{" "}
-          {sinCerrar.join(", ")}. Cerralas (que la caja cobre y
-          levantalas) o pasáselas a otro mesero.
+          {sinCerrar.join(", ")}. Cerralas: que la caja las cobre y
+          levantalas.
         </p>
       )}
 

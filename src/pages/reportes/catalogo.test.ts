@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../../types";
 import { ayudaDeReporte } from "./ayuda";
-import { catalogo, gruposVisibles, type ContextoCatalogo } from "./catalogo";
+import { catalogo, gruposVisibles, veFicha, type ContextoCatalogo } from "./catalogo";
 
 const TODOS_LOS_PERMISOS = ["reportes.ver", "reportes.operacion", "reportes.rentabilidad"];
 
@@ -65,7 +65,9 @@ describe("cada reporte pide lo mismo que su endpoint", () => {
   it("un plan básico ve las ventas y los cierres, no los de operación ni los de plata", () => {
     const ctx = dueno("RESTAURANTE", { incluye: () => false });
     const todo = ids(ctx).flatMap(([, f]) => f);
-    expect(todo).toEqual(["ventas", "cierres", "caja"]);
+    // Vendido sin stock (09-nov) también: son ventas, sin costo, y el
+    // restaurante que no cuenta lo necesita sea cual sea su plan.
+    expect(todo).toEqual(["ventas", "cierres", "caja", "vendido-sin-stock"]);
   });
 
   it("sin el permiso de rentabilidad no aparecen el resultado, las compras ni los lentos", () => {
@@ -174,5 +176,34 @@ describe("Ventas y ganancia (6-nov, como la app)", () => {
 
   it("tiene su «Cómo se calcula»", () => {
     expect(ayudaDeReporte("ventas-ganancia", "RESTAURANTE")?.queMuestra).toMatch(/cajero/);
+  });
+});
+
+describe("Vendido sin stock (09-nov)", () => {
+  const ve = (ctx: ContextoCatalogo) => ids(ctx).flatMap(([, f]) => f).includes("vendido-sin-stock");
+
+  it("está en Inventario, debajo de Stock crítico, para el restaurante", () => {
+    const inventario = gruposVisibles(dueno("RESTAURANTE")).find((g) => g.id === "inventario");
+    const lista = inventario?.fichas.map((f) => f.id) ?? [];
+    expect(lista.indexOf("vendido-sin-stock")).toBe(lista.indexOf("stock-critico") + 1);
+  });
+
+  it("lo ve quien ve las ventas, con cualquier plan: es lo que reemplaza al stock mientras no se cuenta", () => {
+    expect(ve(dueno("RESTAURANTE", { permisos: ["reportes.ver"], incluye: () => false }))).toBe(true);
+    expect(ve(dueno("RESTAURANTE", { permisos: [] }))).toBe(false);
+  });
+
+  it("sólo en el restaurante, el único que puede vender sin stock", () => {
+    for (const rubro of ["FARMACIA", "BILLAR", "MINIMARKET", "PELUQUERIA"]) expect(ve(dueno(rubro))).toBe(false);
+  });
+
+  it("veFicha lo enlaza sólo con la entrada a Reportes", () => {
+    const ctx = dueno("RESTAURANTE", { puede: (s) => s === "reportes" });
+    expect(veFicha("vendido-sin-stock", ctx)).toBe(true);
+    expect(veFicha("vendido-sin-stock", { ...ctx, puede: () => false })).toBe(false);
+  });
+
+  it("tiene su «Cómo se calcula», que dice que cuenta sólo lo que faltó", () => {
+    expect(ayudaDeReporte("vendido-sin-stock", "RESTAURANTE")?.deDonde).toMatch(/si había 2 y se vendieron 5, son 3/);
   });
 });

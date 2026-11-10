@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { AvisoVendeSinStock } from "../../../components/AvisoVendeSinStock";
 import { Icon } from "../../../components/Icon";
 import { fmtNum } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
@@ -69,61 +70,68 @@ export default function StockCritico() {
         <Icon name="clock" size={14} />
         Foto de hoy: el stock de este momento. No cambia con el período elegido arriba.
       </p>
-      <Cargador
-        estado={estado}
-        vacio={(x) =>
-          x.items.length === 0
-            ? {
-                titulo: "Nada por reponer",
-                texto: `Con el stock de hoy alcanza ${textoCobertura(x.cobertura)} al ritmo de venta de los últimos ${x.dias} días.`,
-                icono: "cart",
-              }
-            : null
-        }
-      >
-        {(x) => {
-          const r = resumenStock(x.items);
-          return (
-            <>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <KpiR etiqueta="Agotados" valor={fmtNum(r.agotados)} tono={r.agotados > 0 ? "alerta" : "normal"} />
-                <KpiR etiqueta="Se acaban en menos de 7 días" valor={fmtNum(r.seAcaban)} />
-              </div>
-              <ListaRecortada filas={x.items} clave={(i) => String(i.productoId)}>
-                {(i) => {
-                  const estadoFila = estadoStock(i);
-                  return (
-                    <FilaLista
-                      icono="cart"
-                      tono={estadoFila.tono === "rojo" ? "rosa" : "ambar"}
-                      titulo={i.nombre}
-                      chip={<Chip tono={estadoFila.tono}>{estadoFila.texto}</Chip>}
-                      linea={lineaStock(i, x.dias)}
-                      linea2={detalleStock(i) ?? undefined}
-                      valor={`Pedir ${fmtNum(i.sugerido)}`}
-                      valorPie={textoCobertura(x.cobertura)}
-                    />
-                  );
-                }}
-              </ListaRecortada>
-              <Nota>
-                El pedido sugerido cubre {plazo(x.cobertura)} al ritmo de venta de los últimos {x.dias} días, más el
-                stock mínimo que cargaste y lo que encargaron clientes.
-                {veReporte("sugerencia-compra") && (
-                  <>
-                    {" "}
-                    Para ajustar las cantidades e imprimir el pedido, andá a{" "}
-                    <Link to="/reportes/sugerencia-compra" className="font-bold underline underline-offset-2">
-                      Sugerencia de compra
-                    </Link>
-                    .
-                  </>
-                )}
-              </Nota>
-            </>
-          );
-        }}
-      </Cargador>
+      {/* Vendiendo sin control de stock la lista viene vacía a propósito (todo
+          lo vendido está en negativo): sin el aviso decía "Nada por reponer",
+          que se leía como que la heladera estaba llena. */}
+      {d?.controlaStock === false ? (
+        <AvisoVendeSinStock />
+      ) : (
+        <Cargador
+          estado={estado}
+          vacio={(x) =>
+            x.items.length === 0
+              ? {
+                  titulo: "Nada por reponer",
+                  texto: `Con el stock de hoy alcanza ${textoCobertura(x.cobertura)} al ritmo de venta de los últimos ${x.dias} días.`,
+                  icono: "cart",
+                }
+              : null
+          }
+        >
+          {(x) => {
+            const r = resumenStock(x.items);
+            return (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <KpiR etiqueta="Agotados" valor={fmtNum(r.agotados)} tono={r.agotados > 0 ? "alerta" : "normal"} />
+                  <KpiR etiqueta="Se acaban en menos de 7 días" valor={fmtNum(r.seAcaban)} />
+                </div>
+                <ListaRecortada filas={x.items} clave={(i) => String(i.productoId)}>
+                  {(i) => {
+                    const estadoFila = estadoStock(i);
+                    return (
+                      <FilaLista
+                        icono="cart"
+                        tono={estadoFila.tono === "rojo" ? "rosa" : "ambar"}
+                        titulo={i.nombre}
+                        chip={<Chip tono={estadoFila.tono}>{estadoFila.texto}</Chip>}
+                        linea={lineaStock(i, x.dias)}
+                        linea2={detalleStock(i) ?? undefined}
+                        valor={`Pedir ${fmtNum(i.sugerido)}`}
+                        valorPie={textoCobertura(x.cobertura)}
+                      />
+                    );
+                  }}
+                </ListaRecortada>
+                <Nota>
+                  El pedido sugerido cubre {plazo(x.cobertura)} al ritmo de venta de los últimos {x.dias} días, más el
+                  stock mínimo que cargaste y lo que encargaron clientes.
+                  {veReporte("sugerencia-compra") && (
+                    <>
+                      {" "}
+                      Para ajustar las cantidades e imprimir el pedido, andá a{" "}
+                      <Link to="/reportes/sugerencia-compra" className="font-bold underline underline-offset-2">
+                        Sugerencia de compra
+                      </Link>
+                      .
+                    </>
+                  )}
+                </Nota>
+              </>
+            );
+          }}
+        </Cargador>
+      )}
     </div>
   );
 }

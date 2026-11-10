@@ -638,7 +638,7 @@ export const RESPUESTAS: Respuesta[] = [
       "\"Todavía no cargó el resumen del turno. Esperá o reintentá antes de cerrar.\": salí y volvé a entrar al cierre.",
       "Si aparece **Hay ventas que el servidor rechazó**, no te frena: anotá esas ventas, cargalas de nuevo a mano y tocá **Entendido, cerrar caja**."
     ],
-    "importante": "si sos mesero, lo que cerrás es tu turno (**Mi turno** → **Cerrar mi turno**), y ése sí se frena con \"Todavía tenés mesas a tu nombre: … Cerralas o pasáselas a otro mesero antes de terminar tu turno.\" o con \"Todavía tenés Bs … en efectivo sin entregar. Llevalos a caja y esperá que te los aprueben antes de terminar tu turno.\"",
+    "importante": "si sos mesero, lo que cerrás es tu turno (**Mi turno** → **Cerrar mi turno**), y ése sí se frena con \"Todavía tenés mesas a tu nombre: … Cerralas antes de terminar tu turno: que la caja las cobre y levantalas.\" o con \"Todavía tenés Bs … en efectivo sin entregar. Llevalos a caja y esperá que te los aprueben antes de terminar tu turno.\"",
     "siNoAparece": "si no ves **Cerrar caja**, tu usuario no tiene el permiso \"Operar su caja\": pedíselo al dueño.",
     "relacionados": [
       "caja-cerrar",

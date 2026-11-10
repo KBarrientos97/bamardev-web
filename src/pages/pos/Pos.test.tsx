@@ -541,6 +541,40 @@ describe("cobrar una cita", () => {
     expect(screen.getByText(/error del fiado: Sin stock/)).toBeInTheDocument();
   });
 
+  it("vender sin stock (09-nov): un «Stock insuficiente» vuelve a pedir el catálogo, que quedó viejo", async () => {
+    // El dueño prendió el control de stock con la caja abierta: la grilla
+    // seguía sin decir "Agotado" y cada cobro rebotaba igual.
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(
+      new Error('Stock insuficiente de "Tinte raíz" (disponible 0, requiere 1)'),
+    );
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    const antes = vi.mocked(api.getProductos).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 230" }));
+    });
+    expect(api.getProductos).toHaveBeenCalledTimes(antes + 1);
+  });
+
+  it("otro rechazo del cobro no vuelve a pedir el catálogo", async () => {
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(new Error("Los pagos no suman el total"));
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    const antes = vi.mocked(api.getProductos).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 230" }));
+    });
+    expect(api.getProductos).toHaveBeenCalledTimes(antes);
+  });
+
   describe("QA PER-10: la cita entera con paquete", () => {
     const conPaquete: CarritoCita = {
       ...cita,

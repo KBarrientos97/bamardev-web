@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { veFicha } from "../pages/reportes/catalogo";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 
@@ -11,10 +12,17 @@ import { Icon } from "./Icon";
  * local mientras no cuenta su mercadería.
  *
  * El enlace sólo lo ve quien puede prenderlo (el dueño); el resto lee el aviso
- * y sabe a quién preguntarle.
+ * y sabe a quién preguntarle. El del reporte "Vendido sin stock", quien lo ve.
  */
 export function AvisoVendeSinStock() {
-  const { puede } = useAuth();
+  const { puede, rubro, negocio, usuario, incluye } = useAuth();
+  const verReporte = veFicha("vendido-sin-stock", {
+    rubro,
+    features: negocio?.features,
+    permisos: usuario?.permisos,
+    puede,
+    incluye,
+  });
   return (
     <div
       role="status"
@@ -25,7 +33,18 @@ export function AvisoVendeSinStock() {
         <p className="font-semibold">Estás vendiendo sin control de stock</p>
         <p className="mt-0.5">
           Las ventas no se frenan por lo que haya y el stock no se muestra. Lo que vendiste en cada turno
-          sigue en «Productos vendidos» del cierre de caja.
+          sigue en «Productos vendidos» del cierre de caja
+          {verReporte ? (
+            <>
+              , y todo lo que salió sin estar cargado, en{" "}
+              <Link to="/reportes/vendido-sin-stock" className="font-semibold underline">
+                Vendido sin stock
+              </Link>
+              .
+            </>
+          ) : (
+            "."
+          )}
           {puede("config_inventario") ? (
             <>
               {" "}
