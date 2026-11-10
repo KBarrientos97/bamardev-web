@@ -76,7 +76,7 @@ export default function TarjetaCarta({
               // Cuántos quedan siempre, como en el Punto de Venta: antes sólo
               // bajo el mínimo, y el mesero no sabía qué podía prometer hasta
               // que se agotaba.
-              <span className={pocas ? "font-bold text-warning-text" : "text-texto-3"}>
+              <span className={`whitespace-nowrap ${pocas ? "font-bold text-warning-text" : "text-texto-3"}`}>
                 {" "}· quedan {fmtCantidad(Math.max(0, quedan))}
               </span>
             )
