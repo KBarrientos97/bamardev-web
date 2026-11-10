@@ -96,9 +96,11 @@ function cargar(archivo: Blob): Promise<HTMLImageElement> {
  * (300 KB, 64 px de lado) y la foto de un plato (400 KB, 96 px).
  */
 const SIN_FONDO = {
-  marca: { tope: 300 * 1024, ladoMinimo: LADO_MINIMO_LOGO, calidad: 0.9, tolerancia: "fija" },
+  marca: { tope: 300 * 1024, ladoMinimo: LADO_MINIMO_LOGO, calidad: 0.9, tolerancia: "fija", platos: false },
   // Según el ruido: el plato blanco sobre blanco perdía el canto a mordiscos.
-  plato: { tope: 400 * 1024, ladoMinimo: 96, calidad: 0.82, tolerancia: "segun-ruido" },
+  // Y el borde de cada plato por su forma (platos.ts): por color no se sabe
+  // dónde termina un plato blanco sobre blanco.
+  plato: { tope: 400 * 1024, ladoMinimo: 96, calidad: 0.82, tolerancia: "segun-ruido", platos: true },
 } as const;
 
 function blobDe(canvas: HTMLCanvasElement, tipoMime: string, calidad?: number): Promise<Blob | null> {
@@ -155,7 +157,7 @@ async function prepararSinFondo(
   let conTransparencia = false;
   if (sacarFondo) {
     const pixeles = ctx.getImageData(0, 0, m.ancho, m.alto);
-    const r = quitarFondo(pixeles, { ladoMinimo: lim.ladoMinimo, tolerancia: lim.tolerancia });
+    const r = quitarFondo(pixeles, { ladoMinimo: lim.ladoMinimo, tolerancia: lim.tolerancia, platos: lim.platos });
     if (r.tipo !== "sin-cambios") {
       fondoQuitado = r.tipo === "quitado";
       conTransparencia = true;

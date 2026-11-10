@@ -242,3 +242,139 @@ describe("quitarFondo: la foto de un plato (9-nov)", () => {
     expect(pixel(p, 215, 120)[3]).toBe(255);
   });
 });
+
+describe("quitarFondo: el borde de los platos por su forma (9-nov)", () => {
+  // Kevin subió las fotos de la pollería (recortadas y puestas sobre blanco)
+  // y los platos salían mordidos y con aureola: por color, un plato blanco
+  // sobre blanco no se sabe dónde termina. Los íconos hechos con las mismas
+  // fotos se veían bien porque se recortaron por la forma del plato.
+  const PLATO: Rgba = [225, 225, 225, 255];
+  const CASI_BLANCO: Rgba = [253, 253, 253, 255];
+  const comoPlato = { ladoMinimo: 96, tolerancia: "segun-ruido" as const, platos: true };
+
+  /** Un plato con tres mordiscos en el canto, del color del fondo. */
+  const mordido = () =>
+    imagen(300, 300, (x, y) => {
+      const d = Math.hypot(x - 150, y - 150);
+      if (d <= 60) return ROJO;
+      const grados = ((Math.atan2(y - 150, x - 150) * 180) / Math.PI + 360) % 360;
+      const enMordida = [0, 120, 240].some((a) => Math.min(Math.abs(grados - a), 360 - Math.abs(grados - a)) <= 3);
+      if (d <= 90) return enMordida && d >= 78 ? CASI_BLANCO : PLATO;
+      return BLANCO;
+    });
+
+  it("los mordiscos del canto se rellenan y lo de afuera del plato se va", () => {
+    const sinForma = mordido();
+    quitarFondo(sinForma, { ladoMinimo: 96, tolerancia: "segun-ruido" });
+    expect(pixel(sinForma, 230, 150)[3]).toBe(0);
+
+    const p = mordido();
+    expect(quitarFondo(p, comoPlato).tipo).toBe("quitado");
+    expect(pixel(p, 230, 150)[3]).toBe(255);
+    expect(pixel(p, 234, 150)[3]).toBeGreaterThan(100);
+    expect(pixel(p, 150, 65)).toEqual(PLATO);
+    expect(pixel(p, 245, 150)[3]).toBe(0);
+  });
+
+  it("lo que asoma del plato (una papa) queda, y el hueco de al lado no se rellena", () => {
+    const p = imagen(300, 300, (x, y) => {
+      const d = Math.hypot(x - 150, y - 150);
+      if (x >= 220 && x <= 275 && Math.abs(y - 150) <= 4) return [230, 190, 60, 255];
+      if (d <= 60) return ROJO;
+      if (d <= 80) return PLATO;
+      return BLANCO;
+    });
+    expect(quitarFondo(p, comoPlato).tipo).toBe("quitado");
+    expect(pixel(p, 262, 150)).toEqual([230, 190, 60, 255]);
+    expect(pixel(p, 245, 160)[3]).toBe(0);
+  });
+
+  it("el pollo que asoma no estira el plato: la cuña de al lado no se rellena de blanco", () => {
+    // Con el contorno convexo el plato llegaba hasta el muslo que salía del
+    // plato y la cuña entre el muslo y el canto salía blanca sobre la TV
+    // (Kevin, 9-nov).
+    const POLLO: Rgba = [170, 90, 40, 255];
+    const p = imagen(300, 300, (x, y) => {
+      if (Math.hypot(x - 85, y - 215) <= 22) return POLLO;
+      const d = Math.hypot(x - 150, y - 150);
+      if (d <= 55) return ROJO;
+      if (d <= 80) return PLATO;
+      return BLANCO;
+    });
+    expect(quitarFondo(p, comoPlato).tipo).toBe("quitado");
+    expect(pixel(p, 75, 187)[3]).toBe(0);
+    expect(pixel(p, 108, 226)[3]).toBe(0);
+    expect(pixel(p, 70, 215)).toEqual(POLLO);
+    expect(pixel(p, 150, 74)).toEqual(PLATO);
+  });
+
+  it("un plato cuadrado conserva las esquinas y se le rellenan los mordiscos", () => {
+    // Un plato cuadrado no es una elipse: buscando sólo elipses quedaba sin
+    // plato (con el mordisco) o con una elipse metida que le cortaba las
+    // esquinas. El que no es redondo va por el contorno de su canto.
+    const p = imagen(300, 300, (x, y) => {
+      const dx = Math.max(0, Math.abs(x - 150) - 75);
+      const dy = Math.max(0, Math.abs(y - 150) - 75);
+      const afuera = Math.hypot(dx, dy) > 15;
+      if (afuera) return BLANCO;
+      if (Math.hypot(x - 150, y - 150) <= 50) return ROJO;
+      // Un mordisco en el canto de la derecha, del color del fondo.
+      if (x >= 232 && Math.abs(y - 150) <= 4) return CASI_BLANCO;
+      return PLATO;
+    });
+    expect(quitarFondo(p, comoPlato).tipo).toBe("quitado");
+    expect(pixel(p, 66, 66)).toEqual(PLATO);
+    expect(pixel(p, 234, 234)).toEqual(PLATO);
+    expect(pixel(p, 234, 150)[3]).toBe(255);
+    expect(pixel(p, 250, 150)[3]).toBe(0);
+  });
+
+  it("el fondo que quedó encerrado entre tres platos que se tocan se va", () => {
+    // La varita entra sólo desde el borde de la foto: el blanco del medio
+    // quedaba como un triángulo blanco entre los platos.
+    const centros = [
+      [100, 100],
+      [216, 100],
+      [158, 200],
+    ];
+    const p = imagen(320, 300, (x, y) => {
+      for (const [cx, cy] of centros) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d <= 35) return ROJO;
+        if (d <= 60) return PLATO;
+      }
+      return BLANCO;
+    });
+    expect(quitarFondo(p, comoPlato).tipo).toBe("quitado");
+    expect(pixel(p, 158, 133)[3]).toBe(0);
+    expect(pixel(p, 100, 45)).toEqual(PLATO);
+  });
+
+  it("dos platos que se tocan no se rellenan entre ellos", () => {
+    // Juntos, el contorno convexo de los dos tapaba de blanco el hueco de
+    // arriba y de abajo de donde se tocan: cada uno es su elipse.
+    const p = imagen(320, 300, (x, y) => {
+      for (const cx of [90, 230]) {
+        const d = Math.hypot(x - cx, y - 150);
+        if (d <= 40) return ROJO;
+        if (d <= 70) return PLATO;
+      }
+      return BLANCO;
+    });
+    expect(quitarFondo(p, comoPlato).tipo).toBe("quitado");
+    expect(pixel(p, 160, 128)[3]).toBe(0);
+    expect(pixel(p, 90, 85)).toEqual(PLATO);
+  });
+
+  it("una foto sobre la mesa (fondo con reflejos) queda como vino, para salir enmarcada", () => {
+    // La varita dejaba pedazos de la mesa de acero pegados al plato.
+    const p = imagen(300, 300, (x, y) => {
+      const d = Math.hypot(x - 150, y - 150);
+      if (d <= 60) return ROJO;
+      if (d <= 90) return [240, 240, 240, 255];
+      const v = 150 + Math.round(20 * Math.sin(x * 0.7 + y * 1.3) * Math.cos(y * 0.9));
+      return [v, v + 5, v + 10, 255];
+    });
+    expect(quitarFondo(p, comoPlato).tipo).toBe("sin-cambios");
+  });
+});

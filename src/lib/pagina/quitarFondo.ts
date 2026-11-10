@@ -25,6 +25,9 @@
  * sin navegador.
  */
 
+import { erosionar } from "./mascaras";
+import { UMBRAL_PLATO, cubrirPlatos } from "./platos";
+
 export interface Pixeles {
   /** RGBA, 4 bytes por píxel, fila por fila. Se modifica en el lugar. */
   data: Uint8ClampedArray;
@@ -73,6 +76,11 @@ export interface OpcionesFondo {
    * con las fotos recortadas del celular sobre blanco).
    */
   tolerancia?: "fija" | "segun-ruido";
+  /**
+   * La foto de un plato: el borde de cada plato se saca por su forma (ver
+   * platos.ts) y un fondo que no es de un color (una mesa) no se toca.
+   */
+  platos?: boolean;
 }
 /** Con esta parte del borde de un mismo color (o de dos o tres), es un fondo. */
 const BORDE_PAREJO = 0.8;
@@ -87,6 +95,15 @@ const MAX_BORRADO = 0.995;
 const ALFA_VACIO = 32;
 /** El backend rechaza un logo con un lado de menos de 64 px. */
 export const LADO_MINIMO_LOGO = 64;
+/**
+ * Con más ruido que esto el fondo de la foto de un plato no es un color: es
+ * la mesa. El blanco de Gemini o del recorte del celular da menos de 8; la
+ * mesa de acero de la cocina, 18 a 20, con sus reflejos. La varita dejaba
+ * pedazos de mesa pegados al plato: mejor la foto entera, enmarcada. Lo
+ * mismo si el borde tiene tres colores: una mesa con reflejos se parte en
+ * tres grupos parejos y el ruido de cada uno da bajo.
+ */
+const RUIDO_MAXIMO_PLATO = 12;
 
 interface Grupo {
   r: number;
@@ -203,32 +220,6 @@ function recortar(p: Pixeles, ladoMinimo: number): Recorte {
 }
 
 /**
- * Lo que sigue siendo fondo aunque se le coman r píxeles por cada lado (un
- * cuadrado de 2·r+1). Afuera de la imagen cuenta como fondo: si no, el borde
- * mismo se angostaba y el relleno no tenía por dónde empezar.
- */
-function erosionar(m: Uint8Array, ancho: number, alto: number, r: number): Uint8Array {
-  const pasada = (origen: Uint8Array, largo: number, cuantas: number, indice: (linea: number, i: number) => number) => {
-    const res = new Uint8Array(origen.length);
-    for (let linea = 0; linea < cuantas; linea++) {
-      // Cuántos "no fondo" hay en la ventana [i − r, i + r].
-      let faltan = 0;
-      for (let i = 0; i <= r && i < largo; i++) if (!origen[indice(linea, i)]) faltan++;
-      for (let i = 0; i < largo; i++) {
-        if (faltan === 0) res[indice(linea, i)] = 1;
-        const sale = i - r;
-        const entra = i + r + 1;
-        if (sale >= 0 && !origen[indice(linea, sale)]) faltan--;
-        if (entra < largo && !origen[indice(linea, entra)]) faltan++;
-      }
-    }
-    return res;
-  };
-  const horizontal = pasada(m, ancho, alto, (y, x) => y * ancho + x);
-  return pasada(horizontal, alto, ancho, (x, y) => y * ancho + x);
-}
-
-/**
  * Las motas que quedan sueltas en lo borrado: ruido del JPG, un poco más
  * oscuro que el blanco, que el relleno no se comió. En la TV eran puntitos
  * flotando y además agrandaban el recorte (el gallo quedaba corrido y más
@@ -298,11 +289,13 @@ export function quitarFondo(p: Pixeles, opciones: OpcionesFondo = {}): Resultado
 
   const fondo = coloresDelFondo(p, borde);
   if (!fondo) return { tipo: "sin-cambios" };
+  const ruido = ruidoDelBorde(p, borde, fondo);
+  if (opciones.platos && (ruido > RUIDO_MAXIMO_PLATO || fondo.length >= MAX_COLORES_FONDO)) return { tipo: "sin-cambios" };
   const tol =
     opciones.tolerancia === "segun-ruido"
       ? // Cuatro veces el ruido: un JPG de los cuadritos (ruido ~8) vuelve a
         // la de siempre, un blanco limpio baja hasta casi el mínimo.
-        Math.min(TOLERANCIA, Math.round(TOLERANCIA_MINIMA + 4 * ruidoDelBorde(p, borde, fondo)))
+        Math.min(TOLERANCIA, Math.round(TOLERANCIA_MINIMA + 4 * ruido))
       : TOLERANCIA;
 
   // Cuánto se aleja cada píxel del fondo (lo vacío, cero).
@@ -367,6 +360,52 @@ export function quitarFondo(p: Pixeles, opciones: OpcionesFondo = {}): Resultado
   for (let k = 0; k < total; k++) borrados += esFondo[k];
   if (borrados > total * MAX_BORRADO) return { tipo: "sin-cambios" };
 
+  // Le saca el fondo de encima al color de un píxel que queda a medias:
+  // color = a·dibujo + (1−a)·fondo  ⇒  dibujo = (color − (1−a)·fondo) / a.
+  // El fondo es el grupo del borde que más se le parece.
+  const quedaA = (i: number, a: number) => {
+    if (a >= 1) return;
+    if (a <= 0) {
+      d[i + 3] = 0;
+      return;
+    }
+    let mas: Grupo = fondo[0];
+    let menor = Infinity;
+    for (const g of fondo) {
+      const dist = distancia(d, i, g);
+      if (dist < menor) {
+        menor = dist;
+        mas = g;
+      }
+    }
+    d[i] = (d[i] - (1 - a) * mas.r) / a;
+    d[i + 1] = (d[i + 1] - (1 - a) * mas.g) / a;
+    d[i + 2] = (d[i + 2] - (1 - a) * mas.b) / a;
+    d[i + 3] = d[i + 3] * a;
+  };
+
+  // La foto de un plato: adentro de cada plato, todo (con los mordiscos del
+  // canto rellenos y el borde parejo); afuera, en la misma mancha, sólo lo
+  // que asoma de verdad. Donde no se encontró ningún plato, sigue como
+  // cualquier imagen (abajo).
+  const platos = opciones.platos ? cubrirPlatos(lejos, esFondo, ancho, alto, tol) : null;
+  const decidido = platos ? new Uint8Array(total) : null;
+  if (platos && decidido) {
+    const { cobertura, zona } = platos;
+    for (let k = 0; k < total; k++) {
+      if (!zona[k] && cobertura[k] <= 0) continue;
+      decidido[k] = 1;
+      const i = k * 4;
+      // Lo que asoma: el difuminado de alrededor se va, una papa queda. Y
+      // una papa que cruza el canto no se aclara justo en la raya del plato.
+      const asoma = esFondo[k] ? 0 : Math.min(1, Math.max(0, (lejos[k] - UMBRAL_PLATO) / (TOLERANCIA - UMBRAL_PLATO)));
+      const plato = cobertura[k];
+      if (plato >= 1 || asoma >= 1) continue;
+      if (plato >= asoma) d[i + 3] = Math.round(d[i + 3] * plato);
+      else quedaA(i, asoma);
+    }
+  }
+
   // El borde del dibujo: los dos píxeles que tocan lo borrado mezclan el
   // color del logo con el del fondo (el suavizado). Dejarlos opacos dejaba un
   // halo blanco alrededor del gallo sobre el rojo de la TV: se aclaran según
@@ -420,33 +459,15 @@ export function quitarFondo(p: Pixeles, opciones: OpcionesFondo = {}): Resultado
 
   for (let k = 0; k < total; k++) {
     const i = k * 4;
+    if (decidido?.[k]) continue;
     if (esFondo[k]) {
       d[i + 3] = 0;
       continue;
     }
     if (!anillo[k] && !segundo[k] && !banda[k]) continue;
-    let mas: Grupo = fondo[0];
-    let menor = Infinity;
-    for (const g of fondo) {
-      const dist = distancia(d, i, g);
-      if (dist < menor) {
-        menor = dist;
-        mas = g;
-      }
-    }
     // A 3 tolerancias del fondo ya es dibujo entero; en el borde difuminado,
-    // a la tolerancia del logo.
-    const a = Math.min(1, Math.max(0, (menor - tol) / (banda[k] ? TOLERANCIA - tol : 2 * tol)));
-    if (a >= 1) continue;
-    if (a <= 0) {
-      d[i + 3] = 0;
-      continue;
-    }
-    // color = a·logo + (1−a)·fondo  ⇒  logo = (color − (1−a)·fondo) / a
-    d[i] = (d[i] - (1 - a) * mas.r) / a;
-    d[i + 1] = (d[i + 1] - (1 - a) * mas.g) / a;
-    d[i + 2] = (d[i + 2] - (1 - a) * mas.b) / a;
-    d[i + 3] = d[i + 3] * a;
+    // a la tolerancia del logo. lejos[k] es la distancia al grupo más parecido.
+    quedaA(i, Math.min(1, Math.max(0, (lejos[k] - tol) / (banda[k] ? TOLERANCIA - tol : 2 * tol))));
   }
 
   return { tipo: "quitado", recorte: recortar(p, ladoMinimo) };
