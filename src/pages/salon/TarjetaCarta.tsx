@@ -2,6 +2,7 @@ import { Icon } from "../../components/Icon";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import type { Producto } from "../../types";
 import { controlaStock } from "../pos/useCarrito";
+import { vibrarToque } from "./toque";
 
 /**
  * Un producto de la carta del mesero: un botón chico, sin ícono.
@@ -52,14 +53,17 @@ export default function TarjetaCarta({
   return (
     <li className="relative">
       <button
-        onClick={onAgregar}
+        onClick={() => {
+          vibrarToque();
+          onAgregar();
+        }}
         disabled={agotado}
         title={controla && quedan <= 0 && !agotado ? "No quedan más en la carta" : undefined}
         className={[
-          "flex min-h-[68px] w-full flex-col justify-between rounded-xl border-[1.5px] px-3 py-2 text-left transition-colors disabled:cursor-not-allowed",
+          "flex min-h-[68px] w-full flex-col justify-between rounded-xl border-[1.5px] px-3 py-2 text-left transition-[transform,background-color] duration-75 active:scale-[0.97] disabled:cursor-not-allowed disabled:active:scale-100",
           enPedido
             ? "border-primary-boton bg-primary-50"
-            : "border-borde bg-white hover:bg-muted",
+            : "border-borde bg-white hover:bg-muted active:bg-primary-50",
           agotado ? "opacity-50" : "",
         ].join(" ")}
       >
@@ -90,9 +94,12 @@ export default function TarjetaCarta({
             {fmtNum(cantidad)}
           </span>
           <button
-            onClick={onQuitar}
+            onClick={() => {
+              vibrarToque();
+              onQuitar();
+            }}
             aria-label={cantidad === 1 ? "Quitar del pedido" : "Uno menos"}
-            className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full border border-primary-200 bg-white text-primary-700 hover:bg-primary-50"
+            className="absolute bottom-1 right-1 flex h-10 w-10 items-center justify-center rounded-full border border-primary-200 bg-white text-primary-700 transition-transform duration-75 hover:bg-primary-50 active:scale-90 active:bg-primary-100"
           >
             {/* En la última unidad el "−" se vuelve tacho: avisa que el
                 próximo toque saca el producto del pedido, no que lo baja a

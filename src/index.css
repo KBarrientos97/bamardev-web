@@ -139,6 +139,14 @@ button {
     transform: translateY(100%);
   }
 }
+/* Una vista nueva adentro de la misma hoja (la cuenta de la mesa): entra
+   desde la derecha, como la navegación de una app. */
+@keyframes vista-entra {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
 @keyframes cajon-entra {
   from {
     transform: translateX(-100%);

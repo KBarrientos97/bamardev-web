@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
+import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import type { ItemComanda, Mesa } from "../../types/salon";
 import {
@@ -9,6 +9,7 @@ import {
   subtotalItem,
   type MovimientoMesa,
 } from "./logicaSalon";
+import { MarcoModal, type Marco } from "./HojaMesa";
 
 /** Lo que dice el diálogo en cada movimiento (los textos de `strings.xml`). */
 const TEXTOS: Record<MovimientoMesa, { titulo: string; subtitulo: string; vacio: string }> = {
@@ -47,6 +48,7 @@ export function ElegirMesa({
   procesando,
   onElegir,
   onCerrar,
+  marco: M = MarcoModal,
 }: {
   modo: MovimientoMesa;
   mesa: Mesa;
@@ -54,18 +56,18 @@ export function ElegirMesa({
   procesando: boolean;
   onElegir: (otra: Mesa) => void;
   onCerrar: () => void;
+  /** Dónde se dibuja: un Modal propio o una vista de la hoja de la mesa. */
+  marco?: Marco;
 }) {
   const juntar = modo === "juntar";
   const textos = TEXTOS[modo];
   const candidatas = mesasParaElegir(modo, mesa, mesas);
 
   return (
-    <Modal
-      abierto
+    <M
       titulo={textos.titulo}
       subtitulo={textos.subtitulo}
-      onClose={onCerrar}
-      ancho="max-w-sm"
+      onCerrar={onCerrar}
       acciones={
         <Boton variante="ghost" onClick={onCerrar}>
           Cancelar
@@ -106,7 +108,7 @@ export function ElegirMesa({
           ))}
         </div>
       )}
-    </Modal>
+    </M>
   );
 }
 
@@ -130,6 +132,7 @@ export function AnularItem({
   procesando,
   onConfirmar,
   onCerrar,
+  marco: M = MarcoModal,
 }: {
   item: ItemComanda;
   /** La comanda ya salió: hay que avisarle a la cocina. */
@@ -137,6 +140,7 @@ export function AnularItem({
   procesando: boolean;
   onConfirmar: (motivo: string) => void;
   onCerrar: () => void;
+  marco?: Marco;
 }) {
   const [motivo, setMotivo] = useState("");
   const [libre, setLibre] = useState("");
@@ -149,12 +153,10 @@ export function AnularItem({
   }
 
   return (
-    <Modal
-      abierto
+    <M
       titulo="Quitar producto"
       subtitulo={`${item.cantidad}× ${item.nombre} · ${fmtMoney(subtotalItem(item))}`}
-      onClose={onCerrar}
-      ancho="max-w-sm"
+      onCerrar={onCerrar}
       acciones={
         <>
           <Boton variante="ghost" onClick={onCerrar}>
@@ -203,7 +205,7 @@ export function AnularItem({
         />
         <ErrorMsg>{error}</ErrorMsg>
       </div>
-    </Modal>
+    </M>
   );
 }
 
@@ -221,9 +223,11 @@ export function Reserva({
   procesando,
   onGuardar,
   onCerrar,
+  marco: M = MarcoModal,
 }: {
   mesa: Mesa;
   procesando: boolean;
+  marco?: Marco;
   onGuardar: (r: {
     hora: string;
     nombre: string;
@@ -261,11 +265,9 @@ export function Reserva({
   }
 
   return (
-    <Modal
-      abierto
+    <M
       titulo={previa ? "Cambiar la reserva" : `Reservar ${mesa.codigo}`}
-      onClose={onCerrar}
-      ancho="max-w-sm"
+      onCerrar={onCerrar}
       acciones={
         <>
           <Boton variante="ghost" onClick={onCerrar}>
@@ -328,7 +330,7 @@ export function Reserva({
         </Campo>
         <ErrorMsg>{error}</ErrorMsg>
       </div>
-    </Modal>
+    </M>
   );
 }
 

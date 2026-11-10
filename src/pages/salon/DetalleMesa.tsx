@@ -8,6 +8,7 @@ import { useAuth } from "../../store/AuthContext";
 import type { Comanda, ItemComanda, Mesa } from "../../types/salon";
 import { AnularItem, ElegirMesa, Reserva } from "./AccionesMesa";
 import ComprobanteMesa from "./ComprobanteMesa";
+import { CabeceraHoja, Hoja, VistaEnHoja } from "./HojaMesa";
 import {
   cantidadItems,
   consumoDeMesa,
@@ -22,6 +23,11 @@ import { pieDeMesa, type AccionMesa } from "./pieDeMesa";
 
 /**
  * Todo lo de una mesa, en una hoja sobre el salón.
+ *
+ * Es UNA hoja (`Hoja`), que se baja con el dedo. La cuenta, pasar, juntar,
+ * quitar un producto y la reserva se abren ADENTRO, como otra vista con su
+ * flecha para volver, y no como otra hoja encima (pedido del dueño, 10-nov:
+ * dos velos, dos manijas y gestos distintos en cada una).
  *
  * Se abre tocando la mesa y responde, en este orden, lo que el mesero necesita
  * saber parado al lado del cliente: cuánto va, qué pidieron, qué falta traer y
@@ -149,41 +155,87 @@ export default function DetalleMesa({
     }
   }
 
+  // Lo que se abre adentro de la hoja, en lugar de la mesa. Uno a la vez.
+  const vistaInterna = viendoComprobante ? (
+    <ComprobanteMesa mesa={mesa} marco={VistaEnHoja} onCerrar={() => setViendoComprobante(false)} />
+  ) : elegir ? (
+    <ElegirMesa
+      modo={elegir}
+      mesa={mesa}
+      mesas={mesasDelSalon}
+      procesando={procesando}
+      marco={VistaEnHoja}
+      onCerrar={() => setElegir(null)}
+      onElegir={(otra) => {
+        setElegir(null);
+        if (elegir === "pasar")
+          conMesa(() => api.transferirMesa(mesa.id, otra.id), `Consumo pasado a ${otra.codigo}`);
+        else conMesa(() => api.juntarMesa(mesa.id, otra.id), `${otra.codigo} juntada con esta`);
+      }}
+    />
+  ) : reservando ? (
+    <Reserva
+      mesa={mesa}
+      procesando={procesando}
+      marco={VistaEnHoja}
+      onCerrar={() => setReservando(false)}
+      onGuardar={(r) => {
+        setReservando(false);
+        conMesa(() => api.reservarMesa(mesa.id, r), "Reserva guardada");
+      }}
+    />
+  ) : anular ? (
+    <AnularItem
+      item={anular.item}
+      enCocina={anular.comanda.estado !== "SERVIDA"}
+      procesando={procesando}
+      marco={VistaEnHoja}
+      onCerrar={() => setAnular(null)}
+      onConfirmar={(motivo) => {
+        const { comanda, item } = anular;
+        setAnular(null);
+        conMesa(
+          () => api.anularItemComanda(mesa.id, Number(comanda.id), Number(item.id), { motivo }),
+          `${item.nombre} quitado de la cuenta`,
+        );
+      }}
+    />
+  ) : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40">
-      <div className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-borde-soft px-4 py-3">
-          <div className="min-w-0 flex-1">
-            {/* Unida, con las otras ("Mesa M5 + M1"), como la tarjeta del salón. */}
-            <h2 className="truncate text-xl font-extrabold text-texto">
+    <Hoja etiqueta={mesa.nombre} onCerrar={onCerrar}>
+      {vistaInterna ?? (
+      <>
+        <CabeceraHoja
+          titulo={
+            <>
+              {/* Unida, con las otras ("Mesa M5 + M1"), como la tarjeta del salón. */}
               {mesa.nombre}
               {estaUnida(mesa) && ` + ${(mesa.unidas ?? []).map((u) => u.codigo).join(" + ")}`}
-            </h2>
-            <p className="truncate text-xs text-texto-3">
-              {ocupada && mesa.abiertaEn
-                ? `${mesa.zonaNombre} · abierta hace ${hace(mesa.abiertaEn)}`
-                : `${mesa.zonaNombre} · ${mesa.capacidadTotal || mesa.capacidad} lugares`}
-            </p>
-          </div>
-          {/* El menú va con fondo de botón y no tres puntos sueltos: perdido
-              entre el título nadie lo encontraba. */}
-          {ocupada && (
-            <button
-              onClick={() => setMenu((v) => !v)}
-              aria-label="Más acciones"
-              className="shrink-0 rounded-lg border border-borde p-2 text-texto-2 hover:bg-muted"
-            >
-              <Icon name="settings" size={16} />
-            </button>
-          )}
-          <button
-            onClick={onCerrar}
-            aria-label="Cerrar"
-            className="shrink-0 rounded-lg p-2 text-texto-3 hover:bg-muted"
-          >
-            <Icon name="close" size={18} />
-          </button>
-        </div>
+            </>
+          }
+          subtitulo={
+            ocupada && mesa.abiertaEn
+              ? `${mesa.zonaNombre} · abierta hace ${hace(mesa.abiertaEn)}`
+              : `${mesa.zonaNombre} · ${mesa.capacidadTotal || mesa.capacidad} lugares`
+          }
+          derecha={
+            // Tres puntos con fondo de botón: el engranaje decía
+            // "configuración", y tres puntos sueltos nadie los encontraba.
+            ocupada && (
+              <button
+                onClick={() => setMenu((v) => !v)}
+                aria-label="Más acciones"
+                aria-expanded={menu}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
+                  menu ? "border-primary-boton bg-primary-50 text-primary-700" : "border-borde text-texto-2 hover:bg-muted"
+                }`}
+              >
+                <Icon name="more" size={20} strokeWidth={3} />
+              </button>
+            )
+          }
+        />
 
         {/* Se despliega acá adentro y no en un popup del sistema: son acciones
             que cambian plata de lugar y conviene que se vean sobre la mesa que
@@ -298,7 +350,7 @@ export default function DetalleMesa({
           )}
         </div>
 
-        <div className="border-t border-borde bg-white p-4">
+        <div className="shrink-0 border-t border-borde bg-white px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {aviso && (
             <p
               role="alert"
@@ -378,70 +430,9 @@ export default function DetalleMesa({
             </button>
           )}
         </div>
-      </div>
-
-      {viendoComprobante && (
-        <ComprobanteMesa mesa={mesa} onCerrar={() => setViendoComprobante(false)} />
+      </>
       )}
-
-      {elegir && (
-        <ElegirMesa
-          modo={elegir}
-          mesa={mesa}
-          mesas={mesasDelSalon}
-          procesando={procesando}
-          onCerrar={() => setElegir(null)}
-          onElegir={(otra) => {
-            setElegir(null);
-            if (elegir === "pasar")
-              conMesa(
-                () => api.transferirMesa(mesa.id, otra.id),
-                `Consumo pasado a ${otra.codigo}`,
-              );
-            else
-              conMesa(
-                () => api.juntarMesa(mesa.id, otra.id),
-                `${otra.codigo} juntada con esta`,
-              );
-          }}
-        />
-      )}
-
-      {reservando && (
-        <Reserva
-          mesa={mesa}
-          procesando={procesando}
-          onCerrar={() => setReservando(false)}
-          onGuardar={(r) => {
-            setReservando(false);
-            conMesa(() => api.reservarMesa(mesa.id, r), "Reserva guardada");
-          }}
-        />
-      )}
-
-      {anular && (
-        <AnularItem
-          item={anular.item}
-          enCocina={anular.comanda.estado !== "SERVIDA"}
-          procesando={procesando}
-          onCerrar={() => setAnular(null)}
-          onConfirmar={(motivo) => {
-            const { comanda, item } = anular;
-            setAnular(null);
-            conMesa(
-              () =>
-                api.anularItemComanda(
-                  mesa.id,
-                  Number(comanda.id),
-                  Number(item.id),
-                  { motivo },
-                ),
-              `${item.nombre} quitado de la cuenta`,
-            );
-          }}
-        />
-      )}
-    </div>
+    </Hoja>
   );
 }
 

@@ -94,6 +94,14 @@ const paths: Record<string, ReactNode> = {
       <line x1="3" y1="18" x2="21" y2="18" />
     </>
   ),
+  /** Tres puntos: "más acciones" (el engranaje decía "configuración"). */
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.2" />
+      <circle cx="12" cy="12" r="1.2" />
+      <circle cx="19" cy="12" r="1.2" />
+    </>
+  ),
   close: (
     <>
       <line x1="18" y1="6" x2="6" y2="18" />
