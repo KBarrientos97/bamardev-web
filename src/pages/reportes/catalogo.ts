@@ -1,6 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 import type { NombreIcono } from "../../components/Icon";
-import { tieneFeature, type Capacidad, type Seccion } from "../../lib/permisos";
+import { tieneFeature, veReportes, type Capacidad, type Seccion } from "../../lib/permisos";
 import { esBelleza, esBillar, esFarmacia, RUBROS_BELLEZA, type Rubro } from "../../lib/rubro";
 import type { Feature } from "../../types";
 import type { TonoR } from "./ui";
@@ -93,6 +93,7 @@ const v = {
   cajeros: lazy(() => import("./vistas/Cajeros")),
   caja: lazy(() => import("./vistas/MovimientosCaja")),
   stock: lazy(() => import("./vistas/StockCritico")),
+  sinStock: lazy(() => import("./vistas/VendidoSinStock")),
   compras: lazy(() => import("./vistas/Compras")),
   insumos: lazy(() => import("./vistas/Insumos")),
 };
@@ -252,6 +253,22 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
     // Lo arma la sugerencia de compra (venta diaria, días que alcanza, cuánto
     // pedir), que es de operación: `stock-critico` sólo trae el stock.
     { id: "stock-critico", titulo: "Stock crítico", descripcion: `${capital(p)} por reponer`, icono: "cart", tono: "ambar", grupo: "inventario", ...OPERACION, fotoDeHoy: true, vista: v.stock },
+    {
+      id: "vendido-sin-stock",
+      titulo: "Vendido sin stock",
+      descripcion: "Lo que salió sin estar cargado",
+      icono: "box",
+      tono: "azul",
+      grupo: "inventario",
+      // Son ventas, sin costo: lo ve quien ve las ventas, sin nivel del plan,
+      // como el historial de ventas y los cierres. El restaurante que vende
+      // sin control de stock (09-nov) lo necesita sea cual sea su plan: es lo
+      // que reemplaza al stock mientras no cuenta.
+      permiso: "reportes.ver",
+      // Sólo el restaurante tiene el interruptor de vender sin stock.
+      soloEnRubro: (r) => r === "RESTAURANTE",
+      vista: v.sinStock,
+    },
     { id: "compras", titulo: "Compras", descripcion: "Qué se compró y cuánto se gastó", icono: "truck", tono: "azul", grupo: "inventario", ...RENTABILIDAD, vista: v.compras },
     {
       id: "insumos",
@@ -305,6 +322,16 @@ export function tituloGrupoRubro(rubro: string | undefined): string {
   if (esBelleza(rubro)) return "Agenda";
   if (rubro === "RESTAURANTE") return "Restaurante";
   return "Atención";
+}
+
+/**
+ * ¿Este usuario ve este reporte? Para enlazarlo desde fuera de Reportes (el
+ * aviso de vender sin stock): un enlace a un reporte que no ve lo dejaba en
+ * la lista de reportes sin decirle por qué. Además del reporte en sí, tiene
+ * que tener la entrada a Reportes.
+ */
+export function veFicha(id: string, ctx: ContextoCatalogo): boolean {
+  return veReportes(ctx.puede) && catalogo(ctx.rubro).some((f) => f.id === id && esVisible(f, ctx));
 }
 
 /** Los grupos con lo que el usuario ve. Un grupo vacío no se dibuja. */

@@ -871,7 +871,12 @@ function FormLineaMovimiento({
   // un plato no lo descuenta), así que no se muestra ni como "en stock" ni
   // como "Disponible" (ver `insumosSinStock`). El tope de la salida se sigue
   // validando: es el mismo que aplica el backend al aprobar.
-  const ocultaStock = !!elegido?.esInsumo && insumosSinStock(rubro);
+  // Vendiendo sin control de stock (Configuración › Inventario y stock), el
+  // número es lo vendido sin contar ("-30"): no se muestra y no topea la
+  // salida. Sin esto la merma de una botella rota no se podía cargar. El
+  // backend tampoco la frena en ese modo.
+  const sinControl = !!elegido?.vendeSinStock;
+  const ocultaStock = (!!elegido?.esInsumo && insumosSinStock(rubro)) || sinControl;
 
   /**
    * Cuánto se puede sacar de este artículo. Descuenta lo que ya comprometen
@@ -898,7 +903,7 @@ function FormLineaMovimiento({
 
     // El artículo puede haber quedado fuera de la lista (deshabilitado o dado
     // de baja): ahí no se bloquea, decide el backend.
-    if (esSalida && disponible !== null && cant > disponible) {
+    if (esSalida && !sinControl && disponible !== null && cant > disponible) {
       return setError(
         comprometido > 0
           ? `Sólo quedan ${fmtCantidad(disponible)} disponibles (ya hay ${fmtCantidad(comprometido)} en otra línea de este movimiento).`
@@ -1199,7 +1204,8 @@ function FormMovimientoCuerpo({
         const art = (articulos.datos ?? []).find((a) => a.id === l.articuloId);
         // Si el artículo ya no está en la lista (deshabilitado o dado de baja)
         // no se bloquea: decide el backend.
-        if (art && cantidad > art.stock) {
+        // Sin control de stock no hay tope: ver `FormLineaMovimiento`.
+        if (art && !art.vendeSinStock && cantidad > art.stock) {
           return setError(
             `No hay stock suficiente de "${l.nombre}": quedan ${fmtCantidad(art.stock)}.`,
           );

@@ -243,6 +243,18 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
         queMuestra: `Los ${p} que hay que reponer y cuánto pedir.`,
         deDonde: "Es una foto de hoy: el stock de este momento y el ritmo de venta de los últimos 30 días. No cambia con el período de arriba.",
       };
+    case "vendido-sin-stock":
+      return {
+        queMuestra: "Lo que se vendió sin stock cargado que lo respaldara: por artículo y venta por venta, con quién la cobró.",
+        deDonde:
+          "Cada venta anota, al cobrarse, cuánto de cada línea dejó el stock en negativo. Cuenta sólo lo que faltó: si había 2 y se vendieron 5, son 3. Lo cobrado es lo de esa parte de la línea, ya con sus promociones.",
+        incluye: [
+          "Todo lo vendido mientras el local vende sin control de stock (Configuración › Inventario y stock).",
+          "Con el control prendido, lo que una mesa o una venta sin internet vendió cuando ya no quedaba.",
+          "Lo de antes de prender el control: prenderlo no borra nada.",
+        ],
+        noIncluye: [ANULADAS, "Los elaborados (el pollo, los platos): no llevan stock."],
+      };
     case "compras":
       return {
         queMuestra: "Qué se compró y cuánto se gastó en el período.",

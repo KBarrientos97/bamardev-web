@@ -9,8 +9,17 @@ import type { Almacen, Producto } from "../../types";
  * cuenta lo vuelve a prender cargando lo contado.
  */
 
+/** Los permisos del dueño de la prueba: con "reportes.ver" ve el reporte de lo vendido sin stock. */
+let permisos: string[] = ["reportes.ver"];
+
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ negocio: { id: 7 }, usuario: { sucursalId: null } }),
+  useAuth: () => ({
+    rubro: "RESTAURANTE",
+    negocio: { id: 7, features: [] },
+    usuario: { sucursalId: null, permisos },
+    puede: (s: string) => s === "reportes" || s === "config_inventario",
+    incluye: () => true,
+  }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -63,6 +72,7 @@ const interruptor = () => screen.getByRole("switch", { name: "Controlar el stock
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
+  permisos = ["reportes.ver"];
   vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL]);
   vi.mocked(api.getProductos).mockResolvedValue([
     producto({ id: 1, nombre: "Fanta 2L" }),
@@ -75,6 +85,25 @@ beforeEach(() => {
 });
 
 describe("Configuración › Inventario y stock", () => {
+  it("apagado: lleva al reporte de lo vendido sin stock, sólo a quien lo puede abrir", async () => {
+    // Mientras no cuenta, ese reporte es lo que reemplaza al stock.
+    vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: false, sePuedeApagar: true });
+    await montar();
+    expect(screen.getByRole("link", { name: "Reportes › Vendido sin stock" })).toHaveAttribute(
+      "href",
+      "/reportes/vendido-sin-stock",
+    );
+  });
+
+  it("quien no ve las ventas no recibe el enlace a un reporte que no puede abrir", async () => {
+    // Lo dejaba en la lista de reportes sin decirle por qué.
+    permisos = [];
+    vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: false, sePuedeApagar: true });
+    await montar();
+    expect(screen.getByRole("button", { name: "Contar y empezar a controlar" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Reportes › Vendido sin stock" })).not.toBeInTheDocument();
+  });
+
   it("prendido (como nace todo negocio): apagarlo pide confirmación y avisa", async () => {
     vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
     vi.mocked(api.venderSinStock).mockResolvedValue({ controlaStock: false, sePuedeApagar: true });

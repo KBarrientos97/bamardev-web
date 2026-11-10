@@ -659,6 +659,11 @@ function PuntoDeVenta() {
             return;
           }
         }
+        // "Stock insuficiente": el catálogo de esta caja quedó viejo. Pasa,
+        // por ejemplo, si el dueño prendió el control de stock con la caja
+        // abierta: la grilla seguía sin decir "Agotado" y cada cobro rebotaba
+        // igual. Releerlo pone a la vista lo que de verdad queda.
+        if (err instanceof Error && err.message.includes("Stock insuficiente")) productos.recargar();
         setError(err instanceof Error && err.message ? err.message : "No se pudo registrar la venta");
       } finally {
         setEnviando(false);

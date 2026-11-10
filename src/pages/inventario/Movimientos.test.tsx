@@ -635,6 +635,45 @@ describe("Restaurante: el stock de un insumo no se muestra al agregarlo (28-oct)
   });
 });
 
+describe("Vendiendo sin control de stock (09-nov): la merma no se frena por un número que nadie contó", () => {
+  // Apagado el control, la bebida está en negativo (lo vendido sin contar).
+  // Antes la línea decía "-30 Unidad en stock" y "No hay stock suficiente":
+  // la botella rota no se podía dar de baja y la pérdida no quedaba.
+  beforeEach(() => {
+    vi.mocked(api.getArticulosMovimiento).mockResolvedValue([
+      ...ARTICULOS.filter((a) => a.nombre !== "Simba 2L"),
+      articulo(5, "Simba 2L", { costo: 7, stock: -30, vendeSinStock: true }),
+    ]);
+  });
+
+  async function agregarSalida() {
+    const pendiente = movimiento(7, { tipo: "SALIDA", estado: "PENDIENTE", comprobante: "PEN-7", detalles: [] });
+    vi.mocked(api.getMovimientos).mockResolvedValue([pendiente]);
+    vi.mocked(api.getMovimiento).mockResolvedValue(pendiente);
+    montar();
+    fireEvent.click(await screen.findByText("PEN-7"));
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar artículo" }));
+    return screen.getByRole("dialog", { name: "Agregar artículo" });
+  }
+
+  it("ni el buscador ni la línea muestran el negativo, y la salida se guarda", async () => {
+    sesion.rubro = "RESTAURANTE";
+    const dialogo = await agregarSalida();
+    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar artículo" }), {
+      target: { value: "simba" },
+    });
+    expect(within(dialogo).queryByText(/-30/)).not.toBeInTheDocument();
+    fireEvent.mouseDown(within(dialogo).getByText("Simba 2L"));
+    expect(within(dialogo).queryByText(/en stock/)).not.toBeInTheDocument();
+    expect(within(dialogo).queryByText(/Disponible/)).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialogo).getByLabelText("Cantidad"), { target: { value: "1" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(api.agregarDetalleMovimiento).toHaveBeenCalledWith(7, expect.objectContaining({ productoId: 5, cantidad: 1 })));
+    expect(within(dialogo).queryByText(/No hay stock suficiente/)).not.toBeInTheDocument();
+  });
+});
+
 describe("Un día se pide entero, no se recorta de los últimos 200 (BUG-insumos-movimientos-2)", () => {
   /**
    * Sin rango el backend manda los últimos 200: elegir un día anterior decía

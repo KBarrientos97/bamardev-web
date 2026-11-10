@@ -313,6 +313,48 @@ export interface SugerenciaApi {
     subtotal: number;
   }[];
   resumen: { articulos: number; unidades: number; inversion: number; agotados: number };
+  /**
+   * Sólo viene (en false) cuando el negocio vende sin control de stock: ahí
+   * todo lo vendido está en negativo, así que la lista va vacía a propósito y
+   * la pantalla lo dice en vez de "Nada por reponer".
+   */
+  controlaStock?: false;
+}
+
+/** Lo vendido sin stock que lo respaldara, en el período (`/reportes/vendido-sin-stock`). */
+export interface VendidoSinStockApi {
+  /** Cómo está el interruptor HOY: lo de antes de prenderlo sigue listado. */
+  controlaStock: boolean;
+  resumen: { unidades: number; articulos: number; ventas: number; monto: number };
+  /** Por artículo, lo que más salió sin stock primero. */
+  items: {
+    productoId: number;
+    nombre: string;
+    categoria: string;
+    unidad: string | null;
+    /** Lo que faltó, no la línea entera: 2 en stock y 5 vendidas = 3. */
+    unidades: number;
+    ventas: number;
+    /** Lo cobrado por esas unidades (neto, en proporción a la línea). */
+    monto: number;
+    ultima: string;
+  }[];
+  /** Venta por venta, la más nueva primero (hasta 100). */
+  ultimas: {
+    lineaId: number;
+    ventaId: number;
+    comprobante: string | null;
+    fecha: string;
+    productoId: number;
+    producto: string;
+    unidad: string | null;
+    unidades: number;
+    /** Lo que llevó la línea entera. */
+    cantidad: number;
+    usuario: string | null;
+  }[];
+  /** Hay más líneas que las de `ultimas` (los totales sí son del período entero). */
+  recortado: boolean;
 }
 
 export interface InsumosApi {
@@ -543,6 +585,7 @@ export const apiReportes = {
   categorias: (r: RangoReporte) => api.reporte<CategoriaApi[]>("categorias", r),
   horas: (r: RangoReporte) => api.reporte<HorasApi>("horas", r),
   lentos: (r: RangoReporte) => api.reporte<LentosApi>("productos-lentos", r),
+  vendidoSinStock: (r: RangoReporte) => api.reporte<VendidoSinStockApi>("vendido-sin-stock", r),
   metodosPago: (r: RangoReporte) => api.reporte<MetodoPagoApi[]>("metodos-pago", r),
   /**
    * Lo cobrado con un medio (`medio`: el nombre tal como lo devuelve
