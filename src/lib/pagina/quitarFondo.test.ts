@@ -168,9 +168,77 @@ describe("quitarFondo (el logo en la TV, 9-nov)", () => {
     // El backend rechaza una foto de plato de menos de 96 px de lado: con el
     // mínimo del logo (64) la foto recortada no se podía subir.
     const p = imagen(300, 300, (x, y) => (dentro(x, y, 135, 135, 164, 164) ? ROJO : BLANCO));
-    const r = quitarFondo(p, 96);
+    const r = quitarFondo(p, { ladoMinimo: 96 });
     if (r.tipo !== "quitado") throw new Error(r.tipo);
     expect(r.recorte.ancho).toBe(96);
     expect(r.recorte.alto).toBe(96);
+  });
+});
+
+describe("quitarFondo: la foto de un plato (9-nov)", () => {
+  /** Un plato de canto gris muy claro, con comida roja, sobre `fondo`. */
+  const plato = (fondo: (x: number, y: number) => Rgba, canto: Rgba) =>
+    imagen(240, 240, (x, y) => {
+      const d = Math.hypot(x - 120, y - 120);
+      if (d <= 85) return ROJO;
+      if (d <= 100) return canto;
+      return fondo(x, y);
+    });
+  const CANTO: Rgba = [238, 238, 238, 255];
+
+  it("un plato blanco sobre blanco conserva el canto con la tolerancia según el ruido", () => {
+    // Las fotos recortadas del celular sobre blanco: el canto del plato es un
+    // gris apenas más oscuro que el fondo. Con la tolerancia del logo (42) la
+    // varita se lo comía y en la TV el plato salía mordido.
+    const conLaDelLogo = plato(() => BLANCO, CANTO);
+    quitarFondo(conLaDelLogo);
+    expect(pixel(conLaDelLogo, 215, 120)[3]).toBe(0);
+
+    const p = plato(() => BLANCO, CANTO);
+    const r = quitarFondo(p, { ladoMinimo: 96, tolerancia: "segun-ruido" });
+    expect(r.tipo).toBe("quitado");
+    // La orilla del canto queda a medias (puede ser el difuminado), no borrada.
+    expect(pixel(p, 215, 120)[3]).toBeGreaterThan(100);
+    // Más adentro, el canto entero, tal cual.
+    expect(pixel(p, 208, 120)).toEqual(CANTO);
+    expect(pixel(p, 120, 32)).toEqual(CANTO);
+    expect(pixel(p, 5, 5)[3]).toBe(0);
+  });
+
+  it("el difuminado que deja el recorte del celular queda transparente a medias, no como aureola", () => {
+    // La rampa del gris del plato al blanco (~20 px): opaca, era una aureola
+    // blanca alrededor del plato sobre el rojo de la TV.
+    const p = imagen(240, 240, (x, y) => {
+      const d = Math.hypot(x - 120, y - 120);
+      if (d <= 80) return ROJO;
+      if (d >= 100) return BLANCO;
+      const v = Math.round(200 + 55 * ((d - 80) / 20));
+      return [v, v, v, 255];
+    });
+    const r = quitarFondo(p, { ladoMinimo: 96, tolerancia: "segun-ruido" });
+    expect(r.tipo).toBe("quitado");
+    const [rojo, , , alfa] = pixel(p, 215, 120); // ~241 de gris
+    expect(alfa).toBeGreaterThan(40);
+    expect(alfa).toBeLessThan(200);
+    // Se le saca el blanco de encima: queda el gris del plato, no un blanco.
+    expect(rojo).toBeLessThan(236);
+    // Lo que ya es el plato (lejos del blanco) sigue opaco.
+    expect(pixel(p, 202, 120)[3]).toBe(255);
+  });
+
+  it("con un fondo con ruido, la tolerancia crece y no quedan motas alrededor del plato", () => {
+    const ruido = (x: number, y: number): Rgba => {
+      const v = 255 - ((x * 7 + y * 13) % 15);
+      return [v, v, v, 255];
+    };
+    const p = plato(ruido, [200, 200, 200, 255]);
+    const r = quitarFondo(p, { ladoMinimo: 96, tolerancia: "segun-ruido" });
+    expect(r.tipo).toBe("quitado");
+    let quedan = 0;
+    for (let y = 0; y < 240; y++) {
+      for (let x = 0; x < 240; x++) if (Math.hypot(x - 120, y - 120) > 103 && pixel(p, x, y)[3] > 0) quedan++;
+    }
+    expect(quedan).toBe(0);
+    expect(pixel(p, 215, 120)[3]).toBe(255);
   });
 });

@@ -14,8 +14,12 @@
  * dibujo no se toca aunque sea del mismo color: el blanco del brillo dentro
  * del círculo del gallo queda, porque el contorno negro lo encierra.
  *
- * NO mide si la foto "tiene" fondo: una foto de verdad (un plato, una
- * fachada) tiene el borde de mil colores y se deja como está.
+ * NO mide si la foto "tiene" fondo: una foto de verdad (un plato sobre la
+ * mesa, una fachada) tiene el borde de mil colores y se deja como está.
+ *
+ * También la usa la foto de un plato sacada sobre blanco o recortada con el
+ * celular (9-nov), con una tolerancia más fina que sigue al ruido del fondo:
+ * ver `OpcionesFondo.tolerancia`.
  *
  * Trabaja sobre los píxeles crudos (RGBA) y no conoce el canvas: así se prueba
  * sin navegador.
@@ -46,9 +50,30 @@ export type ResultadoFondo =
 /**
  * Cuánto puede alejarse un color del fondo y seguir siendo fondo (distancia en
  * RGB, de 0 a 441). Alcanza para el ruido del JPG y para los dos grises de los
- * cuadritos; un contorno, aunque sea gris claro, queda afuera.
+ * cuadritos; un contorno, aunque sea gris claro, queda afuera. Es también con
+ * cuánto se juntan los colores del borde para decidir si es parejo.
  */
 const TOLERANCIA = 42;
+/**
+ * Lo mínimo de la tolerancia que sigue al ruido del fondo: aun un blanco
+ * perfecto tiene el suavizado del achicado y el redondeo del JPG. Con las
+ * fotos de platos sobre blanco (ruido de menos de 1) da ~11: el canto del
+ * plato, de 230 a 245, queda; el blanco de 250 para arriba se va.
+ */
+const TOLERANCIA_MINIMA = 8;
+
+export interface OpcionesFondo {
+  /** El lado mínimo del recorte que acepta el backend (64 el logo, 96 un plato). */
+  ladoMinimo?: number;
+  /**
+   * "fija": la de siempre (42), la del logo. "segun-ruido": tan chica como lo
+   * permita el ruido del borde, la de la foto de un plato. Un plato blanco
+   * sobre fondo blanco se separa del fondo por un gris muy claro en el canto:
+   * con 42 la varita se comía el canto del plato a mordiscos (Kevin, 9-nov,
+   * con las fotos recortadas del celular sobre blanco).
+   */
+  tolerancia?: "fija" | "segun-ruido";
+}
 /** Con esta parte del borde de un mismo color (o de dos o tres), es un fondo. */
 const BORDE_PAREJO = 0.8;
 const MAX_COLORES_FONDO = 3;
@@ -210,7 +235,7 @@ function erosionar(m: Uint8Array, ancho: number, alto: number, r: number): Uint8
  * chico). Una isla que en ningún píxel se aleja del fondo más de dos
  * tolerancias es mancha, no dibujo: una letra, por chica que sea, contrasta.
  */
-function borrarMotas(esFondo: Uint8Array, lejos: Uint16Array, ancho: number, alto: number) {
+function borrarMotas(esFondo: Uint8Array, lejos: Uint16Array, ancho: number, alto: number, tol: number) {
   const total = ancho * alto;
   const visto = new Uint8Array(total);
   const isla = new Int32Array(total);
@@ -222,7 +247,7 @@ function borrarMotas(esFondo: Uint8Array, lejos: Uint16Array, ancho: number, alt
     visto[inicio] = 1;
     for (let j = 0; j < n; j++) {
       const k = isla[j];
-      if (lejos[k] >= 2 * TOLERANCIA) fuerte = true;
+      if (lejos[k] >= 2 * tol) fuerte = true;
       const x = k % ancho;
       const y = (k - x) / ancho;
       for (let dy = -1; dy <= 1; dy++) {
@@ -242,7 +267,25 @@ function borrarMotas(esFondo: Uint8Array, lejos: Uint16Array, ancho: number, alt
   }
 }
 
-export function quitarFondo(p: Pixeles, ladoMinimo = LADO_MINIMO_LOGO): ResultadoFondo {
+/**
+ * Cuánto se aparta el borde de su color (la raíz del promedio de las
+ * distancias al cuadrado): el ruido del fondo. Un blanco hecho en el celular da
+ * menos de 1; un JPG de los cuadritos, varias veces más.
+ */
+function ruidoDelBorde(p: Pixeles, borde: number[], fondo: Grupo[]): number {
+  let suma = 0;
+  let n = 0;
+  for (const k of borde) {
+    const dist = cercaDelFondo(p.data, k * 4, fondo);
+    if (dist > TOLERANCIA) continue;
+    suma += dist * dist;
+    n++;
+  }
+  return n ? Math.sqrt(suma / n) : 0;
+}
+
+export function quitarFondo(p: Pixeles, opciones: OpcionesFondo = {}): ResultadoFondo {
+  const ladoMinimo = opciones.ladoMinimo ?? LADO_MINIMO_LOGO;
   const { data: d, width: ancho, height: alto } = p;
   const total = ancho * alto;
   if (total === 0) return { tipo: "sin-cambios" };
@@ -255,13 +298,19 @@ export function quitarFondo(p: Pixeles, ladoMinimo = LADO_MINIMO_LOGO): Resultad
 
   const fondo = coloresDelFondo(p, borde);
   if (!fondo) return { tipo: "sin-cambios" };
+  const tol =
+    opciones.tolerancia === "segun-ruido"
+      ? // Cuatro veces el ruido: un JPG de los cuadritos (ruido ~8) vuelve a
+        // la de siempre, un blanco limpio baja hasta casi el mínimo.
+        Math.min(TOLERANCIA, Math.round(TOLERANCIA_MINIMA + 4 * ruidoDelBorde(p, borde, fondo)))
+      : TOLERANCIA;
 
   // Cuánto se aleja cada píxel del fondo (lo vacío, cero).
   const lejos = new Uint16Array(total);
   const parecido = new Uint8Array(total);
   for (let k = 0; k < total; k++) {
     lejos[k] = d[k * 4 + 3] <= ALFA_VACIO ? 0 : Math.round(cercaDelFondo(d, k * 4, fondo));
-    parecido[k] = lejos[k] <= TOLERANCIA ? 1 : 0;
+    parecido[k] = lejos[k] <= tol ? 1 : 0;
   }
 
   // Relleno desde el borde: sólo se borra lo que está PEGADO al borde. Pero
@@ -313,7 +362,7 @@ export function quitarFondo(p: Pixeles, ladoMinimo = LADO_MINIMO_LOGO): Resultad
       if (k + ancho < total) marcar(k + ancho, parecido);
     }
   }
-  borrarMotas(esFondo, lejos, ancho, alto);
+  borrarMotas(esFondo, lejos, ancho, alto, tol);
   let borrados = 0;
   for (let k = 0; k < total; k++) borrados += esFondo[k];
   if (borrados > total * MAX_BORRADO) return { tipo: "sin-cambios" };
@@ -336,13 +385,46 @@ export function quitarFondo(p: Pixeles, ladoMinimo = LADO_MINIMO_LOGO): Resultad
   const segundo = new Uint8Array(total);
   for (let k = 0; k < total; k++) if (!esFondo[k] && !anillo[k] && tocaA(k, anillo)) segundo[k] = 1;
 
+  // El borde difuminado, sólo con la tolerancia fina (la foto de un plato).
+  // La app del celular que recorta el plato y lo pone sobre blanco deja una
+  // rampa de ~20 px del gris del plato al blanco. Con la tolerancia del logo
+  // esa rampa se borraba entera, y con ella el canto claro del plato (los
+  // mordiscos); con la fina quedaba opaca, como una aureola blanca alrededor
+  // del plato sobre el rojo de la TV. Lo que la del logo hubiera borrado,
+  // pegado a lo borrado y hasta un 2,5% del lado de hondo, queda a medias:
+  // más transparente cuanto más se parece al fondo, como el borde suave de un
+  // editor de fotos. No más hondo: el arroz blanco del plato no se toca.
+  const banda = new Uint8Array(total);
+  if (tol < TOLERANCIA) {
+    const hondo = Math.max(4, Math.round(Math.max(ancho, alto) * 0.025));
+    let frente: number[] = [];
+    for (let k = 0; k < total; k++) {
+      if (anillo[k] && lejos[k] <= TOLERANCIA) {
+        banda[k] = 1;
+        frente.push(k);
+      }
+    }
+    for (let paso = 1; paso < hondo && frente.length > 0; paso++) {
+      const siguiente: number[] = [];
+      for (const k of frente) {
+        const x = k % ancho;
+        for (const v of [x > 0 ? k - 1 : -1, x < ancho - 1 ? k + 1 : -1, k - ancho, k + ancho]) {
+          if (v < 0 || v >= total || esFondo[v] || banda[v] || lejos[v] > TOLERANCIA) continue;
+          banda[v] = 1;
+          siguiente.push(v);
+        }
+      }
+      frente = siguiente;
+    }
+  }
+
   for (let k = 0; k < total; k++) {
     const i = k * 4;
     if (esFondo[k]) {
       d[i + 3] = 0;
       continue;
     }
-    if (!anillo[k] && !segundo[k]) continue;
+    if (!anillo[k] && !segundo[k] && !banda[k]) continue;
     let mas: Grupo = fondo[0];
     let menor = Infinity;
     for (const g of fondo) {
@@ -352,8 +434,9 @@ export function quitarFondo(p: Pixeles, ladoMinimo = LADO_MINIMO_LOGO): Resultad
         mas = g;
       }
     }
-    // A 3 tolerancias del fondo ya es dibujo entero.
-    const a = Math.min(1, Math.max(0, (menor - TOLERANCIA) / (2 * TOLERANCIA)));
+    // A 3 tolerancias del fondo ya es dibujo entero; en el borde difuminado,
+    // a la tolerancia del logo.
+    const a = Math.min(1, Math.max(0, (menor - tol) / (banda[k] ? TOLERANCIA - tol : 2 * tol)));
     if (a >= 1) continue;
     if (a <= 0) {
       d[i + 3] = 0;
