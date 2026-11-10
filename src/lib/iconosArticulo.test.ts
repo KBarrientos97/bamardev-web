@@ -74,7 +74,32 @@ describe("iconosArticulo", () => {
     for (const llave of viejos) {
       expect(iconoPorLlave(llave)?.categoria, llave).toBe("polleria");
     }
-    expect(ICONOS_ARTICULO).toHaveLength(212);
+    expect(ICONOS_ARTICULO).toHaveLength(220);
+  });
+
+  it("los platos en foto están en Pollería y el buscador los trae junto a los dibujos", () => {
+    const llaves = iconosDeCategoria("polleria").map((i) => i.llave);
+    expect(llaves).toEqual(
+      expect.arrayContaining([
+        "pipoca_pollo", "salchipapa_simple", "salchipapa_huevo",
+        "porcion_papas", "porcion_platano", "porcion_fideo",
+      ]),
+    );
+    // El dibujo de siempre sigue primero: lo usan productos que ya existen.
+    expect(buscarIconos("salchipapa").map((i) => i.llave)).toEqual([
+      "salchipapas", "salchipapa_simple", "salchipapa_huevo",
+    ]);
+    expect(buscarIconos("porcion").map((i) => i.llave)).toEqual([
+      "porcion_papas", "porcion_platano", "porcion_fideo",
+    ]);
+    // "papas fritas" trae el dibujo y la foto: son dos formas del mismo producto.
+    expect(buscarIconos("papas fritas").map((i) => i.llave)).toEqual(["papas_fritas", "porcion_papas"]);
+  });
+
+  it("la Aquarius de 2 L y el vaso de mocochinchi están en Bebidas, al lado de los suyos", () => {
+    expect(buscarIconos("aquarius").map((i) => i.llave)).toEqual(["aquarius", "aquarius_2lt"]);
+    expect(buscarIconos("mocochinchi").map((i) => i.llave)).toEqual(["jarra_mocochinchi", "vaso_mocochinchi"]);
+    expect(iconoPorLlave("vaso_mocochinchi")?.categoria).toBe("bebidas");
   });
 
   it("las bebidas de marca están en Bebidas y el buscador las encuentra por marca", () => {

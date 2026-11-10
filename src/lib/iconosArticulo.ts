@@ -117,6 +117,12 @@ export interface IconoArticulo {
  * px en la TV, y a 192 la pantalla las estiraba y se veían borrosas. Donde un
  * producto se vende "por sabor" sin que importe cuál (Simba, las popular de
  * vidrio), el ícono es el grupo entero: un solo producto, todas las botellas.
+ *
+ * Platos de pollería en foto (6): también a 512, y con el plato: sin él, una
+ * porción de papas es un montón suelto que no se lee como "un plato". Los
+ * platos redondos se recortan con una elipse ajustada al canto, más lo que
+ * asoma (papas, salchichas); el recorte a pulso del fondo les dejaba muescas
+ * en el canto que en la TV se veían como un serrucho.
  */
 const DATOS: Omit<IconoArticulo, "src">[] = [
   // Pollería
@@ -137,6 +143,15 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "soda", etiqueta: "Soda / gaseosa", categoria: "polleria" },
   { llave: "jugos", etiqueta: "Jugos", categoria: "polleria" },
   { llave: "pollo_pierna", etiqueta: "Pollo (pierna)", categoria: "polleria" },
+  // Platos servidos, en foto: la pipoca, las salchipapas y las porciones que
+  // se venden sueltas. Conviven con los dibujos de arriba (Salchipapas, Papas
+  // fritas): ésos ya los usan productos y no se tocan.
+  { llave: "pipoca_pollo", etiqueta: "Pipoca de pollo", categoria: "polleria" },
+  { llave: "salchipapa_simple", etiqueta: "Salchipapa simple", categoria: "polleria" },
+  { llave: "salchipapa_huevo", etiqueta: "Salchipapa con huevo", categoria: "polleria" },
+  { llave: "porcion_papas", etiqueta: "Porción de papas fritas", categoria: "polleria" },
+  { llave: "porcion_platano", etiqueta: "Porción de plátano", categoria: "polleria" },
+  { llave: "porcion_fideo", etiqueta: "Porción de fideo", categoria: "polleria" },
   // Comidas
   { llave: "almuerzo", etiqueta: "Almuerzo", categoria: "comidas" },
   { llave: "plato_del_dia", etiqueta: "Plato del día", categoria: "comidas" },
@@ -181,6 +196,7 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "agua_vital_1lt", etiqueta: "Agua Vital 1 L", categoria: "bebidas" },
   { llave: "agua_vital_2lt", etiqueta: "Agua Vital 2 L", categoria: "bebidas" },
   { llave: "aquarius", etiqueta: "Aquarius", categoria: "bebidas" },
+  { llave: "aquarius_2lt", etiqueta: "Aquarius 2 L", categoria: "bebidas" },
   { llave: "coca_cola_mini", etiqueta: "Coca-Cola mini", categoria: "bebidas" },
   { llave: "coca_cola_pequena", etiqueta: "Coca-Cola pequeña", categoria: "bebidas" },
   { llave: "coca_cola_personal", etiqueta: "Coca-Cola personal", categoria: "bebidas" },
@@ -196,9 +212,10 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "simba_2lt", etiqueta: "Simba 2 L (4 sabores)", categoria: "bebidas" },
   { llave: "gaseosas_popular", etiqueta: "Popular de vidrio: Sprite, Coca-Cola y Fanta", categoria: "bebidas" },
   { llave: "gaseosas_popular_sabores", etiqueta: "Popular de vidrio: Coca-Cola, 3 Fanta y Sprite", categoria: "bebidas" },
-  // Refrescos de la casa, en jarra
+  // Refrescos de la casa, en jarra y en vaso
   { llave: "jarra_limonada", etiqueta: "Jarra de limonada", categoria: "bebidas" },
   { llave: "jarra_mocochinchi", etiqueta: "Jarra de mocochinchi", categoria: "bebidas" },
+  { llave: "vaso_mocochinchi", etiqueta: "Vaso de mocochinchi", categoria: "bebidas" },
   // Almacén
   { llave: "pan", etiqueta: "Pan", categoria: "almacen" },
   { llave: "baguette", etiqueta: "Baguette", categoria: "almacen" },
