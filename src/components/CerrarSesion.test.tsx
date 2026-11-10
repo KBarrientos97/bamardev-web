@@ -202,6 +202,31 @@ describe("la cajera no sale con pedidos en el despacho (Kevin, 1-nov)", () => {
     expect(sesion.logout).toHaveBeenCalledTimes(1);
   });
 
+  it("con el despacho apagado en Configuración sale aunque el tablero traiga pedidos", async () => {
+    // Pedido del dueño (10-nov): el local todavía no usa Despacho y la cajera
+    // no podía cerrar sesión por pedidos que nadie iba a marcar. El backend ya
+    // los crea entregados; esto cubre lo que quedó de antes de apagarlo.
+    vi.mocked(apiTickets.tablero).mockResolvedValue({
+      ...tablero(ticket(1, "PREPARANDO")),
+      usaDespacho: false,
+    });
+    montar();
+    await salir();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("lo decide el tablero y no la sesión: si lo prendieron después del ingreso, frena", async () => {
+    vi.mocked(apiTickets.tablero).mockResolvedValue({
+      ...tablero(ticket(1, "LISTO")),
+      usaDespacho: true,
+    });
+    montar();
+    await salir();
+    expect(screen.getByRole("dialog", { name: "Pedidos sin entregar" })).toBeInTheDocument();
+    expect(sesion.logout).not.toHaveBeenCalled();
+  });
+
   it("sin el extra de tickets (Omar) ni pregunta", async () => {
     sesion.features = [];
     montar();

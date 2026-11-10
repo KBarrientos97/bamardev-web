@@ -88,6 +88,12 @@ export type Seccion =
    */
   | "config_inventario"
   /**
+   * Configuración › Tickets y despacho (10-nov): si se usa la pantalla de
+   * Despacho y cuándo vuelve a 001 el número del pedido. Del encargado, como
+   * Tickets y pedidos.
+   */
+  | "config_tickets"
+  /**
    * El resumen de la farmacia como primer ítem DENTRO de Inventario. Es la
    * misma ruta que Inventario (`/inventario`): el grupo lleva a su primera
    * pantalla, y el sub-ítem dice cuál es. Sólo farmacia: en los demás rubros
@@ -358,6 +364,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Vender sin stock (09-nov): cómo trabaja el local, no algo que se venda
   // aparte. El dueño, sin feature, como el backend (`control-stock`).
   config_inventario: { permiso: "negocio.configurar", feature: null },
+  // Despacho apagable y numeración por turno (10-nov): lo mismo que pide el
+  // backend para `/tickets/config`.
+  config_tickets: { permiso: "tickets.configurar", feature: "tickets_pedido" },
   // ── Educación (PLAN-ACADEMIAS-TECNICO §5.2) ──
   // Hoy es de la secretaría y la dirección: el docente (academia.ver PROPIO)
   // entra a sus grupos, como el profesional entra a "Mi agenda".
@@ -510,6 +519,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // sus bebidas (09-nov). La farmacia no puede (el lote sale del stock) y el
   // resto de los rubros no lo pidió: ante la duda, no se ve.
   config_inventario: ["RESTAURANTE"],
+  config_tickets: ["RESTAURANTE"],
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
   // ahí carga a sus docentes y su NIT (sin retención desde el 08-nov).
@@ -896,6 +906,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["menu_digital", "/menu-digital"],
   ["config_recibo", "/configuracion/recibo"],
   ["config_inventario", "/configuracion/inventario"],
+  ["config_tickets", "/configuracion/tickets"],
   ["config_negocio", "/configuracion/negocio"],
   ["config_sucursales", "/configuracion/sucursales"],
   ["mi_pagina", "/mi-pagina"],

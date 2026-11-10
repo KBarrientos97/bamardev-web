@@ -87,6 +87,7 @@ const Despacho = lazy(() => import("./pages/tickets/Despacho"));
 const MenuDigital = lazy(() => import("./pages/menu-digital/MenuDigital"));
 const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
 const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
+const ConfigTickets = lazy(() => import("./pages/tickets/ConfigTickets"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 // Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
@@ -737,6 +738,18 @@ function Rutas() {
             <Protegida seccion="config_inventario">
               <Suspense fallback={null}>
                 <ConfigInventario />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Si se usa Despacho y cuándo vuelve a 001 el número del ticket (10-nov). */}
+        <Route
+          path="/configuracion/tickets"
+          element={
+            <Protegida seccion="config_tickets">
+              <Suspense fallback={null}>
+                <ConfigTickets />
               </Suspense>
             </Protegida>
           }

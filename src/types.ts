@@ -165,6 +165,12 @@ export interface SesionNegocio {
   tema?: TemaNegocio | null;
   perfil?: PerfilRubro | null;
   perfilVersion?: number | null;
+  /**
+   * Si el local usa la pantalla de Despacho (Configuración › Tickets y
+   * despacho). Sólo esconde "Despacho" del menú; sin el dato (sesión o
+   * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
+   */
+  usaDespacho?: boolean;
 }
 
 export interface LoginResponse {

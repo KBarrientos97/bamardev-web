@@ -31,12 +31,33 @@ export interface TicketPedido {
   items: ItemTicket[];
 }
 
+/**
+ * Cuándo vuelve a 001 el número (ver `NumeracionTickets` del backend):
+ * `DIARIA` cada día a las 6 a. m. (un contador del local), `POR_TURNO` cada
+ * caja que se abre (un contador por caja).
+ */
+export type NumeracionTickets = "DIARIA" | "POR_TURNO";
+
 /** GET /tickets: lo de hoy del local y el número del próximo cobro. */
 export interface TableroTickets {
   ahora: number;
   sucursalId: number;
   siguiente: number;
+  /** Faltan con un backend de antes del 10-nov: se toman como siempre (prendido, diaria). */
+  usaDespacho?: boolean;
+  numeracion?: NumeracionTickets;
   tickets: TicketPedido[];
+}
+
+/** GET/PATCH /tickets/config — Configuración › Tickets y despacho. */
+export interface ConfigTickets {
+  usaDespacho: boolean;
+  numeracion: NumeracionTickets;
+}
+
+/** Lo que contesta el PATCH: además, cuántos pedidos se dieron por entregados al apagarlo. */
+export interface ConfigTicketsGuardada extends ConfigTickets {
+  entregados: number;
 }
 
 export const TEMAS_TV = ["rojo", "verde", "brasa", "crema", "personalizado"] as const;

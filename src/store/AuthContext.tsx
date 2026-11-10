@@ -77,6 +77,12 @@ interface AuthValue {
   actualizarCupo: (cupo: CupoEstado | null | undefined) => void;
   /** Lo pide de nuevo a `GET /monedero`. Sólo tiene sentido con cupo. */
   refrescarCupo: () => Promise<void>;
+  /**
+   * Pisa `negocio.usaDespacho` con lo recién guardado en Configuración ›
+   * Tickets y despacho: "Despacho" se va (o vuelve) del menú de quien lo
+   * cambió sin esperar al próximo ingreso.
+   */
+  fijarUsaDespacho: (usa: boolean) => void;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -262,6 +268,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (actualizado !== previo) {
         localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
       }
+      return actualizado;
+    });
+  }, []);
+
+  const fijarUsaDespacho = useCallback((usa: boolean) => {
+    setNegocio((previo) => {
+      if (!previo || previo.usaDespacho === usa) return previo;
+      const actualizado = { ...previo, usaDespacho: usa };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
       return actualizado;
     });
   }, []);
@@ -463,6 +478,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cupo,
       actualizarCupo,
       refrescarCupo,
+      fijarUsaDespacho,
     }),
     [
       token,
@@ -478,6 +494,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cupo,
       actualizarCupo,
       refrescarCupo,
+      fijarUsaDespacho,
     ],
   );
 

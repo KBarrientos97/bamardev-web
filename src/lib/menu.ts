@@ -414,6 +414,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // La otra mitad de la configuración del restaurante (09-nov): si el
       // stock frena la venta, y el conteo para volver a controlarlo.
       { a: "/configuracion/inventario", label: "Inventario y stock", icono: "box", seccion: "config_inventario" },
+      // Si se usa Despacho y cómo se numeran los tickets (10-nov): el dueño lo
+      // busca en Configuración, no en las pantallas de la TV.
+      { a: "/configuracion/tickets", label: "Tickets y despacho", icono: "ticket", seccion: "config_tickets" },
       // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
       {
         a: "/configuracion/sucursales",
@@ -662,6 +665,23 @@ function filtrar(
   return salida;
 }
 
+/**
+ * Lo que entra al menú: lo que se puede ver, salvo Despacho si el local lo
+ * apagó (Configuración › Tickets y despacho, 10-nov).
+ *
+ * Sólo el menú, no la ruta: `usaDespacho` viene del login y puede estar
+ * viejo. Si la ruta se cerrara con él, la tablet de la cocina —que no
+ * vuelve a entrar nunca— quedaría afuera después de que el dueño lo prenda
+ * otra vez. La pantalla de Despacho mira el dato fresco del tablero y dice
+ * ella misma que está apagado.
+ */
+export function puedeEnMenu(
+  puede: (s: Seccion) => boolean,
+  usaDespacho: boolean | undefined,
+): (s: Seccion) => boolean {
+  return (s) => (s === "despacho" && usaDespacho === false ? false : puede(s));
+}
+
 export function construirMenu(
   puede: (s: Seccion) => boolean,
   rubro: string | undefined,
@@ -829,7 +849,11 @@ export function useMenu(): Menu {
   // una feature al negocio (`refrescarFeatures`), la sección se va del menú en
   // caliente. Lo guardado de un grupo que ya no existe queda en el storage sin
   // molestar; si la feature vuelve, el grupo vuelve como estaba.
-  const bloques = useMemo(() => construirMenu(puede, rubro, vocabulario), [puede, rubro, vocabulario]);
+  const usaDespacho = negocio?.usaDespacho;
+  const bloques = useMemo(
+    () => construirMenu(puedeEnMenu(puede, usaDespacho), rubro, vocabulario),
+    [puede, usaDespacho, rubro, vocabulario],
+  );
   const raices = useMemo(() => bloques.flatMap((b) => b.nodos), [bloques]);
   const planos = useMemo(() => aplanar(raices), [raices]);
 

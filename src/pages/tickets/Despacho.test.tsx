@@ -125,4 +125,23 @@ describe("Despacho", () => {
     await screen.findByText("072");
     expect(screen.queryByRole("button", { name: "Salir" })).not.toBeInTheDocument();
   });
+
+  it("con el despacho apagado lo dice, sin tablero ni teclado (10-nov)", async () => {
+    // Lo dice el tablero y no la sesión: la tablet de la cocina no vuelve a
+    // entrar nunca y su sesión sería de antes del cambio.
+    api.tablero.mockResolvedValue({ ...tablero([]), usaDespacho: false });
+    const onSalir = vi.fn();
+    render(<Despacho onSalir={onSalir} />);
+    expect(await screen.findByText("El despacho está apagado")).toBeInTheDocument();
+    expect(screen.queryByText("Sin pedidos por despachar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Llamar un número/ })).not.toBeInTheDocument();
+    // La tecla de la PC tampoco llama a nadie.
+    fireEvent.keyDown(window, { key: "7" });
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(api.llamarNumero).not.toHaveBeenCalled();
+    // El acceso de la tablet igual puede salir.
+    fireEvent.click(screen.getByRole("button", { name: "Salir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, salir" }));
+    expect(onSalir).toHaveBeenCalledTimes(1);
+  });
 });
