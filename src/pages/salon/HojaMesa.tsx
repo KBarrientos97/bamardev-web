@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, type ReactNode } from "re
 import { Icon } from "../../components/Icon";
 import { Modal } from "../../components/ui";
 import { completaGesto, useArrastre, useHojaArrastrable } from "../../lib/gestos";
+import { useAltoTeclado, useCampoALaVista } from "../../lib/teclado";
 
 /**
  * La hoja de la mesa: UNA sola, que se baja con el dedo, y adentro cambia de
@@ -40,6 +41,10 @@ export function Hoja({
   const panel = useRef<HTMLDivElement>(null);
   const velo = useRef<HTMLDivElement>(null);
   const { cerrar } = useHojaArrastrable({ panel, velo, alCerrar: onCerrar });
+  // Con el teclado abierto la hoja sube por encima y se achica a lo que queda
+  // a la vista: en el iPhone el teclado tapaba el campo y el botón de guardar.
+  const teclado = useAltoTeclado();
+  useCampoALaVista(panel);
 
   // Escape cierra, como cualquier diálogo.
   useEffect(() => {
@@ -51,7 +56,10 @@ export function Hoja({
   }, [cerrar]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
+      style={teclado ? { paddingBottom: teclado } : undefined}
+    >
       {/* El velo va aparte del panel: se aclara mientras se baja la hoja. */}
       <div
         ref={velo}
@@ -64,6 +72,7 @@ export function Hoja({
         role="dialog"
         aria-modal="true"
         aria-label={etiqueta}
+        style={teclado ? { height: `calc(100dvh - ${teclado}px - 12px)` } : undefined}
         className="relative flex h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl will-change-transform max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:h-auto sm:max-h-[92dvh] sm:rounded-2xl"
       >
         <Contexto.Provider value={{ cerrar }}>{children}</Contexto.Provider>

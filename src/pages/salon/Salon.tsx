@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Cargando, ErrorMsg } from "../../components/ui";
+import TirarParaActualizar from "../../components/TirarParaActualizar";
+import { ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { EstadoMesa, Mesa } from "../../types/salon";
+import { EsqueletoSalon } from "./Esqueletos";
 import TarjetaMesa, { TarjetaMesaLibre } from "./TarjetaMesa";
 import {
   filtrarMesas,
@@ -32,7 +34,16 @@ import {
  * cobrar". El mesero no cobra, así que ese número no cambia ninguna decisión
  * suya y se comía una fila entera; vive en "Mi turno", que es donde sí sirve.
  */
+/** Cómo viene la carga del salón: "Por servir" la usa sin volver a pedirla. */
+export interface EstadoSalon {
+  cargando: boolean;
+  error: string;
+  recargar: () => void;
+}
+
 export default function Salon({
+  refrescar,
+  onEstado,
   onAbrirMesa,
   onVerMesa,
   onIrAPorServir,
@@ -40,6 +51,12 @@ export default function Salon({
   onMesas,
   onMeserosCobran,
 }: {
+  /**
+   * Sube cuando el panel quiere el salón al día (después de tocar una mesa):
+   * se recarga sin desmontarse, así no pierde el scroll ni muestra la carga.
+   */
+  refrescar?: number;
+  onEstado?: (e: EstadoSalon) => void;
   onAbrirMesa: (mesa: Mesa) => void;
   onVerMesa: (mesa: Mesa) => void;
   onIrAPorServir: () => void;
@@ -57,7 +74,8 @@ export default function Salon({
   const salon = useApi(() => api.salon(), []);
 
   /**
-   * El salón se refresca solo cada medio minuto.
+   * El salón se refresca solo cada 15 segundos (eran 30 hasta el 10-nov: el
+   * dueño pidió que se vea antes lo que cambia el de al lado).
    *
    * Sin esto, la pantalla sólo se recargaba cuando ESTE mesero hacía algo: con
    * dos en turno, el que miraba veía mesas que el otro ya había liberado y
@@ -71,7 +89,7 @@ export default function Salon({
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState === "visible") salon.recargar();
-    }, 30_000);
+    }, 15_000);
     const alVolver = () => {
       if (document.visibilityState === "visible") salon.recargar();
     };
@@ -96,8 +114,21 @@ export default function Salon({
 
   const mesas = useMemo(() => salon.datos?.mesas ?? [], [salon.datos]);
   useEffect(() => {
-    if (mesas.length > 0) onMesas?.(mesas);
-  }, [mesas, onMesas]);
+    if (salon.datos) onMesas?.(mesas);
+  }, [salon.datos, mesas, onMesas]);
+
+  const { cargando, error, recargar } = salon;
+  useEffect(() => {
+    onEstado?.({ cargando, error, recargar });
+  }, [cargando, error, recargar, onEstado]);
+
+  // El primer valor ya vino con la carga de entrada: sólo los cambios recargan.
+  const refrescoVisto = useRef(refrescar);
+  useEffect(() => {
+    if (refrescoVisto.current === refrescar) return;
+    refrescoVisto.current = refrescar;
+    recargar();
+  }, [refrescar, recargar]);
 
   // El flag viaja con el salón, que esta pantalla ya recarga sola: prenderlo
   // desde el panel se ve sin que el mesero cierre sesión.
@@ -168,7 +199,7 @@ export default function Salon({
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <TirarParaActualizar onActualizar={recargar} cargando={cargando} className="min-h-0 flex-1 p-4">
         {/* Aviso de lo que hay que llevar: es lo único que exige moverse ya. */}
         {pendientes.length > 0 && (
           <button
@@ -189,7 +220,7 @@ export default function Salon({
           <ErrorMsg onReintentar={salon.recargar}>{salon.error}</ErrorMsg>
         )}
         {salon.cargando && !salon.datos ? (
-          <Cargando />
+          <EsqueletoSalon />
         ) : (
           <>
             {/* ══════ Filtros ══════ */}
@@ -281,7 +312,7 @@ export default function Salon({
             )}
           </>
         )}
-      </div>
+      </TirarParaActualizar>
     </div>
   );
 }

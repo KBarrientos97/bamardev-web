@@ -139,6 +139,13 @@ button {
     transform: translateY(100%);
   }
 }
+/* Una pantalla que se apila sobre el panel del mesero (el pedido, abrir la
+   mesa): entra entera desde la derecha. */
+@keyframes pantalla-entra {
+  from {
+    transform: translateX(100%);
+  }
+}
 /* Una vista nueva adentro de la misma hoja (la cuenta de la mesa): entra
    desde la derecha, como la navegación de una app. */
 @keyframes vista-entra {

@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { Boton, Cargando, ErrorMsg } from "../../components/ui";
+import TirarParaActualizar from "../../components/TirarParaActualizar";
+import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtNum } from "../../lib/format";
-import { useApi } from "../../lib/useApi";
+import type { Mesa } from "../../types/salon";
+import { EsqueletoFilas } from "./Esqueletos";
 import { hace, porServir } from "./logicaSalon";
 
 /**
@@ -17,13 +19,25 @@ import { hace, porServir } from "./logicaSalon";
  * de cocina, así que todo entra como "en cocina" y la sección de arriba
  * quedaría siempre vacía. El orden hace el trabajo — primero lo que ya está
  * listo, después lo más viejo — y el estado se lee en el color del badge.
+ *
+ * Las mesas son las del salón, que ya las carga y las refresca: antes esta
+ * pantalla las volvía a pedir por su cuenta, el mismo pedido dos veces.
  */
-export default function PorServir() {
-  const salon = useApi(() => api.salon(), []);
+export default function PorServir({
+  mesas,
+  cargando,
+  error: errorSalon,
+  onRecargar,
+}: {
+  mesas: Mesa[];
+  cargando: boolean;
+  error: string;
+  onRecargar: () => void;
+}) {
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
 
-  const filas = porServir(salon.datos?.mesas ?? []);
+  const filas = porServir(mesas);
 
   async function servir(mesaId: number, comandaId: string | number) {
     if (procesando) return;
@@ -31,7 +45,7 @@ export default function PorServir() {
     setProcesando(true);
     try {
       await api.marcarComandaServida(mesaId, Number(comandaId));
-      salon.recargar();
+      onRecargar();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo marcar");
     } finally {
@@ -52,11 +66,11 @@ export default function PorServir() {
         </p>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <TirarParaActualizar onActualizar={onRecargar} cargando={cargando} className="min-h-0 flex-1 p-4">
         {error && <ErrorMsg>{error}</ErrorMsg>}
-        {salon.error && <ErrorMsg>{salon.error}</ErrorMsg>}
-        {salon.cargando && !salon.datos ? (
-          <Cargando />
+        {errorSalon && <ErrorMsg>{errorSalon}</ErrorMsg>}
+        {cargando && mesas.length === 0 ? (
+          <EsqueletoFilas etiqueta="Cargando lo que falta llevar" />
         ) : filas.length === 0 ? (
           <p className="py-16 text-center text-[13px] text-texto-3">
             No hay nada esperando. Todo servido.
@@ -110,7 +124,7 @@ export default function PorServir() {
             );
           })
         )}
-      </div>
+      </TirarParaActualizar>
     </div>
   );
 }

@@ -25,6 +25,8 @@ vi.mock("./TarjetaCarta", () => ({
 }));
 
 import { api } from "../../lib/api";
+import { olvidarCarta } from "./cartaGuardada";
+import PantallaApilada from "./PantallaApilada";
 import TomarPedido from "./TomarPedido";
 
 const COCA = { id: 3, nombre: "Coca-Cola", precio: 10, categoria: { nombre: "Bebidas" } } as unknown as Producto;
@@ -68,6 +70,7 @@ const idDel = (llamada: number) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  olvidarCarta();
   vi.mocked(api.cartaSalon).mockResolvedValue([COCA, BRASA]);
 });
 
@@ -108,5 +111,32 @@ describe("BUG-salon-5: la comanda no se duplica en un reintento", () => {
     await enviar();
 
     expect(idDel(1)).not.toBe(idDel(0));
+  });
+});
+
+describe("el pedido se siente como una app (UX nativa, 10-nov)", () => {
+  it("con la carta ya adelantada por el panel, abre al instante", async () => {
+    const { bajarCarta } = await import("./cartaGuardada");
+    await bajarCarta();
+    vi.mocked(api.cartaSalon).mockReturnValue(new Promise(() => {}));
+    render(<TomarPedido mesa={MESA} onAtras={() => {}} onEnviado={() => {}} />);
+    // Sin esperar la respuesta: la copia ya está en pantalla.
+    expect(screen.getByText("Coca-Cola")).toBeInTheDocument();
+  });
+
+  it("volver desde el borde con algo cargado pregunta antes de descartar", async () => {
+    const onVolver = vi.fn();
+    render(
+      <PantallaApilada onVolver={onVolver}>
+        {(salir) => <TomarPedido mesa={MESA} onAtras={() => salir()} onEnviado={() => {}} />}
+      </PantallaApilada>,
+    );
+    fireEvent.click(await screen.findByText("Coca-Cola"));
+    const pantalla = screen.getByText("Coca-Cola").closest(".fixed")!;
+    fireEvent.touchStart(pantalla, { touches: [{ clientX: 6, clientY: 300 }] });
+    for (const x of [20, 160, 320]) fireEvent.touchMove(pantalla, { touches: [{ clientX: x, clientY: 302 }] });
+    fireEvent.touchEnd(pantalla, { touches: [] });
+    expect(screen.getByText("¿Descartar el pedido?")).toBeInTheDocument();
+    expect(onVolver).not.toHaveBeenCalled();
   });
 });

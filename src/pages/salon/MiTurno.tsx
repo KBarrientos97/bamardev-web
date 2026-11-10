@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BotonCambiarMiPassword } from "../../components/CambiarMiPassword";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, ErrorMsg, Modal } from "../../components/ui";
+import TirarParaActualizar from "../../components/TirarParaActualizar";
+import { Boton, ErrorMsg, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFechaHora, fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
@@ -9,6 +10,7 @@ import { esPositivo } from "../../lib/dinero";
 import { useAuth } from "../../store/AuthContext";
 import type { Mesa } from "../../types/salon";
 import ComprobanteMesa from "./ComprobanteMesa";
+import { EsqueletoTurno } from "./Esqueletos";
 import { hace } from "./logicaSalon";
 
 /**
@@ -24,9 +26,24 @@ import { hace } from "./logicaSalon";
  *   porque sólo tiene sentido si el negocio dejó que el mesero cobre: sin eso
  *   nunca tiene plata encima que entregar.
  */
-export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void }) {
+export default function MiTurno({
+  onIrAEntregas,
+  refrescar,
+}: {
+  onIrAEntregas?: () => void;
+  /** Sube cuando el panel quiere el turno al día: recarga sin desmontarse. */
+  refrescar?: number;
+}) {
   const { logout } = useAuth();
   const turno = useApi(() => api.turnoMesero(), []);
+  const { recargar } = turno;
+  // El primer valor ya vino con la carga de entrada: sólo los cambios recargan.
+  const refrescoVisto = useRef(refrescar);
+  useEffect(() => {
+    if (refrescoVisto.current === refrescar) return;
+    refrescoVisto.current = refrescar;
+    recargar();
+  }, [refrescar, recargar]);
   const [confirmando, setConfirmando] = useState(false);
   const [cerrando, setCerrando] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
@@ -86,12 +103,12 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
   if (turno.cargando && !t)
     return (
       <div className="p-4">
-        <Cargando />
+        <EsqueletoTurno />
       </div>
     );
 
   return (
-    <div className="h-full overflow-y-auto bg-fondo p-4 pb-8">
+    <TirarParaActualizar onActualizar={recargar} cargando={turno.cargando} className="h-full bg-fondo p-4 pb-8">
       {turno.error && <ErrorMsg>{turno.error}</ErrorMsg>}
       {error && <ErrorMsg>{error}</ErrorMsg>}
 
@@ -373,7 +390,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
           </p>
         </Modal>
       )}
-    </div>
+    </TirarParaActualizar>
   );
 }
 

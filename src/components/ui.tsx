@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { useHojaArrastrable } from "../lib/gestos";
+import { useAltoTeclado, useCampoALaVista } from "../lib/teclado";
 import { Icon, type NombreIcono } from "./Icon";
 
 // Piezas de UI compartidas, con el trazo del diseño: verde esmeralda, bordes
@@ -377,11 +378,16 @@ export function Modal({
     puedeCerrar: cerrarAlClicAfuera,
     activo: abierto,
   });
+  // Con el teclado abierto la hoja sube por encima, y el campo que se escribe
+  // queda a la vista (en el iPhone el teclado tapaba el formulario).
+  const teclado = useAltoTeclado(abierto);
+  useCampoALaVista(hoja, abierto);
 
   if (!abierto) return null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+      style={teclado ? { paddingBottom: teclado } : undefined}
       onMouseDown={(e) => {
         if (cerrarAlClicAfuera && (e.target === e.currentTarget || e.target === velo.current)) onClose();
       }}
@@ -397,6 +403,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
+        style={teclado ? { maxHeight: `calc(100dvh - ${teclado}px - 12px)` } : undefined}
         className={`relative flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl will-change-transform max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:rounded-2xl`}
       >
         {/* La manija: sólo en el celular, donde la hoja se baja con el dedo.

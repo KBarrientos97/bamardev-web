@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
+import { Confirmar, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
-import { useApi } from "../../lib/useApi";
 import type { Mesa } from "../../types/salon";
 import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import CarritoPedido from "./CarritoPedido";
+import { bajarCarta, cartaGuardada } from "./cartaGuardada";
+import { EsqueletoCarta } from "./Esqueletos";
+import { useGuardiaDeSalida } from "./PantallaApilada";
 import TarjetaCarta from "./TarjetaCarta";
 import { etiquetaMesa } from "./logicaSalon";
 import {
@@ -42,7 +44,43 @@ export default function TomarPedido({
   // La carta y no /productos: trae el stock que REALMENTE queda, ya descontado
   // lo que otras mesas tienen pedido y sin cobrar. La cajera cuenta el stock
   // físico de la heladera; el mesero necesita saber qué puede prometer.
-  const carta = useApi(() => api.cartaSalon(), []);
+  //
+  // Arranca con la que el panel ya adelantó (`cartaGuardada`) y abre al
+  // instante; mientras, pide la fresca, porque el stock cambia con cada mesa.
+  const [carta, setCarta] = useState(cartaGuardada);
+  const [errorCarta, setErrorCarta] = useState("");
+  useEffect(() => {
+    let viva = true;
+    bajarCarta()
+      .then((c) => {
+        if (viva) setCarta(c);
+      })
+      .catch((e: unknown) => {
+        // Con la copia en pantalla se sigue pidiendo con ella: el backend
+        // controla el stock igual al mandar la comanda.
+        if (viva && !cartaGuardada())
+          setErrorCarta(e instanceof Error ? e.message : "No se pudo cargar la carta");
+      });
+    // Mientras se toma el pedido, el stock se refresca cada 15 s (como el
+    // salón) y al volver a la app: si otra mesa se llevó lo último, el mesero
+    // lo ve antes de prometerlo (dueño, 10-nov). Sólo con la pantalla a la
+    // vista, y sólo acá, donde el stock importa.
+    const refrescar = () => {
+      if (document.visibilityState !== "visible") return;
+      bajarCarta()
+        .then((c) => {
+          if (viva) setCarta(c);
+        })
+        .catch(() => {});
+    };
+    const cada = window.setInterval(refrescar, 15_000);
+    document.addEventListener("visibilitychange", refrescar);
+    return () => {
+      viva = false;
+      window.clearInterval(cada);
+      document.removeEventListener("visibilitychange", refrescar);
+    };
+  }, []);
 
   const [lineas, setLineas] = useState<LineaPedido[]>([]);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
@@ -63,7 +101,7 @@ export default function TomarPedido({
    */
   const intento = useIntentoDeCobro();
 
-  const productos = useMemo(() => carta.datos ?? [], [carta.datos]);
+  const productos = useMemo(() => carta ?? [], [carta]);
 
   const categorias = useMemo(() => {
     const vistas = new Map<string, string>();
@@ -106,6 +144,14 @@ export default function TomarPedido({
       .map(([titulo, items]) => ({ titulo, items }));
   }, [visibles, categorias]);
   const [buscando, setBuscando] = useState(false);
+
+  // Volver arrastrando desde el borde pregunta lo mismo que la flecha: con
+  // algo cargado, no se descarta sin confirmar.
+  useGuardiaDeSalida(() => {
+    if (lineas.length === 0) return true;
+    setConfirmarSalida(true);
+    return false;
+  });
 
   const total = totalPedido(lineas);
   const items = cantidadPedido(lineas);
@@ -216,10 +262,10 @@ export default function TomarPedido({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-24 pt-2">
-        {carta.error && <ErrorMsg>{carta.error}</ErrorMsg>}
+        {errorCarta && <ErrorMsg>{errorCarta}</ErrorMsg>}
         {error && <ErrorMsg>{error}</ErrorMsg>}
-        {carta.cargando && !carta.datos ? (
-          <Cargando />
+        {!carta && !errorCarta ? (
+          <EsqueletoCarta />
         ) : visibles.length === 0 ? (
           <p className="py-12 text-center text-[13px] text-texto-3">
             No hay productos que coincidan.
