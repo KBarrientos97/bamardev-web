@@ -21,6 +21,8 @@ const IPHONE =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15";
 const ANDROID = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/129 Mobile Safari/537.36";
+const WINDOWS =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 
 const productos = [
   { id: 1, nombre: "Pollo entero", precio: 80, tipoProducto: "ALMACENABLE", stockTotal: 10 },
@@ -65,7 +67,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("modo offline: sólo la app instalada del iPhone", () => {
+describe("modo offline: la app instalada del iPhone y de la compu", () => {
   const base = {
     hostname: "app.bamardev.com",
     pathname: "/pos",
@@ -93,8 +95,24 @@ describe("modo offline: sólo la app instalada del iPhone", () => {
     ).toBe(false);
   });
 
-  it("una Mac de verdad (sin pantalla táctil): no", () => {
+  it("una Mac de verdad (sin pantalla táctil) en una pestaña: no", () => {
     expect(modoOfflineDe({ ...base, userAgent: MAC, maxTouchPoints: 0, standaloneIOS: true })).toBe(false);
+  });
+
+  it("la compu con la app instalada (acceso directo, ventana propia): sí", () => {
+    const instalada = (q: string) => q.includes("standalone");
+    expect(modoOfflineDe({ ...base, userAgent: WINDOWS, maxTouchPoints: 0, coincide: instalada })).toBe(true);
+    expect(modoOfflineDe({ ...base, userAgent: MAC, maxTouchPoints: 0, coincide: instalada })).toBe(true);
+  });
+
+  it("la compu en una pestaña de Chrome: no (es la web normal)", () => {
+    expect(modoOfflineDe({ ...base, userAgent: WINDOWS, maxTouchPoints: 0 })).toBe(false);
+  });
+
+  it("la compu instalada abre en pantalla completa: sí", () => {
+    expect(
+      modoOfflineDe({ ...base, userAgent: WINDOWS, maxTouchPoints: 0, coincide: (q) => q.includes("fullscreen") }),
+    ).toBe(true);
   });
 
   it("la página pública de un negocio nunca, ni forzado", () => {

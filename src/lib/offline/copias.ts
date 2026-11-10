@@ -10,7 +10,7 @@ import { ambitoSesion } from "./sesionLocal";
  * red, se usa la copia; si tampoco hay copia, se avisa que hay que conectarse
  * una vez.
  *
- * Sólo en la app instalada del iPhone (`ventaSinInternet`): en el navegador
+ * Sólo en la app instalada, del iPhone o de la compu (`ventaSinInternet`): en el navegador
  * común es exactamente el pedido de siempre, sin guardar nada.
  */
 

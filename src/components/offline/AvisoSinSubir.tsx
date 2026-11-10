@@ -13,7 +13,7 @@ import { Icon } from "../Icon";
  * Las que el servidor rechazó también se avisan acá, en rojo: en Android
  * recién aparecían al cerrar la caja, y para entonces el cliente ya se fue.
  *
- * Fuera de la app instalada del iPhone no dibuja nada.
+ * Fuera de la app instalada (iPhone o compu) no dibuja nada.
  */
 export default function AvisoSinSubir() {
   const cola = useColaOffline();

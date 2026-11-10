@@ -124,8 +124,9 @@ function PuntoDeVenta() {
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
   //
-  // En la app instalada del iPhone (PLAN-IOS F3) caja, catálogo y formas de
-  // pago guardan su copia: sin señal el POS abre con lo último que vio, como
+  // En la app instalada, del iPhone o de la compu (PLAN-IOS F3), caja,
+  // catálogo y formas de pago guardan su copia: sin señal el POS abre con lo
+  // último que vio, como
   // Android (`CacheLectura`). En el navegador común `conCopia` es el pedido
   // de siempre.
   const caja = useApi(() => conCopia("caja", () => api.cajaActual()), []);
@@ -156,7 +157,7 @@ function PuntoDeVenta() {
   const categorias = useApi(() => conCopia("categorias", () => api.getCategorias(false)), []);
   const formasPago = useApi(() => conCopia("formas_pago", () => api.getFormasPago()), []);
   /**
-   * `crearVenta`, o la cola si no hay señal (sólo en la app del iPhone). El
+   * `crearVenta`, o la cola si no hay señal (sólo en la app instalada). El
    * ticket de una venta encolada lo arma el equipo con este catálogo.
    */
   const vender = useCallback(
@@ -1262,8 +1263,9 @@ function PuntoDeVenta() {
           </div>
         </div>
 
-        {/* Ventas cobradas sin internet que esperan subir (sólo la app del
-            iPhone; en el navegador común no dibuja nada). */}
+        {/* Ventas cobradas sin internet que esperan subir (sólo la app
+            instalada, del iPhone o de la compu; en el navegador común no
+            dibuja nada). */}
         <div className="px-4 pt-3 empty:hidden">
           <AvisoSinSubir />
         </div>
