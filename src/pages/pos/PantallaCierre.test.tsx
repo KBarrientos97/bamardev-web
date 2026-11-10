@@ -481,7 +481,11 @@ describe("CAJA-6: en el restaurante las filas del cajón suman el esperado", () 
     // El cambio se cuenta, sin restarlo otra vez; el QR, arriba y aparte.
     expect(screen.getByText(/Recibido Bs.100,00 · cambio entregado Bs.50,00/)).toBeInTheDocument();
     expect(screen.queryByText("Cambio entregado")).not.toBeInTheDocument();
-    expect(filasDelTurno().map(([e]) => e)).toEqual(["Ventas (2)", "Efectivo", "QR"]);
+    expect(filasDeBloque("Lo que se vendió")).toEqual([
+      ["En efectivo", 50],
+      ["Por QR", 30],
+      ["Total vendido", 80],
+    ]);
   });
 
   it("con abonos, movimientos y la plata del mesero, cada fila del cajón suma (o resta) y dan el esperado", async () => {
@@ -491,23 +495,141 @@ describe("CAJA-6: en el restaurante las filas del cajón suman el esperado", () 
     expect(filas).toEqual([
       ["Fondo de apertura", 100],
       ["Ventas en efectivo", 330],
-      ["Abonos de créditos (efectivo)", 15],
+      ["Abonos de fiado en efectivo", 15],
       ["Ingresos de efectivo", 50],
       ["Egresos de efectivo", -30],
       ["En poder de meseros", -25],
     ]);
     expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(440);
-    // Lo que no es efectivo queda arriba, como informativo.
-    expect(filasDelTurno().map(([e]) => e)).toEqual([
-      "Ventas (3)",
-      "Efectivo",
-      "QR",
-      "Abonos por QR (no es efectivo)",
-      "Fiado otorgado (no es efectivo)",
-      "Ventas anuladas",
-    ]);
     // A quién pedirle la plata del delantal, como antes.
     expect(screen.getByText(/Ana Bs.25,00/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Las filas de un bloque del cierre del restaurante, como [etiqueta, monto],
+ * con su total al final.
+ */
+function filasDeBloque(nombre: string): [string, number][] {
+  const bloque = screen.getByRole("region", { name: nombre });
+  return Array.from(bloque.querySelectorAll("dt")).map((dt) => {
+    const txt = (dt.nextElementSibling?.textContent ?? "").replace(/−/g, "-").replace(/[^\d,-]/g, "").replace(",", ".");
+    return [dt.textContent ?? "", Number(txt)];
+  });
+}
+
+/** Lo que se suma a mano: todas las filas de un bloque menos su total. */
+const sumaDe = (filas: [string, number][]) =>
+  Math.round(filas.slice(0, -1).reduce((s, [, m]) => s + m, 0) * 100) / 100;
+
+describe("10-nov: el movimiento del turno del restaurante, en bloques que suman (QA de Kevin)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  /** El turno de la captura de Kevin, con los mismos números. */
+  const TURNO_DE_KEVIN: Partial<ResumenCaja> = {
+    montoApertura: 500,
+    cantidadVentas: 13,
+    totalVentas: 1429,
+    porFormaPago: [
+      { nombre: "Efectivo", monto: 953 },
+      { nombre: "QR", monto: 362 },
+    ],
+    efectivo: 953,
+    cambioEntregado: 147,
+    creditoOtorgado: 114,
+    abonosCredito: 114,
+    abonosEfectivo: 30,
+    abonosPorFormaPago: [
+      { nombre: "Efectivo", monto: 30 },
+      { nombre: "QR", monto: 84 },
+    ],
+    enPoderDeMeseros: 62,
+    meserosPendientes: [{ meseroId: 7, nombre: "Marcelo Quiroga", monto: 62 }],
+    saldoEsperado: 1421,
+  };
+
+  it("lo vendido: efectivo + QR + fiado dan el total, y el total va al final", async () => {
+    // Antes: "Ventas (13) 1.429" arriba y, debajo, dos grises iguales: el
+    // fiado (que está dentro del total) y los abonos por QR (que no).
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(TURNO_DE_KEVIN));
+    await montar();
+    expect(screen.getByText("Lo que se vendió · 13 ventas")).toBeInTheDocument();
+    const vendido = filasDeBloque("Lo que se vendió");
+    expect(vendido).toEqual([
+      ["En efectivo", 953],
+      ["Por QR", 362],
+      ["Al fiado", 114],
+      ["Total vendido", 1429],
+    ]);
+    expect(sumaDe(vendido)).toBe(1429);
+    // Los abonos no son venta: no salen en este bloque.
+    expect(within(screen.getByRole("region", { name: "Lo que se vendió" })).queryByText(/Abono/)).not.toBeInTheDocument();
+  });
+
+  it("el QR del turno suma lo vendido por QR y lo abonado por QR: lo que tiene que estar en la cuenta", async () => {
+    // "QR 362" no crecía al cobrar un fiado por QR, y el celular decía 446.
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(TURNO_DE_KEVIN));
+    await montar();
+    const qr = filasDeBloque("QR del turno");
+    expect(qr).toEqual([
+      ["Ventas por QR", 362],
+      ["Abonos de fiado por QR", 84],
+      ["Total por QR", 446],
+    ]);
+    expect(sumaDe(qr)).toBe(446);
+    expect(screen.getByText("Lo que tiene que figurar en la cuenta del negocio.")).toBeInTheDocument();
+  });
+
+  it("el cajón: el abono en efectivo suma con su nombre y las filas dan el esperado", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(TURNO_DE_KEVIN));
+    await montar();
+    const cajon = filasDeCaja();
+    expect(cajon).toEqual([
+      ["Fondo de apertura", 500],
+      ["Ventas en efectivo", 953],
+      ["Abonos de fiado en efectivo", 30],
+      ["En poder de meseros", -62],
+    ]);
+    expect(cajon.reduce((s, [, m]) => s + m, 0)).toBe(1421);
+    expect(screen.getByText("Efectivo esperado en caja").nextElementSibling).toHaveTextContent("Bs 1.421,00");
+  });
+
+  it("sin abonos por QR, el bloque del QR es un solo total", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({ ...TURNO_DE_KEVIN, abonosCredito: 30, abonosPorFormaPago: [{ nombre: "Efectivo", monto: 30 }] }),
+    );
+    await montar();
+    expect(filasDeBloque("QR del turno")).toEqual([["Total por QR", 362]]);
+  });
+
+  it("sin nada por QR, no hay bloque del QR", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    expect(screen.queryByRole("region", { name: "QR del turno" })).not.toBeInTheDocument();
+    expect(filasDeBloque("Lo que se vendió")).toEqual([
+      ["En efectivo", 330],
+      ["Total vendido", 330],
+    ]);
+  });
+
+  it("un delivery en camino se nombra aparte: no está en lo vendido ni en el esperado", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({ pedidosPorCobrar: { cantidad: 1, total: 70 }, anuladas: 2 }),
+    );
+    await montar();
+    expect(
+      screen.getByText("1 pedido en camino (Bs 70,00) todavía no se cobró: se suma cuando se entregue."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 ventas anuladas (no cuentan).")).toBeInTheDocument();
+    expect(filasDeBloque("Lo que se vendió").at(-1)).toEqual(["Total vendido", 330]);
+  });
+
+  it("el fiado se pinta en ámbar, como lo que se debe en el resto de la app", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(TURNO_DE_KEVIN));
+    await montar();
+    expect(screen.getByText("Al fiado").parentElement).toHaveClass("text-amber-700");
   });
 });
 
@@ -887,10 +1009,19 @@ describe("CAJA-4: el comprobante del cierre", () => {
   it("restaurante: lo vendido por forma de pago, las filas del cajón que dan el esperado, lo contado y la diferencia", () => {
     sesion.rubro = "RESTAURANTE";
     render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
-    const vendido = within(screen.getByRole("region", { name: "Ventas del turno" }));
-    expect(vendido.getByText("Ventas (3)")).toBeInTheDocument();
-    expect(vendido.getByText("QR").nextElementSibling).toHaveTextContent("Bs 70,00");
-    expect(vendido.getByText("Fiado otorgado (no es efectivo)")).toBeInTheDocument();
+    // Los mismos bloques que la pantalla con la que se contó (10-nov).
+    expect(filasDeBloque("Lo que se vendió")).toEqual([
+      ["En efectivo", 330],
+      ["Por QR", 70],
+      ["Al fiado", 40],
+      ["Total vendido", 400],
+    ]);
+    expect(filasDeBloque("QR del turno")).toEqual([
+      ["Ventas por QR", 70],
+      ["Abonos de fiado por QR", 10],
+      ["Total por QR", 80],
+    ]);
+    expect(screen.getByText("1 venta anulada (no cuenta).")).toBeInTheDocument();
     const filas = filasDeCaja();
     expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(440);
     const cajon = within(screen.getByRole("region", { name: "Efectivo en caja" }));

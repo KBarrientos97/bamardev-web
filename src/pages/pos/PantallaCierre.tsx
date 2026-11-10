@@ -33,6 +33,7 @@ import type {
 import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
+import { mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
 import ListaProductosVendidos from "./ListaProductosVendidos";
 import { documentoProductosVendidos, textoProductos, textoUnidades } from "./productosVendidos";
 import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
@@ -239,7 +240,13 @@ export default function PantallaCierre({
                     que restaba sin entrar en la cuenta (el monto de cada pago
                     ya viene sin el vuelto), así que las filas no daban el
                     esperado. Ver `enDosBloques` para qué rubro va en cuál. */}
-                {enDosBloques(rubro) ? (
+                {rubro === "RESTAURANTE" ? (
+                  <>
+                    <BloquesRestaurante r={r} />
+                    <h3 className={TITULO_BLOQUE}>Efectivo en caja</h3>
+                    <FilasDelCajon r={r} rubro={rubro} onIrAEntregas={onIrAEntregas} />
+                  </>
+                ) : enDosBloques(rubro) ? (
                   <>
                     <FilasVendido r={r} />
                     <h3 className="mb-2 mt-4 border-t border-borde pt-3 text-[12px] font-bold uppercase tracking-wide text-texto-4">
@@ -566,21 +573,98 @@ function Fila({
   valor,
   sangria,
   apagado,
+  fiado,
 }: {
   etiqueta: string;
   valor: number;
   sangria?: boolean;
   apagado?: boolean;
+  /** Ámbar: plata que se debe, como en Cuentas por cobrar. */
+  fiado?: boolean;
 }) {
   return (
     <div
       className={`flex justify-between ${sangria ? "pl-3" : ""} ${
-        apagado ? "text-texto-4" : "text-texto-2"
+        fiado ? "font-semibold text-amber-700" : apagado ? "text-texto-4" : "text-texto-2"
       }`}
     >
       <dt className={sangria ? "text-[13px]" : ""}>{etiqueta}</dt>
       <dd className={sangria ? "text-[13px]" : ""}>{fmtMoney(valor)}</dd>
     </div>
+  );
+}
+
+/** El total de un bloque: la suma de las filas de arriba. */
+function FilaTotal({ etiqueta, valor }: { etiqueta: string; valor: number }) {
+  return (
+    <div className="flex justify-between border-t border-dashed border-borde pt-1.5 font-bold text-texto">
+      <dt>{etiqueta}</dt>
+      <dd>{fmtMoney(valor)}</dd>
+    </div>
+  );
+}
+
+const TITULO_BLOQUE =
+  "mb-2 mt-4 border-t border-borde pt-3 text-[12px] font-bold uppercase tracking-wide text-texto-4";
+
+/**
+ * El restaurante (10-nov): lo vendido, y lo que entró por QR, cada bloque
+ * cerrando en su total. El cajón va después, con `FilasDelCajon`. Por qué así
+ * y no como los demás rubros: `movimientoDelTurno`.
+ *
+ * La usan el cierre y su comprobante, así el papel dice lo mismo que la
+ * pantalla con la que se contó.
+ */
+function BloquesRestaurante({ r }: { r: ResumenCaja }) {
+  const vendido = vendidoDelTurno(r);
+  const medios = mediosDelTurno(r);
+  const enCamino = r.pedidosPorCobrar?.cantidad ?? 0;
+  return (
+    <>
+      <section aria-label="Lo que se vendió">
+        <h3 className="mb-2 text-[12px] font-bold uppercase tracking-wide text-texto-4">
+          Lo que se vendió · {r.cantidadVentas === 1 ? "1 venta" : `${r.cantidadVentas} ventas`}
+        </h3>
+        <dl className="space-y-1.5 text-sm">
+          {vendido.filas.map((f) => (
+            <Fila key={f.etiqueta} etiqueta={f.etiqueta} valor={f.monto} fiado={f.fiado} />
+          ))}
+          <FilaTotal etiqueta="Total vendido" valor={vendido.total} />
+        </dl>
+        {/* El delivery que sigue en camino no está en lo vendido (no se cobró):
+            sin nombrarlo, el cajero cierra sin saber que falta esa plata. */}
+        {enCamino > 0 && (
+          <p className="mt-1.5 text-[12px] text-texto-3">
+            {enCamino === 1 ? "1 pedido en camino" : `${enCamino} pedidos en camino`} (
+            {fmtMoney(r.pedidosPorCobrar?.total ?? 0)}) todavía no se{" "}
+            {enCamino === 1 ? "cobró: se suma cuando se entregue" : "cobraron: se suman cuando se entreguen"}.
+          </p>
+        )}
+        {r.anuladas > 0 && (
+          <p className="mt-1 text-[12px] text-texto-3">
+            {r.anuladas === 1 ? "1 venta anulada (no cuenta)." : `${r.anuladas} ventas anuladas (no cuentan).`}
+          </p>
+        )}
+      </section>
+      {/* Lo que se busca en el celular al cerrar. Un abono de fiado por QR no es
+          venta de hoy, pero entró a la misma cuenta: sin sumarlo acá, el
+          celular decía más que la pantalla (QA de Kevin, 10-nov). */}
+      {medios.map((m) => (
+        <section key={m.nombre} aria-label={`${m.nombre} del turno`}>
+          <h3 className={TITULO_BLOQUE}>{m.nombre} del turno</h3>
+          <dl className="space-y-1.5 text-sm">
+            {m.abonos > 0 && (
+              <>
+                <Fila etiqueta={`Ventas por ${m.nombre}`} valor={m.ventas} />
+                <Fila etiqueta={`Abonos de fiado por ${m.nombre}`} valor={m.abonos} />
+              </>
+            )}
+            <FilaTotal etiqueta={`Total por ${m.nombre}`} valor={m.total} />
+          </dl>
+          <p className="mt-1 text-[12px] text-texto-4">Lo que tiene que figurar en la cuenta del negocio.</p>
+        </section>
+      ))}
+    </>
   );
 }
 
@@ -595,7 +679,9 @@ function Fila({
  *   en efectivo pagada con 100 y otra de 30 por QR se leía "100 + 80 − 50 =
  *   130" contra un esperado de 150, que era el correcto. Hasta acá quedaba con
  *   el formato de siempre "para Omar", pero Omar no usa la web (sólo la app),
- *   y la app ya muestra sólo las filas que suman el esperado.
+ *   y la app ya muestra sólo las filas que suman el esperado. Desde el 10-nov
+ *   su primer bloque es otro (`BloquesRestaurante`): lo vendido cierra en su
+ *   total y lo del QR tiene el suyo.
  * - El instituto (F-23, videos de la recepción, 07-nov): el mismo error. Su
  *   recepción cobra cuotas en efectivo con vuelto y por QR, y el formato de
  *   siempre mostraba "Cambio entregado −X" sin que entrara en la cuenta, con
@@ -712,7 +798,12 @@ function FilasDelCajon({
         )}
       </div>
       {r.abonosEfectivo > 0 && (
-        <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+        <Fila
+          // El restaurante con las mismas palabras que el bloque del QR
+          // ("Abonos de fiado por QR"): es la misma plata, entrada por otro lado.
+          etiqueta={rubro === "RESTAURANTE" ? "Abonos de fiado en efectivo" : "Abonos de créditos (efectivo)"}
+          valor={r.abonosEfectivo}
+        />
       )}
       {/* Billar: el efectivo que se cobró a mesas que siguen abiertas
           (adelanto, tiempo fijo) está en el cajón pero todavía no es una
@@ -978,8 +1069,14 @@ function ComprobanteCompleto({
 
           {r && (
             <section aria-label="Ventas del turno" className="border-t border-borde pt-3">
-              <h2 className={titulo}>Ventas del turno</h2>
-              <FilasVendido r={r} />
+              {rubro === "RESTAURANTE" ? (
+                <BloquesRestaurante r={r} />
+              ) : (
+                <>
+                  <h2 className={titulo}>Ventas del turno</h2>
+                  <FilasVendido r={r} />
+                </>
+              )}
             </section>
           )}
 

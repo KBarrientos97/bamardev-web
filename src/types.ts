@@ -1053,6 +1053,12 @@ export interface ResumenCaja {
   cantidadVentas: number;
   totalVentas: number;
   anuladas: number;
+  /**
+   * Delivery o recoger que se cobran al entregar y siguen en camino (10-nov).
+   * No están en `totalVentas` ni en el esperado: entran al turno que los
+   * cobre. Opcional: un backend anterior no lo manda (y los sumaba a las ventas).
+   */
+  pedidosPorCobrar?: { cantidad: number; total: number };
   porFormaPago: { nombre: string; monto: number }[];
   efectivo: number;
   cambioEntregado: number;
