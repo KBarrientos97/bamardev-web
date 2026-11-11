@@ -549,6 +549,15 @@ describe("billar: un extra estricto", () => {
     }
   });
 
+  it("la Supervisión de la farmacia es del dueño y el encargado (caja.ver_todas), no de la auxiliar, y sólo en farmacia", () => {
+    // 11-nov: la misma llave que abre las cajas ajenas; sin permiso nuevo.
+    expect(puedeVer(ctxCon(["caja.ver_todas"], "FARMACIA"), "supervision_farmacia")).toBe(true);
+    expect(puedeVer(ctxCon(["caja.operar", "ventas.vender"], "FARMACIA"), "supervision_farmacia")).toBe(false);
+    for (const rubro of ["RESTAURANTE", "BILLAR", "BARBERIA"]) {
+      expect(puedeVer(ctxCon(["caja.ver_todas"], rubro), "supervision_farmacia")).toBe(false);
+    }
+  });
+
   it("Supervisión es de quien administra el billar: la ve sin tener que atender, y la cajera no", () => {
     // 21-oct: el administrador mira lo que hace la cajera sin abrir caja.
     const administra = ctxCon(["billar.admin"], "BILLAR", conBillar);

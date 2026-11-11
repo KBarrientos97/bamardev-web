@@ -79,6 +79,8 @@ const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 // Billar: sólo se baja en un negocio con el extra.
 const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervision"));
+// Farmacia (11-nov): la Supervisión del administrador.
+const SupervisionFarmacia = lazy(() => import("./pages/farmacia/supervision/Supervision"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Tickets y despacho (extra `tickets_pedido`): sólo se bajan en un restaurante que lo tiene.
@@ -762,6 +764,18 @@ function Rutas() {
             <Protegida seccion="despacho">
               <Suspense fallback={null}>
                 <Despacho />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Farmacia: lo que hace la auxiliar, en vivo y sólo para mirar (del dueño o el encargado). */}
+        <Route
+          path="/supervision"
+          element={
+            <Protegida seccion="supervision_farmacia">
+              <Suspense fallback={null}>
+                <SupervisionFarmacia />
               </Suspense>
             </Protegida>
           }
