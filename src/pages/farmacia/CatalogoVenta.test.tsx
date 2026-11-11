@@ -17,11 +17,15 @@ vi.mock("../../store/AuthContext", () => ({
 }));
 
 vi.mock("../../lib/api", () => ({
-  api: { buscarProductos: vi.fn() },
+  api: { buscarProductos: vi.fn(), crearEncargo: vi.fn() },
 }));
+
+// El pitido del lector: en jsdom no hay audio, y lo que importa es CUÁNDO suena.
+vi.mock("./sonido", () => ({ pitidoDeError: vi.fn() }));
 
 import { api } from "../../lib/api";
 import CatalogoVenta from "./CatalogoVenta";
+import { pitidoDeError } from "./sonido";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
 
 function med(over: Partial<Producto>): Producto {
@@ -54,7 +58,13 @@ function med(over: Partial<Producto>): Producto {
 }
 
 const ibuprofeno = med({});
-const ranitidina = med({ id: 2, nombre: "Ranitidina 150 mg", stockTotal: 0, proximoVencimiento: null });
+const ranitidina = med({
+  id: 2,
+  nombre: "Ranitidina 150 mg",
+  concentracion: "150 mg",
+  stockTotal: 0,
+  proximoVencimiento: null,
+});
 
 const categorias: Categoria[] = [
   { id: 3, nombre: "Antibióticos", activo: true } as Categoria,
@@ -62,9 +72,10 @@ const categorias: Categoria[] = [
 ];
 
 const agregar = vi.fn();
+const avisar = vi.fn();
 
 function montar(enCarrito = new Map<number, number>()) {
-  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn(), recetas: new Map(), pedirReceta: vi.fn() } satisfies VentaFarmacia;
+  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn(), recetas: new Map(), pedirReceta: vi.fn(), avisar } satisfies VentaFarmacia;
   render(
     <MemoryRouter>
       <ContextoVentaFarmacia.Provider value={venta}>
@@ -161,6 +172,59 @@ describe("la grilla", () => {
     montar(new Map([[1, 2]]));
     expect(await screen.findByText("2 en la venta")).toBeInTheDocument();
   });
+
+  it("si la búsqueda falla se ve sólo el error, con Reintentar; no 'No hay nada'", async () => {
+    // B14: la búsqueda fallida deja la lista vacía, y debajo del error
+    // aparecía "No hay nada con …": quien atiende leía que el remedio no
+    // existía cuando lo que no había era conexión.
+    vi.mocked(api.buscarProductos).mockRejectedValue(new Error("Sin conexión"));
+    montar();
+    expect(await screen.findByText("Sin conexión", {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.queryByText(/No hay nada/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No hay medicamentos/)).not.toBeInTheDocument();
+
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [ibuprofeno],
+      total: 1,
+      limite: 24,
+      offset: 0,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByRole("button", { name: /Ibuprofeno 400 mg/ })).toBeInTheDocument();
+    expect(screen.queryByText("Sin conexión")).not.toBeInTheDocument();
+  });
+});
+
+describe("encargar lo que no hay", () => {
+  it("la tarjeta agotada ofrece Encargar y abre el alta con el producto; la que tiene stock no", async () => {
+    // #17: "hoy no tengo, te lo consigo" es una venta. Antes anotarla eran
+    // siete acciones por el menú y nadie las hacía con el cliente enfrente.
+    vi.mocked(api.crearEncargo).mockResolvedValue({} as never);
+    montar();
+    await screen.findByRole("button", { name: /Ranitidina 150 mg/ }, { timeout: 4000 });
+    const encargar = screen.getAllByRole("button", { name: /Encargar/ });
+    expect(encargar).toHaveLength(1);
+    // El de la tarjeta: hermano del botón deshabilitado, no adentro.
+    expect(encargar[0].closest("li")).toHaveTextContent("Ranitidina 150 mg");
+    expect(screen.getByRole("button", { name: /Ibuprofeno 400 mg/ }).closest("li")).not.toHaveTextContent("Encargar");
+
+    await act(async () => {
+      fireEvent.click(encargar[0]);
+    });
+    expect(screen.getByRole("dialog", { name: "Nuevo encargo" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("La crema para la alergia, la de pomo azul")).toHaveValue(
+      "Ranitidina 150 mg",
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Anotar" }));
+    });
+    expect(api.crearEncargo).toHaveBeenCalledWith(
+      expect.objectContaining({ productoId: 2, descripcion: "Ranitidina 150 mg", cantidad: 1 }),
+    );
+    expect(avisar).toHaveBeenCalledWith("Encargo anotado: Ranitidina 150 mg");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });
 
 describe("los chips de categoría", () => {
@@ -199,6 +263,26 @@ describe("el lector de código de barras", () => {
     fireEvent.keyDown(campo, { key: "Enter" });
     expect(agregar).toHaveBeenCalledWith(ibuprofeno);
     expect(campo).toHaveValue("");
+    // Se cargó: nada que avisar ni que hacer sonar.
+    expect(avisar).not.toHaveBeenCalled();
+    expect(pitidoDeError).not.toHaveBeenCalled();
+  });
+
+  it("con un solo resultado agotado igual se lo pasa a la venta, que dice por qué no, y suena", async () => {
+    // B9: el Enter sobre un agotado no hacía nada, en silencio. Ahora la venta
+    // decide (y avisa "agotado", "vencido" o "no se vende acá"); acá se oye.
+    montar();
+    await screen.findByRole("button", { name: /Ranitidina/ });
+    responderSegunTexto({ "7790002": [ranitidina] });
+
+    const campo = screen.getByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "7790002" } });
+    fireEvent.keyDown(campo, { key: "Enter" });
+
+    await waitFor(() => expect(agregar).toHaveBeenCalledWith(ranitidina));
+    expect(pitidoDeError).toHaveBeenCalledTimes(1);
+    // El texto se queda: la tarjeta del agotado (con "Encargar") sigue a la vista.
+    expect(campo).toHaveValue("7790002");
   });
 
   /*
@@ -227,7 +311,7 @@ describe("el lector de código de barras", () => {
     expect(campo).toHaveValue("");
   });
 
-  it("con dos resultados el Enter no elige por la persona, llegue cuando llegue", async () => {
+  it("con dos resultados el Enter no elige por la persona, llegue cuando llegue; avisa y suena", async () => {
     montar();
     await screen.findByRole("button", { name: /Ranitidina/ });
     responderSegunTexto({ ibu: [ibuprofeno, med({ id: 3, nombre: "Ibuprofeno 600 mg" })] });
@@ -240,6 +324,12 @@ describe("el lector de código de barras", () => {
     expect(await screen.findByText("Ibuprofeno 600 mg")).toBeInTheDocument();
     expect(agregar).not.toHaveBeenCalled();
     expect(campo).toHaveValue("ibu");
+    // B9: antes no pasaba nada, en silencio, y quien escaneaba daba el remedio
+    // por cargado.
+    await waitFor(() =>
+      expect(avisar).toHaveBeenCalledWith('Hay 2 coincidencias con "ibu": elegí en la grilla'),
+    );
+    expect(pitidoDeError).toHaveBeenCalledTimes(1);
   });
 
   it("si después del Enter se siguió escribiendo, ese Enter ya no carga nada", async () => {

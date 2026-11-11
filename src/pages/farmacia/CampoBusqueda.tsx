@@ -3,6 +3,19 @@ import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 
 /**
+ * Si la pantalla se maneja con el dedo (una tablet, un teléfono). Con
+ * try/catch porque en jsdom no hay `matchMedia`, y porque un navegador raro no
+ * tiene por qué dejar el mostrador sin buscador.
+ */
+function pantallaTactil(): boolean {
+  try {
+    return window.matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * El campo de búsqueda del mostrador. Es el mismo en la pantalla de consulta y
  * en el punto de venta, y tiene tres cosas que no tiene un buscador común:
  *
@@ -29,6 +42,14 @@ const CampoBusqueda = forwardRef<
 ) {
   const propio = useRef<HTMLInputElement>(null);
   const [pista, setPista] = useState(false);
+  // En una tablet el campo arranca SIN teclado (`inputMode="none"`): tiene el
+  // foco, así que el lector escribe igual, pero el teclado no se abre solo.
+  // Hasta el 11-nov cada venta cobrada volvía a montar el campo, el foco
+  // levantaba el teclado de Android y tapaba media grilla con el cliente
+  // enfrente (B16). Si la persona toca el campo para escribir, ahí sí: pasa a
+  // "text" y el teclado aparece como en cualquier campo.
+  const [sinTeclado, setSinTeclado] = useState(pantallaTactil);
+  const conTeclado = () => setSinTeclado(false);
 
   const enfocar = () => {
     const el = (ref && typeof ref !== "function" ? ref.current : null) ?? propio.current;
@@ -47,6 +68,9 @@ const CampoBusqueda = forwardRef<
           <input
             ref={ref ?? propio}
             value={valor}
+            inputMode={sinTeclado ? "none" : "text"}
+            onPointerDown={conTeclado}
+            onClick={conTeclado}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && onEnter) {

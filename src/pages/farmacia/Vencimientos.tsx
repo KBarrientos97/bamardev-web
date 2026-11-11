@@ -272,9 +272,15 @@ function DetalleLote({
 }) {
   const t = aspectoDe(l.tramo);
   const vencido = l.diasRestantes < 0;
+  const { incluye, puede } = useAuth();
   // Con el extra de doble control, la salida sólo se guarda y la aprueba otra
   // persona; sin él, el formulario ofrece las dos cosas (ver FormMercaderia).
-  const conAprobacion = useAuth().incluye("aprobacion_inventario");
+  const conAprobacion = incluye("aprobacion_inventario");
+  // B7: dar de baja ES el movimiento de salida, y pide su permiso
+  // (`inventario.mover`), no el de ver los lotes. Sin él, el botón navegaba a
+  // una ruta que el guard rechaza y la persona aparecía en el inicio sin
+  // explicación. Quien ve los lotes pero no mueve stock, lo pide.
+  const daDeBaja = puede("salida_mercaderia");
 
   return (
     <Modal
@@ -294,14 +300,18 @@ function DetalleLote({
         </div>
       }
       acciones={
-        <>
-          <Boton variante="ghost" icono="truck" onClick={() => onDarDeBaja("Devolución a proveedor")}>
-            Devolver al proveedor
-          </Boton>
-          <Boton variante="danger" icono="trendingDown" onClick={() => onDarDeBaja("Vencimiento")}>
-            Dar de baja
-          </Boton>
-        </>
+        daDeBaja ? (
+          <>
+            <Boton variante="ghost" icono="truck" onClick={() => onDarDeBaja("Devolución a proveedor")}>
+              Devolver al proveedor
+            </Boton>
+            <Boton variante="danger" icono="trendingDown" onClick={() => onDarDeBaja("Vencimiento")}>
+              Dar de baja
+            </Boton>
+          </>
+        ) : (
+          <p className="text-[13px] text-texto-3">Pedile al encargado que lo dé de baja.</p>
+        )
       }
     >
       <div className="space-y-4 p-4 sm:p-5">
@@ -332,10 +342,12 @@ function DetalleLote({
         <p className="text-[13px] leading-relaxed text-texto-3">
           {vencido
             ? "Ya venció: el punto de venta no lo vende, pero sigue contando en el stock hasta que se saca. Si la droguería lo recibe, devolvelo: no es pérdida. Si no, darlo de baja lo saca del stock como pérdida y deja el motivo, que es lo que arma el número de mermas."
-            : "Todavía se puede vender. Muchas droguerías reciben devoluciones con dos o tres meses de anticipación: si va a volver, conviene mandarlo ahora."}{" "}
-          {conAprobacion
-            ? "La baja se carga como un movimiento PENDIENTE: el stock recién se mueve cuando alguien la aprueba."
-            : "Se abre la salida cargada para revisarla: con «Guardar y aprobar» el stock se descuenta en el momento; con «Guardar salida» queda pendiente hasta que alguien la apruebe."}
+            : "Todavía se puede vender. Muchas droguerías reciben devoluciones con dos o tres meses de anticipación: si va a volver, conviene mandarlo ahora."}
+          {/* Cómo se guarda la baja: sólo para quien la puede hacer desde acá. */}
+          {daDeBaja &&
+            (conAprobacion
+              ? " La baja se carga como un movimiento PENDIENTE: el stock recién se mueve cuando alguien la aprueba."
+              : " Se abre la salida cargada para revisarla: con «Guardar y aprobar» el stock se descuenta en el momento; con «Guardar salida» queda pendiente hasta que alguien la apruebe.")}
         </p>
       </div>
     </Modal>

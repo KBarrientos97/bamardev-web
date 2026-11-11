@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
+import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
@@ -9,6 +9,7 @@ import type { Producto } from "../../types";
 import { paraVender } from "../pos/useCarrito";
 import CampoBusqueda from "./CampoBusqueda";
 import { FichaMostrador } from "./FichaMedicamento";
+import { FormEncargo } from "./FormEncargo";
 import { CONDICION, concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
@@ -63,6 +64,13 @@ export default function BuscarMedicamento() {
 
   const agregar = vende ? (p: Producto) => venta.agregar(p) : undefined;
 
+  // #17: "hoy no tengo, te lo consigo" se anota acá mismo. Antes eran siete
+  // acciones por el menú y con el cliente esperando nadie las hacía: el
+  // encargo no quedaba y la venta se perdía igual.
+  const encarga = puede("encargos");
+  const [encargando, setEncargando] = useState<Producto | null>(null);
+  const [aviso, setAviso] = useAviso();
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 pb-24 sm:p-5 sm:pb-24">
       <header>
@@ -80,6 +88,7 @@ export default function BuscarMedicamento() {
       />
 
       <ErrorMsg>{busqueda.error}</ErrorMsg>
+      <AvisoOk>{aviso}</AvisoOk>
 
       {/* Mientras se averigua la caja la búsqueda está apagada y no carga
           nada: sin mirar la caja, eso se leía "El catálogo está vacío". */}
@@ -130,6 +139,7 @@ export default function BuscarMedicamento() {
                   conVencimiento={conLotes}
                   onFicha={() => setFicha(p)}
                   onAgregar={agregar && (() => agregar(p))}
+                  onEncargar={encarga ? () => setEncargando(p) : undefined}
                 />
               ))}
             </ul>
@@ -160,6 +170,27 @@ export default function BuscarMedicamento() {
                 }
               : undefined
           }
+          // La ficha se cierra y se abre el alta: dos hojas apiladas en el
+          // celular no se pueden bajar bien.
+          onEncargar={
+            encarga
+              ? () => {
+                  setEncargando(ficha);
+                  setFicha(null);
+                }
+              : undefined
+          }
+        />
+      )}
+
+      {encargando && (
+        <FormEncargo
+          productoInicial={encargando}
+          onClose={() => setEncargando(null)}
+          onGuardado={() => {
+            setEncargando(null);
+            setAviso("Encargo anotado");
+          }}
         />
       )}
     </div>
@@ -185,6 +216,7 @@ function Fila({
   conVencimiento,
   onFicha,
   onAgregar,
+  onEncargar,
 }: {
   producto: Producto;
   q: string;
@@ -194,6 +226,8 @@ function Fila({
   onFicha: () => void;
   /** Sin esto no hay botón "Agregar": quien consulta no siempre vende. */
   onAgregar?: () => void;
+  /** Anotar el encargo de uno agotado. Sin esto no hay botón (rol sin `encargos`). */
+  onEncargar?: () => void;
 }) {
   const vendible = sePuedeVender(p);
   // Lo que se puede vender: sin las cajas vencidas, que siguen en el estante
@@ -206,7 +240,10 @@ function Fila({
   const concentracion = concentracionAparte(p);
   const condicion = CONDICION[p.condicionVenta];
   const stock = conUnidad(hay, p.unidadMedida?.nombre);
-  const sinStock = vencidas > 0 ? "Vencido" : "Agotado";
+  // B3: la columna de stock decía "Vencido", lo mismo que la de vencimiento,
+  // y en el teléfono quedaban pegadas: "Vencido · Vencido". Esta columna
+  // contesta cuánto se puede vender (nada) y entre paréntesis por qué.
+  const sinStock = vencidas > 0 ? "Agotado (vencido)" : "Agotado";
 
   const colorStock = agotado ? "text-danger-text" : bajo ? "text-warning-text" : "text-texto";
 
@@ -297,7 +334,9 @@ function Fila({
           )}
           <span className={`shrink-0 font-semibold ${colorStock}`}>
             {conVencimiento && "· "}
-            {agotado ? sinStock : stock}
+            {/* Cuando lo único que queda está vencido, el punto de al lado ya
+                dice "Vencido": acá va sólo "Agotado", y no se repite. */}
+            {agotado ? (conVencimiento && vencidas > 0 ? "Agotado" : sinStock) : stock}
           </span>
         </span>
         <span className={`shrink-0 text-[15px] font-extrabold ${vendible ? "text-primary-700" : "text-texto-3"}`}>
@@ -311,6 +350,19 @@ function Fila({
             className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Agregar
+          </button>
+        )}
+        {/* Sólo lo agotado se encarga: de lo que hay, se vende. Ícono en el
+            teléfono por lo mismo que la ficha, abajo. */}
+        {agotado && onEncargar && (
+          <button
+            onClick={onEncargar}
+            aria-label="Encargar"
+            title="Anotar que lo pidieron y no había"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-borde bg-white p-1.5 text-xs font-bold text-primary-700 transition hover:border-primary lg:px-3"
+          >
+            <Icon name="bell" size={16} />
+            <span className="hidden lg:inline">Encargar</span>
           </button>
         )}
         {/* En el teléfono es un ícono: el renglón lleva además el vencimiento
