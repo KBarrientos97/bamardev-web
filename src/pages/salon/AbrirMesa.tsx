@@ -180,7 +180,7 @@ export default function AbrirMesa({
               mesa de cuatro, es decisión del cliente. La app avisa para que el
               mesero pueda ofrecerle otra, nada más. */}
           {excede && (
-            <p className="mt-3 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+            <p className="mt-3 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
               La mesa es para {lugares} {lugares === 1 ? "persona" : "personas"}. Podés
               seguir igual.
             </p>

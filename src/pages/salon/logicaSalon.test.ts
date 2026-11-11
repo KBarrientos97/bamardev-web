@@ -9,11 +9,13 @@ import {
   filtrarMesas,
   hace,
   inicialesDe,
+  nivelDeEspera,
   mesasParaElegir,
   porPersona,
   porServir,
   primerNombre,
   resumirSalon,
+  tandasDelSalon,
   tieneConsumo,
   tieneQueLlevarse,
 } from "./logicaSalon";
@@ -102,6 +104,25 @@ describe("lo que falta llevar a la mesa", () => {
   });
 });
 
+describe("el color del tiempo de la mesa (UX-MESEROS §1)", () => {
+  const ahora = Date.parse("2026-11-10T22:00:00.000Z");
+  const hace_ = (min: number) => new Date(ahora - min * 60000).toISOString();
+
+  it("hasta la hora es normal, de 1 a 2 horas larga, más es muy larga", () => {
+    expect(nivelDeEspera(hace_(59), ahora)).toBe("normal");
+    expect(nivelDeEspera(hace_(60), ahora)).toBe("larga");
+    expect(nivelDeEspera(hace_(119), ahora)).toBe("larga");
+    expect(nivelDeEspera(hace_(120), ahora)).toBe("muyLarga");
+    // La mesa olvidada abierta desde ayer: era el mismo gris que "5m".
+    expect(nivelDeEspera(hace_(29 * 60), ahora)).toBe("muyLarga");
+  });
+
+  it("sin fecha, o con una fecha rota, no alarma", () => {
+    expect(nivelDeEspera(null, ahora)).toBe("normal");
+    expect(nivelDeEspera("no-es-fecha", ahora)).toBe("normal");
+  });
+});
+
 describe("el plano del salón", () => {
   const mesas = [
     mesa({ id: 1, estado: "LIBRE", zonaCodigo: "salon" }),
@@ -133,6 +154,24 @@ describe("el plano del salón", () => {
   it("sin zona, 'mis mesas' trae las de todo el salón", () => {
     const r = filtrarMesas(mesas, { soloMias: true, miMeseroId: 7 });
     expect(r.map((m) => m.id)).toEqual([2, 3]);
+  });
+
+  it("tocar un contador filtra por ese estado, cruzado con zona y 'mis mesas' (UX-MESEROS §1)", () => {
+    expect(filtrarMesas(mesas, { estado: "OCUPADA" }).map((m) => m.id)).toEqual([2]);
+    expect(filtrarMesas(mesas, { estado: "CUENTA", zonaCodigo: "salon" })).toEqual([]);
+    const r = filtrarMesas(mesas, { estado: "CUENTA", soloMias: true, miMeseroId: 7 });
+    expect(r.map((m) => m.id)).toEqual([3]);
+  });
+
+  it("arma las tandas: para atender, con gente y libres", () => {
+    // Para atender = con algo para llevar o con la cuenta pedida. Antes iban
+    // todas por número y del mismo tamaño, y lo urgente quedaba abajo.
+    const conPedido = mesa({ id: 6, estado: "OCUPADA", comandas: [comanda()] });
+    const servida = mesa({ id: 7, estado: "OCUPADA", comandas: [comanda({ estado: "SERVIDA" })] });
+    const t = tandasDelSalon([...mesas, conPedido, servida]);
+    expect(t.atender.map((m) => m.id)).toEqual([3, 6]);
+    expect(t.enUso.map((m) => m.id)).toEqual([2, 4, 5, 7]);
+    expect(t.libres.map((m) => m.id)).toEqual([1]);
   });
 
   it("una mesa está ocupada aunque ya la hayan cobrado", () => {

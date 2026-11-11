@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
+import { fichasPorFila, tandaVisible } from "../../lib/tickets/fichasTv";
 import { minutosDesde, numeroTicket, paletaTv } from "../../lib/tickets/llamado";
 import type { AjustesTicketsTv } from "../../types/tickets";
 
@@ -23,8 +24,23 @@ export const ALTO_TV = 900;
 
 /** Cuántos números entran en la columna "En preparación" (medido en el lienzo). */
 const FILAS_PREPARACION = 5;
-/** Cuántos listos, además del grande, entran como fichas debajo. */
-const FICHAS_LISTOS = 6;
+
+// Las medidas del lienzo que deciden cuántas fichas de listos entran en la
+// fila de abajo del número grande. Son las mismas que usa el dibujo: si se
+// cambia un margen acá, cambia allá.
+const MARGEN_LIENZO = 56;
+const RELLENO_LISTOS = 32;
+const ANCHO_PREPARACION = 520;
+const ENTRE_PANELES = 32;
+const SEPARACION_FICHAS = 16;
+
+/**
+ * Lo que ocupa una ficha: ~36 px por cifra con la letra de 58 y aire a los
+ * costados. Con tres cifras entran 5 al lado de "En preparación" y 8 sin ella.
+ */
+function anchoFicha(cifras: number): number {
+  return 50 + 36 * cifras;
+}
 
 export interface DatosTableroTv {
   negocio: string;
@@ -50,7 +66,18 @@ export function TableroTv({
   const p = paletaTv(ajustes);
   const t = ajustes.textos;
   const destacado = llamando ?? datos.listos[0]?.numero ?? null;
-  const fichas = datos.listos.filter((l) => l.numero !== destacado).slice(0, FICHAS_LISTOS);
+  // Una sola fila de fichas, y lo que no entra va pasando de a tandas (ver
+  // fichasTv.ts: con dos filas el amarillo se achicaba y el texto quedaba
+  // medio afuera).
+  const resto = datos.listos.filter((l) => l.numero !== destacado);
+  const anchoFila =
+    ANCHO_TV -
+    2 * MARGEN_LIENZO -
+    2 * RELLENO_LISTOS -
+    (ajustes.mostrarPreparacion ? ANCHO_PREPARACION + ENTRE_PANELES : 0);
+  const cifras = Math.max(3, ...resto.map((l) => numeroTicket(l.numero).length));
+  const porFila = fichasPorFila(anchoFila, anchoFicha(cifras), SEPARACION_FICHAS);
+  const tanda = tandaVisible(resto, porFila, datos.ahora);
   const muchos = datos.preparando.length > FILAS_PREPARACION;
   const enColumna = datos.preparando.slice(0, muchos ? FILAS_PREPARACION - 1 : FILAS_PREPARACION);
   const sobrePanel = p.fila;
@@ -61,7 +88,7 @@ export function TableroTv({
       style={{
         width: ANCHO_TV,
         height: ALTO_TV,
-        padding: "40px 56px",
+        padding: `40px ${MARGEN_LIENZO}px`,
         background: p.fondo,
         color: p.texto,
         fontFamily: "inherit",
@@ -83,15 +110,16 @@ export function TableroTv({
         )}
       </header>
 
-      <main className="flex min-h-0 flex-1" style={{ gap: 32, marginTop: 24 }}>
+      <main className="flex min-h-0 flex-1" style={{ gap: ENTRE_PANELES, marginTop: 24 }}>
         <section
           className="flex min-w-0 flex-1 flex-col"
-          style={{ background: p.panel, borderRadius: 40, padding: 32 }}
+          style={{ background: p.panel, borderRadius: 40, padding: RELLENO_LISTOS }}
         >
           <TituloPanel
             texto={llamando != null && t.llamando ? t.llamando : t.listos}
             cuantos={datos.listos.length}
             acento={p.acento}
+            tanda={tanda.total > 1 ? tanda : undefined}
           />
           {destacado != null ? (
             <>
@@ -124,7 +152,7 @@ export function TableroTv({
                 <p
                   className="font-black tabular-nums"
                   style={{
-                    fontSize: fichas.length ? 230 : 270,
+                    fontSize: resto.length ? 230 : 270,
                     lineHeight: 1,
                     marginTop: 6,
                     animation: llamando != null ? "tv-latido 1.1s ease-in-out infinite" : undefined,
@@ -138,19 +166,31 @@ export function TableroTv({
                   </p>
                 )}
               </div>
-              {fichas.length > 0 && (
-                <div className="flex shrink-0 flex-wrap" style={{ gap: 16, marginTop: 20 }}>
-                  {fichas.map((f) => (
+              {resto.length > 0 && (
+                <div
+                  // La clave cambia con la tanda: la fila se vuelve a montar y
+                  // los números nuevos entran con la animación, no de golpe.
+                  key={tanda.actual}
+                  data-testid="fichas-listos"
+                  className="grid shrink-0"
+                  style={{
+                    gridTemplateColumns: `repeat(${porFila}, minmax(0, 1fr))`,
+                    gap: SEPARACION_FICHAS,
+                    marginTop: 20,
+                    animation: tanda.total > 1 ? "tv-tanda 0.7s ease-out" : undefined,
+                  }}
+                >
+                  {tanda.visibles.map((f) => (
                     <span
                       // Con la hora del llamado: después de reiniciar la
                       // numeración puede haber dos 001 listos a la vez.
                       key={`${f.numero}-${f.llamadoEn}`}
-                      className="font-black tabular-nums"
+                      className="text-center font-black tabular-nums"
                       style={{
                         background: p.acento,
                         color: p.sobreAcento,
                         borderRadius: 20,
-                        padding: "4px 26px",
+                        padding: "4px 0",
                         fontSize: 58,
                         lineHeight: 1.2,
                       }}
@@ -177,7 +217,7 @@ export function TableroTv({
         {ajustes.mostrarPreparacion && (
           <section
             className="flex shrink-0 flex-col"
-            style={{ width: 520, background: p.panelPreparacion, borderRadius: 40, padding: 28 }}
+            style={{ width: ANCHO_PREPARACION, background: p.panelPreparacion, borderRadius: 40, padding: 28 }}
           >
             <TituloPanel texto={t.preparacion} cuantos={datos.preparando.length} acento={p.acento} />
             <div className="flex min-h-0 flex-1 flex-col" style={{ gap: 12, marginTop: 18 }}>
@@ -234,12 +274,48 @@ export function TableroTv({
   );
 }
 
-function TituloPanel({ texto, cuantos, acento }: { texto: string; cuantos: number; acento: string }) {
+function TituloPanel({
+  texto,
+  cuantos,
+  acento,
+  tanda,
+}: {
+  texto: string;
+  cuantos: number;
+  acento: string;
+  /** Con más de una tanda de fichas: un puntito por tanda, marcado el que se ve. */
+  tanda?: { actual: number; total: number };
+}) {
   return (
-    <div className="flex shrink-0 items-center justify-between" style={{ height: 44 }}>
-      <p className="truncate font-extrabold uppercase" style={{ fontSize: 30, letterSpacing: "0.14em", color: acento }}>
+    <div className="flex shrink-0 items-center justify-between" style={{ height: 44, gap: 20 }}>
+      <p
+        className="min-w-0 truncate font-extrabold uppercase"
+        style={{ fontSize: 30, letterSpacing: "0.14em", color: acento }}
+      >
         {texto}
       </p>
+      {tanda && (
+        <span
+          className="ml-auto flex shrink-0 items-center font-black tabular-nums"
+          style={{ gap: 10, fontSize: 26, color: acento }}
+          aria-label={`Tanda ${tanda.actual + 1} de ${tanda.total}`}
+        >
+          {/* Más de 8 puntitos ya no se cuentan de un vistazo y le comen
+              el lugar al título: van como "3/12". */}
+          {tanda.total > 8 ? `${tanda.actual + 1}/${tanda.total}` : Array.from({ length: tanda.total }, (_, i) => (
+            <span
+              key={i}
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                background: acento,
+                opacity: i === tanda.actual ? 1 : 0.3,
+              }}
+            />
+          ))}
+        </span>
+      )}
       <span
         className="font-black tabular-nums"
         style={{ fontSize: 28, minWidth: 56, textAlign: "center", borderRadius: 999, padding: "2px 16px", background: "rgba(0,0,0,0.18)", color: acento }}
@@ -322,4 +398,5 @@ const ANIMACIONES = `
 @keyframes tv-campana { 0%,100% { transform: rotate(0) } 15% { transform: rotate(16deg) } 30% { transform: rotate(-13deg) } 45% { transform: rotate(9deg) } 60% { transform: rotate(-6deg) } 75% { transform: rotate(3deg) } }
 @keyframes tv-latido { 0%,100% { transform: scale(1) } 50% { transform: scale(1.05) } }
 @keyframes tv-borde { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,0) } 50% { box-shadow: 0 0 0 16px rgba(255,255,255,0.55) } }
+@keyframes tv-tanda { from { opacity: 0; transform: translateY(18px) } to { opacity: 1; transform: none } }
 `;

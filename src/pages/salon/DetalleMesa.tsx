@@ -8,6 +8,7 @@ import { useAuth } from "../../store/AuthContext";
 import type { Comanda, ItemComanda, Mesa } from "../../types/salon";
 import { AnularItem, ElegirMesa, Reserva } from "./AccionesMesa";
 import ComprobanteMesa from "./ComprobanteMesa";
+import { CabeceraHoja, Hoja, VistaEnHoja } from "./HojaMesa";
 import {
   cantidadItems,
   consumoDeMesa,
@@ -22,6 +23,11 @@ import { pieDeMesa, type AccionMesa } from "./pieDeMesa";
 
 /**
  * Todo lo de una mesa, en una hoja sobre el salón.
+ *
+ * Es UNA hoja (`Hoja`), que se baja con el dedo. La cuenta, pasar, juntar,
+ * quitar un producto y la reserva se abren ADENTRO, como otra vista con su
+ * flecha para volver, y no como otra hoja encima (pedido del dueño, 10-nov:
+ * dos velos, dos manijas y gestos distintos en cada una).
  *
  * Se abre tocando la mesa y responde, en este orden, lo que el mesero necesita
  * saber parado al lado del cliente: cuánto va, qué pidieron, qué falta traer y
@@ -149,41 +155,87 @@ export default function DetalleMesa({
     }
   }
 
+  // Lo que se abre adentro de la hoja, en lugar de la mesa. Uno a la vez.
+  const vistaInterna = viendoComprobante ? (
+    <ComprobanteMesa mesa={mesa} marco={VistaEnHoja} onCerrar={() => setViendoComprobante(false)} />
+  ) : elegir ? (
+    <ElegirMesa
+      modo={elegir}
+      mesa={mesa}
+      mesas={mesasDelSalon}
+      procesando={procesando}
+      marco={VistaEnHoja}
+      onCerrar={() => setElegir(null)}
+      onElegir={(otra) => {
+        setElegir(null);
+        if (elegir === "pasar")
+          conMesa(() => api.transferirMesa(mesa.id, otra.id), `Consumo pasado a ${otra.codigo}`);
+        else conMesa(() => api.juntarMesa(mesa.id, otra.id), `${otra.codigo} juntada con esta`);
+      }}
+    />
+  ) : reservando ? (
+    <Reserva
+      mesa={mesa}
+      procesando={procesando}
+      marco={VistaEnHoja}
+      onCerrar={() => setReservando(false)}
+      onGuardar={(r) => {
+        setReservando(false);
+        conMesa(() => api.reservarMesa(mesa.id, r), "Reserva guardada");
+      }}
+    />
+  ) : anular ? (
+    <AnularItem
+      item={anular.item}
+      enCocina={anular.comanda.estado !== "SERVIDA"}
+      procesando={procesando}
+      marco={VistaEnHoja}
+      onCerrar={() => setAnular(null)}
+      onConfirmar={(motivo) => {
+        const { comanda, item } = anular;
+        setAnular(null);
+        conMesa(
+          () => api.anularItemComanda(mesa.id, Number(comanda.id), Number(item.id), { motivo }),
+          `${item.nombre} quitado de la cuenta`,
+        );
+      }}
+    />
+  ) : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40">
-      <div className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-3 border-b border-borde-soft px-4 py-3">
-          <div className="min-w-0 flex-1">
-            {/* Unida, con las otras ("Mesa M5 + M1"), como la tarjeta del salón. */}
-            <h2 className="truncate text-xl font-extrabold text-texto">
+    <Hoja etiqueta={mesa.nombre} onCerrar={onCerrar}>
+      {vistaInterna ?? (
+      <>
+        <CabeceraHoja
+          titulo={
+            <>
+              {/* Unida, con las otras ("Mesa M5 + M1"), como la tarjeta del salón. */}
               {mesa.nombre}
               {estaUnida(mesa) && ` + ${(mesa.unidas ?? []).map((u) => u.codigo).join(" + ")}`}
-            </h2>
-            <p className="truncate text-xs text-texto-3">
-              {ocupada && mesa.abiertaEn
-                ? `${mesa.zonaNombre} · abierta hace ${hace(mesa.abiertaEn)}`
-                : `${mesa.zonaNombre} · ${mesa.capacidadTotal || mesa.capacidad} lugares`}
-            </p>
-          </div>
-          {/* El menú va con fondo de botón y no tres puntos sueltos: perdido
-              entre el título nadie lo encontraba. */}
-          {ocupada && (
-            <button
-              onClick={() => setMenu((v) => !v)}
-              aria-label="Más acciones"
-              className="shrink-0 rounded-lg border border-borde p-2 text-texto-2 hover:bg-muted"
-            >
-              <Icon name="settings" size={16} />
-            </button>
-          )}
-          <button
-            onClick={onCerrar}
-            aria-label="Cerrar"
-            className="shrink-0 rounded-lg p-2 text-texto-3 hover:bg-muted"
-          >
-            <Icon name="close" size={18} />
-          </button>
-        </div>
+            </>
+          }
+          subtitulo={
+            ocupada && mesa.abiertaEn
+              ? `${mesa.zonaNombre} · abierta hace ${hace(mesa.abiertaEn)}`
+              : `${mesa.zonaNombre} · ${mesa.capacidadTotal || mesa.capacidad} lugares`
+          }
+          derecha={
+            // Tres puntos con fondo de botón: el engranaje decía
+            // "configuración", y tres puntos sueltos nadie los encontraba.
+            ocupada && (
+              <button
+                onClick={() => setMenu((v) => !v)}
+                aria-label="Más acciones"
+                aria-expanded={menu}
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
+                  menu ? "border-primary-boton bg-primary-50 text-primary-700" : "border-borde text-texto-2 hover:bg-muted"
+                }`}
+              >
+                <Icon name="more" size={20} strokeWidth={3} />
+              </button>
+            )
+          }
+        />
 
         {/* Se despliega acá adentro y no en un popup del sistema: son acciones
             que cambian plata de lugar y conviene que se vean sobre la mesa que
@@ -205,12 +257,12 @@ export default function DetalleMesa({
         <div className="min-h-0 flex-1 overflow-y-auto bg-fondo px-4 py-3">
           {/* Hero del consumo: es lo primero que se pregunta el mesero. */}
           {ocupada && (
-            <div className="rounded-2xl bg-slate-800 p-4 text-white">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+            <div className="rounded-2xl border border-borde bg-white p-4">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-texto-2">
                 Consumo de la mesa
               </p>
-              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(consumo)}</p>
-              <p className="mt-1 text-xs text-white/90">
+              <p className="mt-1 text-3xl font-extrabold text-texto">{fmtMoney(consumo)}</p>
+              <p className="mt-1 text-xs text-texto-2">
                 {mesa.comensales} {mesa.comensales === 1 ? "persona" : "personas"} · {items}{" "}
                 {items === 1 ? "ítem" : "ítems"} · {fmtMoney(porPersona(mesa))} por persona
               </p>
@@ -225,7 +277,7 @@ export default function DetalleMesa({
           )}
 
           {quitando && (
-            <p className="mt-3 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+            <p className="mt-3 flex items-start gap-2 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
               <Icon name="alert" size={15} />
               <span>
                 Tocá el ícono rojo del producto que querés quitar. Si ya está en cocina,
@@ -235,8 +287,8 @@ export default function DetalleMesa({
           )}
 
           {mesa.reserva && (
-            <div className="mt-3 rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-3.5">
-              <p className="flex items-center gap-1.5 text-sm font-bold text-[#2563EB]">
+            <div className="mt-3 rounded-xl border border-dashed border-texto-4 bg-white p-3.5">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-texto-2">
                 <Icon name="clock" size={14} />
                 {mesa.reserva.hora}
               </p>
@@ -298,11 +350,11 @@ export default function DetalleMesa({
           )}
         </div>
 
-        <div className="border-t border-borde bg-white p-4">
+        <div className="shrink-0 border-t border-borde bg-white px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {aviso && (
             <p
               role="alert"
-              className="mb-2 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] font-semibold text-[#D97706]"
+              className="mb-2 flex items-start gap-2 rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-2.5 text-[13px] font-semibold text-warning-text"
             >
               <Icon name="alert" size={15} />
               <span>{aviso}</span>
@@ -315,7 +367,7 @@ export default function DetalleMesa({
               className={`mb-2 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-[13px] ${
                 pie.tonoBanner === "exito"
                   ? "border-primary-200 bg-primary-50 text-primary-700"
-                  : "border-[#FCD34D] bg-[#FFFBEB] text-[#D97706]"
+                  : "border-warning-borde bg-warning-suave text-warning-text"
               }`}
             >
               <Icon name={pie.tonoBanner === "exito" ? "check" : "info"} size={15} />
@@ -359,7 +411,7 @@ export default function DetalleMesa({
               variante="ghost"
               onClick={() => ejecutar(pie.terciario!.accion)}
               disabled={procesando}
-              className="mt-1 w-full text-[#DC2626]"
+              className="mt-1 w-full text-danger-text"
             >
               {pie.terciario.texto}
             </Boton>
@@ -378,70 +430,9 @@ export default function DetalleMesa({
             </button>
           )}
         </div>
-      </div>
-
-      {viendoComprobante && (
-        <ComprobanteMesa mesa={mesa} onCerrar={() => setViendoComprobante(false)} />
+      </>
       )}
-
-      {elegir && (
-        <ElegirMesa
-          modo={elegir}
-          mesa={mesa}
-          mesas={mesasDelSalon}
-          procesando={procesando}
-          onCerrar={() => setElegir(null)}
-          onElegir={(otra) => {
-            setElegir(null);
-            if (elegir === "pasar")
-              conMesa(
-                () => api.transferirMesa(mesa.id, otra.id),
-                `Consumo pasado a ${otra.codigo}`,
-              );
-            else
-              conMesa(
-                () => api.juntarMesa(mesa.id, otra.id),
-                `${otra.codigo} juntada con esta`,
-              );
-          }}
-        />
-      )}
-
-      {reservando && (
-        <Reserva
-          mesa={mesa}
-          procesando={procesando}
-          onCerrar={() => setReservando(false)}
-          onGuardar={(r) => {
-            setReservando(false);
-            conMesa(() => api.reservarMesa(mesa.id, r), "Reserva guardada");
-          }}
-        />
-      )}
-
-      {anular && (
-        <AnularItem
-          item={anular.item}
-          enCocina={anular.comanda.estado !== "SERVIDA"}
-          procesando={procesando}
-          onCerrar={() => setAnular(null)}
-          onConfirmar={(motivo) => {
-            const { comanda, item } = anular;
-            setAnular(null);
-            conMesa(
-              () =>
-                api.anularItemComanda(
-                  mesa.id,
-                  Number(comanda.id),
-                  Number(item.id),
-                  { motivo },
-                ),
-              `${item.nombre} quitado de la cuenta`,
-            );
-          }}
-        />
-      )}
-    </div>
+    </Hoja>
   );
 }
 
@@ -494,7 +485,7 @@ function TarjetaComanda({
               <p className="truncate text-texto">{i.nombre}</p>
               {/* La indicación para cocina, en ámbar: es lo que hay que revisar
                   antes de llevar el plato a la mesa. */}
-              {i.nota && <p className="text-[11px] text-[#D97706]">{i.nota}</p>}
+              {i.nota && <p className="text-[11px] text-warning-text">{i.nota}</p>}
             </div>
             <span className="shrink-0 font-bold text-texto">{fmtMoney(subtotalItem(i))}</span>
             {/* Es un modo y no un botón por producto porque quitar es raro:
@@ -505,7 +496,7 @@ function TarjetaComanda({
                 onClick={() => onQuitar(i)}
                 disabled={procesando}
                 aria-label={`Quitar ${i.nombre}`}
-                className="shrink-0 rounded-lg border border-[#FCA5A5] p-1.5 text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-40"
+                className="shrink-0 rounded-lg border border-danger-borde p-1.5 text-danger-text hover:bg-danger-suave disabled:opacity-40"
               >
                 <Icon name="trash" size={13} />
               </button>
@@ -552,9 +543,9 @@ function Badge({ estado }: { estado: "PENDIENTE" | "SERVIDA" | "ANULADA" }) {
   const estilo = {
     // Decir "En cocina" de algo que ya no tiene nada es peor que no decir nada:
     // el mesero se queda esperando un plato que nadie va a preparar.
-    ANULADA: { texto: "Anulado", clase: "bg-[#FEF2F2] text-[#DC2626]" },
+    ANULADA: { texto: "Anulado", clase: "bg-danger-suave text-danger-text" },
     SERVIDA: { texto: "Servido", clase: "bg-muted text-texto-3" },
-    PENDIENTE: { texto: "En cocina", clase: "bg-[#FFFBEB] text-[#D97706]" },
+    PENDIENTE: { texto: "En cocina", clase: "bg-warning-suave text-warning-text" },
   }[estado];
   return (
     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${estilo.clase}`}>

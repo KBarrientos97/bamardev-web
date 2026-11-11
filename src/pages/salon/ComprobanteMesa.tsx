@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
-import { Boton, Modal } from "../../components/ui";
+import { Boton } from "../../components/ui";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { excede } from "../../lib/dinero";
 import { fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Mesa } from "../../types/salon";
 import { datosComprobanteMesa } from "./datosComprobanteMesa";
+import { MarcoModal, type Marco } from "./HojaMesa";
 import { PIE_BAMARDEV } from "../../lib/pieBamarDev";
 
 /**
@@ -21,9 +22,15 @@ import { PIE_BAMARDEV } from "../../lib/pieBamarDev";
 export default function ComprobanteMesa({
   mesa,
   onCerrar,
+  marco: M = MarcoModal,
 }: {
   mesa: Mesa;
   onCerrar: () => void;
+  /**
+   * Dónde se dibuja: un Modal propio (Mi turno) o una vista de la hoja de la
+   * mesa, que es como se abre desde la mesa (sin una hoja encima de otra).
+   */
+  marco?: Marco;
 }) {
   const { negocio } = useAuth();
   const d = datosComprobanteMesa(mesa);
@@ -49,11 +56,10 @@ export default function ComprobanteMesa({
   const porPersona = d.comensales > 0 ? d.total / d.comensales : 0;
 
   return (
-    <Modal
-      abierto
+    <M
       titulo={d.esRecibo ? "Recibo" : "La cuenta"}
-      onClose={onCerrar}
-      ancho="max-w-sm"
+      subtitulo={d.mesaTitulo}
+      onCerrar={onCerrar}
       acciones={
         <>
           <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
@@ -164,6 +170,6 @@ export default function ComprobanteMesa({
       </article>
 
       {aviso && <p className="mt-3 text-center text-[13px] text-texto-2">{aviso}</p>}
-    </Modal>
+    </M>
   );
 }

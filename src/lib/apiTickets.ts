@@ -1,4 +1,10 @@
-import type { AjustesTicketsTv, TableroTickets, TicketPedido } from "../types/tickets";
+import type {
+  AjustesTicketsTv,
+  ConfigTickets,
+  ConfigTicketsGuardada,
+  TableroTickets,
+  TicketPedido,
+} from "../types/tickets";
 import { request } from "./api";
 
 /**
@@ -24,6 +30,10 @@ export const apiTickets = {
     post<TicketPedido>("/tickets/llamar-numero", sucursalId != null ? { numero, sucursalId } : { numero }),
   reiniciar: (sucursalId?: number | null) =>
     post<{ sucursalId: number; siguiente: number }>("/tickets/reiniciar", sucursalId != null ? { sucursalId } : {}),
+  /** Configuración › Tickets y despacho: si se usa Despacho y cómo se numera. */
+  config: () => request<ConfigTickets>("/tickets/config"),
+  guardarConfig: (cambios: Partial<ConfigTickets>) =>
+    request<ConfigTicketsGuardada>("/tickets/config", { method: "PATCH", body: JSON.stringify(cambios) }),
   ajustes: () => request<AjustesTicketsTv>("/tickets/ajustes"),
   guardarAjustes: (ajustes: Partial<AjustesTicketsTv>) =>
     request<AjustesTicketsTv>("/tickets/ajustes", { method: "PATCH", body: JSON.stringify({ ajustes }) }),

@@ -61,10 +61,19 @@
   --color-warning: #f59e0b;
   --color-warning-bg: #fef3c7;
   --color-warning-text: #b45309;
+  /*
+   * Aviso suave: el fondo y el borde de los avisos que no son error ("1 pedido
+   * para llevar", "falta llevar"). El salón los tenía escritos a mano
+   * (#FFFBEB, #FCD34D) en unos 60 lugares (UX-MESEROS §6).
+   */
+  --color-warning-suave: #fffbeb;
+  --color-warning-borde: #fcd34d;
 
   --color-danger: #ef4444;
   --color-danger-bg: #fee2e2;
   --color-danger-text: #b91c1c;
+  --color-danger-suave: #fef2f2;
+  --color-danger-borde: #fca5a5;
 
   --color-info-bg: #dbeafe;
   --color-info-text: #1e40af;
@@ -130,6 +139,21 @@ button {
     transform: translateY(100%);
   }
 }
+/* Una pantalla que se apila sobre el panel del mesero (el pedido, abrir la
+   mesa): entra entera desde la derecha. */
+@keyframes pantalla-entra {
+  from {
+    transform: translateX(100%);
+  }
+}
+/* Una vista nueva adentro de la misma hoja (la cuenta de la mesa): entra
+   desde la derecha, como la navegación de una app. */
+@keyframes vista-entra {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
 @keyframes cajon-entra {
   from {
     transform: translateX(-100%);
@@ -145,6 +169,26 @@ button {
 * {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
+}
+
+/*
+ * Sin barra: para las filas de chips que se deslizan de costado. La barra fina
+ * de arriba se veía como una raya gris gruesa debajo de las zonas del salón y
+ * las categorías de la carta (UX-MESEROS §1). Se sigue deslizando igual.
+ *
+ * Va como clase común y no como `@utility`: las utilidades viven en una capa,
+ * y la regla `*` de arriba (sin capa) les gana aunque sea menos específica.
+ *
+ * Sólo en pantallas táctiles: con mouse la barra es la única forma de llegar a
+ * los chips que no entran en una ventana angosta (no hay dedo para deslizar).
+ */
+@media (pointer: coarse) {
+  .sin-barra {
+    scrollbar-width: none;
+  }
+  .sin-barra::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Oculta las flechitas de los number inputs: en el POS se teclea el monto. */

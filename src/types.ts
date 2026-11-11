@@ -165,6 +165,12 @@ export interface SesionNegocio {
   tema?: TemaNegocio | null;
   perfil?: PerfilRubro | null;
   perfilVersion?: number | null;
+  /**
+   * Si el local usa la pantalla de Despacho (Configuración › Tickets y
+   * despacho). Sólo esconde "Despacho" del menú; sin el dato (sesión o
+   * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
+   */
+  usaDespacho?: boolean;
 }
 
 export interface LoginResponse {
@@ -1047,6 +1053,12 @@ export interface ResumenCaja {
   cantidadVentas: number;
   totalVentas: number;
   anuladas: number;
+  /**
+   * Delivery o recoger que se cobran al entregar y siguen en camino (10-nov).
+   * No están en `totalVentas` ni en el esperado: entran al turno que los
+   * cobre. Opcional: un backend anterior no lo manda (y los sumaba a las ventas).
+   */
+  pedidosPorCobrar?: { cantidad: number; total: number };
   porFormaPago: { nombre: string; monto: number }[];
   efectivo: number;
   cambioEntregado: number;

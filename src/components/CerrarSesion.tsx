@@ -43,6 +43,11 @@ export async function cajaAbiertaAlSalir(espera = ESPERA_CAJA_MS): Promise<boole
 /**
  * ¿Cuántos pedidos siguen en el despacho? null si no se pudo saber: se deja
  * salir, por lo mismo que con la caja.
+ *
+ * Con el despacho apagado (Configuración › Tickets y despacho, 10-nov) no
+ * frena nada: el local no usa la pantalla y nadie va a marcar esos pedidos.
+ * Se lee del tablero y no de la sesión, que es del último ingreso: si el
+ * dueño lo prendió después, la cajera tiene que enterarse ahora.
  */
 export async function sinEntregarAlSalir(espera = ESPERA_CAJA_MS): Promise<number | null> {
   if (sinSenal()) return null;
@@ -52,7 +57,8 @@ export async function sinEntregarAlSalir(espera = ESPERA_CAJA_MS): Promise<numbe
   });
   try {
     const r = await Promise.race([apiTickets.tablero(), tarde]);
-    return r === "tarde" ? null : sinEntregar(r.tickets);
+    if (r === "tarde") return null;
+    return r.usaDespacho === false ? 0 : sinEntregar(r.tickets);
   } catch {
     return null;
   } finally {

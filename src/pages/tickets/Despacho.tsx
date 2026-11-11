@@ -105,6 +105,10 @@ export default function Despacho({
   const tickets = datos?.tickets ?? [];
   const enCocina = soloPreparando(tickets);
   const paraEntregar = soloListos(tickets);
+  // Configuración › Tickets y despacho (10-nov). Se lee del tablero y no del
+  // menú: la tablet de la cocina no vuelve a entrar nunca, y su sesión diría
+  // lo de hace semanas.
+  const apagado = datos?.usaDespacho === false;
 
   // El acceso de despacho no sale con pedidos en el tablero: el cliente se
   // quedaría con su número y nadie para llamarlo. Sin el tablero (sin
@@ -210,6 +214,15 @@ export default function Despacho({
         <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
           {!datos ? (
             <p className="py-16 text-center text-white/60">{error || "Cargando los pedidos…"}</p>
+          ) : apagado ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center text-white/60">
+              <Icon name="fuego" size={44} strokeWidth={1.6} />
+              <p className="mt-3 text-lg font-semibold">El despacho está apagado</p>
+              <p className="mt-1 max-w-md text-sm">
+                El número sigue saliendo en el recibo, pero los pedidos no esperan acá. Lo prende el administrador en
+                Configuración › Tickets y despacho.
+              </p>
+            </div>
           ) : visibles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center text-white/60">
               <Icon name="ticket" size={44} strokeWidth={1.6} />
@@ -224,22 +237,26 @@ export default function Despacho({
             </div>
           )}
         </div>
-        <aside className="shrink-0 border-t border-white/10 p-3 sm:p-4 lg:w-[300px] lg:border-l lg:border-t-0">
-          {!teclado && (
-            <button
-              type="button"
-              onClick={abrirTeclado}
-              className="mx-auto flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-[#FFC800] py-3 text-base font-extrabold text-[#1A1A1A] transition active:scale-[0.98] lg:hidden"
-            >
-              <Icon name="bell" size={18} strokeWidth={2.4} />
-              Llamar un número
-            </button>
-          )}
-          {/* Plegado sigue montado: el teclado de la PC tiene que andar igual. */}
-          <div className={teclado ? undefined : "hidden lg:block"}>
-            <TecladoLlamar onLlamar={llamarNumero} onTeclear={abrirTeclado} onOcultar={plegarTeclado} />
-          </div>
-        </aside>
+        {/* Apagado, el teclado no tiene a quién llamar (el backend contesta
+            409): ni se monta, porque escucha también el teclado de la PC. */}
+        {!apagado && (
+          <aside className="shrink-0 border-t border-white/10 p-3 sm:p-4 lg:w-[300px] lg:border-l lg:border-t-0">
+            {!teclado && (
+              <button
+                type="button"
+                onClick={abrirTeclado}
+                className="mx-auto flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-[#FFC800] py-3 text-base font-extrabold text-[#1A1A1A] transition active:scale-[0.98] lg:hidden"
+              >
+                <Icon name="bell" size={18} strokeWidth={2.4} />
+                Llamar un número
+              </button>
+            )}
+            {/* Plegado sigue montado: el teclado de la PC tiene que andar igual. */}
+            <div className={teclado ? undefined : "hidden lg:block"}>
+              <TecladoLlamar onLlamar={llamarNumero} onTeclear={abrirTeclado} onOcultar={plegarTeclado} />
+            </div>
+          </aside>
+        )}
       </div>
 
       {aviso && (

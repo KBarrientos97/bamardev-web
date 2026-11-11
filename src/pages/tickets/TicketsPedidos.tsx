@@ -121,8 +121,13 @@ function PestanaPedidos({
   vistaPrevia: ReactNode;
 }) {
   const navigate = useNavigate();
-  const { usuario } = useAuth();
+  const { usuario, puede } = useAuth();
   const { datos, error, aplicar, recargar } = tablero;
+  // Lo que se eligió en Configuración › Tickets y despacho, del tablero (está
+  // al día aunque la sesión sea de antes del cambio).
+  const despachoApagado = datos?.usaDespacho === false;
+  const porTurno = datos?.numeracion === "POR_TURNO";
+  const irAConfig = puede("config_tickets") ? () => navigate("/configuracion/tickets") : null;
   const [aviso, setAviso] = useState("");
   const [confirmarReinicio, setConfirmarReinicio] = useState(false);
   const [reiniciando, setReiniciando] = useState(false);
@@ -194,22 +199,54 @@ function PestanaPedidos({
         <TelevisoresDelLocal />
         <EnlaceTv />
         <Tarjeta titulo="Despacho">
-          <p className="text-[13px] text-texto-2">
-            Quien entrega marca listo cada pedido que sale de la cocina, o escribe su número, y suena en la TV.
-          </p>
-          <Boton icono="fuego" className="mt-3 w-full" onClick={() => navigate("/despacho")}>
-            Abrir pantalla de despacho
-          </Boton>
+          {despachoApagado ? (
+            <>
+              <p className="text-[13px] text-texto-2">
+                El despacho está apagado: los pedidos no esperan acá y nadie tiene que marcarlos. Se prende en
+                Configuración › Tickets y despacho.
+              </p>
+              {irAConfig && (
+                <Boton variante="ghost" icono="settings" className="mt-3 w-full" onClick={irAConfig}>
+                  Ir a Configuración
+                </Boton>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-[13px] text-texto-2">
+                Quien entrega marca listo cada pedido que sale de la cocina, o escribe su número, y suena en la TV.
+              </p>
+              <Boton icono="fuego" className="mt-3 w-full" onClick={() => navigate("/despacho")}>
+                Abrir pantalla de despacho
+              </Boton>
+            </>
+          )}
         </Tarjeta>
         {/* La tablet de la cocina entra con su propio acceso. Lo crea quien
             administra usuarios: es una credencial, aunque no ocupe lugar. */}
         {tienePermiso(usuario, "usuarios.administrar") && <AccesoDespacho />}
-        <Tarjeta titulo="Numeración del día">
+        <Tarjeta titulo={porTurno ? "Numeración del turno" : "Numeración del día"}>
           <p className="text-sm text-texto-2">
             Siguiente ticket:{" "}
             <b className="font-mono text-lg text-texto">{datos ? numeroTicket(datos.siguiente) : "…"}</b>
           </p>
-          <p className="mt-1 text-[12px] text-texto-3">Vuelve sola a 001 cada día a las 6 de la mañana.</p>
+          <p className="mt-1 text-[12px] text-texto-3">
+            {porTurno
+              ? "Vuelve a 001 en cada turno de caja (y a las 6 de la mañana)."
+              : "Vuelve sola a 001 cada día a las 6 de la mañana."}
+            {irAConfig && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={irAConfig}
+                  className="font-semibold text-primary-700 underline-offset-2 hover:underline"
+                >
+                  Cambiar
+                </button>
+              </>
+            )}
+          </p>
           <Boton variante="ghost" icono="girar" className="mt-3 w-full" onClick={() => setConfirmarReinicio(true)}>
             Reiniciar numeración
           </Boton>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe, PERMISOS_NUEVOS, type Plantilla } from "../test/sesiones";
-import { aplanar, caminoA, construirMenu, esActivo, tituloDe, type Bloque, type BloqueMenu } from "./menu";
+import { aplanar, caminoA, construirMenu, esActivo, puedeEnMenu, tituloDe, type Bloque, type BloqueMenu } from "./menu";
 import { puedeVer } from "./permisos";
 import { RUBROS } from "./rubro";
 
@@ -392,5 +392,43 @@ describe("menú: Configuración del inventario y stock", () => {
     const todo = ["pos", "caja", "catalogo", "inventario", "lotes"];
     expect(puedeVer(ctxDe("ADMIN", "FARMACIA", todo), "config_inventario")).toBe(false);
     expect(puedeVer(ctxDe("ADMIN", "MINIMARKET", todo), "config_inventario")).toBe(false);
+  });
+});
+
+/**
+ * Configuración › Tickets y despacho (10-nov): una pollería que todavía no usa
+ * la pantalla de Despacho no podía cerrar sesión con los pedidos esperando.
+ * El encargado elige si se usa Despacho y cuándo vuelve a 001 el número.
+ */
+describe("menú: Configuración de tickets y despacho", () => {
+  const CON = ["pos", "caja", "catalogo", "usuarios", "tickets_pedido"];
+
+  it("la ve quien configura los tickets en un restaurante con el extra", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", CON), "config_tickets")).toBe(true);
+    expect(puedeVer(ctxDe("SUPERVISOR", "RESTAURANTE", CON), "config_tickets")).toBe(true);
+  });
+
+  it("la caja no: apagar el despacho cambia cómo trabaja todo el local", () => {
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", CON), "config_tickets")).toBe(false);
+  });
+
+  it("sin el extra o fuera del restaurante no existe", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_tickets")).toBe(false);
+    expect(puedeVer(ctxDe("ADMIN", "FARMACIA", CON), "config_tickets")).toBe(false);
+  });
+
+  it("con el despacho apagado, Despacho se va del menú pero no de las rutas", () => {
+    const c = ctxDe("CAJERO", "RESTAURANTE", CON);
+    const pantallas = (usaDespacho: boolean | undefined) =>
+      construirMenu(puedeEnMenu((s) => puedeVer(c, s), usaDespacho), "RESTAURANTE")
+        .find((b) => b.bloque === "pantallas")
+        ?.nodos.map((n) => n.item.label) ?? [];
+    expect(pantallas(false)).toEqual([]);
+    // Sin el dato (una sesión de antes del 10-nov) se ve como siempre.
+    expect(pantallas(undefined)).toEqual(["Despacho"]);
+    expect(pantallas(true)).toEqual(["Despacho"]);
+    // La ruta no se cierra con un dato que puede estar viejo: la tablet de la
+    // cocina no vuelve a entrar, y quedaría afuera cuando lo prendan otra vez.
+    expect(puedeVer(c, "despacho")).toBe(true);
   });
 });

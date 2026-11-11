@@ -135,7 +135,18 @@ describe("después de cobrar o de un cobro frenado", () => {
       }),
       { abrirRecibo: true },
     );
-    expect(screen.getByRole("dialog", { name: "Recibo" })).toBeInTheDocument();
+    // Adentro de la misma hoja de la mesa, no en otra encima (10-nov).
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Recibo" })).toBeInTheDocument();
+  });
+
+  it("«Ver la cuenta» se abre en la misma hoja y la flecha vuelve a la mesa", () => {
+    montar(mesa({ consumo: 72 }));
+    fireEvent.click(screen.getByRole("button", { name: /Ver la cuenta/ }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "La cuenta" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(screen.queryByRole("heading", { name: "La cuenta" })).not.toBeInTheDocument();
   });
 
   it("si la cuenta cambió mientras se cobraba, el aviso queda a la vista", () => {

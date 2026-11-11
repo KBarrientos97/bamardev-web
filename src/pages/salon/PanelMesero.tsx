@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import type { NombreIcono } from "../../components/Icon";
 import type { Mesa } from "../../types/salon";
@@ -9,8 +9,10 @@ import CobrarMesa from "./CobrarMesa";
 import Entregas from "./Entregas";
 import MiTurno from "./MiTurno";
 import PorServir from "./PorServir";
-import Salon from "./Salon";
+import Salon, { type EstadoSalon } from "./Salon";
 import TomarPedido from "./TomarPedido";
+import PantallaApilada from "./PantallaApilada";
+import { precargarCarta } from "./cartaGuardada";
 
 /**
  * El panel del mesero: la pantalla principal del rol MESERO.
@@ -57,12 +59,31 @@ const PESTANAS: { id: Pestana; etiqueta: string; icono: NombreIcono }[] = [
 
 export default function PanelMesero() {
   const [pestana, setPestana] = useState<Pestana>("salon");
+  /**
+   * Las pestañas ya abiertas quedan vivas (escondidas) al cambiar: así vuelven
+   * con su scroll y sin "Cargando". Antes se desmontaban y se armaban de cero
+   * cada vez (UX nativa, 10-nov). Se montan recién la primera vez que se
+   * entra, para no pedir al servidor lo que nadie miró.
+   */
+  const [abiertas, setAbiertas] = useState<ReadonlySet<Pestana>>(() => new Set(["salon"]));
   const [flujo, setFlujo] = useState<Flujo>(null);
   const [aviso, setAviso] = useState("");
-  /** Fuerza a recargar el salón después de tocar una mesa. */
+  /**
+   * Sube después de tocar una mesa: las pestañas se actualizan (sin
+   * desmontarse) y la carta se vuelve a adelantar con el stock nuevo.
+   */
   const [version, setVersion] = useState(0);
   /** Las mesas que cargó el salón: el detalle las usa para pasar/juntar. */
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  /**
+   * Cómo viene la carga del salón. "Por servir" usa las mismas mesas y no las
+   * vuelve a pedir: eran dos pedidos iguales al servidor.
+   */
+  const [salonVivo, setSalonVivo] = useState<EstadoSalon>({
+    cargando: true,
+    error: "",
+    recargar: () => {},
+  });
   /**
    * Si el negocio dejó que el mesero cobre sus mesas.
    *
@@ -73,6 +94,16 @@ export default function PanelMesero() {
   const [meserosCobran, setMeserosCobran] = useState(false);
   /** Lo que falta llevar: va como badge sobre la pestaña "Por servir". */
   const pendientes = porServir(mesas).length;
+
+  // La carta, adelantada: "Agregar pedido" abre al instante (`cartaGuardada`).
+  useEffect(() => {
+    precargarCarta();
+  }, [version]);
+
+  function irA(p: Pestana) {
+    setPestana(p);
+    setAbiertas((a) => (a.has(p) ? a : new Set(a).add(p)));
+  }
 
   function volverAlSalon(mensaje = "") {
     setFlujo(null);
@@ -91,13 +122,16 @@ export default function PanelMesero() {
     if (mensaje) setTimeout(() => setAviso(""), 3000);
   }
 
-  if (flujo?.tipo === "abrir")
-    return (
-      <Pantalla>
+  /** Abrir mesa, el pedido, cobrar y las entregas: se apilan sobre el panel. */
+  const apilada = flujo && flujo.tipo !== "detalle" ? flujo : null;
+
+  function contenidoApilado(f: NonNullable<typeof apilada>, salir: (despues?: () => void) => void) {
+    if (f.tipo === "abrir")
+      return (
         <AbrirMesa
-          mesa={flujo.mesa}
+          mesa={f.mesa}
           mesasDelSalon={mesas}
-          onAtras={() => setFlujo(null)}
+          onAtras={() => salir()}
           // Unir o separar deja OTRA mesa: la pantalla se repinta con la que
           // devolvió el backend, sin volver al salón en el medio.
           onMesaCambiada={(m) => setFlujo({ tipo: "abrir", mesa: m })}
@@ -105,34 +139,22 @@ export default function PanelMesero() {
           // la carta sin volver al salón en el medio.
           onAbierta={(m) => setFlujo({ tipo: "pedido", mesa: m })}
         />
-      </Pantalla>
-    );
-
-  if (flujo?.tipo === "pedido")
-    return (
-      <Pantalla>
+      );
+    if (f.tipo === "pedido")
+      return (
         <TomarPedido
-          mesa={flujo.mesa}
-          onAtras={() => setFlujo(null)}
-          onEnviado={volverAlSalon}
+          mesa={f.mesa}
+          onAtras={() => salir()}
+          onEnviado={(mensaje) => salir(() => volverAlSalon(mensaje))}
         />
-      </Pantalla>
-    );
-
-  if (flujo?.tipo === "entregas")
+      );
+    if (f.tipo === "entregas") return <Entregas onVolver={() => salir()} />;
     return (
-      <Pantalla>
-        <Entregas onVolver={() => setFlujo(null)} />
-      </Pantalla>
-    );
-
-  if (flujo?.tipo === "cobrar")
-    return (
-      <Pantalla>
-        <CobrarMesa
-          mesa={flujo.mesa}
-          onAtras={() => setFlujo(null)}
-          onCobrada={(mensaje, cobrada) => {
+      <CobrarMesa
+        mesa={f.mesa}
+        onAtras={() => salir()}
+        onCobrada={(mensaje, cobrada) =>
+          salir(() => {
             // El cliente acaba de pagar y el mesero está a su lado: se le
             // abre el recibo para dárselo, sobre la mesa ya cobrada (su paso
             // siguiente es levantarla). Volvía al salón y el recibo había que
@@ -141,36 +163,47 @@ export default function PanelMesero() {
             if (cobrada?.cobro)
               volverALaMesa({ tipo: "detalle", mesa: cobrada, conRecibo: true }, mensaje);
             else volverAlSalon(mensaje);
-          }}
-          onCuentaCambiada={(mesa, avisoCuenta) =>
-            volverALaMesa({ tipo: "detalle", mesa, aviso: avisoCuenta })
-          }
-        />
-      </Pantalla>
+          })
+        }
+        onCuentaCambiada={(mesa, avisoCuenta) =>
+          salir(() => volverALaMesa({ tipo: "detalle", mesa, aviso: avisoCuenta }))
+        }
+      />
     );
+  }
 
   return (
     <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-fondo">
       <main className="min-h-0 flex-1 overflow-hidden">
-        {pestana === "salon" && (
+        <div className={pestana === "salon" ? "h-full" : "hidden"}>
           <Salon
-            key={version}
+            refrescar={version}
             onAbrirMesa={(mesa) => setFlujo({ tipo: "abrir", mesa })}
             onVerMesa={(mesa) => setFlujo({ tipo: "detalle", mesa })}
-            onIrAPorServir={() => setPestana("servir")}
-            onIrAMiTurno={() => setPestana("turno")}
+            onIrAPorServir={() => irA("servir")}
+            onIrAMiTurno={() => irA("turno")}
             onMesas={setMesas}
+            onEstado={setSalonVivo}
             onMeserosCobran={setMeserosCobran}
           />
+        </div>
+        {abiertas.has("servir") && (
+          <div className={pestana === "servir" ? "h-full" : "hidden"}>
+            <PorServir
+              mesas={mesas}
+              cargando={salonVivo.cargando}
+              error={salonVivo.error}
+              onRecargar={salonVivo.recargar}
+            />
+          </div>
         )}
-        {pestana === "servir" && <PorServir key={version} />}
-        {pestana === "turno" && (
-          <MiTurno
-            key={version}
-            onIrAEntregas={
-              meserosCobran ? () => setFlujo({ tipo: "entregas" }) : undefined
-            }
-          />
+        {abiertas.has("turno") && (
+          <div className={pestana === "turno" ? "h-full" : "hidden"}>
+            <MiTurno
+              refrescar={version}
+              onIrAEntregas={meserosCobran ? () => setFlujo({ tipo: "entregas" }) : undefined}
+            />
+          </div>
         )}
       </main>
 
@@ -201,7 +234,7 @@ export default function PanelMesero() {
       )}
 
       {aviso && (
-        <p className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-white shadow-lg">
+        <p className="absolute bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-primary-boton px-4 py-2 text-[13px] font-semibold text-white shadow-lg">
           {aviso}
         </p>
       )}
@@ -214,9 +247,9 @@ export default function PanelMesero() {
           return (
             <button
               key={p.id}
-              onClick={() => setPestana(p.id)}
-              className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors ${
-                activa ? "text-primary" : "text-texto-3 hover:text-texto-2"
+              onClick={() => irA(p.id)}
+              className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors active:bg-muted ${
+                activa ? "text-primary-700" : "text-texto-3 hover:text-texto-2"
               }`}
             >
               <span className="relative">
@@ -224,7 +257,7 @@ export default function PanelMesero() {
                 {/* Cuántos pedidos esperan: es lo único de la barra que exige
                     moverse ahora mismo. */}
                 {p.id === "servir" && pendientes > 0 && (
-                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#DC2626] px-1 text-[10px] font-bold text-white">
+                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-text px-1 text-[10px] font-bold text-white">
                     {pendientes}
                   </span>
                 )}
@@ -234,11 +267,19 @@ export default function PanelMesero() {
           );
         })}
       </nav>
+
+      {/* Abrir mesa, el pedido, cobrar y las entregas van ENCIMA del panel,
+          que sigue vivo abajo: entran desde la derecha y se vuelve
+          arrastrando desde el borde, viendo el salón detrás. Una pantalla
+          nueva (de abrir la mesa al pedido) entra con su propia animación. */}
+      {apilada && (
+        <PantallaApilada
+          key={`${apilada.tipo}-${"mesa" in apilada ? apilada.mesa.id : ""}`}
+          onVolver={() => setFlujo(null)}
+        >
+          {(salir) => contenidoApilado(apilada, salir)}
+        </PantallaApilada>
+      )}
     </div>
   );
-}
-
-/** Un flujo a pantalla completa: sin las pestañas de abajo. */
-function Pantalla({ children }: { children: React.ReactNode }) {
-  return <div className="h-[100dvh] overflow-hidden bg-fondo">{children}</div>;
 }

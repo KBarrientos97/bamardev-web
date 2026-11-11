@@ -9,20 +9,29 @@ import {
   consumoDeMesa,
   etiquetaMesa,
   hace,
+  nivelDeEspera,
 } from "./logicaSalon";
 
+/** El color del tiempo según cuánto lleva la mesa (`nivelDeEspera`). */
+const COLOR_ESPERA = {
+  normal: "text-texto-3",
+  larga: "font-bold text-warning-text",
+  muyLarga: "font-bold text-danger-text",
+} as const;
+
 /**
- * Una mesa del salón.
+ * Una mesa con gente (o reservada).
  *
  * Está pensada para leerse de lejos y de reojo, caminando: primero el código (a
- * dónde ir), después el color (qué pasa ahí) y recién después los números. Por
- * eso el código va grande arriba a la izquierda y el badge de estado enfrente
- * — es lo único que se alcanza a ver con el celular en la mano y una bandeja
+ * dónde ir), después el estado y el nombre del cliente, y recién después los
+ * números — es lo que se alcanza a ver con el celular en la mano y una bandeja
  * en la otra.
  *
- * El alto es fijo para que la grilla no quede escalonada: una mesa libre tiene
- * menos texto que una ocupada y, sin altura mínima, las filas quedaban
- * desparejas y costaba barrerlas con la vista.
+ * El nombre del cliente va acá desde el 10-nov: se pedía al abrir la mesa
+ * "para encontrarla cuando el salón está lleno" y sólo se veía al entrar a
+ * ella (UX-MESEROS §1).
+ *
+ * El alto es fijo para que la grilla no quede escalonada.
  */
 export default function TarjetaMesa({
   mesa,
@@ -34,98 +43,112 @@ export default function TarjetaMesa({
   onClick: (mesa: Mesa) => void;
 }) {
   const color = COLOR_MESA[mesa.estado];
-  const libre = mesa.estado === "LIBRE";
   const pagada = mesa.estado === "PAGADA";
   const consumo = consumoDeMesa(mesa);
   const pendientes = comandasPendientes(mesa).length;
   const esMia = mesa.meseroId != null && mesa.meseroId === miMeseroId;
   const tiempo = hace(mesa.abiertaEn);
+  const espera = pagada ? "normal" : nivelDeEspera(mesa.abiertaEn);
+  // Lo que falta llevar manda sobre el borde: es lo único de la tarjeta que
+  // exige moverse ahora mismo. La cuenta pedida ya trae su rojo.
+  const borde = pendientes > 0 && mesa.estado !== "CUENTA" ? "border-warning-borde" : color.borde;
 
   return (
     <div className="relative">
       <button
         onClick={() => onClick(mesa)}
-        className={[
-          "flex min-h-[132px] w-full flex-col rounded-2xl border p-3 text-left transition-shadow hover:shadow-md",
-          color.fondo,
-          color.borde,
-          // La mesa libre lleva el borde punteado: no tiene color propio
-          // porque no está pasando nada en ella.
-          libre ? "border-dashed" : "",
-        ].join(" ")}
+        className={`flex min-h-[148px] w-full flex-col gap-1 rounded-2xl border-[1.5px] bg-white p-3 text-left transition-shadow hover:shadow-md ${borde}`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-xl font-extrabold text-texto">
             {etiquetaMesa(mesa)}
           </span>
-          <span
-            className={`shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold ${color.texto}`}
-          >
-            {ETIQUETA_ESTADO[mesa.estado]}
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${color.chip}`}>
+            {pagada ? "Por liberar" : ETIQUETA_ESTADO[mesa.estado]}
           </span>
         </div>
 
-        <div className="mt-0.5 flex items-center gap-1 text-xs text-texto-3">
-          <Icon name="users" size={13} />
-          <span>
-            {mesa.comensales}/{mesa.capacidadTotal || mesa.capacidad}
-          </span>
-        </div>
-
-        {/* Empuja el pie hacia abajo para que todas las tarjetas cierren igual */}
-        <div className="flex-1" />
-
-        {/* Lo que va consumido: es lo segundo que mira el mesero después del
-            estado. En una mesa libre no existe, y ahí va el CTA en su lugar. */}
-        {!libre && !pagada && consumo > 0 && (
-          <p className="truncate text-[15px] font-extrabold text-texto">{fmtMoney(consumo)}</p>
+        {mesa.referencia && (
+          <p className="w-full truncate text-sm font-bold text-texto">{mesa.referencia}</p>
         )}
 
+        <div className="flex items-center gap-1 text-xs text-texto-2">
+          <Icon name="users" size={13} />
+          <span className="truncate">
+            {mesa.comensales}/{mesa.capacidadTotal || mesa.capacidad}
+            {/* Si no es mía van las iniciales del que la atiende: así el mesero
+                sabe a quién preguntarle sin abrir la mesa. */}
+            {mesa.meseroNombre && ` · ${esMia ? "Mi mesa" : inicialesDe(mesa.meseroNombre)}`}
+          </span>
+        </div>
+
         {mesa.reserva && (
-          <p className="truncate text-xs font-semibold text-[#2563EB]">
+          <p className="w-full truncate text-xs font-semibold text-texto-2">
+            <Icon name="clock" size={12} className="mr-1 inline" />
             {mesa.reserva.hora} · {mesa.reserva.nombre}
             {mesa.reserva.personas ? ` (${mesa.reserva.personas})` : ""}
           </p>
         )}
 
-        {!libre && (tiempo || mesa.meseroNombre) && (
-          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-texto-3">
-            <span className="min-w-0 flex-1 truncate">{tiempo}</span>
-            {/* Si no es mía van las iniciales del que la atiende: así el mesero
-                sabe a quién preguntarle sin abrir la mesa. */}
-            {mesa.meseroNombre && (
-              <span className="shrink-0">
-                {esMia ? "Mi mesa" : inicialesDe(mesa.meseroNombre)}
-              </span>
-            )}
-          </div>
-        )}
-
-        {libre && (
-          <span className="mt-1 flex items-center gap-1 text-xs font-bold text-primary">
-            <Icon name="plus" size={13} />
-            Tomar pedido
+        {pendientes > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-warning-borde bg-warning-suave px-2 py-0.5 text-[11px] font-bold text-warning-text">
+            <Icon name="bell" size={11} />
+            {pendientes === 1 ? "1 para llevar" : `${pendientes} para llevar`}
           </span>
         )}
 
-        {/* Ya se cobró: lo que falta es levantarla, no el monto. */}
-        {pagada && (
-          <span className="mt-1 flex items-center gap-1 text-xs font-bold text-[#059669]">
-            <Icon name="check" size={13} />
-            Tocá para liberar
-          </span>
-        )}
+        {/* Empuja el pie hacia abajo para que todas las tarjetas cierren igual */}
+        <div className="flex-1" />
+
+        <div className="flex w-full items-end justify-between gap-2">
+          {pagada ? (
+            // Ya se cobró: lo que falta es levantarla, no el monto.
+            <span className="flex items-center gap-1 text-xs font-bold text-texto-2">
+              <Icon name="check" size={13} />
+              Tocá para liberar
+            </span>
+          ) : (
+            consumo > 0 && (
+              <span className="truncate text-base font-extrabold text-texto">{fmtMoney(consumo)}</span>
+            )
+          )}
+          {tiempo && (
+            <span className={`ml-auto flex shrink-0 items-center gap-1 text-xs ${COLOR_ESPERA[espera]}`}>
+              <Icon name="clock" size={12} />
+              {tiempo}
+            </span>
+          )}
+        </div>
       </button>
-
-      {/* Cuántas comandas hay que llevarle a ESTA mesa. Va flotando sobre la
-          esquina porque es lo único de la tarjeta que exige moverse ahora
-          mismo, y adentro del cuerpo se perdía entre los otros números. */}
-      {pendientes > 0 && (
-        <span className="pointer-events-none absolute -top-1.5 right-2 flex min-w-[22px] items-center gap-1 rounded-full bg-[#D97706] px-2 py-0.5 text-[10px] font-bold text-white shadow">
-          <Icon name="bell" size={11} />
-          {pendientes}
-        </span>
-      )}
     </div>
+  );
+}
+
+/**
+ * Una mesa libre: chica, de a cuatro por fila.
+ *
+ * De una mesa libre no hay nada que leer más que su código y cuántos entran.
+ * Ocupaba lo mismo que una con gente, y con un salón a medio llenar la primera
+ * pantalla eran todas libres (UX-MESEROS §1).
+ */
+export function TarjetaMesaLibre({
+  mesa,
+  onClick,
+}: {
+  mesa: Mesa;
+  onClick: (mesa: Mesa) => void;
+}) {
+  const lugares = mesa.capacidadTotal || mesa.capacidad;
+  return (
+    <button
+      onClick={() => onClick(mesa)}
+      aria-label={`Abrir ${etiquetaMesa(mesa)}, ${lugares} lugares`}
+      className="flex min-h-[60px] w-full flex-col items-center justify-center rounded-xl border-[1.5px] border-dashed border-texto-4 bg-white px-1 py-1.5 hover:bg-primary-50"
+    >
+      <span className="max-w-full truncate text-[15px] font-extrabold text-texto">
+        {etiquetaMesa(mesa)}
+      </span>
+      <span className="text-[11px] text-texto-3">{lugares} lug.</span>
+    </button>
   );
 }

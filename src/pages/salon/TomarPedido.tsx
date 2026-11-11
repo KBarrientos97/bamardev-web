@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
+import { Confirmar, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
-import { useApi } from "../../lib/useApi";
 import type { Mesa } from "../../types/salon";
 import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import CarritoPedido from "./CarritoPedido";
+import { bajarCarta, cartaGuardada } from "./cartaGuardada";
+import { EsqueletoCarta } from "./Esqueletos";
+import { useGuardiaDeSalida } from "./PantallaApilada";
 import TarjetaCarta from "./TarjetaCarta";
 import { etiquetaMesa } from "./logicaSalon";
 import {
@@ -42,7 +44,43 @@ export default function TomarPedido({
   // La carta y no /productos: trae el stock que REALMENTE queda, ya descontado
   // lo que otras mesas tienen pedido y sin cobrar. La cajera cuenta el stock
   // físico de la heladera; el mesero necesita saber qué puede prometer.
-  const carta = useApi(() => api.cartaSalon(), []);
+  //
+  // Arranca con la que el panel ya adelantó (`cartaGuardada`) y abre al
+  // instante; mientras, pide la fresca, porque el stock cambia con cada mesa.
+  const [carta, setCarta] = useState(cartaGuardada);
+  const [errorCarta, setErrorCarta] = useState("");
+  useEffect(() => {
+    let viva = true;
+    bajarCarta()
+      .then((c) => {
+        if (viva) setCarta(c);
+      })
+      .catch((e: unknown) => {
+        // Con la copia en pantalla se sigue pidiendo con ella: el backend
+        // controla el stock igual al mandar la comanda.
+        if (viva && !cartaGuardada())
+          setErrorCarta(e instanceof Error ? e.message : "No se pudo cargar la carta");
+      });
+    // Mientras se toma el pedido, el stock se refresca cada 15 s (como el
+    // salón) y al volver a la app: si otra mesa se llevó lo último, el mesero
+    // lo ve antes de prometerlo (dueño, 10-nov). Sólo con la pantalla a la
+    // vista, y sólo acá, donde el stock importa.
+    const refrescar = () => {
+      if (document.visibilityState !== "visible") return;
+      bajarCarta()
+        .then((c) => {
+          if (viva) setCarta(c);
+        })
+        .catch(() => {});
+    };
+    const cada = window.setInterval(refrescar, 15_000);
+    document.addEventListener("visibilitychange", refrescar);
+    return () => {
+      viva = false;
+      window.clearInterval(cada);
+      document.removeEventListener("visibilitychange", refrescar);
+    };
+  }, []);
 
   const [lineas, setLineas] = useState<LineaPedido[]>([]);
   const [confirmarSalida, setConfirmarSalida] = useState(false);
@@ -63,7 +101,7 @@ export default function TomarPedido({
    */
   const intento = useIntentoDeCobro();
 
-  const productos = useMemo(() => carta.datos ?? [], [carta.datos]);
+  const productos = useMemo(() => carta ?? [], [carta]);
 
   const categorias = useMemo(() => {
     const vistas = new Map<string, string>();
@@ -83,6 +121,37 @@ export default function TomarPedido({
       }),
     [productos, categoria, busqueda],
   );
+
+  /**
+   * La carta en grupos, en el orden de las categorías.
+   *
+   * En "Todos" iba en orden alfabético y mezclaba Agua, Cerveza, Chairo y
+   * Coca-Cola: el mesero buscaba el plato entre las bebidas. Agrupada, cada
+   * cosa queda siempre en el mismo lugar y se aprende dónde está
+   * (UX-MESEROS §2). Lo que no tiene categoría va al final, en "Otros".
+   */
+  const grupos = useMemo(() => {
+    const porNombre = new Map<string, typeof visibles>();
+    for (const p of visibles) {
+      const n = p.categoria?.nombre ?? "Otros";
+      const g = porNombre.get(n);
+      if (g) g.push(p);
+      else porNombre.set(n, [p]);
+    }
+    const orden = [...categorias, "Otros"];
+    return [...porNombre.entries()]
+      .sort(([a], [b]) => orden.indexOf(a) - orden.indexOf(b))
+      .map(([titulo, items]) => ({ titulo, items }));
+  }, [visibles, categorias]);
+  const [buscando, setBuscando] = useState(false);
+
+  // Volver arrastrando desde el borde pregunta lo mismo que la flecha: con
+  // algo cargado, no se descarta sin confirmar.
+  useGuardiaDeSalida(() => {
+    if (lineas.length === 0) return true;
+    setConfirmarSalida(true);
+    return false;
+  });
 
   const total = totalPedido(lineas);
   const items = cantidadPedido(lineas);
@@ -110,7 +179,7 @@ export default function TomarPedido({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-fondo">
+    <div className="relative flex h-full min-h-0 flex-col bg-fondo">
       {/* La flecha de atrás está donde cae el pulgar, y el pedido vive sólo en
           este componente: salir lo perdía entero, sin aviso ni forma de
           recuperarlo. Con el pedido vacío no pregunta nada. */}
@@ -145,26 +214,42 @@ export default function TomarPedido({
             {mesa.comensales === 1 ? "persona" : "personas"}
           </p>
         </div>
-        {items > 0 && (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
-            {items}
-          </span>
-        )}
+        {/* La búsqueda es una lupa y no un campo fijo: el mesero casi siempre
+            elige por categoría, y el campo se comía una fila entera de carta
+            (UX-MESEROS §2). */}
+        <button
+          onClick={() => {
+            if (buscando) setBusqueda("");
+            setBuscando((v) => !v);
+          }}
+          aria-label={buscando ? "Cerrar la búsqueda" : "Buscar en la carta"}
+          aria-pressed={buscando}
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
+            buscando
+              ? "border-primary-boton bg-primary-50 text-primary-700"
+              : "border-borde bg-white text-texto-2 hover:bg-muted"
+          }`}
+        >
+          <Icon name={buscando ? "x" : "search"} size={18} />
+        </button>
       </header>
 
-      <div className="border-b border-borde bg-white px-4 pb-3">
-        <div className="relative">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-3">
-            <Icon name="search" size={16} />
-          </span>
-          <input
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar en la carta…"
-            className="w-full rounded-xl border border-borde py-2.5 pl-9 pr-3 text-[15px] outline-none focus:border-primary"
-          />
-        </div>
-        <div className="-mx-4 mt-2 flex gap-2 overflow-x-auto px-4">
+      <div className="border-b border-borde bg-white px-4 pb-2.5 pt-1">
+        {buscando && (
+          <div className="relative mb-2">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-3">
+              <Icon name="search" size={16} />
+            </span>
+            <input
+              autoFocus
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar en la carta…"
+              className="w-full rounded-xl border border-borde py-2.5 pl-9 pr-3 text-[15px] outline-none focus:border-primary"
+            />
+          </div>
+        )}
+        <div className="sin-barra -mx-4 flex gap-2 overflow-x-auto px-4">
           <ChipCat activo={categoria === null} onClick={() => setCategoria(null)}>
             Todos
           </ChipCat>
@@ -176,46 +261,58 @@ export default function TomarPedido({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-24">
-        {carta.error && <ErrorMsg>{carta.error}</ErrorMsg>}
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-24 pt-2">
+        {errorCarta && <ErrorMsg>{errorCarta}</ErrorMsg>}
         {error && <ErrorMsg>{error}</ErrorMsg>}
-        {carta.cargando && !carta.datos ? (
-          <Cargando />
+        {!carta && !errorCarta ? (
+          <EsqueletoCarta />
         ) : visibles.length === 0 ? (
           <p className="py-12 text-center text-[13px] text-texto-3">
             No hay productos que coincidan.
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-            {visibles.map((p) => (
-              <TarjetaCarta
-                key={p.id}
-                producto={p}
-                cantidad={cantidadDeProducto(lineas, p.id)}
-                onAgregar={() =>
-                  setLineas((l) => agregar(l, p, proximoId.current++))
-                }
-                onQuitar={() => setLineas((l) => quitarUno(l, p.id))}
-              />
-            ))}
-          </ul>
+          grupos.map((g) => (
+            <section key={g.titulo} className="mb-3">
+              {/* Con una categoría elegida el título repetiría el chip. */}
+              {!categoria && (
+                <h2 className="mb-1.5 mt-1 text-[12px] font-extrabold uppercase tracking-wide text-texto-2">
+                  {g.titulo}
+                </h2>
+              )}
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {g.items.map((p) => (
+                  <TarjetaCarta
+                    key={p.id}
+                    producto={p}
+                    cantidad={cantidadDeProducto(lineas, p.id)}
+                    onAgregar={() =>
+                      setLineas((l) => agregar(l, p, proximoId.current++))
+                    }
+                    onQuitar={() => setLineas((l) => quitarUno(l, p.id))}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
       </div>
 
-      {/* Píldora del pedido, igual que en el Punto de Venta. Oculta mientras
-          no haya nada cargado. Enviar se decide en el carrito, que es donde se
-          ven las cantidades y las indicaciones — no acá. */}
+      {/* Barra del pedido, fija abajo y de lado a lado. Era una píldora
+          flotante que tapaba la fila de abajo y no decía qué hacía
+          (UX-MESEROS §2). Enviar se decide en el carrito, que es donde se ven
+          las cantidades y las indicaciones — no acá. */}
       {items > 0 && !abierto && (
-        <button
-          onClick={() => setAbierto(true)}
-          className="absolute bottom-20 left-1/2 flex h-14 -translate-x-1/2 items-center gap-3 rounded-full bg-primary px-6 text-white shadow-xl shadow-primary/30"
-        >
-          <Icon name="cart" size={22} />
-          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
-            {fmtNum(items)}
-          </span>
-          <span className="text-lg font-extrabold">{fmtMoney(total)}</span>
-        </button>
+        <div className="absolute inset-x-0 bottom-0 border-t border-borde bg-white px-3 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
+          <button
+            onClick={() => setAbierto(true)}
+            className="flex h-13 w-full items-center justify-between rounded-2xl bg-primary-boton px-5 text-white hover:bg-primary-boton-hover"
+          >
+            <span className="text-base font-bold">Revisar y enviar</span>
+            <span className="text-base font-extrabold">
+              {fmtNum(items)} · {fmtMoney(total)}
+            </span>
+          </button>
+        </div>
       )}
 
       {abierto && (
