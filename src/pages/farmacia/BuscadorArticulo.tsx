@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { fmtCantidad } from "../../lib/format";
 import type { ArticuloMovimiento, Producto } from "../../types";
 import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
@@ -28,6 +28,12 @@ import { useBusquedaProductos } from "./useBusquedaProductos";
  * todos los almacenes, y acá puede decir "0" porque esas 60 están en el
  * mostrador y no en el depósito. Los dos números son ciertos; lo que faltaba
  * era decir de cuál se está hablando.
+ *
+ * Con `mantenerAbierto` el diálogo **no se cierra al elegir**: limpia el campo,
+ * devuelve el foco y dice qué se agregó. Es para el Ingreso: una factura de
+ * droguería son 30 u 80 renglones, y cerrar el diálogo en cada uno obligaba a
+ * volver a abrirlo, volver a escribir y volver a buscar —siete toques por
+ * renglón (B10). La Salida lo sigue cerrando: ahí se dan de baja uno o dos.
  */
 export default function BuscadorArticulo({
   articulos,
@@ -35,6 +41,7 @@ export default function BuscadorArticulo({
   yaElegidos,
   onElegir,
   onClose,
+  mantenerAbierto = false,
 }: {
   /** Lo que el almacén elegido puede mover, con su stock y su costo. */
   articulos: ArticuloMovimiento[];
@@ -44,13 +51,66 @@ export default function BuscadorArticulo({
   yaElegidos: number[];
   onElegir: (articulo: ArticuloMovimiento, producto: Producto) => void;
   onClose: () => void;
+  /** Seguir eligiendo después de agregar; se cierra con «Listo» o la X. */
+  mantenerAbierto?: boolean;
 }) {
   const [q, setQ] = useState("");
+  /** El último que se agregó, para decirlo adentro del diálogo que sigue abierto. */
+  const [agregado, setAgregado] = useState<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
   const busqueda = useBusquedaProductos({ q });
 
+  /** Si la lista lo dejaría agregar: el almacén lo mueve y no está ya cargado. */
+  const elegible = (p: Producto) =>
+    articulos.some((a) => a.id === p.id) && !yaElegidos.includes(p.id);
+
+  function elegir(articulo: ArticuloMovimiento, p: Producto) {
+    onElegir(articulo, p);
+    if (!mantenerAbierto) return;
+    // Como en el mostrador: se carga un renglón atrás de otro, así que el campo
+    // queda limpio y con el foco para el siguiente código.
+    setAgregado(p.nombre);
+    setQ("");
+    campo.current?.focus();
+  }
+
+  /**
+   * Enter agrega el único resultado: es lo que hace que el lector de código de
+   * barras cargue solo. Con dos o más no hace nada —elegir por la persona cuál
+   * de tres presentaciones parecidas entró sería inventar stock.
+   *
+   * El lector manda el Enter apenas termina de escribir, antes de que la
+   * búsqueda haya preguntado: lo que se ve en ese momento es del texto
+   * anterior. Si lo que se ve no es de este texto, se pregunta ya y se decide
+   * con esa respuesta (`buscarAhora`), igual que en `CatalogoVenta`.
+   */
+  async function alEnter() {
+    const texto = q;
+    const items =
+      busqueda.consulta === texto && !busqueda.cargando
+        ? busqueda.items
+        : await busqueda.buscarAhora(texto);
+    if (items?.length !== 1 || !elegible(items[0])) return;
+    const articulo = articulos.find((a) => a.id === items[0].id);
+    if (articulo) elegir(articulo, items[0]);
+  }
+
+  const renglones = yaElegidos.length;
+
   return (
-    <Modal abierto titulo="Agregar producto" onClose={onClose} ancho="max-w-xl">
+    <Modal
+      abierto
+      titulo="Agregar producto"
+      onClose={onClose}
+      ancho="max-w-xl"
+      acciones={
+        mantenerAbierto ? (
+          <Boton variante="ghost" onClick={onClose}>
+            Listo
+          </Boton>
+        ) : undefined
+      }
+    >
       <div className="space-y-3">
         <div className="relative">
           <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-texto-4">
@@ -61,6 +121,12 @@ export default function BuscadorArticulo({
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void alEnter();
+              }
+            }}
             placeholder="Buscar por nombre, genérico o laboratorio…"
             className="w-full rounded-xl border border-borde bg-white py-3 pl-11 pr-10 text-[15px] outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100"
           />
@@ -77,6 +143,19 @@ export default function BuscadorArticulo({
             </button>
           )}
         </div>
+
+        {mantenerAbierto && agregado && (
+          <p
+            role="status"
+            className="flex items-center gap-2 rounded-xl bg-primary-50 px-3.5 py-2 text-[13px] text-primary-700"
+          >
+            <Icon name="check" size={15} />
+            <span className="min-w-0 truncate">
+              Agregado: <strong className="font-bold">{agregado}</strong> · {renglones}{" "}
+              {renglones === 1 ? "renglón" : "renglones"}
+            </span>
+          </p>
+        )}
 
         <p className="flex flex-wrap items-center justify-between gap-2 text-xs text-texto-3">
           <span>
@@ -117,7 +196,7 @@ export default function BuscadorArticulo({
                   q={q}
                   articulo={articulos.find((a) => a.id === p.id)}
                   yaEsta={yaElegidos.includes(p.id)}
-                  onElegir={onElegir}
+                  onElegir={elegir}
                 />
               ))}
             </ul>

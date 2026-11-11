@@ -415,7 +415,8 @@ describe("BUG-catalogo-2: el precio es obligatorio", () => {
       fireEvent.click(nuevo);
     });
     fireEvent.change(screen.getByLabelText(/^Nombre comercial/), { target: { value: "Paracetamol" } });
-    fireEvent.change(screen.getByDisplayValue("Elegí una"), { target: { value: "1" } });
+    // La unidad ya viene puesta (B11): no hay "Elegí una" que cambiar.
+    expect(screen.getByLabelText(/^Unidad/)).toHaveValue(String(UNIDAD.id));
     await guardar();
     expect(screen.getByText("Poné el precio de venta.")).toBeInTheDocument();
     expect(crearProducto).not.toHaveBeenCalled();
@@ -642,5 +643,116 @@ describe("BUG-catalogo-4: un margen que no se puede calcular no se muestra", () 
   it("vender por debajo del costo se muestra en negativo: es un dato, no un error", async () => {
     await verDetalle(producto({ precio: 50, costo: 60 }));
     expect(screen.getByText("-20%")).toBeInTheDocument();
+  });
+});
+
+/**
+ * El alta de farmacia ayuda a escribir menos (11-nov). Sólo farmacia: el
+ * restaurante sigue arrancando con «Elegí una» y sin sugerencias de ficha.
+ */
+describe("farmacia: el alta ayuda a escribir menos (B11 y M11)", () => {
+  const CLAVE = "bamar.farmacia.sugerencias";
+  const UNIDADES = [
+    { id: 3, nombre: "Caja" },
+    { id: 1, nombre: "Unidad" },
+  ];
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(api.getUnidades).mockResolvedValue(UNIDADES as never);
+    vi.mocked(api.buscarProductos).mockResolvedValue({ items: [], total: 0, limite: 30, offset: 0 });
+  });
+
+  async function abrirNuevo() {
+    getProductos.mockResolvedValue([]);
+    render(<Productos />);
+    const nuevo = await screen.findAllByRole("button", { name: /Nuevo/ });
+    await act(async () => {
+      fireEvent.click(nuevo[0]);
+    });
+  }
+
+  /** Lo que ofrece un `<datalist>`, por su id. */
+  function opcionesDe(id: string): string[] {
+    return Array.from(document.getElementById(id)?.querySelectorAll("option") ?? []).map(
+      (o) => o.value,
+    );
+  }
+
+  it("B11: en farmacia la unidad arranca en «Unidad», aunque no sea la primera de la lista", async () => {
+    // Arrancaba en "Elegí una": un clic más por artículo, y un "Elegí una
+    // unidad de medida" cada vez que se olvidaba, cuando el 99 % es Unidad.
+    sesion.rubro = "FARMACIA";
+    await abrirNuevo();
+    expect(screen.getByLabelText(/^Unidad/)).toHaveValue("1");
+  });
+
+  it("B11: en el restaurante sigue pidiendo elegirla", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await abrirNuevo();
+    expect(screen.getByLabelText(/^Unidad de medida/)).toHaveValue("");
+  });
+
+  it("M11: sugiere laboratorio y forma de lo que se ve, aunque la lista venga del servidor", async () => {
+    // En farmacia la lista en memoria está vacía (viene paginada del
+    // servidor), y las sugerencias salían de ella: el datalist no ofrecía nada.
+    sesion.rubro = "FARMACIA";
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [
+        producto({
+          id: 9,
+          nombre: "Ibuprofeno 400 mg",
+          laboratorio: "BAGÓ",
+          formaFarmaceutica: "Comprimido",
+        }),
+      ],
+      total: 1,
+      limite: 30,
+      offset: 0,
+    });
+    getProductos.mockResolvedValue([]);
+    render(<Productos />);
+    await screen.findByText(/Ibuprofeno 400 mg/);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: /Nuevo/ })[0]);
+    });
+    expect(opcionesDe("laboratorios")).toEqual(["BAGÓ"]);
+    expect(opcionesDe("formas-farmaceuticas")).toEqual(["Comprimido"]);
+  });
+
+  it("M11: recuerda lo tecleado al guardar y lo vuelve a sugerir", async () => {
+    sesion.rubro = "FARMACIA";
+    localStorage.setItem(CLAVE, JSON.stringify({ laboratorios: ["INTI"], formas: ["Jarabe"] }));
+    await abrirNuevo();
+    expect(opcionesDe("laboratorios")).toEqual(["INTI"]);
+    expect(opcionesDe("formas-farmaceuticas")).toEqual(["Jarabe"]);
+
+    fireEvent.change(screen.getByLabelText(/^Nombre comercial/), { target: { value: "Amoxidal" } });
+    fireEvent.change(screen.getByLabelText(/^Precio de venta/), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText(/^Laboratorio/), { target: { value: "Lafar" } });
+    fireEvent.change(screen.getByLabelText(/^Forma farmacéutica/), { target: { value: "Cápsula" } });
+    await guardar();
+
+    expect(crearProducto).toHaveBeenCalledTimes(1);
+    // Lo más reciente primero, y lo de antes se queda.
+    expect(JSON.parse(localStorage.getItem(CLAVE)!)).toEqual({
+      laboratorios: ["Lafar", "INTI"],
+      formas: ["Cápsula", "Jarabe"],
+    });
+  });
+
+  it("M11: con la memoria rota o sin almacenamiento, el alta sigue", async () => {
+    sesion.rubro = "FARMACIA";
+    localStorage.setItem(CLAVE, "{esto no es json");
+    await abrirNuevo();
+    expect(opcionesDe("laboratorios")).toEqual([]);
+    expect(screen.getByLabelText(/^Nombre comercial/)).toBeInTheDocument();
+  });
+
+  it("M11: el restaurante no lee ni escribe esa memoria", async () => {
+    sesion.rubro = "RESTAURANTE";
+    localStorage.setItem(CLAVE, JSON.stringify({ laboratorios: ["INTI"], formas: [] }));
+    await abrirNuevo();
+    expect(document.getElementById("laboratorios")).toBeNull();
   });
 });

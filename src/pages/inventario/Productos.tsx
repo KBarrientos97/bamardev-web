@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { contiene } from "../../lib/texto";
+import { contiene, normalizar } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
@@ -555,6 +555,9 @@ export default function Productos() {
         categorias={categorias.datos ?? []}
         unidades={unidades.datos ?? []}
         productos={lista}
+        // Sólo farmacia: ahí la lista viene paginada del servidor y `lista` está
+        // vacía, así que las sugerencias de la ficha salen de lo que se ve.
+        enPantalla={esFarmacia(rubro) ? busqueda.items : undefined}
         onClose={() => {
           setCreando(false);
           setEditando(null);
@@ -951,12 +954,67 @@ interface LineaCombo {
   cantidad: number;
 }
 
+/**
+ * Los laboratorios y formas farmacéuticas que ya se teclearon en esta
+ * computadora, para sugerirlos en la ficha (sólo farmacia, M11).
+ *
+ * En farmacia el catálogo viene paginado del servidor y la lista en memoria
+ * está vacía, así que las sugerencias que salían de ella estaban muertas: el
+ * `<datalist>` no ofrecía nada y "BAGÓ" se cargaba de tres maneras. Lo que se
+ * ve en pantalla ayuda, pero son 30 renglones; esto recuerda lo que se guardó
+ * desde acá. Es una comodidad y no un dato: sin almacenamiento (modo privado,
+ * cuota llena) se sigue igual, sólo sin memoria.
+ */
+const CLAVE_SUGERENCIAS = "bamar.farmacia.sugerencias";
+const TOPE_SUGERENCIAS = 50;
+
+interface SugerenciasFicha {
+  laboratorios: string[];
+  formas: string[];
+}
+
+function leerSugerencias(): SugerenciasFicha {
+  const vacias: SugerenciasFicha = { laboratorios: [], formas: [] };
+  try {
+    const crudo = localStorage.getItem(CLAVE_SUGERENCIAS);
+    if (!crudo) return vacias;
+    const leido = JSON.parse(crudo) as Partial<Record<keyof SugerenciasFicha, unknown>>;
+    const lista = (x: unknown) =>
+      Array.isArray(x) ? x.filter((v): v is string => typeof v === "string") : [];
+    return { laboratorios: lista(leido.laboratorios), formas: lista(leido.formas) };
+  } catch {
+    return vacias;
+  }
+}
+
+/** Anota lo tecleado al guardar: lo más reciente primero, sin repetir, hasta el tope. */
+function recordarSugerencias(laboratorio: string, forma: string) {
+  try {
+    const antes = leerSugerencias();
+    const sumar = (nuevo: string, lista: string[]) => {
+      if (!nuevo) return lista;
+      // Sin tildes ni mayúsculas: "Bagó" y "BAGÓ" son el mismo laboratorio, y
+      // queda la última forma en que se escribió.
+      const resto = lista.filter((v) => normalizar(v) !== normalizar(nuevo));
+      return [nuevo, ...resto].slice(0, TOPE_SUGERENCIAS);
+    };
+    const despues: SugerenciasFicha = {
+      laboratorios: sumar(laboratorio, antes.laboratorios),
+      formas: sumar(forma, antes.formas),
+    };
+    localStorage.setItem(CLAVE_SUGERENCIAS, JSON.stringify(despues));
+  } catch {
+    // Sin almacenamiento no hay memoria, y nada más.
+  }
+}
+
 function FormProducto({
   abierto,
   producto,
   categorias,
   unidades,
   productos,
+  enPantalla,
   onClose,
   onGuardado,
 }: {
@@ -965,6 +1023,8 @@ function FormProducto({
   categorias: Categoria[];
   unidades: UnidadMedida[];
   productos: Producto[];
+  /** Lo que la pantalla muestra ahora mismo, cuando no es `productos` (farmacia). */
+  enPantalla?: Producto[];
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -978,6 +1038,7 @@ function FormProducto({
       categorias={categorias}
       unidades={unidades}
       productos={productos}
+      enPantalla={enPantalla}
       onClose={onClose}
       onGuardado={onGuardado}
     />
@@ -989,6 +1050,7 @@ function FormProductoCuerpo({
   categorias,
   unidades,
   productos,
+  enPantalla,
   onClose,
   onGuardado,
 }: {
@@ -996,6 +1058,7 @@ function FormProductoCuerpo({
   categorias: Categoria[];
   unidades: UnidadMedida[];
   productos: Producto[];
+  enPantalla?: Producto[];
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -1080,15 +1143,36 @@ function FormProductoCuerpo({
    * Laboratorios y formas que ya se usaron, para sugerir mientras se escribe.
    * Son texto libre a propósito (no hay tabla que administrar), y esto evita
    * que el mismo laboratorio termine cargado de tres maneras distintas.
+   *
+   * Salen de los productos cargados (`productos` y, en farmacia, lo que se ve
+   * de la búsqueda del servidor) más lo que se guardó desde esta computadora
+   * (ver `leerSugerencias`). Sólo con `productos` estaban muertas en farmacia:
+   * ahí esa lista viene vacía (M11).
    */
   const sugerencias = useMemo(() => {
     const unicos = (valores: (string | null)[]) =>
       [...new Set(valores.filter((v): v is string => !!v?.trim()))].sort();
+    const vistos = [...productos, ...(enPantalla ?? [])];
+    const recordadas = conFicha ? leerSugerencias() : { laboratorios: [], formas: [] };
     return {
-      laboratorios: unicos(productos.map((p) => p.laboratorio)),
-      formas: unicos(productos.map((p) => p.formaFarmaceutica)),
+      laboratorios: unicos([...recordadas.laboratorios, ...vistos.map((p) => p.laboratorio)]),
+      formas: unicos([...recordadas.formas, ...vistos.map((p) => p.formaFarmaceutica)]),
     };
-  }, [productos]);
+  }, [productos, enPantalla, conFicha]);
+
+  // En farmacia el alta arranca con la unidad «Unidad» puesta (B11): es la del
+  // 99 % de los medicamentos, y arrancar en "Elegí una" era un clic más por
+  // artículo y un "Elegí una unidad de medida" cada vez que se olvidaba. Una
+  // sola vez y sólo si el campo está vacío: si la persona la vuelve a vaciar a
+  // propósito, no se le pone de nuevo. Al editar se respeta la guardada.
+  const unidadSugerida = useRef(false);
+  useEffect(() => {
+    if (esEdicion || !conFicha || unidadId || unidadSugerida.current) return;
+    const unidad = unidades.find((u) => normalizar(u.nombre).trim() === "unidad");
+    if (!unidad) return;
+    unidadSugerida.current = true;
+    setUnidadId(String(unidad.id));
+  }, [esEdicion, conFicha, unidadId, unidades]);
   // Sin la capacidad el negocio no arma combos: el tipo ni se ofrece. Un
   // producto que YA es combo se sigue pudiendo editar (el dato existe y
   // esconderlo lo convertiría en otra cosa al guardar).
@@ -1210,6 +1294,9 @@ function FormProductoCuerpo({
         // la guarda en 0).
         await api.crearProducto({ ...input, precio: precioNum! });
       }
+      // Recién con el guardado confirmado: un laboratorio que el servidor
+      // rechazó no es uno que haya que volver a sugerir.
+      if (conFicha) recordarSugerencias(laboratorio.trim(), formaFarmaceutica.trim());
       onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
@@ -1260,7 +1347,12 @@ function FormProductoCuerpo({
           // acá no le borra nada a nadie.
           <div className="grid gap-3 sm:grid-cols-2">
             <Campo label="Nombre comercial">
-              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
+              <Input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                autoFocus
+                maxLength={200}
+              />
             </Campo>
             <Campo label="Concentración">
               <Input
