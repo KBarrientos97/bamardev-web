@@ -59,8 +59,15 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+// Los equivalentes (#11): se mockea sólo la llamada, el panel es el de verdad.
+vi.mock("./buscarEquivalentes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./buscarEquivalentes")>()),
+  pedirEquivalentes: vi.fn(async () => []),
+}));
+
 import { api } from "../../lib/api";
 import BuscarMedicamento from "./BuscarMedicamento";
+import { pedirEquivalentes } from "./buscarEquivalentes";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
 
 function med(over: Partial<Producto>): Producto {
@@ -375,5 +382,36 @@ describe("la ficha del mostrador", () => {
     await waitFor(() =>
       expect(vi.mocked(api.buscarProductos).mock.calls.length).toBeGreaterThan(pedidas),
     );
+  });
+
+  it("#11: ofrece los equivalentes con el stock de la caja; Agregar suma el otro y cierra la ficha", async () => {
+    // "No hay BAGÓ, hay INTI a Bs 0,45": la ranitidina está agotada, y el otro
+    // laboratorio se suma desde la misma ficha. Con el stock de la sucursal de
+    // la caja, como la tabla de atrás.
+    vi.mocked(api.cajaActual).mockResolvedValue({
+      caja: { almacenId: 1141, almacen: "Sucursal Equipetrol" } as never,
+    });
+    const inti = med({ id: 9, nombre: "Ranitidina INTI", laboratorio: "INTI", precio: 0.45, stockTotal: 40 });
+    vi.mocked(pedirEquivalentes).mockResolvedValue([inti]);
+    await montar();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+
+    expect(await within(ficha).findByText("Ranitidina INTI")).toBeInTheDocument();
+    expect(pedirEquivalentes).toHaveBeenCalledWith(2, 1141);
+    expect(ficha).toHaveTextContent("0,45");
+    // La agotada no tiene su propio "Agregar a la venta": el único es el del otro.
+    await tocar(within(ficha).getByRole("button", { name: "Agregar a la venta" }));
+    expect(agregar).toHaveBeenCalledWith(inti);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("#11: quien no vende ve los equivalentes, sin Agregar", async () => {
+    sesion.pos = false;
+    const inti = med({ id: 9, nombre: "Ranitidina INTI", laboratorio: "INTI", stockTotal: 40 });
+    vi.mocked(pedirEquivalentes).mockResolvedValue([inti]);
+    await montar();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    expect(await within(ficha).findByText("Ranitidina INTI")).toBeInTheDocument();
+    expect(within(ficha).queryByRole("button", { name: "Agregar a la venta" })).toBeNull();
   });
 });

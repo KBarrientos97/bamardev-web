@@ -9,6 +9,7 @@ import { contiene } from "../../lib/texto";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { Existencia, Producto } from "../../types";
+import { Equivalentes } from "./Equivalentes";
 import { FormEncargo } from "./FormEncargo";
 import {
   COLOR_TRAMO,
@@ -220,6 +221,14 @@ export function FichaMedicamento({
 
           <LotesFefo producto={p} />
 
+          {/* La pregunta del mostrador, también para quien carga el catálogo:
+              si la droga quedó escrita distinto que en sus pares, la lista sale
+              vacía y acá se nota. Sin "Agregar": esta ficha no vende. Después
+              de los lotes porque para el dueño lo primero es qué sale primero. */}
+          <Seccion titulo="Equivalentes">
+            <Equivalentes producto={p} />
+          </Seccion>
+
           {p.controlado && (
             <p className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
               <strong>Medicamento controlado.</strong> Su venta se asienta en el libro que
@@ -266,6 +275,7 @@ export function FichaMostrador({
   producto: p,
   onClose,
   onAgregar,
+  onAgregarEquivalente,
   onEncargar,
   onCambio,
   sucursalActual,
@@ -274,6 +284,13 @@ export function FichaMostrador({
   onClose: () => void;
   /** Sin esto no hay botón: agotado, o un rol que no vende. */
   onAgregar?: () => void;
+  /**
+   * Sumar a la venta uno de los equivalentes (#11). Aparte de `onAgregar`
+   * porque éste NO depende de que el medicamento de la ficha tenga stock: es
+   * justo cuando no hay que se vende el otro. Sin esto (un rol que no vende)
+   * la lista se ve igual, sin botones.
+   */
+  onAgregarEquivalente?: (p: Producto) => void;
   /**
    * Anotar que lo pidieron. La pantalla de atrás abre el alta y muestra el
    * aviso: la ficha se cierra, así no quedan dos hojas apiladas en el celular.
@@ -322,6 +339,13 @@ export function FichaMostrador({
         </Seccion>
 
         <StockPorSucursal producto={p} onCambio={onCambio} aca={sucursalActual} />
+
+        {/* Enseguida del stock: "¿hay acá?" y, si no, "¿hay otro igual?" son
+            la misma conversación. Con el stock y el precio de la sucursal de
+            la caja, como la tabla de atrás. */}
+        <Seccion titulo="Equivalentes">
+          <Equivalentes producto={p} sucursalId={sucursalActual} onAgregar={onAgregarEquivalente} />
+        </Seccion>
 
         <LotesFefo producto={p} conCosto={false} />
 

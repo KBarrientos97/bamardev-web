@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Categoria, Producto } from "../../types";
@@ -23,8 +23,16 @@ vi.mock("../../lib/api", () => ({
 // El pitido del lector: en jsdom no hay audio, y lo que importa es CUÁNDO suena.
 vi.mock("./sonido", () => ({ pitidoDeError: vi.fn() }));
 
+// Los equivalentes (#11): se mockea sólo la llamada; el orden y los textos del
+// panel son los de verdad.
+vi.mock("./buscarEquivalentes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./buscarEquivalentes")>()),
+  pedirEquivalentes: vi.fn(async () => []),
+}));
+
 import { api } from "../../lib/api";
 import CatalogoVenta from "./CatalogoVenta";
+import { pedirEquivalentes } from "./buscarEquivalentes";
 import { pitidoDeError } from "./sonido";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
 
@@ -224,6 +232,72 @@ describe("encargar lo que no hay", () => {
     );
     expect(avisar).toHaveBeenCalledWith("Encargo anotado: Ranitidina 150 mg");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("equivalentes de lo que no hay", () => {
+  it("la tarjeta agotada con principio activo ofrece Equivalentes; el panel agrega el otro y se cierra", async () => {
+    // #11: "no hay BAGÓ, hay INTI a Bs 0,45" se contestaba buscando la droga
+    // a mano y comparando a ojo entre los resultados.
+    const inti = med({
+      id: 5,
+      nombre: "Ranitidina INTI",
+      laboratorio: "INTI",
+      precio: 0.45,
+      stockTotal: 40,
+      principioActivo: "Ranitidina",
+      concentracion: "150 mg",
+    });
+    vi.mocked(pedirEquivalentes).mockResolvedValue([inti]);
+    montar();
+    await screen.findByRole("button", { name: /Ranitidina 150 mg/ }, { timeout: 4000 });
+
+    const botones = screen.getAllByRole("button", { name: "Equivalentes" });
+    expect(botones).toHaveLength(1);
+    expect(botones[0].closest("li")).toHaveTextContent("Ranitidina 150 mg");
+    // La que tiene stock no lo ofrece: la pregunta aparece cuando no hay.
+    expect(screen.getByRole("button", { name: /Ibuprofeno 400 mg/ }).closest("li")).not.toHaveTextContent(
+      "Equivalentes",
+    );
+
+    await act(async () => {
+      fireEvent.click(botones[0]);
+    });
+    const panel = screen.getByRole("dialog", { name: "Equivalentes" });
+    // Sin sucursal en el catálogo: el backend usa la de quien pregunta.
+    expect(pedirEquivalentes).toHaveBeenCalledWith(2, null);
+    expect(await within(panel).findByText("INTI")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("0,45");
+    expect(panel).toHaveTextContent("40 u.");
+
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Agregar a la venta" }));
+    });
+    expect(agregar).toHaveBeenCalledWith(inti);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("sin principio activo en la ficha no hay botón: no habría qué comparar", async () => {
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [
+        med({
+          id: 6,
+          nombre: "Pañales M",
+          principioActivo: null,
+          concentracion: null,
+          stockTotal: 0,
+          proximoVencimiento: null,
+        }),
+      ],
+      total: 1,
+      limite: 24,
+      offset: 0,
+    });
+    montar();
+    await screen.findByRole("button", { name: /Pañales M/ }, { timeout: 4000 });
+    expect(screen.queryByRole("button", { name: "Equivalentes" })).toBeNull();
+    // Encargar sí: lo que no hay se encarga igual.
+    expect(screen.getByRole("button", { name: /Encargar/ })).toBeInTheDocument();
   });
 });
 

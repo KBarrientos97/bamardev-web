@@ -170,6 +170,16 @@ export default function BuscarMedicamento() {
                 }
               : undefined
           }
+          // El equivalente se suma y la ficha se cierra, como "Agregar a la
+          // venta": lo que sigue es cobrar, y eso está en la pantalla de atrás.
+          onAgregarEquivalente={
+            agregar
+              ? (p) => {
+                  agregar(p);
+                  setFicha(null);
+                }
+              : undefined
+          }
           // La ficha se cierra y se abre el alta: dos hojas apiladas en el
           // celular no se pueden bajar bien.
           onEncargar={

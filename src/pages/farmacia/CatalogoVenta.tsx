@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto } from "../../types";
 import { controlaStock, paraVender } from "../pos/useCarrito";
+import { tienePrincipioActivo } from "./buscarEquivalentes";
 import CampoBusqueda from "./CampoBusqueda";
+import { Equivalentes } from "./Equivalentes";
 import { FormEncargo } from "./FormEncargo";
 import { concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { ChipsCondicion } from "./piezas";
@@ -56,6 +58,8 @@ export default function CatalogoVenta({
   const campo = useRef<HTMLInputElement>(null);
   /** El agotado que se está encargando desde su tarjeta, si hay uno. */
   const [encargando, setEncargando] = useState<Producto | null>(null);
+  /** El que no hay y del que se buscan equivalentes desde su tarjeta (#11). */
+  const [equivalentesDe, setEquivalentesDe] = useState<Producto | null>(null);
   const busqueda = useBusquedaProductos({
     q,
     categoriaId,
@@ -183,6 +187,8 @@ export default function CatalogoVenta({
                   conVencimiento={conLotes}
                   onAgregar={() => agregar(p)}
                   onEncargar={puede("encargos") ? () => setEncargando(p) : undefined}
+                  // Sin la droga en la ficha no hay qué comparar: ni botón.
+                  onEquivalentes={tienePrincipioActivo(p) ? () => setEquivalentesDe(p) : undefined}
                 />
               ))}
             </ul>
@@ -211,6 +217,32 @@ export default function CatalogoVenta({
             setEncargando(null);
           }}
         />
+      )}
+
+      {/* "No hay BAGÓ, hay INTI a Bs 0,45" (#11): los otros con la misma droga
+          y concentración, con el stock de ESTA sucursal. Agregar uno pasa por
+          `agregar`, el mismo camino que tocar su tarjeta: la venta decide si
+          pide receta, y el campo queda listo para el próximo escaneo. */}
+      {equivalentesDe && (
+        <Modal
+          abierto
+          titulo="Equivalentes"
+          subtitulo={equivalentesDe.nombre}
+          onClose={() => setEquivalentesDe(null)}
+        >
+          <Equivalentes
+            producto={equivalentesDe}
+            sucursalId={sucursalId}
+            onAgregar={
+              venta
+                ? (p) => {
+                    agregar(p);
+                    setEquivalentesDe(null);
+                  }
+                : undefined
+            }
+          />
+        </Modal>
       )}
     </div>
   );
@@ -251,6 +283,7 @@ function TarjetaVenta({
   conVencimiento,
   onAgregar,
   onEncargar,
+  onEquivalentes,
 }: {
   producto: Producto;
   cantidad: number;
@@ -259,6 +292,8 @@ function TarjetaVenta({
   onAgregar: () => void;
   /** Anotar el encargo de lo que no hay. Sin esto (sin Encargos), no se ofrece. */
   onEncargar?: () => void;
+  /** Ver los otros con la misma droga. Sin esto (sin principio activo), no se ofrece. */
+  onEquivalentes?: () => void;
 }) {
   const vendible = sePuedeVender(p);
   // Lo que se puede vender: sin las cajas vencidas, que siguen en el estante
@@ -339,18 +374,35 @@ function TarjetaVenta({
           </span>
         </span>
       </button>
-      {/* HERMANO del botón de la tarjeta, no adentro: el de arriba está
-          deshabilitado y un botón adentro de otro no se puede tocar. Sólo con
-          lo agotado o vencido: lo que "no se vende acá" no es para encargar. */}
-      {agotado && onEncargar && (
-        <button
-          type="button"
-          onClick={onEncargar}
-          className="mt-1 inline-flex items-center gap-1 self-end rounded-full px-2 py-1 text-[12px] font-semibold text-primary-700 hover:underline"
-        >
-          <Icon name="bell" size={13} />
-          Encargar
-        </button>
+      {/* HERMANOS del botón de la tarjeta, no adentro: el de arriba está
+          deshabilitado y un botón adentro de otro no se puede tocar. Sólo
+          cuando no se puede vender: con stock la pregunta no aparece. Encargar
+          va con lo agotado o vencido —lo que "no se vende acá" no es para
+          encargar—; Equivalentes también con eso: un equivalente que SÍ se
+          venda acá es justo la respuesta. */}
+      {!vendible && (onEquivalentes || (agotado && onEncargar)) && (
+        <span className="mt-1 flex flex-wrap justify-end gap-x-1 gap-y-0.5">
+          {onEquivalentes && (
+            <button
+              type="button"
+              onClick={onEquivalentes}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-primary-700 hover:underline"
+            >
+              <Icon name="swap" size={13} />
+              Equivalentes
+            </button>
+          )}
+          {agotado && onEncargar && (
+            <button
+              type="button"
+              onClick={onEncargar}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-primary-700 hover:underline"
+            >
+              <Icon name="bell" size={13} />
+              Encargar
+            </button>
+          )}
+        </span>
       )}
     </li>
   );

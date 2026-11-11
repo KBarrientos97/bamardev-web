@@ -35,7 +35,14 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+// Los equivalentes (#11): se mockea sólo la llamada, el panel es el de verdad.
+vi.mock("./buscarEquivalentes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./buscarEquivalentes")>()),
+  pedirEquivalentes: vi.fn(async () => []),
+}));
+
 import { api } from "../../lib/api";
+import { pedirEquivalentes } from "./buscarEquivalentes";
 import { FichaMedicamento } from "./FichaMedicamento";
 
 const amoxicilina: Producto = {
@@ -159,5 +166,27 @@ describe("#17: encargar desde la ficha", () => {
     sesion.secciones = ["productos"];
     const { ficha } = await abrir();
     expect(within(ficha).queryByRole("button", { name: "Encargar" })).toBeNull();
+  });
+});
+
+describe("#11: equivalentes", () => {
+  it("lista los otros con la misma droga, con stock y precio, y sin Agregar: esta ficha no vende", async () => {
+    vi.mocked(pedirEquivalentes).mockResolvedValue([
+      { ...amoxicilina, id: 9, nombre: "Amoxicilina INTI", laboratorio: "INTI", precio: 0.9, stockTotal: 50 },
+    ]);
+    const { ficha } = await abrir();
+    expect(within(ficha).getByText("Equivalentes")).toBeInTheDocument();
+    expect(await within(ficha).findByText("Amoxicilina INTI")).toBeInTheDocument();
+    // La del catálogo no tiene caja: el backend mira la sucursal de quien pregunta.
+    expect(pedirEquivalentes).toHaveBeenCalledWith(1, null);
+    expect(ficha).toHaveTextContent("0,90");
+    expect(ficha).toHaveTextContent("50 u.");
+    expect(within(ficha).queryByRole("button", { name: "Agregar a la venta" })).toBeNull();
+  });
+
+  it("sin principio activo no pide nada y dice que falta cargarlo", async () => {
+    const { ficha } = await abrir({ principioActivo: null });
+    expect(ficha).toHaveTextContent("Sin principio activo en la ficha");
+    expect(pedirEquivalentes).not.toHaveBeenCalled();
   });
 });
