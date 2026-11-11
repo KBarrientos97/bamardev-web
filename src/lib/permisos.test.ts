@@ -558,6 +558,12 @@ describe("billar: un extra estricto", () => {
     }
   });
 
+  it("la Toma de inventario es de quien mueve inventario, y sólo en farmacia", () => {
+    expect(puedeVer(ctxCon(["inventario.mover"], "FARMACIA"), "toma_inventario")).toBe(true);
+    expect(puedeVer(ctxCon(["catalogo.ver"], "FARMACIA"), "toma_inventario")).toBe(false);
+    expect(puedeVer(ctxCon(["inventario.mover"], "RESTAURANTE"), "toma_inventario")).toBe(false);
+  });
+
   it("Supervisión es de quien administra el billar: la ve sin tener que atender, y la cajera no", () => {
     // 21-oct: el administrador mira lo que hace la cajera sin abrir caja.
     const administra = ctxCon(["billar.admin"], "BILLAR", conBillar);

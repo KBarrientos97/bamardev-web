@@ -71,6 +71,11 @@ export type Seccion =
    * sólo para mirar. Del dueño y el encargado (`caja.ver_todas`). Sólo farmacia.
    */
   | "supervision_farmacia"
+  /**
+   * Toma de inventario (11-nov): contar lo que hay, lote por lote, y ajustar
+   * con motivo. Es un movimiento de AJUSTE con pantalla propia. Sólo farmacia.
+   */
+  | "toma_inventario"
   /** La pestaña Billar de Reportes. */
   | "reportes_billar"
   /**
@@ -305,6 +310,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // dueño y el encargado). Sin permiso nuevo a propósito: así una farmacia dada
   // de alta ayer la tiene sin migración.
   supervision_farmacia: { permiso: "caja.ver_todas", feature: "caja" },
+  // Contar y ajustar es mover inventario, con pantalla propia: la misma llave
+  // que Ingreso y Salida de mercadería.
+  toma_inventario: { permiso: "inventario.mover", feature: "inventario" },
   reportes_billar: { permiso: "reportes.ver", feature: "billar" },
   // Los pedidos con número (extra `tickets_pedido`): la TV y la numeración
   // son del encargado; despachar, de quien entrega (también la caja).
@@ -495,6 +503,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   controlados: ["FARMACIA"],
   proveedores: ["FARMACIA"],
   supervision_farmacia: ["FARMACIA"],
+  toma_inventario: ["FARMACIA"],
   // Las dos pantallas guiadas son del rubro. Un restaurante sigue cargando
   // entradas y salidas desde Movimientos con el formulario de siempre: acá no
   // se le saca nada, se le agrega un atajo a la farmacia.

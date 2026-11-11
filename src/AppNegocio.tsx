@@ -79,8 +79,9 @@ const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 // Billar: sólo se baja en un negocio con el extra.
 const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervision"));
-// Farmacia (11-nov): la Supervisión del administrador.
+// Farmacia (11-nov): la Supervisión del administrador y la Toma de inventario.
 const SupervisionFarmacia = lazy(() => import("./pages/farmacia/supervision/Supervision"));
+const TomaInventario = lazy(() => import("./pages/farmacia/toma/TomaInventario"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Tickets y despacho (extra `tickets_pedido`): sólo se bajan en un restaurante que lo tiene.
@@ -776,6 +777,17 @@ function Rutas() {
             <Protegida seccion="supervision_farmacia">
               <Suspense fallback={null}>
                 <SupervisionFarmacia />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        {/* Farmacia: contar el estante lote por lote y ajustar lo que no cuadra. */}
+        <Route
+          path="/inventario/movimientos/toma"
+          element={
+            <Protegida seccion="toma_inventario">
+              <Suspense fallback={null}>
+                <TomaInventario />
               </Suspense>
             </Protegida>
           }

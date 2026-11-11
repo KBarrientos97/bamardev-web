@@ -307,6 +307,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
             icono: "swap",
             seccion: "transferencia_mercaderia",
           },
+          // Sólo farmacia (11-nov): contar lo que hay en el estante, lote por
+          // lote, y ajustar lo que no cuadra. Es el AJUSTE con pantalla propia.
+          {
+            a: "/inventario/movimientos/toma",
+            label: "Toma de inventario",
+            icono: "check",
+            seccion: "toma_inventario",
+          },
         ],
       },
     ],
