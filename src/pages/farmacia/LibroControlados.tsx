@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Input, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
+import { useAuth } from "../../store/AuthContext";
 import type { AsientoControlado, LibroControlados as Libro } from "../../types";
-import { NOMBRE_LIBRO } from "./receta";
+import LibroImpreso from "./LibroImpreso";
+import { tituloLibro } from "./impresionLibro";
 
 const LIBROS = [
   ["", "Los dos libros"],
@@ -33,14 +36,33 @@ function finDelMesPasado(d: Date): string {
  * sigue en el libro, marcada, porque el libro tiene que explicar también lo
  * que salió y volvió.
  *
- * Se exporta a Excel: ahí se archiva o, si hace falta papel, se imprime.
+ * Se exporta a Excel para archivarlo, y se imprime con encabezado y firmas
+ * (`LibroImpreso`): el libro oficial lo firma el regente farmacéutico, y una
+ * planilla pelada sin quién la emite ni de qué período es no sirve para eso.
  */
 export default function LibroControladosPagina() {
   const hoy = new Date();
+  const { negocio, usuario } = useAuth();
   const [libro, setLibro] = useState<"" | Libro>("");
   const [desde, setDesde] = useState(() => inicioDeMes(hoy));
   const [hasta, setHasta] = useState(() => isoDia(hoy));
   const suc = useSucursales();
+
+  // La hora que lleva el impreso es la de mandar a imprimir, no la de abrir la
+  // pantalla: un libro que quedó abierto desde la mañana no puede decir que se
+  // imprimió a las 8. `flushSync` deja la fecha en el DOM antes de que el
+  // navegador arme la vista previa, igual que hace el recibo del POS.
+  const [impresoEn, setImpresoEn] = useState<Date | null>(null);
+  const imprimir = () => {
+    flushSync(() => setImpresoEn(new Date()));
+    window.print();
+  };
+  // Ctrl+P no pasa por el botón: la hora se fija igual al avisar el navegador.
+  useEffect(() => {
+    const sellar = () => flushSync(() => setImpresoEn(new Date()));
+    window.addEventListener("beforeprint", sellar);
+    return () => window.removeEventListener("beforeprint", sellar);
+  }, []);
 
   const asientos = useApi(
     () =>
@@ -56,7 +78,21 @@ export default function LibroControladosPagina() {
   const anuladas = filas.filter((a) => a.anuladaEn).length;
   // La columna de sucursal sólo cuando hay más de una en el período.
   const variasSucursales = new Set(filas.map((a) => a.almacen.id)).size > 1;
-  const titulo = libro ? `Libro de ${NOMBRE_LIBRO[libro]}` : "Libro de controlados";
+  const titulo = tituloLibro(libro);
+
+  // La sucursal que encabeza el impreso: la elegida en el filtro o, para quien
+  // entró atado a una (el backend le fuerza la suya), esa. Con un solo local no
+  // se nombra: un negocio de un local no tiene por qué saber de sucursales.
+  const sucursalImpresa = suc.elegir ? suc.nombre : (usuario?.sucursal ?? "");
+  // La sesión no trae dirección ni teléfono del negocio, pero la sucursal sí
+  // (`Almacen`). Se toma la elegida o, sin filtro, la principal: es la que usa
+  // la caja cuando una operación no dice de cuál se trata. En el consolidado
+  // de varias no hay una sola dirección, y el impreso deja el renglón en blanco.
+  const local =
+    suc.sucursales.find((a) => a.id === suc.sucursalId) ?? (suc.elegir ? undefined : suc.sugerida);
+  const negocioImpreso = negocio
+    ? { nombre: negocio.nombre, direccion: local?.direccion, telefono: local?.telefono }
+    : null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
@@ -73,6 +109,14 @@ export default function LibroControladosPagina() {
                 onClick={() => bajarCsv(titulo, desde, hasta, filas)}
               >
                 Exportar a Excel
+              </Boton>
+              <Boton
+                variante="soft"
+                icono="printer"
+                disabled={filas.length === 0}
+                onClick={imprimir}
+              >
+                Imprimir
               </Boton>
             </div>
           }
@@ -241,6 +285,18 @@ export default function LibroControladosPagina() {
               </tbody>
             </table>
           </div>
+
+          {/* El papel: oculto en pantalla, lo único que sale al imprimir. */}
+          <LibroImpreso
+            negocio={negocioImpreso}
+            libro={libro}
+            sucursal={sucursalImpresa}
+            desde={desde}
+            hasta={hasta}
+            impresoPor={usuario?.nombre ?? usuario?.username ?? ""}
+            impresoEn={impresoEn ?? hoy}
+            filas={filas}
+          />
         </>
       )}
     </div>
