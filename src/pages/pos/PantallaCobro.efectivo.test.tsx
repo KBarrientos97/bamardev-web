@@ -159,7 +159,7 @@ describe("COB-1: en el restaurante lo recibido en efectivo se escribe o se toca"
     });
   });
 
-  it("fuera de «Cobrar a estudiante», nadie le pasa a la pantalla que lo vacío es el justo", () => {
+  it("fuera de «Cobrar a estudiante» y del mostrador de la farmacia, nadie le pasa a la pantalla que lo vacío es el justo", () => {
     // Los tests de arriba montan la pantalla sin la opción, como los tres
     // cobros del restaurante: no verían que uno se la pasara. Y es la vuelta
     // más corta a «se cobra sin contar»: una línea, sin que nada más se
@@ -171,10 +171,16 @@ describe("COB-1: en el restaurante lo recibido en efectivo se escribe o se toca"
     // La lista exacta es también el control: si la opción cambia de nombre,
     // o el lector no ve nada, queda vacía y falla, en vez de pasar siempre
     // sin probar nada.
+    // La farmacia (11-nov, informe B14 y §6.3): en el mostrador lo común es el
+    // justo y la auxiliar cobra con F2 sin tocar el campo, así que el POS la
+    // pasa. Sólo con el rubro: la línea exacta es el candado, para que el
+    // restaurante siga contando lo recibido como siempre.
     const laNombran = Object.keys(fuentes).filter((ruta) => nombraLaOpcion(fuentes[ruta])).sort();
-    expect(laNombran, "sólo «Cobrar a estudiante» toma lo vacío como el justo").toEqual([
+    expect(laNombran, "sólo «Cobrar a estudiante» y el POS de la farmacia toman lo vacío como el justo").toEqual([
       "/src/pages/academia/Cobrar.tsx",
       "/src/pages/pos/PantallaCobro.tsx",
+      "/src/pages/pos/Pos.tsx",
     ]);
+    expect(fuentes["/src/pages/pos/Pos.tsx"]).toContain("recibidoVacioEsExacto={esFarmacia(rubro)}");
   });
 });
