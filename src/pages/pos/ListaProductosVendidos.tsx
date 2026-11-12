@@ -8,7 +8,10 @@ import {
   renglonesVisibles,
   renglonVendido,
   separarTiempoDeMesa,
+  textoAlFiado,
   textoCantidadPorPrecio,
+  textoCobrosDeFiado,
+  textoFiadoDelTurno,
   textoMesasCobradas,
   textoProductos,
   textoUnidades,
@@ -40,6 +43,11 @@ import {
 export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierreProductos; limite?: number }) {
   const { tiempo, productos } = separarTiempoDeMesa(d);
   const hayProductos = productos.lineas > 0;
+  // Lo que salió al fiado y lo que entró de cobros de fiado (11-nov), para
+  // que el total no se lea como plata en el cajón: el fiado salió y no entró;
+  // el cobro entró y no salió nada. En ámbar lo que se debe, como en toda la app.
+  const fiado = productos.fiado && productos.fiado.unidades > 0 ? productos.fiado : null;
+  const cobros = productos.cobrosDeFiado && productos.cobrosDeFiado.total > 0 ? productos.cobrosDeFiado.total : 0;
   return (
     <div className="@container space-y-3">
       {(tiempo || hayProductos) && (
@@ -48,7 +56,14 @@ export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierre
           {hayProductos && (
             <Resumen texto={`${textoUnidades(productos.unidades)} · ${textoProductos(productos.lineas)}`} total={productos.total} />
           )}
+          {fiado && <Resumen tono="fiado" texto={`Al fiado · ${textoUnidades(fiado.unidades)}`} total={fiado.porCobrar} />}
         </div>
+      )}
+      {(fiado || cobros > 0) && (
+        <p className="text-[12px] leading-relaxed text-texto-3">
+          {fiado && <span>{textoFiadoDelTurno(fiado)} </span>}
+          {cobros > 0 && <span>{textoCobrosDeFiado(cobros)}</span>}
+        </p>
       )}
       {hayProductos ? (
         <TablaDeProductos
@@ -87,10 +102,22 @@ export function ListaDeProductos({ renglones, limite }: { renglones: RenglonVend
   );
 }
 
-function Resumen({ icono, texto, total }: { icono?: NombreIcono; texto: string; total: number }) {
+function Resumen({
+  icono,
+  texto,
+  total,
+  tono,
+}: {
+  icono?: NombreIcono;
+  texto: string;
+  total: number;
+  /** `fiado`: en ámbar, plata que se debe (la regla de color de toda la app). */
+  tono?: "fiado";
+}) {
+  const fiado = tono === "fiado";
   return (
     <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-      <span className="flex min-w-0 items-center gap-1.5 text-texto-2">
+      <span className={`flex min-w-0 items-center gap-1.5 ${fiado ? "font-semibold text-amber-700" : "text-texto-2"}`}>
         {icono && (
           <span className="shrink-0 text-texto-3">
             <Icon name={icono} size={14} />
@@ -98,7 +125,7 @@ function Resumen({ icono, texto, total }: { icono?: NombreIcono; texto: string; 
         )}
         <span>{texto}</span>
       </span>
-      <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(total)}</span>
+      <span className={`shrink-0 font-bold tabular-nums ${fiado ? "text-amber-700" : "text-texto"}`}>{fmtMoney(total)}</span>
     </div>
   );
 }
@@ -206,6 +233,9 @@ function Renglon({ r }: { r: RenglonVendido }) {
           {r.nombre}
         </p>
         <p className="text-[12px] tabular-nums text-texto-3 @md:sr-only">{textoCantidadPorPrecio(r.cantidad, r.precio)}</p>
+        {/* Cuántas de éstas salieron fiadas: a la vista también en las
+            columnas, que no tienen dónde decirlo. */}
+        {r.fiado ? <p className="text-[12px] font-semibold tabular-nums text-amber-700">{textoAlFiado(r.fiado)}</p> : null}
       </div>
       <span aria-hidden className="hidden text-right tabular-nums text-texto-2 @md:block">
         {fmtCantidad(r.cantidad)}

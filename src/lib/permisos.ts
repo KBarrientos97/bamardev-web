@@ -66,6 +66,16 @@ export type Seccion =
    * (cajas, mesas, ventas, con quién hizo cada cosa). Del administrador.
    */
   | "supervision_billar"
+  /**
+   * Supervisión de la farmacia (11-nov): lo que hace la auxiliar, en vivo y
+   * sólo para mirar. Del dueño y el encargado (`caja.ver_todas`). Sólo farmacia.
+   */
+  | "supervision_farmacia"
+  /**
+   * Toma de inventario (11-nov): contar lo que hay, lote por lote, y ajustar
+   * con motivo. Es un movimiento de AJUSTE con pantalla propia. Sólo farmacia.
+   */
+  | "toma_inventario"
   /** La pestaña Billar de Reportes. */
   | "reportes_billar"
   /**
@@ -296,6 +306,13 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Supervisión: lo mismo que Mesas de billar. Quien administra el billar mira
   // cómo atienden, sin tener que atender él (no pide caja propia).
   supervision_billar: { permiso: "billar.admin", feature: "billar" },
+  // Supervisión de la farmacia: la misma llave que abre las cajas ajenas (el
+  // dueño y el encargado). Sin permiso nuevo a propósito: así una farmacia dada
+  // de alta ayer la tiene sin migración.
+  supervision_farmacia: { permiso: "caja.ver_todas", feature: "caja" },
+  // Contar y ajustar es mover inventario, con pantalla propia: la misma llave
+  // que Ingreso y Salida de mercadería.
+  toma_inventario: { permiso: "inventario.mover", feature: "inventario" },
   reportes_billar: { permiso: "reportes.ver", feature: "billar" },
   // Los pedidos con número (extra `tickets_pedido`): la TV y la numeración
   // son del encargado; despachar, de quien entrega (también la caja).
@@ -485,6 +502,8 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   encargos: ["FARMACIA"],
   controlados: ["FARMACIA"],
   proveedores: ["FARMACIA"],
+  supervision_farmacia: ["FARMACIA"],
+  toma_inventario: ["FARMACIA"],
   // Las dos pantallas guiadas son del rubro. Un restaurante sigue cargando
   // entradas y salidas desde Movimientos con el formulario de siempre: acá no
   // se le saca nada, se le agrega un atajo a la farmacia.

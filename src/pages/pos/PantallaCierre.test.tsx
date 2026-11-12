@@ -30,7 +30,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import { api } from "../../lib/api";
-import PantallaCierre, { CierreOk } from "./PantallaCierre";
+import PantallaCierre, { CierreOk, conLoVendido } from "./PantallaCierre";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
 import { fmtHora } from "../../lib/format";
 
@@ -127,14 +127,14 @@ describe("B-21: sin palabras de restaurante en un salón", () => {
     vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
     await montar();
     expect(screen.getByText("Ver lo vendido")).toBeInTheDocument();
-    expect(screen.queryByText("Ver qué salió del mostrador")).not.toBeInTheDocument();
+    expect(screen.queryByText("Productos vendidos")).not.toBeInTheDocument();
   });
 
   it("restaurante: como siempre", async () => {
     sesion.rubro = "RESTAURANTE";
     vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
     await montar();
-    expect(screen.getByText("Ver qué salió del mostrador")).toBeInTheDocument();
+    expect(screen.getByText("Productos vendidos")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
@@ -279,8 +279,8 @@ describe("billar (24-oct): la cena del personal que registró el administrador",
       ],
     });
     await montar();
-    fireEvent.click(screen.getByText("Ver qué salió del mostrador"));
-    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Productos vendidos"));
+    expect(await screen.findByRole("dialog", { name: "Productos vendidos" })).toBeInTheDocument();
     // Toda la web (Kevin, 25-oct): "4,00" se leía como plata.
     expect(await screen.findByText("4 u × Bs 15,00")).toBeInTheDocument();
   });
@@ -834,9 +834,9 @@ describe("CAJA-1: el cajero del restaurante ve lo vendido del turno al cerrar", 
     // Por el texto y no por el rol: el botón vive dentro de la etiqueta del
     // campo "Efectivo contado", que le da el nombre accesible.
     const boton = screen.getByText("1 producto · 4 unidades").closest("button")!;
-    expect(boton).toHaveTextContent("Ver qué salió del mostrador");
+    expect(boton).toHaveTextContent("Productos vendidos");
     fireEvent.click(boton);
-    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Productos vendidos" })).toBeInTheDocument();
     expect(screen.getByText("Cuarto de pollo")).toBeInTheDocument();
     expect(screen.getByText("4 u × Bs 15,00")).toBeInTheDocument();
     expect(api.reporteCierreProductos).not.toHaveBeenCalled();
@@ -847,7 +847,7 @@ describe("CAJA-1: el cajero del restaurante ve lo vendido del turno al cerrar", 
     sesion.reportes = false;
     vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
     await montar();
-    expect(screen.queryByText(/Ver qué salió del mostrador/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Productos vendidos/)).not.toBeInTheDocument();
   });
 
   it("belleza sigue igual: la recepción sin Reportes no lo ve aunque el arqueo lo traiga (QA DIA-10)", async () => {
@@ -1080,5 +1080,80 @@ describe("CAJA-4: el comprobante del cierre", () => {
     expect(screen.queryByRole("region", { name: "Turno" })).not.toBeInTheDocument();
     expect(screen.queryByText("Efectivo esperado en caja")).not.toBeInTheDocument();
     expect(screen.getByText("Faltante Bs 2,00")).toBeInTheDocument();
+  });
+});
+
+describe("11-nov: «Caja cerrada» lleva Productos vendidos en el restaurante (Kevin)", () => {
+  // Es lo último que ve la cajera: después de «Volver» la lista queda sólo en
+  // Reportes, que es del dueño.
+  it("con lo vendido en el comprobante, el botón abre la lista sin pedirle nada a Reportes", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.reportes = false;
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen({ ...TURNO_COMPLETO, productos: VENDIDO }) })} onSalir={() => {}} />);
+    const boton = screen.getByText("1 producto · 4 unidades").closest("button")!;
+    expect(boton).toHaveTextContent("Productos vendidos");
+    // Antes de «Volver», no después.
+    expect(boton.compareDocumentPosition(screen.getByRole("button", { name: "Volver" }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    fireEvent.click(boton);
+    expect(await screen.findByRole("dialog", { name: "Productos vendidos" })).toBeInTheDocument();
+    expect(screen.getByText("Cuarto de pollo")).toBeInTheDocument();
+    expect(api.reporteCierreProductos).not.toHaveBeenCalled();
+  });
+
+  it("con un servidor que no manda lo vendido al cerrar: sólo quien tiene Reportes, que lo pide ahí", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.reportes = false;
+    const { unmount } = render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
+    expect(screen.queryByText("Productos vendidos")).not.toBeInTheDocument();
+    unmount();
+
+    sesion.reportes = true;
+    vi.mocked(api.reporteCierreProductos).mockResolvedValue(VENDIDO);
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
+    fireEvent.click(screen.getByText("Productos vendidos"));
+    expect(await screen.findByRole("dialog", { name: "Productos vendidos" })).toBeInTheDocument();
+    expect(await screen.findByText("Cuarto de pollo")).toBeInTheDocument();
+    expect(api.reporteCierreProductos).toHaveBeenCalledWith(1);
+  });
+
+  it("el billar y el instituto siguen con su comprobante, sin el botón", () => {
+    sesion.rubro = "BILLAR";
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen({ productos: VENDIDO }) })} onSalir={() => {}} />);
+    expect(screen.queryByText(/Productos vendidos|Ver lo vendido/)).not.toBeInTheDocument();
+  });
+
+  it("si el servidor no manda lo vendido con el cierre, va lo que el cierre ya tenía en pantalla", () => {
+    const sinNada = cajaCerrada({ resumen: resumen() });
+    expect(conLoVendido(sinNada, VENDIDO).resumen?.productos).toBe(VENDIDO);
+    // Lo del servidor manda: es la lista con la caja ya cerrada.
+    const otra = { ...VENDIDO, lineas: 2 };
+    expect(conLoVendido(cajaCerrada({ resumen: resumen({ productos: otra }) }), VENDIDO).resumen?.productos).toBe(otra);
+    // Sin arqueo (un servidor anterior) o sin lista, la caja tal cual.
+    const sinArqueo = cajaCerrada();
+    expect(conLoVendido(sinArqueo, VENDIDO)).toBe(sinArqueo);
+    expect(conLoVendido(sinNada, undefined)).toBe(sinNada);
+  });
+
+  it("al cerrar, la caja que sigue al comprobante lleva lo vendido que el cierre mostró", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: VENDIDO }));
+    vi.mocked(api.cerrarCaja).mockResolvedValue(cajaCerrada({ resumen: resumen() }));
+    const alCerrar = vi.fn();
+    render(
+      <PantallaCierre
+        caja={{ id: 1, fechaApertura: "2026-10-25T20:00:00.000Z", montoApertura: 100 } as Caja}
+        onAtras={() => {}}
+        onCerrada={alCerrar}
+      />,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "430" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    });
+    expect(alCerrar).toHaveBeenCalledTimes(1);
+    expect(alCerrar.mock.calls[0][0].resumen.productos).toBe(VENDIDO);
   });
 });

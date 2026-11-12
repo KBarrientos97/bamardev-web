@@ -58,6 +58,7 @@ import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
+import { pideConfirmacion } from "../farmacia/medicamento";
 import { useCarrito } from "./useCarrito";
 import { useDescuentos } from "./useDescuentos";
 import BloqueDescuentos from "./BloqueDescuentos";
@@ -320,7 +321,8 @@ function PuntoDeVenta() {
   // En una farmacia la venta vive por encima del POS (ver VentaFarmaciaProvider.tsx):
   // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
   // tal venta y el POS usa la suya, como siempre.
-  const carrito = useVentaFarmacia()?.carrito ?? carritoPropio;
+  const ventaFarmacia = useVentaFarmacia();
+  const carrito = ventaFarmacia?.carrito ?? carritoPropio;
   // ── Agenda (belleza): venta directa con profesional (N2-13) ──────────────
   //
   // Un servicio que se cobra sin cita también lleva quién lo hizo: su precio,
@@ -421,6 +423,38 @@ function PuntoDeVenta() {
   });
   /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
   const totalCarrito = descuentos.total(carritoVenta.total);
+
+  /**
+   * Farmacia: F2 cobra (#19). Doscientas ventas por día de un paracetamol,
+   * con el lector en una mano: la cajera no tiene por qué soltar el teclado
+   * para ir al botón. Hace EXACTAMENTE lo que hace tocar "Cobrar" en el
+   * carrito: un controlado sin receta abre sus datos en vez de avanzar, y el
+   * cupo del plan se mira igual. Sólo en farmacia: en los demás rubros no
+   * hay listener y el POS queda como siempre.
+   */
+  const sinLugarParaCobrar = (vendePaquete && !clientePaquete) || descuentos.cargando;
+  useEffect(() => {
+    if (!esFarmacia(rubro) || !ventaFarmacia) return;
+    const alTeclear = (e: KeyboardEvent) => {
+      if (e.key !== "F2" || e.repeat) return;
+      // Con un diálogo abierto (la receta, "¿Vaciar la venta?") la tecla es
+      // de ese diálogo, no del POS: cobrar por debajo sería cobrar a ciegas.
+      if (document.querySelector('[role="dialog"]')) return;
+      if (pantalla !== "venta" || enviando || carrito.lineas.length === 0) return;
+      e.preventDefault();
+      const sinReceta = carrito.lineas.find(
+        (l) => pideConfirmacion(l.producto) && !ventaFarmacia.recetas.has(l.producto.id),
+      );
+      if (sinReceta) {
+        ventaFarmacia.pedirReceta(sinReceta.producto);
+        return;
+      }
+      if (sinLugarParaCobrar || !hayLugar()) return;
+      setPantalla("cobro");
+    };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [rubro, ventaFarmacia, pantalla, enviando, carrito.lineas, sinLugarParaCobrar, hayLugar]);
 
   // QA DIA-08: la clienta con bono que llega sin cita. Con el cliente de la
   // venta (o el del paquete que se le vende) se piden sus paquetes y se
@@ -1030,6 +1064,11 @@ function PuntoDeVenta() {
         // Cobrando una mesa: la propina de la mesa (para el mesero, no entra al
         // cajón). Sin esto, el cobro de siempre.
         cobroDeMesa={mesaCobrando ? "caja" : undefined}
+        // Farmacia (#19): "Efectivo recibido" vacío es el monto justo. En el
+        // mostrador casi todo se paga exacto y teclearlo en cada venta de un
+        // paracetamol era el paso de más; con F2 + Enter se cobra sin soltar
+        // el lector. En los demás rubros se sigue pidiendo, como siempre.
+        recibidoVacioEsExacto={esFarmacia(rubro)}
         onConfirmar={(pagos, extra) =>
           // Una mesa no es una cita: su cobro sigue directo. No lleva propinas
           // por profesional (el cobro de la mesa no las ofrece) pero sí la de

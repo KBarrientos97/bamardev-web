@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LotePorVencer, Vencimientos as DatosVencimientos } from "../../types";
@@ -29,12 +29,17 @@ vi.mock("../../lib/api", () => ({
   api: { vencimientos: vi.fn() },
 }));
 
-/** Si el negocio tiene el circuito de aprobación de movimientos. */
-const sesion = vi.hoisted(() => ({ conAprobacion: false }));
+const sesion = vi.hoisted(() => ({
+  /** Si el negocio tiene el circuito de aprobación de movimientos. */
+  conAprobacion: false,
+  /** `inventario.mover`: dar de baja es una salida de stock. */
+  mueveStock: true,
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     incluye: (c: string) => c === "aprobacion_inventario" && sesion.conAprobacion,
+    puede: (s: string) => s === "salida_mercaderia" && sesion.mueveStock,
   }),
 }));
 
@@ -83,6 +88,7 @@ beforeEach(() => {
   navegado.a = "";
   navegado.con = null;
   sesion.conAprobacion = false;
+  sesion.mueveStock = true;
   vi.mocked(api.vencimientos).mockResolvedValue(datos);
 });
 
@@ -153,6 +159,21 @@ describe("Vencimientos", () => {
       motivo: "Devolución a proveedor",
       loteCodigo: "AZI-010A",
     });
+  });
+
+  it("quien ve los lotes pero no mueve stock no tiene los botones: pide la baja", async () => {
+    // B7: con `lotes.gestionar` sin `inventario.mover`, "Dar de baja" llevaba
+    // a una ruta que el guard rechaza y la persona aparecía en el inicio sin
+    // explicación. Tampoco se le cuenta cómo se guarda una baja que no puede hacer.
+    sesion.mueveStock = false;
+    await abrirLote("Paracetamol 500 mg");
+
+    const dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).queryByRole("button", { name: /Dar de baja/ })).toBeNull();
+    expect(within(dialogo).queryByRole("button", { name: /Devolver al proveedor/ })).toBeNull();
+    expect(dialogo).toHaveTextContent("Pedile al encargado que lo dé de baja.");
+    expect(dialogo).not.toHaveTextContent("Se abre la salida cargada");
+    expect(navegado.a).toBe("");
   });
 });
 

@@ -1,14 +1,18 @@
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto } from "../../types";
 import { controlaStock, paraVender } from "../pos/useCarrito";
+import { tienePrincipioActivo } from "./buscarEquivalentes";
 import CampoBusqueda from "./CampoBusqueda";
+import { Equivalentes } from "./Equivalentes";
+import { FormEncargo } from "./FormEncargo";
 import { concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { ChipsCondicion } from "./piezas";
+import { pitidoDeError } from "./sonido";
 import { useBusquedaProductos } from "./useBusquedaProductos";
 import { sePuedeVender, useVentaFarmacia } from "./ventaFarmacia";
 
@@ -52,6 +56,10 @@ export default function CatalogoVenta({
   const [q, setQ] = useState("");
   const [categoriaId, setCategoriaId] = useState<number | null>(null);
   const campo = useRef<HTMLInputElement>(null);
+  /** El agotado que se está encargando desde su tarjeta, si hay uno. */
+  const [encargando, setEncargando] = useState<Producto | null>(null);
+  /** El que no hay y del que se buscan equivalentes desde su tarjeta (#11). */
+  const [equivalentesDe, setEquivalentesDe] = useState<Producto | null>(null);
   const busqueda = useBusquedaProductos({
     q,
     categoriaId,
@@ -75,7 +83,7 @@ export default function CatalogoVenta({
 
   /**
    * Enter carga el único resultado: es lo que hace que el lector funcione
-   * solo. Con más de uno no hace nada — elegir por la persona cuál de tres
+   * solo. Con más de uno no carga nada — elegir por la persona cuál de tres
    * remedios parecidos va a la venta sería peligroso.
    *
    * El lector manda el Enter apenas termina de escribir el código, antes de
@@ -84,6 +92,14 @@ export default function CatalogoVenta({
    * lo que se ve no es de este texto, se pregunta ya y se decide con esa
    * respuesta. Si mientras tanto se siguió escribiendo, el Enter era para otro
    * texto y no carga nada (`buscarAhora` devuelve null).
+   *
+   * Cuando el Enter NO agregó, se dice y se oye. Hasta el 11-nov un escaneo de
+   * un agotado o de un código con dos coincidencias no hacía nada, en
+   * silencio: quien escanea mira el producto y no la pantalla, daba el remedio
+   * por cargado y el cliente se iba sin pagarlo (B9). El pitido es para eso;
+   * el aviso dice qué pasó. Con un solo resultado se llama SIEMPRE a la venta,
+   * que es la que sabe decir "agotado", "lo que queda está vencido" o "no se
+   * vende en esta sucursal" (y no lo suma).
    */
   async function alEnter() {
     const texto = q;
@@ -91,9 +107,19 @@ export default function CatalogoVenta({
       busqueda.consulta === texto && !busqueda.cargando
         ? busqueda.items
         : await busqueda.buscarAhora(texto);
-    if (items?.length === 1 && sePuedeVender(items[0])) {
+    if (!items) return;
+    if (items.length === 1 && sePuedeVender(items[0])) {
       agregar(items[0]);
+      return;
     }
+    if (items.length === 1) venta?.agregar(items[0]);
+    else if (items.length > 1) venta?.avisar?.(`Hay ${items.length} coincidencias con "${texto}": elegí en la grilla`);
+    // Con 0 la grilla ya dice "No hay nada con …".
+    pitidoDeError();
+    // El texto se queda (la tarjeta del agotado, con su "Encargar", sigue a la
+    // vista) pero seleccionado: el próximo escaneo lo reemplaza en vez de
+    // pegarse atrás y dar un código que no existe.
+    campo.current?.select();
   }
 
   const activas = categorias.filter((c) => c.activo !== false);
@@ -132,9 +158,13 @@ export default function CatalogoVenta({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 lg:pb-4">
-        <ErrorMsg>{busqueda.error}</ErrorMsg>
-
-        {busqueda.cargando && busqueda.items.length === 0 ? (
+        {/* Con error, SÓLO el error. Hasta el 11-nov debajo aparecía también
+            "No hay nada con …" (la búsqueda fallida deja la lista vacía), y
+            quien atiende leía que el remedio no existía cuando lo que pasaba
+            era que no había conexión (B14). */}
+        {busqueda.error ? (
+          <ErrorMsg onReintentar={busqueda.recargar}>{busqueda.error}</ErrorMsg>
+        ) : busqueda.cargando && busqueda.items.length === 0 ? (
           <Cargando texto="Buscando…" />
         ) : busqueda.items.length === 0 ? (
           <Vacio
@@ -156,6 +186,9 @@ export default function CatalogoVenta({
                   cantidad={enCarrito.get(p.id) ?? 0}
                   conVencimiento={conLotes}
                   onAgregar={() => agregar(p)}
+                  onEncargar={puede("encargos") ? () => setEncargando(p) : undefined}
+                  // Sin la droga en la ficha no hay qué comparar: ni botón.
+                  onEquivalentes={tienePrincipioActivo(p) ? () => setEquivalentesDe(p) : undefined}
                 />
               ))}
             </ul>
@@ -172,6 +205,45 @@ export default function CatalogoVenta({
           </>
         )}
       </div>
+
+      {/* "Hoy no tengo, te lo consigo" es una venta: se anota desde la
+          tarjeta, con el cliente enfrente, en vez de ir a Encargos (#17). */}
+      {encargando && (
+        <FormEncargo
+          productoInicial={encargando}
+          onClose={() => setEncargando(null)}
+          onGuardado={() => {
+            venta?.avisar?.(`Encargo anotado: ${encargando.nombre}`);
+            setEncargando(null);
+          }}
+        />
+      )}
+
+      {/* "No hay BAGÓ, hay INTI a Bs 0,45" (#11): los otros con la misma droga
+          y concentración, con el stock de ESTA sucursal. Agregar uno pasa por
+          `agregar`, el mismo camino que tocar su tarjeta: la venta decide si
+          pide receta, y el campo queda listo para el próximo escaneo. */}
+      {equivalentesDe && (
+        <Modal
+          abierto
+          titulo="Equivalentes"
+          subtitulo={equivalentesDe.nombre}
+          onClose={() => setEquivalentesDe(null)}
+        >
+          <Equivalentes
+            producto={equivalentesDe}
+            sucursalId={sucursalId}
+            onAgregar={
+              venta
+                ? (p) => {
+                    agregar(p);
+                    setEquivalentesDe(null);
+                  }
+                : undefined
+            }
+          />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -210,12 +282,18 @@ function TarjetaVenta({
   cantidad,
   conVencimiento,
   onAgregar,
+  onEncargar,
+  onEquivalentes,
 }: {
   producto: Producto;
   cantidad: number;
   /** El plan tiene `lotes`: sin eso no hay punto de vencimiento. */
   conVencimiento: boolean;
   onAgregar: () => void;
+  /** Anotar el encargo de lo que no hay. Sin esto (sin Encargos), no se ofrece. */
+  onEncargar?: () => void;
+  /** Ver los otros con la misma droga. Sin esto (sin principio activo), no se ofrece. */
+  onEquivalentes?: () => void;
 }) {
   const vendible = sePuedeVender(p);
   // Lo que se puede vender: sin las cajas vencidas, que siguen en el estante
@@ -229,11 +307,11 @@ function TarjetaVenta({
   const detalle = [p.laboratorio, p.formaFarmaceutica].filter(Boolean).join(" · ");
 
   return (
-    <li>
+    <li className="flex flex-col">
       <button
         onClick={onAgregar}
         disabled={!vendible}
-        className={`flex h-full w-full flex-col gap-1.5 rounded-2xl border bg-white p-3 text-left transition sm:p-3.5 ${
+        className={`flex w-full flex-1 flex-col gap-1.5 rounded-2xl border bg-white p-3 text-left transition sm:p-3.5 ${
           cantidad > 0
             ? "border-primary ring-1 ring-primary"
             : "border-borde enabled:hover:border-primary/60 enabled:hover:shadow-md"
@@ -296,6 +374,36 @@ function TarjetaVenta({
           </span>
         </span>
       </button>
+      {/* HERMANOS del botón de la tarjeta, no adentro: el de arriba está
+          deshabilitado y un botón adentro de otro no se puede tocar. Sólo
+          cuando no se puede vender: con stock la pregunta no aparece. Encargar
+          va con lo agotado o vencido —lo que "no se vende acá" no es para
+          encargar—; Equivalentes también con eso: un equivalente que SÍ se
+          venda acá es justo la respuesta. */}
+      {!vendible && (onEquivalentes || (agotado && onEncargar)) && (
+        <span className="mt-1 flex flex-wrap justify-end gap-x-1 gap-y-0.5">
+          {onEquivalentes && (
+            <button
+              type="button"
+              onClick={onEquivalentes}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-primary-700 hover:underline"
+            >
+              <Icon name="swap" size={13} />
+              Equivalentes
+            </button>
+          )}
+          {agotado && onEncargar && (
+            <button
+              type="button"
+              onClick={onEncargar}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[12px] font-semibold text-primary-700 hover:underline"
+            >
+              <Icon name="bell" size={13} />
+              Encargar
+            </button>
+          )}
+        </span>
+      )}
     </li>
   );
 }

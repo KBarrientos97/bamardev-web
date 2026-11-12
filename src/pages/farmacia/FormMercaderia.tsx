@@ -118,8 +118,12 @@ export default function FormMercaderia({
 
   // Vencimientos manda acá al tocar "Dar de baja" en un lote. Llega con el
   // almacén, el motivo y qué sacar; lo demás es un formulario normal.
-  const { state } = useLocation();
-  const precarga = esPrecargaSalida(state) ? state : null;
+  const location = useLocation();
+  const state: unknown = location.state;
+  // Se lee UNA vez, al montar, y se guarda: el `state` de la ruta se borra
+  // apenas se lee (ver abajo), así que leerlo en cada render lo perdería antes
+  // de que llegue la lista del almacén que arma el renglón.
+  const [precarga] = useState(() => (esPrecargaSalida(state) ? state : null));
   const { incluye, usuario } = useAuth();
   // El extra "Aprobar movimientos" (doble control, se vende aparte): quien
   // carga sólo guarda y lo aprueba otra persona desde Movimientos, como antes.
@@ -189,6 +193,19 @@ export default function FormMercaderia({
   const precargado = useRef(false);
   /** El guardado en curso. Ver `guardar()`: corta el doble clic. */
   const enVuelo = useRef(false);
+
+  // La precarga se consume una sola vez (B8). React Router la guarda en el
+  // `history.state` del navegador, así que guardar la salida y volver con
+  // "Atrás" a esta pantalla la volvía a aplicar: el mismo lote y la misma
+  // cantidad cargados otra vez, listos para darse de baja dos veces. Se
+  // reemplaza la entrada del historial por la misma ruta sin `state`; lo leído
+  // ya quedó en `precarga`.
+  const consumida = useRef(false);
+  useEffect(() => {
+    if (!precarga || consumida.current) return;
+    consumida.current = true;
+    navigate(location.pathname, { replace: true, state: null });
+  }, [precarga, navigate, location.pathname]);
 
   // El renglón que viene de Vencimientos. Espera a que llegue la lista del
   // almacén porque de ahí sale el costo, y se hace una sola vez: después es un
@@ -309,7 +326,9 @@ export default function FormMercaderia({
         loteMes: "",
       },
     ]);
-    setBuscando(false);
+    // En el ingreso el buscador se queda abierto para el siguiente renglón
+    // (ver `mantenerAbierto` en BuscadorArticulo); la salida lo cierra.
+    if (!entrada) setBuscando(false);
   }
 
   /**
@@ -813,6 +832,8 @@ export default function FormMercaderia({
                     almacenNombre={almacenNombre}
                     stock={porId.get(l.articuloId)?.stock ?? null}
                     unidad={porId.get(l.articuloId)?.unidad}
+                    costoUltimo={porId.get(l.articuloId)?.costo ?? null}
+                    anterior={i > 0 ? lineas[i - 1] : null}
                     concentracion={porId.get(l.articuloId)?.concentracion}
                     ubicacionActual={porId.get(l.articuloId)?.ubicacion ?? null}
                     // Mientras llega la lista de la sucursal nueva, `porId`
@@ -926,6 +947,7 @@ export default function FormMercaderia({
           yaElegidos={lineas.map((l) => l.articuloId)}
           onElegir={agregarLinea}
           onClose={() => setBuscando(false)}
+          mantenerAbierto={entrada}
         />
       )}
     </div>
@@ -998,6 +1020,8 @@ function Renglon({
   almacenNombre,
   stock,
   unidad,
+  costoUltimo,
+  anterior,
   concentracion,
   ubicacionActual,
   ubicacionLista,
@@ -1014,6 +1038,10 @@ function Renglon({
   stock: number | null;
   /** La del artículo: frasco, caja, unidad… No es siempre "u.". */
   unidad: string | undefined;
+  /** El costo de la última compra del artículo, para comparar con el tecleado. */
+  costoUltimo: number | null;
+  /** El renglón de arriba, de donde se copian lote y vencimiento. */
+  anterior: LineaForm | null;
   /** La del medicamento, si tiene: se muestra cuando el nombre no la trae. */
   concentracion: string | null | undefined;
   /** Dónde está hoy en la sucursal elegida, si alguien la cargó. */
@@ -1057,6 +1085,29 @@ function Renglon({
   // Se avisa acá y no recién al guardar: al cambiar de almacén los renglones
   // se quedan, y el que ya no entra tiene que saltar a la vista en el momento.
   const noAlcanza = !entrada && stock !== null && pedido > stock;
+
+  // Cuánto se aparta el costo tecleado del de la última compra, en por ciento
+  // redondeado (#10). Sólo informa: un precio que subió es una realidad, pero
+  // un 56 donde iba 5,6 es un dedo de más, y sin esto se descubría en el
+  // reporte de ganancia. Se compara el por ciento ya redondeado y no el
+  // cociente crudo: 2,2 contra 2 da 0,10000000000000009 y pasaba el "más del
+  // 10 %" sin serlo.
+  const costoTecleado = parsearMonto(l.costo);
+  const desvioCosto =
+    costoUltimo !== null && costoUltimo > 0 && costoTecleado !== null
+      ? Math.round(((costoTecleado - costoUltimo) / costoUltimo) * 100)
+      : null;
+  const avisoCosto =
+    desvioCosto !== null && Math.abs(desvioCosto) > 10
+      ? `Última compra ${fmtMoney(costoUltimo)} (${desvioCosto > 0 ? "+" : "-"}${Math.abs(desvioCosto)} %)`
+      : null;
+
+  // «Igual que el anterior»: en una factura la mayoría de los renglones del
+  // mismo laboratorio comparten lote y vencimiento, y teclearlos treinta veces
+  // es donde se cuelan los errores. Sólo si el de arriba tiene lote y éste
+  // está vacío: no pisa lo que ya se escribió.
+  const copiaDelAnterior =
+    entrada && conLote && !!anterior?.loteCodigo.trim() && !l.loteCodigo.trim();
 
   // Las celdas de lote que no aplican ("—") sólo tienen sentido como columna:
   // en la tarjeta del celular ocupan lugar sin decir nada.
@@ -1140,6 +1191,17 @@ function Renglon({
               ) : (
                 <span className="text-texto-4">—</span>
               )}
+              {copiaDelAnterior && anterior && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onEditar({ loteCodigo: anterior.loteCodigo, loteMes: anterior.loteMes })
+                  }
+                  className="mt-1 block text-[11px] font-semibold text-primary-700 hover:underline"
+                >
+                  Igual que el anterior
+                </button>
+              )}
             </td>
             <td className={`${sinLoteEnCelular} px-3.5 py-1.5 md:table-cell md:px-3 md:py-2.5`}>
               <EtiquetaCelular>Vencimiento</EtiquetaCelular>
@@ -1199,6 +1261,9 @@ function Renglon({
             onChange={(e) => onEditar({ costo: e.target.value })}
             className="min-w-[5.5rem] py-2"
           />
+          {avisoCosto && (
+            <span className="mt-1 block text-[11px] text-warning-text">{avisoCosto}</span>
+          )}
         </td>
         <td
           className={`col-span-2 flex items-baseline justify-between px-3.5 pt-1.5 text-right text-sm font-bold md:table-cell md:py-2.5 ${

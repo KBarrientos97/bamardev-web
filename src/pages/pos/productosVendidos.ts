@@ -1,7 +1,7 @@
 import { aCentavos, esCero } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
 import type { DocumentoPdf } from "../../lib/pdf/tablaPdf";
-import type { ReporteCierreProductos } from "../../types";
+import type { FiadoDelTurno, ReporteCierreProductos } from "../../types";
 
 /**
  * Las cuentas de la lista de lo vendido (`ListaProductosVendidos`) antes de
@@ -21,6 +21,8 @@ export interface RenglonVendido {
   /** El precio por unidad si `cantidad × precio` da el total; null si se vendió a varios precios. */
   precio: number | null;
   total: number;
+  /** De `cantidad`, lo que salió al fiado. Sólo si salió alguna. */
+  fiado?: number;
 }
 
 /** El tiempo de mesa cobrado en el turno (billar): un renglón por mesa cerrada. */
@@ -75,6 +77,8 @@ export function separarTiempoDeMesa(d: ReporteCierreProductos): {
   return {
     tiempo: { mesas: redondearCantidad(mesas), total: aCentavos(total) },
     productos: {
+      // Lo demás que diga el backend (el fiado, los cobros) sigue igual.
+      ...d,
       categorias: categorias.sort((a, b) => b.total - a.total),
       unidades: redondearCantidad(d.unidades - mesas),
       total: aCentavos(d.total - total),
@@ -107,7 +111,31 @@ export function renglonVendido(i: ItemVendido, indice: number): RenglonVendido {
     cantidad: i.cantidad,
     precio: precioQueMultiplica(i),
     total: i.total,
+    ...(i.fiado ? { fiado: i.fiado } : {}),
   };
+}
+
+/** "1 al fiado", "2 al fiado": las unidades del renglón que salieron fiadas. */
+export function textoAlFiado(n: number): string {
+  return `${fmtCantidad(n)} al fiado`;
+}
+
+/**
+ * Lo que salió al fiado en el turno, en una frase (Kevin, 11-nov: "sí salió
+ * el producto, pero no entró dinero"). Con adelanto se dice qué parte sí
+ * entró, porque el "Al fiado" del cierre es lo que quedó debiendo y no lo
+ * que salió: sin decirlo, los dos números no cuadran a simple vista.
+ */
+export function textoFiadoDelTurno(f: FiadoDelTurno): string {
+  const ventas = f.ventas === 1 ? "1 venta" : `${fmtCantidad(f.ventas)} ventas`;
+  const base = `${textoUnidades(f.unidades)} en ${ventas} al fiado`;
+  if (esCero(f.adelantos)) return `${base}: ${fmtMoney(f.total)} que no entraron al cajón.`;
+  return `${base}: ${fmtMoney(f.total)}. Entraron ${fmtMoney(f.adelantos)} de adelanto; quedan ${fmtMoney(f.porCobrar)} por cobrar.`;
+}
+
+/** Los cobros de fiado del turno: plata sin producto, porque el producto salió el día que se fió. */
+export function textoCobrosDeFiado(total: number): string {
+  return `Además entraron ${fmtMoney(total)} de cobros de fiado, sin producto: esos salieron el día que se fiaron.`;
 }
 
 /** "1 unidad", "3 unidades", "0,5 unidades": sin ",00" (Kevin, 25-oct) y en singular sólo si es una. */
@@ -159,11 +187,16 @@ export function documentoProductosVendidos(
   d: ReporteCierreProductos,
   o: { negocio?: string | null; subtitulo: string },
 ): DocumentoPdf {
+  // El fiado va arriba, junto a cuántos productos (es lo primero que se mira
+  // en el celular), y explicado en las notas; cada producto fiado lo dice en
+  // su renglón. El TOTAL sigue siendo lo vendido, fiado incluido, como el
+  // "Total vendido" del arqueo.
+  const fiado = d.fiado && d.fiado.unidades > 0 ? d.fiado : null;
   return {
     titulo: "Productos vendidos",
     negocio: o.negocio,
     subtitulo: o.subtitulo,
-    resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}`,
+    resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}${fiado ? ` · ${textoAlFiado(fiado.unidades)}` : ""}`,
     columnas: ["PRODUCTO", "CANT.", "TOTAL"],
     grupos: d.categorias.map((c) => ({
       titulo: c.nombre,
@@ -173,15 +206,18 @@ export function documentoProductosVendidos(
       ],
       filas: c.items.map((i) => {
         const precio = precioQueMultiplica(i);
+        const unitario = precio == null ? "varios precios" : `${fmtMoney(precio)} c/u`;
         return {
           nombre: i.nombre,
-          detalle: precio == null ? "varios precios" : `${fmtMoney(precio)} c/u`,
+          detalle: i.fiado ? `${unitario} · ${textoAlFiado(i.fiado)}` : unitario,
           celdas: [{ texto: fmtCantidad(i.cantidad) }, { texto: fmtMoney(i.total) }],
         };
       }),
     })),
     total: { etiqueta: "TOTAL VENDIDO", celdas: [{ texto: "" }, { texto: fmtMoney(d.total) }] },
     notas: [
+      ...(fiado ? [textoFiadoDelTurno(fiado)] : []),
+      ...(d.cobrosDeFiado && !esCero(d.cobrosDeFiado.total) ? [textoCobrosDeFiado(d.cobrosDeFiado.total)] : []),
       "Es lo vendido en el turno, no lo que hay en el cajón. Un crédito cobrado hoy tampoco suma acá: ese producto ya se vendió antes.",
     ],
   };

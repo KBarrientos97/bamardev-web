@@ -95,7 +95,7 @@ export async function enviarPorWhatsapp(
 }
 
 /** Un teléfono (o tablet Android). El iPad se presenta como Mac: va por el camino de la compu. */
-function esCelular(): boolean {
+export function esCelular(): boolean {
   if (typeof navigator === "undefined") return false;
   const datos = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData;
   if (typeof datos?.mobile === "boolean") return datos.mobile;

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import HistorialCostos from "../../components/HistorialCostos";
 import { Icon } from "../../components/Icon";
-import { Badge, Boton, Cargando, Modal } from "../../components/ui";
+import { AvisoOk, Badge, Boton, Cargando, Modal, useAviso } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
@@ -9,6 +9,8 @@ import { contiene } from "../../lib/texto";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { Existencia, Producto } from "../../types";
+import { Equivalentes } from "./Equivalentes";
+import { FormEncargo } from "./FormEncargo";
 import {
   COLOR_TRAMO,
   CONDICION,
@@ -142,8 +144,54 @@ export function FichaMedicamento({
   onEliminar: (p: Producto) => void;
   onRestaurar: (p: Producto) => void;
 }) {
+  const { puede, usuario } = useAuth();
   const [viendoCostos, setViendoCostos] = useState(false);
-  const margen = p.precio > 0 ? (p.precio - p.costo) / p.precio : 0;
+  const [encargando, setEncargando] = useState(false);
+  const [aviso, setAviso] = useAviso();
+  // B6 (11-nov): la ficha mostraba Costo, Margen e Historial de costos a
+  // cualquiera que la abriera. Sin `costos.ver` el backend quita el campo, así
+  // que un Dependiente leía "Costo Bs 0,00 · Margen 100%" como si fueran
+  // datos, y el historial le abría un 403. Se mira el permiso Y el campo: la
+  // sesión puede tener el permiso y el artículo venir de una lista sin costo.
+  const veCosto = tienePermiso(usuario, "costos.ver") && p.costo != null;
+  // Sin precio no hay margen que calcular: `null`, no "0%" (CLAUDE.md §8).
+  const margen = veCosto && p.precio > 0 ? (p.precio - p.costo) / p.precio : null;
+  // Editar, eliminar y restaurar son del ABM del catálogo: sin su permiso los
+  // tres terminaban en 403 al tocarlos. Un botón que no hace nada es peor que
+  // no tenerlo.
+  const administra = puede("productos");
+  const encarga = puede("encargos");
+
+  const acciones = enPapelera
+    ? administra && (
+        <Boton icono="check" onClick={() => onRestaurar(p)}>
+          Restaurar
+        </Boton>
+      )
+    : (encarga || veCosto || administra) && (
+        <>
+          {encarga && (
+            <Boton variante="ghost" icono="bell" onClick={() => setEncargando(true)}>
+              Encargar
+            </Boton>
+          )}
+          {veCosto && (
+            <Boton variante="ghost" icono="trendingDown" onClick={() => setViendoCostos(true)}>
+              Historial de costos
+            </Boton>
+          )}
+          {administra && (
+            <>
+              <Boton variante="danger" icono="trash" onClick={() => onEliminar(p)}>
+                Eliminar
+              </Boton>
+              <Boton icono="edit" onClick={() => onEditar(p)}>
+                Editar
+              </Boton>
+            </>
+          )}
+        </>
+      );
 
   return (
     <>
@@ -153,34 +201,18 @@ export function FichaMedicamento({
         onClose={onClose}
         ancho="max-w-2xl"
         encabezado={<EncabezadoFicha producto={p} />}
-        acciones={
-          enPapelera ? (
-            <Boton icono="check" onClick={() => onRestaurar(p)}>
-              Restaurar
-            </Boton>
-          ) : (
-            <>
-              <Boton variante="ghost" icono="trendingDown" onClick={() => setViendoCostos(true)}>
-                Historial de costos
-              </Boton>
-              <Boton variante="danger" icono="trash" onClick={() => onEliminar(p)}>
-                Eliminar
-              </Boton>
-              <Boton icono="edit" onClick={() => onEditar(p)}>
-                Editar
-              </Boton>
-            </>
-          )
-        }
+        acciones={acciones || undefined}
       >
         <div className="space-y-5">
+          <AvisoOk>{aviso}</AvisoOk>
+
           <Seccion titulo="Identificación">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
               <Dato label="Registro sanitario" valor={p.registroSanitario || "—"} />
               <Dato label="Código de barras" valor={p.codBarra || "—"} />
               <Dato label="Precio" valor={fmtMoney(p.precio)} />
-              <Dato label="Costo" valor={fmtMoney(p.costo)} />
-              <Dato label="Margen" valor={`${Math.round(margen * 100)}%`} />
+              {veCosto && <Dato label="Costo" valor={fmtMoney(p.costo)} />}
+              {margen !== null && <Dato label="Margen" valor={`${Math.round(margen * 100)}%`} />}
               <Dato label="Categoría" valor={p.categoria?.nombre ?? "—"} />
             </div>
           </Seccion>
@@ -188,6 +220,14 @@ export function FichaMedicamento({
           <StockPorSucursal producto={p} />
 
           <LotesFefo producto={p} />
+
+          {/* La pregunta del mostrador, también para quien carga el catálogo:
+              si la droga quedó escrita distinto que en sus pares, la lista sale
+              vacía y acá se nota. Sin "Agregar": esta ficha no vende. Después
+              de los lotes porque para el dueño lo primero es qué sale primero. */}
+          <Seccion titulo="Equivalentes">
+            <Equivalentes producto={p} />
+          </Seccion>
 
           {p.controlado && (
             <p className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
@@ -205,6 +245,19 @@ export function FichaMedicamento({
           onClose={() => setViendoCostos(false)}
         />
       )}
+
+      {/* #17: anotar lo que pidieron sin salir de la ficha. Se abre con el
+          medicamento puesto y la ficha queda atrás, como el historial. */}
+      {encargando && (
+        <FormEncargo
+          productoInicial={p}
+          onClose={() => setEncargando(false)}
+          onGuardado={() => {
+            setEncargando(false);
+            setAviso("Encargo anotado");
+          }}
+        />
+      )}
     </>
   );
 }
@@ -216,12 +269,14 @@ export function FichaMedicamento({
  * quien atiende no debería poder cambiar un precio con el cliente enfrente.
  *
  * Lo único que se puede hacer es lo que la persona vino a hacer: sumarlo a la
- * venta.
+ * venta — o, si no hay, anotar el encargo (#17).
  */
 export function FichaMostrador({
   producto: p,
   onClose,
   onAgregar,
+  onAgregarEquivalente,
+  onEncargar,
   onCambio,
   sucursalActual,
 }: {
@@ -229,6 +284,19 @@ export function FichaMostrador({
   onClose: () => void;
   /** Sin esto no hay botón: agotado, o un rol que no vende. */
   onAgregar?: () => void;
+  /**
+   * Sumar a la venta uno de los equivalentes (#11). Aparte de `onAgregar`
+   * porque éste NO depende de que el medicamento de la ficha tenga stock: es
+   * justo cuando no hay que se vende el otro. Sin esto (un rol que no vende)
+   * la lista se ve igual, sin botones.
+   */
+  onAgregarEquivalente?: (p: Producto) => void;
+  /**
+   * Anotar que lo pidieron. La pantalla de atrás abre el alta y muestra el
+   * aviso: la ficha se cierra, así no quedan dos hojas apiladas en el celular.
+   * Sin esto no hay botón (un rol sin `encargos`).
+   */
+  onEncargar?: () => void;
   /** Se cambió la ubicación: la lista de atrás la vuelve a pedir. */
   onCambio?: () => void;
   /** Dónde se está vendiendo (la sucursal de la caja): es el "acá". */
@@ -242,10 +310,19 @@ export function FichaMostrador({
       ancho="max-w-2xl"
       encabezado={<EncabezadoFicha producto={p} />}
       acciones={
-        onAgregar && (
-          <Boton icono="plus" onClick={onAgregar}>
-            Agregar a la venta
-          </Boton>
+        (onAgregar || onEncargar) && (
+          <>
+            {onEncargar && (
+              <Boton variante="ghost" icono="bell" onClick={onEncargar}>
+                Encargar
+              </Boton>
+            )}
+            {onAgregar && (
+              <Boton icono="plus" onClick={onAgregar}>
+                Agregar a la venta
+              </Boton>
+            )}
+          </>
         )
       }
     >
@@ -262,6 +339,13 @@ export function FichaMostrador({
         </Seccion>
 
         <StockPorSucursal producto={p} onCambio={onCambio} aca={sucursalActual} />
+
+        {/* Enseguida del stock: "¿hay acá?" y, si no, "¿hay otro igual?" son
+            la misma conversación. Con el stock y el precio de la sucursal de
+            la caja, como la tabla de atrás. */}
+        <Seccion titulo="Equivalentes">
+          <Equivalentes producto={p} sucursalId={sucursalActual} onAgregar={onAgregarEquivalente} />
+        </Seccion>
 
         <LotesFefo producto={p} conCosto={false} />
 

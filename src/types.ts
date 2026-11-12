@@ -2287,12 +2287,40 @@ export interface ReporteCierreProductos {
        * el promedio y no se muestra como precio, aunque multiplique justo.
        */
       variosPrecios?: boolean;
+      /**
+       * De `cantidad`, lo que salió en ventas al fiado (backend del 11-nov).
+       * El producto está contado entero: salió ese día, la plata entra después.
+       * Sólo viene si es más que cero.
+       */
+      fiado?: number;
     }[];
   }[];
   unidades: number;
   total: number;
   /** Productos DISTINTOS, no suma de unidades. */
   lineas: number;
+  /** Lo que salió al fiado en el turno (backend del 11-nov). Sólo si hubo. */
+  fiado?: FiadoDelTurno;
+  /**
+   * Lo cobrado de fiados en esta caja (backend del 11-nov): plata que entró
+   * sin producto, porque esos productos salieron el día que se fiaron. Sólo si hubo.
+   */
+  cobrosDeFiado?: { total: number };
+}
+
+/**
+ * Lo que salió al fiado en un turno: el producto se cuenta el día que se fía
+ * (y queda marcado en la lista); esto dice cuánto fue y cuánto no entró.
+ */
+export interface FiadoDelTurno {
+  ventas: number;
+  unidades: number;
+  /** Lo vendido en esas ventas; ya está dentro del total de la lista. */
+  total: number;
+  /** De eso, lo que el cliente dejó el mismo día: sí entró. */
+  adelantos: number;
+  /** Lo que quedó debiendo (`total − adelantos`): el "Al fiado" del cierre. */
+  porCobrar: number;
 }
 
 /** Lo que costó y lo que dejó: en cada producto, en cada categoría y en el turno. */

@@ -50,11 +50,12 @@ function med(over: Partial<Producto>): Producto {
 }
 
 /** Una pantalla cualquiera que agrega: hace de Buscar medicamento. */
-function Pantalla({ producto }: { producto: Producto }) {
+function Pantalla({ producto, otro }: { producto: Producto; otro?: Producto }) {
   const venta = useVentaFarmacia()!;
   return (
     <>
       <button onClick={() => venta.agregar(producto)}>Sumar {producto.nombre}</button>
+      {otro && <button onClick={() => venta.agregar(otro)}>Sumar {otro.nombre}</button>}
       {/* Lo que el POS le va a mandar al servidor al cobrar. */}
       <pre data-testid="detalles">{JSON.stringify(venta.carrito.aDetalles())}</pre>
       <button onClick={() => venta.carrito.vaciar()}>Cobrada</button>
@@ -82,12 +83,12 @@ async function llenarReceta(numero = "V-981") {
   await tocar(screen.getByRole("button", { name: /Agregar a la venta/ }));
 }
 
-async function montar(producto: Producto, ruta = "/buscar") {
+async function montar(producto: Producto, ruta = "/buscar", otro?: Producto) {
   render(
     <MemoryRouter initialEntries={[ruta]}>
       <VentaFarmaciaProvider>
         <Routes>
-          <Route path="/buscar" element={<Pantalla producto={producto} />} />
+          <Route path="/buscar" element={<Pantalla producto={producto} otro={otro} />} />
           <Route path="/pos" element={<p>El punto de venta</p>} />
         </Routes>
       </VentaFarmaciaProvider>
@@ -175,6 +176,42 @@ describe("agregar desde otra pantalla", () => {
     expect(screen.getByText(/Pedí la receta/)).toBeInTheDocument();
   });
 
+  it("la receta de una venta cobrada no se prellena al cliente siguiente", async () => {
+    // A1 (testing 11-nov): se vendía Alprazolam a Juan Pérez, se cobraba, y al
+    // siguiente cliente el diálogo abría con Juan Pérez, su CI, la doctora y la
+    // matrícula. El libro de psicotrópicos podía quedar con el paciente
+    // equivocado.
+    await montar(med({ nombre: "Alprazolam 0,5 mg", controlado: true }));
+    await tocar(screen.getByRole("button", { name: /Sumar/ }));
+    await llenarReceta();
+    await tocar(screen.getByRole("button", { name: "Cobrada" }));
+
+    await tocar(screen.getByRole("button", { name: /Sumar/ }));
+    expect(screen.getByText(/Pedí la receta/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Paciente \*/)).toHaveValue("");
+    expect(screen.getByLabelText(/^Médico \*/)).toHaveValue("");
+    expect(screen.getByLabelText(/^Matrícula \*/)).toHaveValue("");
+  });
+
+  it("dentro de la misma venta el segundo controlado se prellena con el mismo papel", async () => {
+    // El mismo cliente, el mismo médico, la misma receta con dos remedios:
+    // se copia todo menos el número, que es de cada formulario.
+    await montar(
+      med({ id: 21, nombre: "Alprazolam 0,5 mg", controlado: true }),
+      "/buscar",
+      med({ id: 22, nombre: "Clonazepam 2 mg", controlado: true }),
+    );
+    await tocar(screen.getByRole("button", { name: "Sumar Alprazolam 0,5 mg" }));
+    await llenarReceta();
+
+    await tocar(screen.getByRole("button", { name: "Sumar Clonazepam 2 mg" }));
+    expect(screen.getByText(/Pedí la receta/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Paciente \*/)).toHaveValue("Juan Pérez");
+    expect(screen.getByLabelText(/^Médico \*/)).toHaveValue("Dra. Ana Rojas");
+    expect(screen.getByLabelText(/^Matrícula \*/)).toHaveValue("R-1234");
+    expect(screen.getByLabelText(/^N° de receta/)).toHaveValue("");
+  });
+
   it("lo que no pide receta no la lleva", async () => {
     await montar(med({}));
     await tocar(screen.getByRole("button", { name: /Sumar/ }));
@@ -186,6 +223,17 @@ describe("agregar desde otra pantalla", () => {
     await montar(med({ stockTotal: 0 }));
     await tocar(screen.getByRole("button", { name: /Sumar/ }));
     expect(screen.getByRole("status")).toHaveTextContent("Paracetamol 500 mg: agotado");
+    expect(verVenta()).not.toBeInTheDocument();
+  });
+
+  it("un controlado agotado no pide la receta: dice que está agotado", async () => {
+    // Antes se pedía la receta primero y el "agotado" llegaba después de
+    // cargar paciente, médico y matrícula. Desde el lector (B9) un controlado
+    // sin stock llega acá directo.
+    await montar(med({ nombre: "Clonazepam 2 mg", controlado: true, stockTotal: 0 }));
+    await tocar(screen.getByRole("button", { name: /Sumar/ }));
+    expect(screen.queryByText(/Pedí la receta/)).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Clonazepam 2 mg: agotado");
     expect(verVenta()).not.toBeInTheDocument();
   });
 
@@ -294,5 +342,51 @@ describe("después de un F5", () => {
 
     await montar(med({}));
     expect(api.getProducto).toHaveBeenCalledWith(5, 917);
+  });
+
+  it("si el servidor no contesta, la venta guardada se queda y se ofrece reintentar", async () => {
+    // M3 (testing 11-nov): con el wifi cortado todas las consultas fallaban,
+    // igual se seguía con la lista vacía, el carrito guardaba `[]` y la
+    // cajera perdía los doce renglones por un F5.
+    const guardado = JSON.stringify([
+      { id: 5, cantidad: 2, enMesa: 2, nota: "" },
+      { id: 6, cantidad: 1, enMesa: 1, nota: "" },
+    ]);
+    sessionStorage.setItem("bamar.carrito.LOCAL", guardado);
+    vi.mocked(api.getProducto).mockRejectedValue(new Error("Failed to fetch"));
+
+    await montar(med({}));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No se pudo recuperar la venta guardada (sin conexión)",
+    );
+    expect(verVenta()).not.toBeInTheDocument();
+    // Lo guardado sigue ahí, tal cual.
+    expect(sessionStorage.getItem("bamar.carrito.LOCAL")).toBe(guardado);
+
+    // Volvió la conexión: reintentar la recupera entera.
+    vi.mocked(api.getProducto).mockImplementation(async (id) => med({ id, precio: 2 }));
+    await tocar(screen.getByRole("button", { name: "Reintentar" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(verVenta()).toHaveTextContent("Ver venta · 3 u. · Bs 6,00");
+  });
+
+  it("si algunas vuelven y otras no, se sigue con las que volvieron", async () => {
+    // Una sola que falla es un artículo que ya no existe (o que no se pudo
+    // leer): no es un corte, y la venta vuelve sin ese renglón, como siempre.
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify([
+        { id: 5, cantidad: 2, enMesa: 2, nota: "" },
+        { id: 6, cantidad: 1, enMesa: 1, nota: "" },
+      ]),
+    );
+    vi.mocked(api.getProducto).mockImplementation(async (id) => {
+      if (id === 6) throw new Error("No encontrado");
+      return med({ id, precio: 3 });
+    });
+
+    await montar(med({}));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(verVenta()).toHaveTextContent("Ver venta · 2 u. · Bs 6,00");
   });
 });

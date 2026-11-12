@@ -14,7 +14,13 @@ vi.mock("../../store/AuthContext", async () => {
   return {
     useAuth: () => ({
       negocio: { id: 1, nombre: "Farmacia San Rafael" },
-      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
+      usuario: {
+        rol: "ADMIN",
+        ...permisosDe("ADMIN"),
+        nombre: "Marcela Quiroga",
+        sucursalId: 917,
+        sucursal: "Sucursal Centro",
+      },
     }),
   };
 });
@@ -110,5 +116,36 @@ describe("el libro", () => {
     await montar();
     expect(screen.getByText("No hay ventas de controlados")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Imprimir/ })).toBeDisabled();
+  });
+});
+
+describe("el impreso", () => {
+  it("Imprimir manda al papel el libro con la farmacia, la sucursal y quién lo imprime", async () => {
+    const imprimir = vi.spyOn(window, "print").mockImplementation(() => {});
+    await montar();
+    // En pantalla no se ve; es lo único que sale al imprimir.
+    const papel = document.querySelector<HTMLElement>(".libro-impreso")!;
+    expect(papel).toHaveClass("hidden");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Imprimir/ }));
+    });
+    expect(imprimir).toHaveBeenCalledTimes(1);
+    expect(papel).toHaveTextContent("Farmacia San Rafael");
+    expect(papel).toHaveTextContent("Libro de controlados");
+    // Quien entró atado a una sucursal imprime el libro de la suya.
+    expect(papel).toHaveTextContent("Sucursal: Sucursal Centro");
+    expect(papel).toHaveTextContent("por Marcela Quiroga");
+    expect(papel).toHaveTextContent("ANULADA");
+    imprimir.mockRestore();
+  });
+
+  it("filtrado por libro, el papel dice cuál es", async () => {
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Estupefacientes" }));
+    });
+    expect(document.querySelector(".libro-impreso")).toHaveTextContent("Libro de Estupefacientes");
   });
 });

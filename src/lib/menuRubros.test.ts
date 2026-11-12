@@ -128,11 +128,26 @@ describe("menú: Supervisión del billar", () => {
     expect(vender(menu("CAJERO", rubro))).not.toContain("Supervisión");
   });
 
-  it.each(SIN_BILLAR.filter((r) => RUBROS.includes(r as never)))("%s: sin billar, sin Supervisión", (rubro) => {
+  it.each(SIN_BILLAR.filter((r) => RUBROS.includes(r as never)))("%s: sin billar, sin Supervisión del billar", (rubro) => {
     for (const rol of ["ADMIN", "SUPERVISOR", "CAJERO"] as Plantilla[]) {
-      const todos = aplanar(menu(rol, rubro).flatMap((b) => b.nodos)).map((n) => n.item.label);
-      expect(todos).not.toContain("Supervisión");
+      const nodos = aplanar(menu(rol, rubro).flatMap((b) => b.nodos));
+      expect(nodos.map((n) => n.item.a)).not.toContain("/supervision-billar");
+      // La farmacia tiene la suya desde el 11-nov (otra ruta, abajo); en los
+      // demás rubros sin billar no hay ninguna "Supervisión".
+      if (rubro !== "FARMACIA") expect(nodos.map((n) => n.item.label)).not.toContain("Supervisión");
     }
+  });
+
+  it("FARMACIA: la Supervisión de la farmacia la ven el dueño y el encargado (caja.ver_todas), la auxiliar no", () => {
+    // 11-nov: lo que hace la auxiliar en vivo. Va en Vender como la del
+    // billar, pero es otra pantalla con otra ruta y otro permiso; la del
+    // billar no aparece en una farmacia (test de arriba).
+    for (const rol of ["ADMIN", "SUPERVISOR"] as Plantilla[]) {
+      const v = menu(rol, "FARMACIA").find((b) => b.bloque === "vender")?.nodos ?? [];
+      expect(v.map((n) => n.item.label), rol).toContain("Supervisión");
+      expect(v.find((n) => n.item.label === "Supervisión")?.item.a).toBe("/supervision");
+    }
+    expect(vender(menu("CAJERO", "FARMACIA"))).not.toContain("Supervisión");
   });
 
   it("el encargado (billar.admin) también la ve, sin pedir caja", () => {

@@ -11,6 +11,7 @@ import {
   avisaSinCosto,
   documentoVentasGanancia,
   NOTAS_GANANCIA_TURNO,
+  notasFiadoDelTurno,
   textoSinCosto,
   veGananciaDelTurno,
 } from "./vistas/VentasGanancia.datos";
@@ -78,6 +79,9 @@ function GananciaDelTurno({
 
   const conVentas = datos != null && datos.productos > 0;
   const avisa = conVentas && avisaSinCosto(rubro) && datos.ventasSinCosto > 0;
+  // Lo fiado y los cobros de fiado del turno (11-nov): lo mismo que ve la
+  // cajera en su lista, con las mismas palabras.
+  const fiado = estado.datos ? notasFiadoDelTurno(estado.datos) : [];
 
   async function exportar() {
     if (!datos || armando) return;
@@ -91,7 +95,7 @@ function GananciaDelTurno({
           negocio: negocio?.nombre,
           subtitulo,
           titulo: "Productos vendidos",
-          notas: [...(avisa ? [textoSinCosto(datos)] : []), ...NOTAS_GANANCIA_TURNO],
+          notas: [...(avisa ? [textoSinCosto(datos)] : []), ...fiado, ...NOTAS_GANANCIA_TURNO],
         }),
       );
     } catch {
@@ -127,6 +131,11 @@ function GananciaDelTurno({
           <>
             <KpisGanancia datos={datos} />
             {avisa && <Nota tono="ambar">{textoSinCosto(datos)}</Nota>}
+            {fiado.length > 0 && (
+              <Nota>
+                <p>{fiado.join(" ")}</p>
+              </Nota>
+            )}
             <TablaGanancia datos={datos} />
             <Nota>
               <p>{NOTAS_GANANCIA_TURNO.join(" ")}</p>

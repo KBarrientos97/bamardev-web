@@ -11,6 +11,8 @@ import type { Existencia, Producto } from "../../types";
 
 const sesion = vi.hoisted(() => ({
   pos: true,
+  /** `encargos.gestionar`: sin él no se ofrece anotar lo que faltó. */
+  encargos: true,
   rol: "ADMIN" as string,
   sucursalId: null as number | null,
   /** `lotes` es PRO: una farmacia BASICO no tiene Vencimientos. */
@@ -22,7 +24,8 @@ vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
   return {
     useAuth: () => ({
-      puede: (s: string) => (s === "pos" ? sesion.pos : true),
+      puede: (s: string) =>
+        s === "pos" ? sesion.pos : s === "encargos" ? sesion.encargos : true,
       incluye: (c: string) => (c === "lotes" ? sesion.lotes : true),
       usuario: {
         rol: sesion.rol,
@@ -37,6 +40,7 @@ vi.mock("../../lib/api", () => ({
   api: {
     buscarProductos: vi.fn(),
     cajaActual: vi.fn(),
+    crearEncargo: vi.fn(),
     existenciasProducto: vi.fn(),
     ubicacionesUsadas: vi.fn(async () => ["Estante 3 · fila B"]),
     fijarUbicacionProducto: vi.fn(async () => ({ ubicacion: "Vitrina 1" })),
@@ -55,8 +59,15 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+// Los equivalentes (#11): se mockea sólo la llamada, el panel es el de verdad.
+vi.mock("./buscarEquivalentes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./buscarEquivalentes")>()),
+  pedirEquivalentes: vi.fn(async () => []),
+}));
+
 import { api } from "../../lib/api";
 import BuscarMedicamento from "./BuscarMedicamento";
+import { pedirEquivalentes } from "./buscarEquivalentes";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
 
 function med(over: Partial<Producto>): Producto {
@@ -103,7 +114,7 @@ function existencia(over: Partial<Existencia>): Existencia {
 }
 
 const amoxicilina = med({ ubicacion: "Estante 3 · fila B" });
-const ranitidina = med({ id: 2, nombre: "Ranitidina 150 mg", stockTotal: 0 });
+const ranitidina = med({ id: 2, nombre: "Ranitidina 150 mg", concentracion: "150 mg", stockTotal: 0 });
 const agregar = vi.fn();
 
 async function montar() {
@@ -134,10 +145,12 @@ async function abrirFicha(nombre: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.pos = true;
+  sesion.encargos = true;
   sesion.rol = "ADMIN";
   sesion.sucursalId = null;
   sesion.lotes = true;
   vi.mocked(api.cajaActual).mockResolvedValue({ caja: null });
+  vi.mocked(api.crearEncargo).mockResolvedValue({} as never);
   vi.mocked(api.buscarProductos).mockResolvedValue({
     items: [amoxicilina, ranitidina],
     total: 2,
@@ -195,6 +208,66 @@ describe("la tabla", () => {
     await montar();
     expect(within(fila("Amoxicilina 500 mg")).getByText("Estante 3 · fila B")).toBeInTheDocument();
     expect(within(fila("Ranitidina 150 mg")).queryByText(/Estante/)).toBeNull();
+  });
+
+  it("lo que sólo tiene cajas vencidas no dice «Vencido · Vencido»", async () => {
+    // B3: en el teléfono la columna de stock y la de vencimiento decían lo
+    // mismo, pegadas. El stock contesta cuánto se vende (nada, y por qué); el
+    // punto de al lado ya dice que lo que queda está vencido.
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [med({ id: 3, nombre: "Ibuprofeno 400 mg", stockTotal: 30, stockVencido: 30, proximoVencimiento: null })],
+      total: 1,
+      limite: 20,
+      offset: 0,
+    });
+    render(
+      <MemoryRouter>
+        <BuscarMedicamento />
+      </MemoryRouter>,
+    );
+    const renglon = (await screen.findByText("Ibuprofeno 400 mg")).closest("li")!;
+    expect(renglon.textContent).not.toMatch(/Vencido\s*·\s*Vencido/);
+    expect(within(renglon).getByText("Agotado (vencido)")).toBeInTheDocument();
+    expect(renglon).toHaveTextContent("30 u. vencidas: no se venden");
+  });
+});
+
+describe("encargar lo que no hay", () => {
+  // #17: "hoy no tengo, te lo consigo" se anota desde la misma fila. Antes
+  // eran siete acciones por el menú y con el cliente esperando nadie las hacía.
+  it("un agotado ofrece Encargar; el alta abre con el medicamento puesto y avisa", async () => {
+    await montar();
+    expect(within(fila("Amoxicilina 500 mg")).queryByRole("button", { name: "Encargar" })).toBeNull();
+    await tocar(within(fila("Ranitidina 150 mg")).getByRole("button", { name: "Encargar" }));
+
+    const alta = screen.getByRole("dialog", { name: "Nuevo encargo" });
+    expect(within(alta).getByPlaceholderText(/La crema para la alergia/)).toHaveValue("Ranitidina 150 mg");
+    await tocar(within(alta).getByRole("button", { name: "Anotar" }));
+
+    expect(api.crearEncargo).toHaveBeenCalledWith(
+      expect.objectContaining({ productoId: 2, descripcion: "Ranitidina 150 mg" }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Encargo anotado")).toBeInTheDocument();
+  });
+
+  it("desde la ficha también, y la ficha se cierra para no apilar dos hojas", async () => {
+    await montar();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    await tocar(within(ficha).getByRole("button", { name: "Encargar" }));
+
+    const dialogos = screen.getAllByRole("dialog");
+    expect(dialogos).toHaveLength(1);
+    expect(dialogos[0]).toHaveAccessibleName("Nuevo encargo");
+    expect(within(dialogos[0]).getByPlaceholderText(/La crema para la alergia/)).toHaveValue("Ranitidina 150 mg");
+  });
+
+  it("quien no gestiona encargos no ve el botón: tocarlo le daría 403", async () => {
+    sesion.encargos = false;
+    await montar();
+    expect(within(fila("Ranitidina 150 mg")).queryByRole("button", { name: "Encargar" })).toBeNull();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    expect(within(ficha).queryByRole("button", { name: "Encargar" })).toBeNull();
   });
 });
 
@@ -309,5 +382,36 @@ describe("la ficha del mostrador", () => {
     await waitFor(() =>
       expect(vi.mocked(api.buscarProductos).mock.calls.length).toBeGreaterThan(pedidas),
     );
+  });
+
+  it("#11: ofrece los equivalentes con el stock de la caja; Agregar suma el otro y cierra la ficha", async () => {
+    // "No hay BAGÓ, hay INTI a Bs 0,45": la ranitidina está agotada, y el otro
+    // laboratorio se suma desde la misma ficha. Con el stock de la sucursal de
+    // la caja, como la tabla de atrás.
+    vi.mocked(api.cajaActual).mockResolvedValue({
+      caja: { almacenId: 1141, almacen: "Sucursal Equipetrol" } as never,
+    });
+    const inti = med({ id: 9, nombre: "Ranitidina INTI", laboratorio: "INTI", precio: 0.45, stockTotal: 40 });
+    vi.mocked(pedirEquivalentes).mockResolvedValue([inti]);
+    await montar();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+
+    expect(await within(ficha).findByText("Ranitidina INTI")).toBeInTheDocument();
+    expect(pedirEquivalentes).toHaveBeenCalledWith(2, 1141);
+    expect(ficha).toHaveTextContent("0,45");
+    // La agotada no tiene su propio "Agregar a la venta": el único es el del otro.
+    await tocar(within(ficha).getByRole("button", { name: "Agregar a la venta" }));
+    expect(agregar).toHaveBeenCalledWith(inti);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("#11: quien no vende ve los equivalentes, sin Agregar", async () => {
+    sesion.pos = false;
+    const inti = med({ id: 9, nombre: "Ranitidina INTI", laboratorio: "INTI", stockTotal: 40 });
+    vi.mocked(pedirEquivalentes).mockResolvedValue([inti]);
+    await montar();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    expect(await within(ficha).findByText("Ranitidina INTI")).toBeInTheDocument();
+    expect(within(ficha).queryByRole("button", { name: "Agregar a la venta" })).toBeNull();
   });
 });

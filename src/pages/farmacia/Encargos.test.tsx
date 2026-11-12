@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Producto } from "../../types";
+import type { Encargo, ListaEncargos, Producto } from "../../types";
 
 /**
  * El alta de un encargo: el artículo del catálogo se BUSCA.
@@ -8,6 +8,9 @@ import type { Producto } from "../../types";
  * Antes era un desplegable con los primeros 100 productos, y con el catálogo
  * de una farmacia de verdad (2.000 medicamentos) lo que pedían casi nunca
  * estaba ahí.
+ *
+ * Y la lista (B14, 11-nov): un corte de red no dice "no hay encargos", y mover
+ * uno no la manda entera a spinner.
  */
 
 vi.mock("../../lib/api", () => ({
@@ -15,6 +18,7 @@ vi.mock("../../lib/api", () => ({
     getEncargos: vi.fn(),
     buscarProductos: vi.fn(),
     crearEncargo: vi.fn(),
+    cambiarEstadoEncargo: vi.fn(),
   },
 }));
 
@@ -49,6 +53,7 @@ beforeEach(() => {
     offset: 0,
   });
   vi.mocked(api.crearEncargo).mockResolvedValue({} as never);
+  vi.mocked(api.cambiarEstadoEncargo).mockResolvedValue({} as never);
 });
 
 async function abrirFormulario() {
@@ -128,5 +133,93 @@ describe("el artículo del encargo", () => {
       fireEvent.click(anotar);
     });
     expect(api.crearEncargo).toHaveBeenCalledTimes(1);
+  });
+});
+
+const crema: Encargo = {
+  id: 1,
+  descripcion: "La crema del pomo azul",
+  cantidad: 1,
+  estado: "ANOTADO",
+  clienteNombre: "Doña Marta",
+  clienteTelefono: null,
+  nota: null,
+  producto: null,
+  almacen: null,
+  usuario: null,
+  creadoEn: "2026-11-10T12:00:00.000Z",
+  llegoEn: null,
+  entregadoEn: null,
+  pedidoPor: 1,
+  muyPedido: false,
+  hayStock: false,
+  diasEsperando: 1,
+};
+
+const conLaCrema: ListaEncargos = {
+  abiertos: 1,
+  anotados: 1,
+  pedidos: 0,
+  llegaron: 0,
+  entregados: 0,
+  cancelados: 0,
+  items: [crema],
+};
+
+describe("la lista", () => {
+  it("si falla la carga, dice el error con Reintentar y no que no hay encargos", async () => {
+    // B14: se pintaban el cartel rojo Y "No hay nada pendiente" a la vez, y
+    // las dos cosas juntas se leían como que no había encargos.
+    vi.mocked(api.getEncargos).mockRejectedValueOnce(new Error("Sin conexión"));
+    render(<Encargos />);
+    expect(await screen.findByText("Sin conexión")).toBeInTheDocument();
+    expect(screen.queryByText("No hay nada pendiente")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    });
+    expect(await screen.findByText("No hay nada pendiente")).toBeInTheDocument();
+    expect(screen.queryByText("Sin conexión")).toBeNull();
+  });
+
+  it("mover un encargo no manda la lista a spinner: las filas se quedan hasta que llega la nueva", async () => {
+    let soltar!: (v: ListaEncargos) => void;
+    vi.mocked(api.getEncargos)
+      .mockResolvedValueOnce(conLaCrema)
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    render(<Encargos />);
+    expect(await screen.findByText("La crema del pomo azul")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ya lo pedí" }));
+    });
+    expect(api.cambiarEstadoEncargo).toHaveBeenCalledWith(1, "PEDIDO");
+    expect(screen.getByText("La crema del pomo azul")).toBeInTheDocument();
+    expect(screen.queryByText("Cargando…")).toBeNull();
+
+    await act(async () =>
+      soltar({ ...conLaCrema, anotados: 0, pedidos: 1, items: [{ ...crema, estado: "PEDIDO" }] }),
+    );
+    expect(screen.getByText("Pedido")).toBeInTheDocument();
+  });
+
+  it("cambiar el chip no deja la lista anterior debajo del chip nuevo", async () => {
+    // Lo de "Pendientes" bajo el chip "Entregados", con sus botones de avanzar,
+    // mientras llegaba la lista buena.
+    let soltar!: (v: ListaEncargos) => void;
+    vi.mocked(api.getEncargos)
+      .mockResolvedValueOnce(conLaCrema)
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    render(<Encargos />);
+    expect(await screen.findByText("La crema del pomo azul")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Entregados" }));
+    });
+    expect(screen.queryByText("La crema del pomo azul")).toBeNull();
+    expect(screen.getByText("Cargando…")).toBeInTheDocument();
+
+    await act(async () => soltar({ ...conLaCrema, items: [] }));
+    expect(screen.getByText("Sin encargos acá")).toBeInTheDocument();
   });
 });

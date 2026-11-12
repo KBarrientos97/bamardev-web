@@ -33,6 +33,13 @@ export interface VentaFarmacia {
   recetas: ReadonlyMap<number, RecetaVenta>;
   /** Abre los datos de la receta de un renglón, para cargarlos o corregirlos. */
   pedirReceta: (p: Producto) => void;
+  /**
+   * El aviso de abajo ("agregado a la venta", "agotado"), para que una
+   * pantalla diga algo con la misma voz: el lector que no agregó nada, el
+   * encargo que se anotó. Opcional porque los tests de las pantallas arman
+   * este objeto a mano y no todos tienen algo que avisar.
+   */
+  avisar?: (texto: string) => void;
 }
 
 export const ContextoVentaFarmacia = createContext<VentaFarmacia | null>(null);

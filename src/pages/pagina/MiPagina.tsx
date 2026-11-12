@@ -65,6 +65,7 @@ import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 const MAX_DESCRIPCION = 160;
 /** El tope del backend para el nombre propio de la página (04-nov). */
 const MAX_NOMBRE_PAGINA = 80;
+const MAX_RUBRO_PAGINA = 60;
 
 const mensaje = (e: unknown, defecto = "No se pudo guardar") => (e instanceof Error ? e.message : defecto);
 
@@ -1199,6 +1200,18 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
                 value={ajustes.nombrePublico ?? ""}
                 onChange={(ev) => cambiar({ nombrePublico: ev.target.value || null })}
                 placeholder={e.negocio.nombre}
+              />
+            </Campo>
+            <Campo
+              label="Texto del rubro"
+              hint={`Vacío = «${e.negocio.rubroNombre ?? "el rubro de tu negocio"}», el rubro de tu cuenta. Sólo cambia lo que dice la página. Ej.: Postres · Arroz con leche.`}
+            >
+              <Input
+                aria-label="Texto del rubro"
+                maxLength={MAX_RUBRO_PAGINA}
+                value={ajustes.rubroPublico ?? ""}
+                onChange={(ev) => cambiar({ rubroPublico: ev.target.value || null })}
+                placeholder={e.negocio.rubroNombre ?? ""}
               />
             </Campo>
             <Campo label="Descripción corta" hint={`${(ajustes.descripcion ?? "").length} de ${MAX_DESCRIPCION} caracteres`}>

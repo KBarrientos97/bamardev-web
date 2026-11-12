@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   Almacen,
@@ -68,27 +68,31 @@ vi.mock("../../lib/api", () => ({
       activo: true,
     })),
     aprobarMovimiento: vi.fn(async () => ({})),
+    buscarProductos: vi.fn(async () => ({ items: [], total: 0, limite: 20, offset: 0 })),
   },
 }));
 
-// El buscador de verdad pega al servidor: acá alcanza con elegir el primero
-// que todavía no esté en la lista.
-vi.mock("./BuscadorArticulo", () => ({
-  default: ({
-    articulos,
-    yaElegidos,
-    onElegir,
-  }: {
-    articulos: ArticuloMovimiento[];
-    yaElegidos: number[];
-    onElegir: (a: ArticuloMovimiento, p: Producto) => void;
-  }) => {
-    const a = articulos.find((x) => !yaElegidos.includes(x.id)) ?? articulos[0];
-    return (
-      <button onClick={() => onElegir(a, { nombre: a.nombre } as Producto)}>elegir el siguiente</button>
-    );
-  },
-}));
+/**
+ * Si se usa el buscador de verdad. Casi todos los tests no lo necesitan: pega
+ * al servidor y acá alcanza con elegir el primero que todavía no esté en la
+ * lista. Los del ingreso rápido (B10) sí, porque lo que prueban es el Enter y
+ * que el diálogo siga abierto.
+ */
+const buscador = vi.hoisted(() => ({ real: false }));
+
+vi.mock("./BuscadorArticulo", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./BuscadorArticulo")>();
+  return {
+    default: (props: Parameters<typeof real.default>[0]) => {
+      if (buscador.real) return <real.default {...props} />;
+      const { articulos, yaElegidos, onElegir } = props;
+      const a = articulos.find((x) => !yaElegidos.includes(x.id)) ?? articulos[0];
+      return (
+        <button onClick={() => onElegir(a, { nombre: a.nombre } as Producto)}>elegir el siguiente</button>
+      );
+    },
+  };
+});
 
 import { api } from "../../lib/api";
 import FormMercaderia from "./FormMercaderia";
@@ -175,6 +179,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   plan.lotes = true;
   plan.dobleControl = false;
+  buscador.real = false;
   vi.mocked(api.getAlmacenes).mockResolvedValue([
     almacen(DEPOSITO, "Depósito"),
     almacen(MOSTRADOR, "Mostrador"),
@@ -928,3 +933,200 @@ describe("Guardar o aprobar", () => {
     expect(api.actualizarMovimiento).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Una factura de droguería son 30 u 80 renglones. Antes cada uno costaba siete
+ * toques: abrir el buscador, escribir, esperar, tocar el «+», y el diálogo se
+ * cerraba; más teclear lote y vencimiento aunque fueran los del renglón de
+ * arriba (B10). Y el costo se aceptaba sin mirar: un 56 donde iba 5,6 se
+ * descubría en el reporte de ganancia (#10).
+ */
+describe("Ingreso rápido (B10 y #10)", () => {
+  /** Lo que el servidor devuelve al buscar: el mismo artículo que mueve el almacén. */
+  function productoBuscado(id: number, nombre: string): Producto {
+    return {
+      id,
+      nombre,
+      descripcion: null,
+      codBarra: null,
+      tipoProducto: "ALMACENABLE",
+      precio: 12,
+      costo: 5,
+      stockMinimo: 5,
+      habilitado: true,
+      icono: null,
+      categoria: null,
+      unidadMedida: null,
+      stockTotal: 100,
+      componentes: [],
+      principioActivo: null,
+      concentracion: null,
+      formaFarmaceutica: null,
+      laboratorio: null,
+      registroSanitario: null,
+      condicionVenta: "LIBRE",
+      manejaLote: true,
+      controlado: false,
+    };
+  }
+
+  /** Abre un ingreso nuevo con el buscador DE VERDAD y lo despliega. */
+  async function abrirIngresoYBuscador() {
+    buscador.real = true;
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [productoBuscado(7, "Amoxicilina 500 mg")],
+      total: 1,
+      limite: 20,
+      offset: 0,
+    });
+    render(
+      <MemoryRouter initialEntries={["/inventario/movimientos/ingreso"]}>
+        <Routes>
+          <Route
+            path="/inventario/movimientos/ingreso"
+            element={<FormMercaderia key="ingreso" tipoInicial="ENTRADA" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // Se habilita cuando llegan la sucursal por defecto y SU lista de artículos.
+    // Primero se espera a que esa relista haya arrancado: entre que se elige la
+    // sucursal y que `useApi` marca "cargando" hay un render en que el botón ya
+    // dice "Buscar y agregar…" y está habilitado, y tocarlo ahí lo encontraba
+    // como "Cargando artículos…" al instante siguiente.
+    await waitFor(() => expect(api.getArticulosMovimiento).toHaveBeenCalledWith(DEPOSITO));
+    const abrir = await screen.findByRole("button", { name: /Buscar y agregar producto/ });
+    expect(abrir).toBeEnabled();
+    await clickEn(/Buscar y agregar producto/);
+    return screen.getByPlaceholderText(/^Buscar por nombre/);
+  }
+
+  /** Lo que hace el lector: escribe el código y manda Enter en el acto. */
+  async function escanear(campo: HTMLElement, codigo: string) {
+    await act(async () => {
+      fireEvent.change(campo, { target: { value: codigo } });
+      fireEvent.keyDown(campo, { key: "Enter" });
+    });
+  }
+
+  it("Enter con un solo resultado agrega y el buscador sigue abierto", async () => {
+    const campo = await abrirIngresoYBuscador();
+    await escanear(campo, "7501");
+
+    // El renglón entró...
+    expect(await screen.findByText("1 línea")).toBeInTheDocument();
+    // ...y el diálogo sigue ahí, limpio, con el foco y diciendo qué entró.
+    expect(screen.getByRole("dialog", { name: "Agregar producto" })).toBeInTheDocument();
+    expect(campo).toHaveValue("");
+    expect(campo).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Agregado: Amoxicilina 500 mg · 1 renglón",
+    );
+
+    // El mismo código otra vez no lo duplica: ya está en la lista, y la lista
+    // tampoco lo dejaría agregar con el «+».
+    await escanear(campo, "7501");
+    expect(screen.getByText("1 línea")).toBeInTheDocument();
+
+    await clickEn(/^Listo$/);
+    expect(screen.queryByRole("dialog", { name: "Agregar producto" })).not.toBeInTheDocument();
+  });
+
+  it("en la salida el buscador se cierra al elegir, como siempre", async () => {
+    // Ahí se dan de baja uno o dos renglones: el diálogo abierto molestaría.
+    await abrirEdicion();
+    await clickEn(/Buscar y agregar producto/);
+    await clickEn(/elegir el siguiente/);
+    expect(screen.queryByRole("button", { name: /elegir el siguiente/ })).not.toBeInTheDocument();
+  });
+
+  it("Igual que el anterior copia lote y vencimiento", async () => {
+    // Dos artículos en el almacén, para que el segundo renglón sea otro.
+    vi.mocked(api.getArticulosMovimiento).mockResolvedValue([
+      articulo(100, UBICACION[DEPOSITO]),
+      { ...articulo(40), id: 8, nombre: "Ibuprofeno 400 mg" },
+    ]);
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    // El primer renglón no tiene de dónde copiar.
+    expect(screen.queryByRole("button", { name: "Igual que el anterior" })).not.toBeInTheDocument();
+
+    await clickEn(/Buscar y agregar producto/);
+    await clickEn(/elegir el siguiente/);
+    expect(await screen.findByText("Ibuprofeno 400 mg")).toBeInTheDocument();
+
+    await clickEn(/^Igual que el anterior$/);
+    expect(screen.getAllByDisplayValue("AMX-2601")).toHaveLength(2);
+    expect(screen.getAllByDisplayValue("04/2028")).toHaveLength(2);
+    // Ya con lote, el botón se va: no pisa lo que se escribió.
+    expect(screen.queryByRole("button", { name: "Igual que el anterior" })).not.toBeInTheDocument();
+  });
+
+  it("un costo 12 % más caro que la última compra avisa", async () => {
+    // El artículo se compró a Bs 5 la última vez (`articulo().costo`).
+    await abrirEdicion();
+    const costo = screen.getByDisplayValue("5");
+
+    fireEvent.change(costo, { target: { value: "5.6" } });
+    expect(screen.getByText("Última compra Bs 5,00 (+12 %)")).toBeInTheDocument();
+
+    // Un 8 % entra en lo normal: no se dice nada.
+    fireEvent.change(costo, { target: { value: "5.4" } });
+    expect(screen.queryByText(/Última compra/)).not.toBeInTheDocument();
+
+    // Más barato también se avisa: el dedo de más va para los dos lados.
+    fireEvent.change(costo, { target: { value: "4" } });
+    expect(screen.getByText("Última compra Bs 5,00 (-20 %)")).toBeInTheDocument();
+
+    // Sólo informa: se guarda igual con el costo tecleado.
+    await clickEn(/^Guardar cambios$/);
+    expect(api.actualizarDetalleMovimiento).toHaveBeenCalledWith(
+      301,
+      expect.objectContaining({ costo: 4 }),
+    );
+  });
+});
+
+/**
+ * La precarga de Vencimientos se consume una sola vez (B8). React Router la
+ * guarda en el `history.state`, así que guardar la salida y volver con "Atrás"
+ * la volvía a aplicar: el mismo lote y la misma cantidad, listos para darse de
+ * baja dos veces.
+ */
+describe("La precarga de Vencimientos se usa una vez (B8)", () => {
+  it("después de leerla, la ruta queda sin state", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/inventario/movimientos/salida",
+            state: { productoId: 7, almacenId: MOSTRADOR, cantidad: 20, motivo: "Vencimiento" },
+          },
+        ]}
+      >
+        <Routes>
+          <Route
+            path="/inventario/movimientos/salida"
+            element={
+              <>
+                <FormMercaderia key="salida" tipoInicial="SALIDA" />
+                <EspiaDelState />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // El renglón se cargó igual: la precarga se leyó antes de borrarse.
+    expect(await screen.findByText("Amoxicilina 500 mg")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("20")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("sin state"));
+  });
+});
+
+/** Muestra qué `state` tiene la ruta en este momento. */
+function EspiaDelState() {
+  const { state } = useLocation();
+  return <span data-testid="state">{state ? "con state" : "sin state"}</span>;
+}

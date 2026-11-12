@@ -54,6 +54,12 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
   // pocos, y así vuelven con el precio de la sucursal y el stock de ahora.
   const [guardados, setGuardados] = useState<Producto[]>([]);
   const [listo, setListo] = useState(false);
+  /**
+   * La venta guardada no se pudo recuperar: ninguna consulta volvió. Se queda
+   * guardada y se ofrece reintentar (`intento` vuelve a pedirla).
+   */
+  const [sinRecuperar, setSinRecuperar] = useState(false);
+  const [intento, setIntento] = useState(0);
   useEffect(() => {
     const ids = idsGuardados("LOCAL");
     if (ids.length === 0) {
@@ -71,6 +77,19 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
       const sucursalId = caja?.caja?.almacenId ?? null;
       const r = await Promise.allSettled(ids.map((id) => api.getProducto(id, sucursalId)));
       if (!vivo) return;
+      // Si NO volvió ninguna, el servidor no está contestando (un corte de
+      // wifi en el mostrador, un F5 con el servidor caído): no es que los
+      // artículos ya no existan. Hasta el 11-nov acá se seguía igual, con la
+      // lista vacía: el carrito rehidrataba contra un catálogo vacío, guardaba
+      // `[]` en la sesión, y la cajera perdía los doce renglones que tenía
+      // cargados por un parpadeo de la red. Ahora la venta se queda guardada
+      // tal cual (`listo` no se marca, así el carrito no pisa nada) y se
+      // ofrece reintentar.
+      if (r.every((x) => x.status === "rejected")) {
+        setSinRecuperar(true);
+        return;
+      }
+      setSinRecuperar(false);
       // Lo que ya no existe (o no se pudo leer) simplemente no vuelve.
       setGuardados(r.flatMap((x) => (x.status === "fulfilled" ? [x.value] : [])));
       setListo(true);
@@ -78,7 +97,7 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [intento]);
 
   const carritoBase = useCarrito("LOCAL", guardados, listo);
   const { agregar: sumarAlCarrito, setCantidad, lineas } = carritoBase;
@@ -94,6 +113,13 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     }
   }, [recetas]);
 
+  /**
+   * La última receta cargada EN ESTA VENTA: el segundo controlado del mismo
+   * cliente suele venir en el mismo papel, y se prellena con él (sin el
+   * número, ver abajo). Se limpia cuando la venta termina.
+   */
+  const ultimaReceta = useRef<RecetaVenta | null>(null);
+
   // Un renglón que sale de la venta (o la venta que se cobró y se vació) se
   // lleva su receta: si no, el próximo cliente que compre lo mismo heredaría
   // el paciente del anterior. Se compara con los renglones de ANTES y no con
@@ -105,6 +131,13 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     const salieron = idsAntes.current.filter((id) => !ahora.has(id));
     idsAntes.current = [...ahora];
     if (salieron.length === 0) return;
+    // La venta terminó (se cobró o se vació): la receta anterior ya no sirve
+    // para prellenar nada. Hasta el 11-nov no se limpiaba nunca: se vendía
+    // Alprazolam a Juan Pérez, se cobraba, y al siguiente cliente que pedía un
+    // controlado el diálogo abría con Juan Pérez, su CI, la doctora y la
+    // matrícula; con un "Agregar" apurado el libro de psicotrópicos quedaba
+    // con el paciente equivocado (A1).
+    if (ahora.size === 0) ultimaReceta.current = null;
     setRecetas((prev) => {
       const sigue = new Map(prev);
       for (const id of salieron) sigue.delete(id);
@@ -140,8 +173,6 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     producto: Producto;
     agregando: boolean;
   } | null>(null);
-  /** La última receta cargada: suele ser el mismo papel para el siguiente. */
-  const ultimaReceta = useRef<RecetaVenta | null>(null);
 
   const sumar = useCallback(
     (p: Producto) => {
@@ -180,7 +211,13 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
       // se queda con el papel y lo asienta en el libro. Se pide al agregarlo,
       // con el papel en la mano; una unidad más del mismo renglón ya lo tiene.
       const conReceta = recetas.has(p.id) && lineas.some((l) => l.producto.id === p.id);
-      if (pideConfirmacion(p) && !conReceta) {
+      // Pero no si no hay qué vender: ahí `sumar` dice "agotado" (o "lo que
+      // queda está vencido") y no suma. Antes se pedía la receta primero y el
+      // "agotado" llegaba después de cargar paciente, médico y matrícula; con
+      // el lector (B9) un controlado sin stock llega acá y lo haría igual.
+      const ya = lineas.find((l) => l.producto.id === p.id)?.cantidad ?? 0;
+      const sinStock = controlaStock(p) && ya + 1 > paraVender(p);
+      if (pideConfirmacion(p) && !conReceta && !sinStock) {
         setPidiendoReceta({ producto: p, agregando: true });
         return;
       }
@@ -212,8 +249,8 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
   );
 
   const valor = useMemo<VentaFarmacia>(
-    () => ({ carrito, agregar, fijarCantidad, recetas, pedirReceta }),
-    [carrito, agregar, fijarCantidad, recetas, pedirReceta],
+    () => ({ carrito, agregar, fijarCantidad, recetas, pedirReceta, avisar }),
+    [carrito, agregar, fijarCantidad, recetas, pedirReceta, avisar],
   );
 
   // En el POS el carrito ya está a la vista (o su píldora, en el teléfono).
@@ -222,6 +259,27 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
   return (
     <ContextoVentaFarmacia.Provider value={valor}>
       {children}
+
+      {/* Fijo, no se va solo como el de "agregado": hasta que vuelva la
+          conexión la venta está guardada pero no se ve, y quien atiende tiene
+          que saber que no la perdió. Arriba del lugar del botón "Ver venta". */}
+      {sinRecuperar && (
+        <div
+          role="alert"
+          className="fixed inset-x-4 bottom-20 z-40 flex justify-center sm:bottom-24"
+        >
+          <p className="flex max-w-md flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-xl bg-primary-700 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg">
+            No se pudo recuperar la venta guardada (sin conexión)
+            <button
+              type="button"
+              onClick={() => setIntento((n) => n + 1)}
+              className="rounded-lg border border-white/50 px-2.5 py-1 text-xs font-bold transition-colors hover:bg-white/15"
+            >
+              Reintentar
+            </button>
+          </p>
+        </div>
+      )}
 
       {verBoton && (
         <button

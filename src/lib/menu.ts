@@ -199,6 +199,16 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "supervision_billar",
     bloque: "vender",
   },
+  // Supervisión de la farmacia (11-nov): lo mismo que la del billar, para el
+  // dueño o el encargado. Debajo del Punto de venta: es lo que se mira todos
+  // los días, y la auxiliar no lo ve (pide `caja.ver_todas`).
+  {
+    a: "/supervision",
+    label: "Supervisión",
+    icono: "ojo",
+    seccion: "supervision_farmacia",
+    bloque: "vender",
+  },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
   {
@@ -296,6 +306,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
             label: "Transferir mercadería",
             icono: "swap",
             seccion: "transferencia_mercaderia",
+          },
+          // Sólo farmacia (11-nov): contar lo que hay en el estante, lote por
+          // lote, y ajustar lo que no cuadra. Es el AJUSTE con pantalla propia.
+          {
+            a: "/inventario/movimientos/toma",
+            label: "Toma de inventario",
+            icono: "check",
+            seccion: "toma_inventario",
           },
         ],
       },
