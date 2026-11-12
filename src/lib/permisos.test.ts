@@ -624,6 +624,47 @@ describe("billar: un extra estricto", () => {
   });
 });
 
+/**
+ * La Supervisión del local (12-nov): la del restaurante y la de cualquier
+ * negocio de mostrador. Misma llave que la de la farmacia (`caja.ver_todas`),
+ * pero va en la lista negra: existe en todos lados MENOS donde ya hay otra
+ * Supervisión (farmacia, billar) o no hace falta (belleza, instituto).
+ */
+describe("la Supervisión del local", () => {
+  it("el dueño de un restaurante la ve; el cajero no", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL), "supervision_restaurante")).toBe(true);
+    expect(puedeVer(ctxDe("SUPERVISOR", "RESTAURANTE", PLAN_FULL), "supervision_restaurante")).toBe(true);
+    // El cajero ve su caja, no las de los demás: es a quien se supervisa.
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", PLAN_FULL), "supervision_restaurante")).toBe(false);
+    expect(puedeVer(ctxCon(["caja.operar", "ventas.vender", "ventas.anular"], "RESTAURANTE"), "supervision_restaurante")).toBe(false);
+  });
+
+  it("es por permiso, no por rubro: el minimarket que cobra en caja también la tiene", () => {
+    expect(puedeVer(ctxCon(["caja.ver_todas"], "MINIMARKET"), "supervision_restaurante")).toBe(true);
+    expect(puedeVer(ctxCon(["caja.ver_todas"], "RESTAURANTE"), "supervision_restaurante")).toBe(true);
+    // Sin la feature de caja en el plan no hay cajas que mirar.
+    expect(puedeVer(ctxCon(["caja.ver_todas"], "RESTAURANTE", PLAN_FULL.filter((f) => f !== "caja")), "supervision_restaurante")).toBe(false);
+  });
+
+  it("la farmacia y el billar no la ven: tienen la suya, y dos «Supervisión» en el menú confunden", () => {
+    expect(puedeVer(ctxCon(["caja.ver_todas"], "FARMACIA"), "supervision_restaurante")).toBe(false);
+    expect(puedeVer(ctxCon(["caja.ver_todas", "billar.admin"], "BILLAR", [...PLAN_FULL, "billar"]), "supervision_restaurante")).toBe(false);
+    // La de la farmacia sigue donde estaba.
+    expect(puedeVer(ctxCon(["caja.ver_todas"], "FARMACIA"), "supervision_farmacia")).toBe(true);
+  });
+
+  it("belleza y el instituto no la ven, aunque el dueño tenga la llave de las cajas", () => {
+    for (const rubro of ["PELUQUERIA", "BARBERIA", "SPA", "UNAS", "ACADEMIA"]) {
+      expect(puedeVer(ctxCon(["caja.ver_todas"], rubro), "supervision_restaurante"), rubro).toBe(false);
+    }
+  });
+
+  it("no cambia a dónde entra cada uno", () => {
+    expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
+    expect(rutaInicial(ctxDe("CAJERO", "RESTAURANTE", PLAN_FULL))).toBe("/pos");
+  });
+});
+
 describe("la entrada a Reportes (13-oct-2026: todos los reportes en un lugar)", () => {
   const SALON: Feature[] = ["pos", "caja", "catalogo", "usuarios", "reportes", "agenda", "consumo_servicio"];
   const ve = (c: ContextoPermisos) => veReportes((s) => puedeVer(c, s));

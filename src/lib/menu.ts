@@ -185,6 +185,17 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     ],
   },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
+  // Supervisión del local (12-nov): lo que hacen los cajeros, en vivo, para el
+  // dueño o el encargado. Pegada al Punto de venta, como la de la farmacia:
+  // es lo que se mira todos los días, y el cajero no la ve (pide
+  // `caja.ver_todas`). En la farmacia y el billar no existe: tienen la suya.
+  {
+    a: "/supervision-local",
+    label: "Supervisión",
+    icono: "ojo",
+    seccion: "supervision_restaurante",
+    bloque: "vender",
+  },
   // Billar (extra `billar`): al lado del POS, porque en un billar es donde se
   // vende. Las pantallas que cuelgan (consumo, cierre, ventas) lo dejan
   // encendido: no lleva `exacto`.

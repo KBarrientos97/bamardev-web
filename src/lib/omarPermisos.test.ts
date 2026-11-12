@@ -110,7 +110,10 @@ const HOY = {
   OMAR_ADMIN: {
     ruta: "/inventario",
     menu: [
-      { bloque: "vender", items: ["Punto de venta /pos"] },
+      // Desde el 12-nov, la Supervisión del local, pegada al Punto de venta:
+      // el administrador tiene `caja.ver_todas` y su plan trae `caja`. Es una
+      // pantalla más para mirar; no cambia a dónde entra ni le saca nada.
+      { bloque: "vender", items: ["Punto de venta /pos", "Supervisión /supervision-local"] },
       {
         bloque: "stock",
         items: [
@@ -166,7 +169,7 @@ const HOY = {
   COMPLETO_ADMIN: {
     ruta: "/inventario",
     menu: [
-      { bloque: "vender", items: ["Punto de venta /pos"] },
+      { bloque: "vender", items: ["Punto de venta /pos", "Supervisión /supervision-local"] },
       {
         bloque: "stock",
         items: [
@@ -223,16 +226,20 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
     // Lo único que se suma desde el 06-oct es Almacenes (15-oct, pedido de
     // Kevin), la ficha de Sucursales (02-nov, para todos los rubros) y el QR
     // de cobro (04-nov, pedido de Kevin), e Inventario y stock (09-nov, pedido
-    // de Kevin: vender sin stock; prendido, nada cambia).
+    // de Kevin: vender sin stock; prendido, nada cambia), y la Supervisión
+    // del local (12-nov: mirar a los cajeros en vivo; el cajero no la ve).
     const SUCURSALES = "Datos de las sucursales /configuracion/sucursales";
     const QR = "QR de cobro /configuracion/qr-cobro";
     const STOCK = "Inventario y stock /configuracion/inventario";
+    const SUPERVISION = "Supervisión /supervision-local";
     expect(pantallas("ADMIN", OMAR)).toEqual(
-      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR, STOCK].sort(),
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR, STOCK, SUPERVISION].sort(),
     );
     expect(pantallas("ADMIN", COMPLETO)).toEqual(
-      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR, STOCK].sort(),
+      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR, STOCK, SUPERVISION].sort(),
     );
+    // El cajero, igual que siempre: es a quien se supervisa.
+    expect(pantallas("CAJERO", OMAR)).not.toContain(SUPERVISION);
   });
 
   it("los permisos nuevos sólo le suman la pantalla de Roles, al lado de Usuarios", () => {

@@ -82,6 +82,8 @@ const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervis
 // Farmacia (11-nov): la Supervisión del administrador y la Toma de inventario.
 const SupervisionFarmacia = lazy(() => import("./pages/farmacia/supervision/Supervision"));
 const TomaInventario = lazy(() => import("./pages/farmacia/toma/TomaInventario"));
+// Supervisión del local (12-nov): la del restaurante y los negocios de mostrador.
+const SupervisionLocal = lazy(() => import("./pages/supervision/Supervision"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Tickets y despacho (extra `tickets_pedido`): sólo se bajan en un restaurante que lo tiene.
@@ -777,6 +779,18 @@ function Rutas() {
             <Protegida seccion="supervision_farmacia">
               <Suspense fallback={null}>
                 <SupervisionFarmacia />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        {/* El local (restaurante y mostrador): lo que hacen los cajeros, en vivo, y anular con PIN. Otra
+            ruta y no /supervision: la farmacia ya la usa, y un enlace guardado no tiene que cambiar de pantalla. */}
+        <Route
+          path="/supervision-local"
+          element={
+            <Protegida seccion="supervision_restaurante">
+              <Suspense fallback={null}>
+                <SupervisionLocal />
               </Suspense>
             </Protegida>
           }
