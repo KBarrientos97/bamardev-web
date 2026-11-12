@@ -135,7 +135,8 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
   return {
     subdominio: e.subdominio ?? "",
     nombre: propio ?? e.negocio.nombre,
-    rubro: e.negocio.rubroNombre ?? "",
+    // El texto propio que puso el dueño gana al nombre del rubro (igual que el backend).
+    rubro: p.rubroPublico?.trim() || e.negocio.rubroNombre || "",
     // La clave, para hablar como el rubro ("Nuestras sedes" en un instituto).
     rubroClave: e.negocio.rubro,
     iniciales: propio ? iniciales(propio) : e.negocio.iniciales,

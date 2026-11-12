@@ -305,6 +305,29 @@ describe("privacidad del cliente", () => {
   });
 });
 
+describe("texto propio del rubro (12-nov)", () => {
+  const conRubro = () => {
+    const e = editor();
+    return { ...e, negocio: { ...e.negocio, rubroNombre: "Peluquería" } };
+  };
+
+  it("sin texto propio se ve el nombre del rubro, como siempre", () => {
+    expect(vistaDesdeEditor(conRubro()).rubro).toBe("Peluquería");
+  });
+
+  it("con texto propio la vista previa lo muestra, sin tocar la clave del rubro", () => {
+    const e = conRubro();
+    const v = vistaDesdeEditor({ ...e, pagina: { ...e.pagina, rubroPublico: "  Postres · Arroz con leche " } });
+    expect(v.rubro).toBe("Postres · Arroz con leche");
+    expect(v.rubroClave).toBe("PELUQUERIA");
+  });
+
+  it("vacío o con espacios vuelve al nombre del rubro", () => {
+    const e = conRubro();
+    expect(vistaDesdeEditor({ ...e, pagina: { ...e.pagina, rubroPublico: "   " } }).rubro).toBe("Peluquería");
+  });
+});
+
 describe("nombre propio de la página (Derick, 04-nov)", () => {
   it("sin nombre propio se ve el del negocio, como siempre", () => {
     const v = vistaDesdeEditor(editor());

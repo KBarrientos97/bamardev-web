@@ -459,6 +459,11 @@ export interface AjustesPagina {
    * (Derick, 04-nov). null = el del negocio. Un backend anterior no lo manda.
    */
   nombrePublico?: string | null;
+  /**
+   * Cómo se presenta el negocio en la página, en lugar del nombre del rubro
+   * («Restaurante»). null = el del rubro. Un backend anterior no lo manda.
+   */
+  rubroPublico?: string | null;
   descripcion: string | null;
   colorClave: string;
   formaBotones: FormaBotones;
@@ -619,6 +624,7 @@ export type CambiosPagina = Partial<
     AjustesPagina,
     | "publicada"
     | "nombrePublico"
+    | "rubroPublico"
     | "descripcion"
     | "colorClave"
     | "formaBotones"
