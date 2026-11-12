@@ -1,4 +1,5 @@
 import type { jsPDF } from "jspdf";
+import { esCelular } from "../compartirTicket";
 
 /**
  * Un reporte en PDF: el título, una tabla con grupos (las categorías) y su
@@ -122,12 +123,91 @@ export function limpio(texto: string): string {
   return texto.replace(/[   ]/g, " ");
 }
 
-/** Arma el PDF y lo baja con ese nombre. jsPDF se carga recién acá: no pesa en el resto de la web. */
-export async function bajarPdf(nombreArchivo: string, doc: DocumentoPdf, marca = colorDeMarca()): Promise<void> {
+/** Arma el PDF y lo entrega (ver `entregarPdf`). jsPDF se carga recién acá: no pesa en el resto de la web. */
+export async function bajarPdf(nombreArchivo: string, doc: DocumentoPdf, marca = colorDeMarca()): Promise<EntregaPdf> {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
   dibujar(pdf, doc, marca, new Date());
-  pdf.save(nombreArchivo);
+  return entregarPdf(pdf.output("blob"), nombreArchivo);
+}
+
+/** Cómo llegó el PDF a quien lo pidió. `cancelado`: cerró el diálogo sin elegir; no es un error. */
+export type EntregaPdf = "compartido" | "guardado" | "descargado" | "cancelado";
+
+/** El diálogo "Guardar como" de Chrome y Edge (File System Access). Firefox y Safari no lo tienen. */
+type ElegirDestino = (opciones: {
+  suggestedName?: string;
+  types?: { description?: string; accept: Record<string, string[]> }[];
+}) => Promise<{ createWritable(): Promise<{ write(datos: Blob): Promise<void>; close(): Promise<void> }> }>;
+
+/**
+ * Entrega el PDF como lo espera cada equipo (Kevin, 11-nov: "en el celular
+ * debe compartir a WhatsApp como en Android; en una PC debe descargarlo donde
+ * quiera").
+ *
+ * - Celular o tablet: el diálogo de compartir del sistema, con el archivo
+ *   (ahí se elige WhatsApp y el chat). `pdf.save()` ahí bajaba el archivo a
+ *   una carpeta que nadie abre —o no hacía nada visible— y el botón parecía
+ *   roto.
+ * - Compu con "Guardar como" (Chrome, Edge): elige la carpeta y el nombre.
+ * - Si no (Firefox, Safari, o un equipo que no comparte archivos): la
+ *   descarga de siempre, a la carpeta de descargas.
+ *
+ * Se decide por el celular y no por si el navegador comparte: Chrome en
+ * Windows también comparte archivos, y en la PC abriría el diálogo de Windows
+ * en vez de guardar (lo mismo que `enviarPorWhatsapp`).
+ *
+ * El navegador sólo deja compartir o elegir carpeta desde un gesto del
+ * usuario: hay que llamarlo desde el clic, sin esperas largas en el medio.
+ */
+export async function entregarPdf(blob: Blob, nombreArchivo: string): Promise<EntregaPdf> {
+  const archivo = new File([blob], nombreArchivo, { type: "application/pdf" });
+  if (
+    esCelular() &&
+    typeof navigator.share === "function" &&
+    typeof navigator.canShare === "function" &&
+    navigator.canShare({ files: [archivo] })
+  ) {
+    try {
+      await navigator.share({ files: [archivo], title: nombreArchivo });
+      return "compartido";
+    } catch (e) {
+      if (cancelado(e)) return "cancelado";
+      // El diálogo no se pudo abrir: queda la descarga.
+    }
+  }
+  const elegir = (window as Window & { showSaveFilePicker?: ElegirDestino }).showSaveFilePicker;
+  if (typeof elegir === "function") {
+    try {
+      const destino = await elegir.call(window, {
+        suggestedName: nombreArchivo,
+        types: [{ description: "PDF", accept: { "application/pdf": [".pdf"] } }],
+      });
+      const escritura = await destino.createWritable();
+      await escritura.write(blob);
+      await escritura.close();
+      return "guardado";
+    } catch (e) {
+      if (cancelado(e)) return "cancelado";
+      // Sin permiso (un iframe, http): la descarga de siempre.
+    }
+  }
+  descargar(blob, nombreArchivo);
+  return "descargado";
+}
+
+/** Cerrar el diálogo del sistema sin elegir nada no es un error que mostrar. */
+function cancelado(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
+function descargar(blob: Blob, nombreArchivo: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** El verde (o el color) del tema del negocio; sin pantalla, el de siempre. */

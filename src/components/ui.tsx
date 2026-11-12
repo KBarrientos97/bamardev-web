@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useHojaArrastrable } from "../lib/gestos";
 import { useAltoTeclado, useCampoALaVista } from "../lib/teclado";
 import { Icon, type NombreIcono } from "./Icon";
@@ -384,7 +385,15 @@ export function Modal({
   useCampoALaVista(hoja, abierto);
 
   if (!abierto) return null;
-  return (
+  // Va al <body>, no donde se escribió (11-nov). Un modal abierto desde
+  // adentro de otro (Reportes › arqueo del turno › Productos vendidos) se
+  // dibujaba DENTRO del panel del primero: `will-change: transform` hace que
+  // ese panel sea el marco de todo `fixed` que tenga adentro, y su
+  // `overflow-hidden` lo recorta. En la compu salía angosto, sin título y con
+  // las columnas de costo cortadas; en el celular, una hoja sin cabecera
+  // (Kevin, con capturas de las dos). En el cuerpo de la página el marco es la
+  // pantalla, siempre.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
       style={teclado ? { paddingBottom: teclado } : undefined}
@@ -450,7 +459,8 @@ export function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
