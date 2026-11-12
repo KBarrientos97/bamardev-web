@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { fmtCantidad, fmtMoney } from "../../../lib/format";
+import { textoAlFiado } from "../../pos/productosVendidos";
 import { KpiR } from "../ui";
 import { enPerdida, sinCosto, textoGanancia, type CifrasGanancia, type VentasGanancia } from "./VentasGanancia.datos";
 
@@ -48,7 +49,12 @@ export function TablaGanancia({ datos }: { datos: VentasGanancia }) {
             <Grupo key={c.nombre} nombre={c.nombre} cifras={c}>
               {c.productos.map((p, i) => (
                 <tr key={`${p.nombre}-${i}`}>
-                  <td className="sticky left-0 z-10 bg-card px-4 py-2 text-texto">{p.nombre}</td>
+                  <td className="sticky left-0 z-10 bg-card px-4 py-2 text-texto">
+                    {p.nombre}
+                    {/* Cuántas salieron fiadas (el cuadro de un turno, 11-nov): en
+                        ámbar, plata que se debe, como en la lista de la cajera. */}
+                    {p.fiado ? <span className="block text-[12px] font-semibold text-amber-700">{textoAlFiado(p.fiado)}</span> : null}
+                  </td>
                   <Celdas c={p} esProducto />
                 </tr>
               ))}

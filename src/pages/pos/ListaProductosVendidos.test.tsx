@@ -201,3 +201,53 @@ describe("la lista sin categorías (lo pedido en las mesas abiertas)", () => {
     expect(screen.getByText("1 u · varios precios")).toBeInTheDocument();
   });
 });
+
+describe("11-nov: lo fiado sale el día que se fía, marcado; el cobro entra sin producto", () => {
+  const CON_FIADO: ReporteCierreProductos = {
+    unidades: 6,
+    total: 90,
+    lineas: 2,
+    categorias: [
+      {
+        nombre: "Cervezas",
+        unidades: 6,
+        total: 90,
+        items: [item(1, "Paceña 620 ml", 4, 15, { fiado: 2 }), item(2, "Huari", 2, 15)],
+      },
+    ],
+    fiado: { ventas: 1, unidades: 2, total: 30, adelantos: 0, porCobrar: 30 },
+    cobrosDeFiado: { total: 45 },
+  };
+
+  it("el producto fiado se cuenta entero y dice cuántas salieron fiadas", () => {
+    render(<ListaProductosVendidos d={CON_FIADO} />);
+    // Las 4 unidades del renglón, no sólo las 2 cobradas: salieron las 4.
+    expect(screen.getByText("4 u × Bs 15,00")).toBeInTheDocument();
+    expect(screen.getByText("2 al fiado")).toBeInTheDocument();
+    // El que no se fió no dice nada.
+    expect(screen.getAllByText(/al fiado$/)).toHaveLength(1);
+  });
+
+  it("arriba va lo fiado en ámbar con lo que quedó por cobrar, sin sacarlo del total", () => {
+    render(<ListaProductosVendidos d={CON_FIADO} />);
+    expect(screen.getByText("6 unidades · 2 productos").closest("div")).toHaveTextContent("Bs 90,00");
+    const fiado = screen.getByText("Al fiado · 2 unidades");
+    // El texto va en un span pelado adentro del que lleva el color.
+    expect(fiado.parentElement).toHaveClass("text-amber-700");
+    expect(fiado.closest("div")).toHaveTextContent("Bs 30,00");
+  });
+
+  it("explica lo que salió sin plata y la plata que entró sin producto", () => {
+    render(<ListaProductosVendidos d={CON_FIADO} />);
+    expect(screen.getByText("2 unidades en 1 venta al fiado: Bs 30,00 que no entraron al cajón.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Además entraron Bs 45,00 de cobros de fiado, sin producto: esos salieron el día que se fiaron."),
+    ).toBeInTheDocument();
+  });
+
+  it("sin fiado ni cobros (un servidor anterior, o un turno sin fiados), la lista de siempre", () => {
+    render(<ListaProductosVendidos d={RESTAURANTE} />);
+    expect(screen.queryByText(/al fiado/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cobros de fiado/)).not.toBeInTheDocument();
+  });
+});

@@ -181,7 +181,7 @@ export default function PantallaCierre({
         // cambió. Los demás rubros cierran como siempre.
         ...(esBillar(rubro) ? { esperadoVisto: esperado } : {}),
       });
-      onCerrada(cerrada);
+      onCerrada(conLoVendido(cerrada, r?.productos));
     } catch (err) {
       if ((err as ApiError | null)?.codigo === "ESPERADO_CAMBIO") {
         // Se trae el arqueo nuevo: el esperado y la diferencia de abajo pasan
@@ -378,26 +378,12 @@ export default function PantallaCierre({
                     de Kevin, 25-oct; el restaurante, 28-oct: era el pedido de
                     Omar del 1-sep y la app lo muestra sin mirar permisos). */}
                 {(puede("reportes") || (vendidoDelArqueo && r.productos != null)) && (
-                  <button
-                    type="button"
+                  <BotonProductosVendidos
+                    rubro={rubro}
+                    productos={r.productos}
+                    className="mb-2"
                     onClick={() => setViendoProductos(true)}
-                    className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
-                  >
-                    <Icon name="box" size={17} />
-                    {/* "Mostrador" es palabra de restaurante: en un salón se
-                        venden servicios (QA B-21). */}
-                    <span className="min-w-0 flex-1">
-                      {esBelleza(rubro) || esBillar(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
-                      {/* Cuánto, antes de abrirlo, como la app ("Productos
-                          vendidos · 12 productos · 40 unidades"). */}
-                      {rubro === "RESTAURANTE" && r.productos && r.productos.lineas > 0 && (
-                        <span className="block text-[12px] font-normal text-texto-3">
-                          {textoProductos(r.productos.lineas)} · {textoUnidades(r.productos.unidades)}
-                        </span>
-                      )}
-                    </span>
-                    <Icon name="chevronRight" size={16} />
-                  </button>
+                  />
                 )}
 
                 <div className="mb-2">
@@ -511,6 +497,59 @@ export default function PantallaCierre({
       )}
     </div>
   );
+}
+
+/**
+ * El botón que abre "Productos vendidos", en el cierre y en su comprobante.
+ *
+ * Se llama como el diálogo que abre, como en la app y en Reportes (Kevin,
+ * 11-nov, dudaba de "Ver qué salió del mostrador" como título). "Mostrador"
+ * además es palabra de restaurante: en un salón o un billar se venden
+ * servicios y tiempo (QA B-21), ahí sigue "Ver lo vendido". Con lo vendido ya
+ * cargado dice cuánto antes de abrirlo ("12 productos · 40 unidades"), como la
+ * app.
+ */
+function BotonProductosVendidos({
+  rubro,
+  productos,
+  className = "",
+  onClick,
+}: {
+  rubro: string | undefined;
+  productos?: ReporteCierreProductos;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted ${className}`}
+    >
+      <Icon name="box" size={17} />
+      <span className="min-w-0 flex-1">
+        {esBelleza(rubro) || esBillar(rubro) ? "Ver lo vendido" : "Productos vendidos"}
+        {rubro === "RESTAURANTE" && productos && productos.lineas > 0 && (
+          <span className="block text-[12px] font-normal text-texto-3">
+            {textoProductos(productos.lineas)} · {textoUnidades(productos.unidades)}
+          </span>
+        )}
+      </span>
+      <Icon name="chevronRight" size={16} />
+    </button>
+  );
+}
+
+/**
+ * La caja cerrada con lo vendido del turno para el comprobante (11-nov). El
+ * backend lo manda con el cierre desde ese día; contra uno anterior, va lo
+ * que el cierre ya tenía cargado en pantalla (la misma lista: con la caja
+ * tomada para cerrar no entra ninguna venta más). Sin ninguna de las dos, la
+ * caja tal cual.
+ */
+export function conLoVendido(cerrada: Caja, productos?: ReporteCierreProductos): Caja {
+  if (!cerrada.resumen || cerrada.resumen.productos || !productos) return cerrada;
+  return { ...cerrada, resumen: { ...cerrada.resumen, productos } };
 }
 
 /**
@@ -993,13 +1032,19 @@ function AvisoCitas({
  * con la que se contó. Los demás rubros ven el de siempre.
  */
 export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void }) {
-  const { rubro, usuario } = useAuth();
+  const { rubro, usuario, puede } = useAuth();
   if (rubro === "RESTAURANTE" || esBillar(rubro) || rubro === "ACADEMIA") {
     return (
       <ComprobanteCompleto
         caja={caja}
         rubro={rubro}
         cajero={usuario?.nombre?.trim() || usuario?.username}
+        // Restaurante (Kevin, 11-nov): "Caja cerrada" es lo último que ve la
+        // cajera; después de "Volver" la lista queda sólo en Reportes, que es
+        // del dueño. Con lo vendido en el comprobante lo ve cualquiera que
+        // cierre; sin eso (un servidor anterior), sólo quien tiene Reportes.
+        // Los demás rubros no cambian.
+        conLoVendido={rubro === "RESTAURANTE" && (caja.resumen?.productos != null || puede("reportes"))}
         onSalir={onSalir}
       />
     );
@@ -1022,11 +1067,14 @@ function ComprobanteCompleto({
   caja,
   rubro,
   cajero,
+  conLoVendido = false,
   onSalir,
 }: {
   caja: Caja;
   rubro: string | undefined;
   cajero: string | undefined;
+  /** Con el botón de "Productos vendidos", antes de "Volver". */
+  conLoVendido?: boolean;
   onSalir: () => void;
 }) {
   const diferencia = caja.montoDiferencia ?? 0;
@@ -1034,6 +1082,7 @@ function ComprobanteCompleto({
   // Un backend anterior no manda el arqueo con el cierre: queda lo de siempre
   // (el fondo, lo contado y la diferencia) con el turno fechado.
   const r = caja.resumen;
+  const [viendoProductos, setViendoProductos] = useState(false);
   const titulo = "mb-2 text-[12px] font-bold uppercase tracking-wide text-texto-4";
   return (
     <div className="flex min-h-full items-center justify-center p-5">
@@ -1119,10 +1168,23 @@ function ComprobanteCompleto({
           )}
         </div>
 
+        {conLoVendido && (
+          <BotonProductosVendidos
+            rubro={rubro}
+            productos={r?.productos}
+            className="mt-4"
+            onClick={() => setViendoProductos(true)}
+          />
+        )}
+
         <Boton onClick={onSalir} className="mt-5 w-full">
           Volver
         </Boton>
       </div>
+
+      {viendoProductos && (
+        <ProductosDelTurno cajaId={caja.id} productos={r?.productos} onClose={() => setViendoProductos(false)} />
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type { HojaNueva } from "../../../lib/planilla";
 import { esBelleza, esBillar } from "../../../lib/rubro";
 import type { ReporteCierreGanancia } from "../../../types";
 import type { TopProductoApi } from "../api";
+import { textoAlFiado, textoCobrosDeFiado, textoFiadoDelTurno } from "../../pos/productosVendidos";
 import { hoja } from "../contexto";
 import { plural } from "../formato";
 
@@ -37,6 +38,8 @@ export interface CifrasGanancia {
 
 export interface ProductoGanancia extends CifrasGanancia {
   nombre: string;
+  /** De `unidades`, lo que salió al fiado (sólo en el cuadro de un turno, 11-nov). */
+  fiado?: number;
 }
 
 export interface CategoriaGanancia extends CifrasGanancia {
@@ -143,6 +146,7 @@ export function armarGananciaTurno(g: ReporteCierreGanancia): VentasGanancia {
         total: i.total,
         costo: i.costo,
         ganancia: i.ganancia,
+        ...(i.fiado ? { fiado: i.fiado } : {}),
       })),
     }),
   );
@@ -174,6 +178,18 @@ export function veGananciaDelTurno(
 /** El aviso de productos sin costo: el mismo en la pantalla y en el PDF. */
 export function textoSinCosto(v: Pick<VentasGanancia, "ventasSinCosto">): string {
   return `${fmtMoney(v.ventasSinCosto)} de lo vendido es de productos sin costo cargado: su ganancia es el precio entero. Cargales el costo en Artículos para que la ganancia sea real.`;
+}
+
+/**
+ * Lo fiado y los cobros de fiado del turno, en palabras (11-nov): las mismas
+ * frases que ve la cajera en su lista, para el cuadro del dueño y su PDF.
+ * Sin fiado ni cobros, nada.
+ */
+export function notasFiadoDelTurno(g: Pick<ReporteCierreGanancia, "fiado" | "cobrosDeFiado">): string[] {
+  return [
+    ...(g.fiado && g.fiado.unidades > 0 ? [textoFiadoDelTurno(g.fiado)] : []),
+    ...(g.cobrosDeFiado && g.cobrosDeFiado.total > 0 ? [textoCobrosDeFiado(g.cobrosDeFiado.total)] : []),
+  ];
 }
 
 /** Por qué el total del turno no es lo que hay en el cajón, ni la ganancia lo que quedó. */
@@ -267,7 +283,12 @@ export function documentoVentasGanancia(
     grupos: v.categorias.map((c) => ({
       titulo: c.nombre,
       celdas: celdas(c, false),
-      filas: c.productos.map((p) => ({ nombre: p.nombre, celdas: celdas(p, true) })),
+      filas: c.productos.map((p) => ({
+        nombre: p.nombre,
+        // Lo fiado del renglón, como en el PDF de la cajera.
+        ...(p.fiado ? { detalle: textoAlFiado(p.fiado) } : {}),
+        celdas: celdas(p, true),
+      })),
     })),
     // "TOTAL" aunque dé pérdida: es el total de todas las columnas, y la
     // pérdida ya sale en rojo en la suya.
