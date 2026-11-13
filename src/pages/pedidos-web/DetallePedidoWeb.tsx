@@ -30,12 +30,15 @@ type Modo = "ver" | "aceptar" | "rechazar";
  */
 export default function DetallePedidoWeb({
   fila,
+  ahora = Date.now,
   onVolver,
   onHecho,
   onConflicto,
 }: {
   /** La fila de la bandeja: se ve de inmediato mientras llega el detalle. */
   fila: PedidoWeb;
+  /** La hora del servidor (la bandeja corrige el reloj de la PC). */
+  ahora?: () => number;
   onVolver: () => void;
   /** Se aceptó o rechazó: vuelve a la lista con este aviso. */
   onHecho: (mensaje: string) => void;
@@ -46,6 +49,8 @@ export default function DetallePedidoWeb({
   const detalle = useApi(() => apiPedidosWeb.detalle(fila.id), [fila.id]);
   const p: PedidoWeb = { ...fila, ...(detalle.datos ?? {}) };
   const [modo, setModo] = useState<Modo>("ver");
+  /** «Cambió el precio de X…»: el pedido sigue NUEVO, con los precios de hoy (PW-01). */
+  const [precioCambio, setPrecioCambio] = useState("");
   const esNuevo = p.estado === "NUEVO";
   const delivery = p.tipo === "DELIVERY";
 
@@ -70,12 +75,18 @@ export default function DetallePedidoWeb({
             Pedido N° {String(p.numero).padStart(2, "0")} · {p.nombre}
           </h1>
           <p className="text-[13px] text-texto-3">
-            {haceCuanto(p.creadoEn)}
+            {haceCuanto(p.creadoEn, ahora())}
             {p.sucursal ? ` · ${p.sucursal}` : ""}
           </p>
         </div>
         <Badge tono={delivery ? "azul" : "morado"}>{delivery ? "Delivery" : "Recoger"}</Badge>
       </div>
+
+      {precioCambio && esNuevo && (
+        <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+          {precioCambio} Los productos y el total de abajo ya tienen el precio de hoy.
+        </p>
+      )}
 
       {!esNuevo && (
         <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
@@ -172,7 +183,7 @@ export default function DetallePedidoWeb({
               </Suspense>
               {p.salioEn && (
                 <p className="text-xs text-texto-3">
-                  {p.posicion ? `La última posición del repartidor es de ${haceCuanto(p.posicion.en)}.` : "Todavía no hay posición reciente del repartidor."}
+                  {p.posicion ? `La última posición del repartidor es de ${haceCuanto(p.posicion.en, ahora())}.` : "Todavía no hay posición reciente del repartidor."}
                 </p>
               )}
               <a
@@ -194,7 +205,18 @@ export default function DetallePedidoWeb({
       )}
 
       {modo === "aceptar" && esNuevo && (
-        <FormAceptar pedido={p} onCancelar={() => setModo("ver")} onHecho={onHecho} onConflicto={onConflicto} />
+        <FormAceptar
+          pedido={p}
+          onCancelar={() => setModo("ver")}
+          onHecho={onHecho}
+          onConflicto={onConflicto}
+          onPrecioCambio={(m) => {
+            // La cajera se queda en el pedido (con el total nuevo) para avisarle al cliente y volver a aceptar.
+            setPrecioCambio(m);
+            setModo("ver");
+            detalle.recargar();
+          }}
+        />
       )}
       {modo === "rechazar" && esNuevo && (
         <FormRechazar pedido={p} onCancelar={() => setModo("ver")} onHecho={onHecho} onConflicto={onConflicto} />
@@ -247,11 +269,13 @@ function FormAceptar({
   onCancelar,
   onHecho,
   onConflicto,
+  onPrecioCambio,
 }: {
   pedido: PedidoWeb;
   onCancelar: () => void;
   onHecho: (m: string) => void;
   onConflicto: (m: string) => void;
+  onPrecioCambio: (m: string) => void;
 }) {
   const delivery = pedido.tipo === "DELIVERY";
   const caja = useVerseAlAbrir();
@@ -261,6 +285,23 @@ function FormAceptar({
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
+
+  // La venta falló por falta de stock (o plato agotado): el mensaje es el de siempre del POS.
+  const agotado = /stock insuficiente|agotado/i.test(error);
+  async function rechazarPorAgotado() {
+    setEnviando(true);
+    try {
+      await apiPedidosWeb.rechazar(pedido.id, { codigo: "AGOTADO" });
+      avisarCambio();
+      onHecho(`Rechazaste el pedido N° ${String(pedido.numero).padStart(2, "0")}: se acabó. El cliente ya lo ve.`);
+    } catch (e) {
+      avisarCambio();
+      if (esConflicto(e)) onConflicto(e.message);
+      else setError(e instanceof Error ? e.message : "No se pudo rechazar el pedido");
+    } finally {
+      setEnviando(false);
+    }
+  }
 
   const tarifa = delivery ? leerMonto(envio) : 0;
   const cambio = delivery && tarifa != null && Math.abs(tarifa - pedido.envioSugerido) > 0.004;
@@ -289,8 +330,10 @@ function FormAceptar({
       onHecho(`Aceptaste el pedido N° ${String(pedido.numero).padStart(2, "0")}.`);
     } catch (e) {
       avisarCambio();
+      // Cambió un precio desde que el cliente pidió: el pedido sigue acá, con el total nuevo.
+      if (e instanceof ApiError && e.status === 409 && e.codigo === "PRECIO_CAMBIO") onPrecioCambio(e.message);
       // «Ya lo aceptó Rosa»: se avisa en la lista, que se refresca sola.
-      if (esConflicto(e)) onConflicto(e.message);
+      else if (esConflicto(e)) onConflicto(e.message);
       else setError(e instanceof Error ? e.message : "No se pudo aceptar el pedido");
     } finally {
       setEnviando(false);
@@ -331,6 +374,12 @@ function FormAceptar({
       {!delivery && <p className="text-[13px] text-texto-3">Es para recoger: no lleva repartidor ni envío. Se arma la venta y el cliente lo retira.</p>}
       <p className="text-xs text-texto-3">Se crea la venta en tu caja abierta de esa sucursal.</p>
       <ErrorMsg>{error}</ErrorMsg>
+      {/* Sin stock no hay nada que la cajera pueda arreglar: que el cliente sepa por qué, en vez de esperar y ver «el local no respondió» (PW-25). */}
+      {agotado && (
+        <Boton variante="ghost" className="min-h-12 w-full" onClick={rechazarPorAgotado} disabled={enviando}>
+          Rechazar el pedido: se acabó
+        </Boton>
+      )}
       <div className="flex gap-2">
         <Boton variante="ghost" className="min-h-12 flex-1" onClick={onCancelar} disabled={enviando}>
           Volver

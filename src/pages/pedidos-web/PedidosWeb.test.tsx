@@ -293,6 +293,59 @@ describe("el detalle", () => {
     expect(screen.getByRole("heading", { name: "Pedidos web" })).toBeInTheDocument();
   });
 
+  it("si cambió un precio (409 PRECIO_CAMBIO) la cajera se queda en el pedido, con el aviso y el total nuevo (PW-01)", async () => {
+    const aviso = "Cambió el precio de Arroz con leche grande (de Bs 50 a Bs 55) desde que el cliente pidió: avisale antes de aceptar";
+    mock.aceptar.mockRejectedValueOnce(new ApiError(aviso, 409, { codigo: "PRECIO_CAMBIO" }));
+    await abrirLucia();
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+    const form = screen.getByRole("region", { name: "Aceptar el pedido" });
+    await elegirRepartidor(form, "21");
+    // El backend deja el pedido NUEVO con los precios de hoy: el detalle que se vuelve a pedir ya trae el total nuevo.
+    const nuevoPrecio: PedidoWeb = { ...LUCIA, subtotal: 110, total: 119, lineas: [{ titulo: "Arroz con leche grande", cantidad: 2, precio: 55, subtotal: 110 }] };
+    mock.detalle.mockImplementation(async (id) => (id === 12 ? nuevoPrecio : JORGE));
+    fireEvent.click(within(form).getByRole("button", { name: "Aceptar pedido" }));
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent(aviso);
+    // No vuelve a la lista: sigue en el pedido, sin el formulario, y con el total de hoy.
+    expect(screen.queryByRole("region", { name: "Aceptar el pedido" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Pedidos web" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Bs 119,00")).toBeInTheDocument();
+    // Avisado el cliente, vuelve a aceptar y esta vez pasa.
+    mock.aceptar.mockResolvedValue({ ...nuevoPrecio, estado: "ACEPTADO" });
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+    const otra = screen.getByRole("region", { name: "Aceptar el pedido" });
+    await elegirRepartidor(otra, "21");
+    fireEvent.click(within(otra).getByRole("button", { name: "Aceptar pedido" }));
+    expect(await screen.findByText("Aceptaste el pedido N° 07.")).toBeInTheDocument();
+  });
+
+  it("cuenta la espera con la hora del servidor, no con la de la PC (PW-17)", async () => {
+    // El servidor está 5 minutos adelante de esta PC: Lucía pidió «hace 3 min» según la PC, pero van 8.
+    mock.bandeja.mockResolvedValue(bandeja({ ahora: new Date(ahora + 5 * 60_000).toISOString() }));
+    await montar();
+    expect(await screen.findByText("hace 8 min")).toBeInTheDocument();
+    expect(screen.getByText("hace 14 min")).toBeInTheDocument();
+  });
+
+  it("una respuesta lenta que llega después de otra más nueva no la pisa (PW-17)", async () => {
+    const eventos = await import("../../lib/pedidosWeb/contador");
+    let soltarVieja: (b: Bandeja) => void = () => {};
+    mock.bandeja.mockReset();
+    mock.bandeja.mockImplementationOnce(() => new Promise<Bandeja>((r) => (soltarVieja = r)));
+    mock.bandeja.mockResolvedValue(bandeja({ nuevos: [JORGE] }));
+    await montar();
+    // Mientras la primera sigue colgada, otro pedido dispara un refresco que contesta rápido.
+    await act(async () => {
+      window.dispatchEvent(new Event(eventos.EVENTO_PEDIDOS_WEB));
+    });
+    expect(await screen.findByText(/N° 08 · Jorge/)).toBeInTheDocument();
+    await act(async () => {
+      soltarVieja(bandeja({ nuevos: [LUCIA] }));
+    });
+    expect(screen.getByText(/N° 08 · Jorge/)).toBeInTheDocument();
+    expect(screen.queryByText(/N° 07 · Lucía/)).not.toBeInTheDocument();
+  });
+
   it("sin caja abierta, el error del servidor se queda en el formulario para poder corregirlo", async () => {
     mock.aceptar.mockRejectedValue(new ApiError("Abrí la caja de Las Brisas para aceptar el pedido", 400));
     await abrirLucia();
@@ -302,6 +355,31 @@ describe("el detalle", () => {
     fireEvent.click(within(form).getByRole("button", { name: "Aceptar pedido" }));
     expect(await screen.findByText("Abrí la caja de Las Brisas para aceptar el pedido")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Aceptar el pedido" })).toBeInTheDocument();
+  });
+
+  it("si la venta falla por falta de stock, ofrece rechazar con «se acabó» para que el cliente sepa por qué (PW-25)", async () => {
+    mock.aceptar.mockRejectedValue(new ApiError("Stock insuficiente de Arroz con leche grande", 400));
+    mock.rechazar.mockResolvedValue({ ...LUCIA, estado: "RECHAZADO" });
+    await abrirLucia();
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+    const form = screen.getByRole("region", { name: "Aceptar el pedido" });
+    await elegirRepartidor(form, "21");
+    fireEvent.click(within(form).getByRole("button", { name: "Aceptar pedido" }));
+    expect(await screen.findByText("Stock insuficiente de Arroz con leche grande")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Rechazar el pedido: se acabó" }));
+    expect(await screen.findByText(/Rechazaste el pedido N° 07: se acabó/)).toBeInTheDocument();
+    expect(mock.rechazar).toHaveBeenCalledWith(12, { codigo: "AGOTADO" });
+  });
+
+  it("un error que no es de stock no ofrece rechazar por agotado", async () => {
+    mock.aceptar.mockRejectedValue(new ApiError("Abrí la caja de Las Brisas para aceptar el pedido", 400));
+    await abrirLucia();
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+    const form = screen.getByRole("region", { name: "Aceptar el pedido" });
+    await elegirRepartidor(form, "21");
+    fireEvent.click(within(form).getByRole("button", { name: "Aceptar pedido" }));
+    await screen.findByText("Abrí la caja de Las Brisas para aceptar el pedido");
+    expect(screen.queryByRole("button", { name: "Rechazar el pedido: se acabó" })).not.toBeInTheDocument();
   });
 
   it("rechazar: los atajos del contrato; «Otro motivo» pide el texto", async () => {

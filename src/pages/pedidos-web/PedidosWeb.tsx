@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Chips } from "../../components/filtros";
 import { AvisoOk, Badge, Cargando, ErrorMsg, Vacio } from "../../components/ui";
@@ -37,15 +37,28 @@ export default function PedidosWeb() {
   const [aviso, setAviso] = useState("");
   const [conflicto, setConflicto] = useState("");
 
+  // Cuánto se adelanta (o atrasa) el servidor respecto de esta PC: «hace 3 min»
+  // y el ámbar/rojo se cuentan con la hora del servidor, no con la de la PC (PW-17).
+  const [desfase, setDesfase] = useState(0);
+  const ahora = useCallback(() => Date.now() + desfase, [desfase]);
+  /** La última bandeja pedida: una respuesta lenta de la sucursal anterior no pisa la nueva (PW-17). */
+  const vuelta = useRef(0);
+
   const sucursalId = sucursales.sucursalId;
   const cargar = useCallback(async () => {
+    const n = ++vuelta.current;
     try {
-      setDatos(await apiPedidosWeb.bandeja(sucursalId));
+      const b = await apiPedidosWeb.bandeja(sucursalId);
+      if (n !== vuelta.current) return;
+      setDatos(b);
+      const delServidor = b.ahora ? Date.parse(b.ahora) : NaN;
+      if (Number.isFinite(delServidor)) setDesfase(delServidor - Date.now());
       setError("");
     } catch (e) {
+      if (n !== vuelta.current) return;
       setError(e instanceof Error ? e.message : "No se pudo cargar la bandeja");
     } finally {
-      setCargando(false);
+      if (n === vuelta.current) setCargando(false);
     }
   }, [sucursalId]);
 
@@ -68,6 +81,7 @@ export default function PedidosWeb() {
     return (
       <DetallePedidoWeb
         fila={abierto}
+        ahora={ahora}
         onVolver={() => setAbierto(null)}
         onHecho={(m) => {
           setAbierto(null);
@@ -126,6 +140,7 @@ export default function PedidosWeb() {
           pedidos={nuevos}
           vacio={{ icono: "bolsa", titulo: "No hay pedidos nuevos", texto: "Cuando un cliente pida desde tu página, lo vas a ver acá y te avisamos con un sonido." }}
           onAbrir={setAbierto}
+          ahora={ahora}
           conEspera
         />
       ) : vista === "aceptados" ? (
@@ -133,22 +148,24 @@ export default function PedidosWeb() {
           pedidos={aceptados}
           vacio={{ icono: "check", titulo: "Nada por salir", texto: "Los pedidos que aceptes aparecen acá hasta que el repartidor salga." }}
           onAbrir={setAbierto}
+          ahora={ahora}
         />
       ) : vista === "camino" ? (
         <Lista
           pedidos={enCamino}
           vacio={{ icono: "truck", titulo: "Nadie en camino", texto: "Cuando un repartidor toque «Ya salí del local», el pedido pasa acá." }}
           onAbrir={setAbierto}
+          ahora={ahora}
         />
       ) : (
         <div className="space-y-5">
           <section aria-label="Entregados hoy" className="space-y-2">
             <h2 className="text-[13px] font-bold uppercase tracking-wide text-texto-3">Entregados hoy ({entregados.length})</h2>
-            <Lista pedidos={entregados} vacio={{ icono: "check", titulo: "Todavía no entregaste ninguno hoy" }} onAbrir={setAbierto} />
+            <Lista pedidos={entregados} vacio={{ icono: "check", titulo: "Todavía no entregaste ninguno hoy" }} onAbrir={setAbierto} ahora={ahora} />
           </section>
           <section aria-label="No tomados hoy" className="space-y-2">
             <h2 className="text-[13px] font-bold uppercase tracking-wide text-texto-3">No tomados ({noTomados.length})</h2>
-            <Lista pedidos={noTomados} vacio={{ icono: "check", titulo: "Ninguno rechazado, vencido ni cancelado" }} onAbrir={setAbierto} />
+            <Lista pedidos={noTomados} vacio={{ icono: "check", titulo: "Ninguno rechazado, vencido ni cancelado" }} onAbrir={setAbierto} ahora={ahora} />
           </section>
         </div>
       )}
@@ -160,11 +177,14 @@ function Lista({
   pedidos,
   vacio,
   onAbrir,
+  ahora,
   conEspera = false,
 }: {
   pedidos: PedidoWeb[];
   vacio: { icono: "bolsa" | "check" | "truck"; titulo: string; texto?: string };
   onAbrir: (p: PedidoWeb) => void;
+  /** La hora del servidor en este momento. */
+  ahora: () => number;
   /** En «Nuevos», cuánto lleva esperando el cliente (a los 10 minutos vence). */
   conEspera?: boolean;
 }) {
@@ -178,7 +198,7 @@ function Lista({
   return (
     <ul className="space-y-2.5">
       {pedidos.map((p) => {
-        const min = minutosEsperando(p.creadoEn);
+        const min = minutosEsperando(p.creadoEn, ahora());
         const urgencia = conEspera ? (min >= MIN_ROJO ? "rojo" : min >= MIN_AMBAR ? "amarillo" : "gris") : "gris";
         return (
           <li key={p.id}>
@@ -201,7 +221,7 @@ function Lista({
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <Badge tono={p.tipo === "DELIVERY" ? "azul" : "morado"}>{p.tipo === "DELIVERY" ? "Delivery" : "Recoger"}</Badge>
                   <Badge tono={p.formaPago === "QR" ? "verde" : "gris"}>{p.formaPago === "QR" ? "QR" : "Efectivo"}</Badge>
-                  <Badge tono={urgencia}>{haceCuanto(p.creadoEn)}</Badge>
+                  <Badge tono={urgencia}>{haceCuanto(p.creadoEn, ahora())}</Badge>
                   {p.estado !== "NUEVO" && p.estado !== "ACEPTADO" && <Badge tono="rojo">{etiquetaNoTomado(p)}</Badge>}
                 </div>
               </div>

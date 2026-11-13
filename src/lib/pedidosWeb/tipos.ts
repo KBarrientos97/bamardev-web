@@ -108,6 +108,8 @@ export interface Seguimiento {
   formaPago: FormaPagoWeb;
   pagaCon: number | null;
   cambio: number | null;
+  /** Si la caja subió el envío y el billete ya no alcanza: cuánto falta. Un backend viejo no lo manda. */
+  faltan?: number | null;
   direccion: string | null;
   referencia: string | null;
   destino: { latitud: number; longitud: number } | null;
@@ -167,12 +169,16 @@ export interface PedidoWeb {
   /** Dónde está el repartidor (la última posición que mandó). Sólo lo trae el detalle. */
   posicion?: { latitud: number; longitud: number; en: string } | null;
   creadoEn: string;
+  /** Cuándo vence si nadie lo atiende (sólo NUEVO): la cuenta atrás sale de acá, no del reloj de la PC. */
+  venceEn?: string | null;
   aceptadoEn: string | null;
   salioEn: string | null;
 }
 
 /** `GET /pedidos-web/bandeja`. */
 export interface Bandeja {
+  /** La hora del servidor: con ella se corrige el reloj de la PC para contar la espera. */
+  ahora?: string;
   nuevos: PedidoWeb[];
   aceptados: PedidoWeb[];
   enCamino: PedidoWeb[];
