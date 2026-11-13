@@ -3,7 +3,7 @@ import { Icon } from "../../components/Icon";
 import InputMonto from "../../components/InputMonto";
 import { Badge, Boton, Cargando, ErrorMsg, Input, Select } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { enlaceWhatsApp } from "../../lib/mensajePedido";
 import { urlRuta } from "../../lib/mapa";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
@@ -138,7 +138,7 @@ export default function DetallePedidoWeb({
           </div>
           {delivery && (
             <div className="flex justify-between text-texto-2">
-              <dt>Envío sugerido{p.distanciaKm != null ? ` (${fmtNum(p.distanciaKm)} km)` : ""}</dt>
+              <dt>Envío sugerido{p.distanciaKm != null ? ` (${fmtCantidad(p.distanciaKm, 2)} km)` : ""}</dt>
               <dd>{fmtMoney(p.envioSugerido)}</dd>
             </div>
           )}
@@ -357,7 +357,7 @@ function FormRechazar({
     <section className="card space-y-3 p-4" aria-label="Rechazar el pedido">
       <h2 className="text-sm font-bold text-texto">¿Por qué lo rechazás?</h2>
       <p className="text-[13px] text-texto-3">El cliente ve el motivo en su pantalla.</p>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Motivo">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Atajos de motivo">
         {MOTIVOS_RECHAZO.map(([k, texto]) => (
           <button
             key={k}

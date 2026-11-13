@@ -1,6 +1,13 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
+import { TARIFA_POR_DEFECTO } from "../../lib/pedidosWeb/tarifa";
 import EditorPedidosRegalos from "./EditorPedidosRegalos";
+
+// La tarifa de envío se baja del servidor al prender los pedidos en el sistema.
+vi.mock("../../lib/pedidosWeb/apiPrivada", () => ({
+  apiPedidosWeb: { tarifa: vi.fn(), guardarTarifa: vi.fn() },
+}));
 import type { CambiosPagina, ConfigRegalos } from "../../lib/pagina/tipos";
 
 /** "Pedidos y gift cards" en el editor de Mi página (IDEAS/6 #1 y #6). */
@@ -21,6 +28,7 @@ function montar(over: Partial<Parameters<typeof EditorPedidosRegalos>[0]> = {}) 
     <EditorPedidosRegalos
       guardado={GUARDADO}
       pedidosGuardado={false}
+      sistemaGuardado={false}
       borrador={{}}
       cambiar={cambiar}
       negocio="Barbería El Navajazo"
@@ -83,5 +91,58 @@ describe("Pedidos y gift cards (editor)", () => {
     montar({ conGiftCards: false, conWhatsapp: false });
     expect(screen.queryByRole("checkbox", { name: /Ofrecer gift cards/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Agregá tu WhatsApp/)).toBeInTheDocument();
+  });
+
+  describe("pedidos en el sistema (13-nov)", () => {
+    beforeEach(() => {
+      vi.mocked(apiPedidosWeb.tarifa).mockResolvedValue(TARIFA_POR_DEFECTO);
+      vi.mocked(apiPedidosWeb.guardarTarifa).mockImplementation(async (t) => t);
+    });
+
+    it("con delivery y «Mis productos» se prende; manda pedidosSistema al borrador", () => {
+      const cambiar = montar({ conDelivery: true, conProductos: true });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Recibir pedidos en el sistema/ }));
+      expect(cambiar).toHaveBeenCalledWith({ pedidosSistema: true });
+    });
+
+    it("sin la feature delivery no ofrece el interruptor y explica cómo pedirlo", () => {
+      montar({ conDelivery: false, conProductos: true });
+      expect(screen.queryByRole("checkbox", { name: /Recibir pedidos en el sistema/ })).not.toBeInTheDocument();
+      expect(screen.getByText(/parte del módulo de Delivery: pedilo a BamarDev/)).toBeInTheDocument();
+    });
+
+    it("con el catálogo armado a mano no se puede prender y dice por qué", () => {
+      montar({ conDelivery: true, conProductos: false, borrador: { pedidosSistema: true } });
+      expect(screen.getByRole("checkbox", { name: /Recibir pedidos en el sistema/ })).toBeDisabled();
+      expect(screen.getByRole("checkbox", { name: /Recibir pedidos en el sistema/ })).not.toBeChecked();
+      expect(screen.getByText(/pasá tu catálogo a «Mis productos»/)).toBeInTheDocument();
+    });
+
+    it("con WhatsApp también prendido avisa que gana WhatsApp", () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true, pedidosGuardado: true });
+      expect(screen.getByText(/gana WhatsApp/)).toBeInTheDocument();
+    });
+
+    it("prendido, muestra la tarifa de envío; se edita y se guarda al toque", async () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true });
+      expect(await screen.findByLabelText("Precio fijo del primer tramo")).toHaveValue("7");
+      expect(screen.getByText(/3 km = Bs.9,00 · 5 km = Bs.13,00 · 8 km = Bs.18,00/)).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Precio fijo del primer tramo"), { target: { value: "8" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Guardar tarifa" }));
+      });
+      expect(apiPedidosWeb.guardarTarifa).toHaveBeenCalledWith({
+        tramos: [{ hastaKm: 2, base: 8 }, { hastaKm: 5, porKm: 2 }, { hastaKm: 10, porKm: 1.5 }, { hastaKm: null, porKm: 1 }],
+        maxKm: 12,
+      });
+      expect(await screen.findByText("Tarifa guardada.")).toBeInTheDocument();
+    });
+
+    it("una tarifa inválida no se manda", async () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true });
+      fireEvent.change(await screen.findByLabelText("Distancia máxima en km"), { target: { value: "80" } });
+      expect(screen.getByText(/entre 1 y 50 km/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Guardar tarifa" })).toBeDisabled();
+    });
   });
 });
