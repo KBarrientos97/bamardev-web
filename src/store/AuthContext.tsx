@@ -22,6 +22,7 @@ import { apiAcademia } from "../lib/academia/apiAcademia";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
 import { olvidarDispositivoPush, sincronizarPushSilencioso } from "../lib/push/registroPush";
 import { fijarMoneda } from "../lib/format";
+import { reiniciarContador } from "../lib/pedidosWeb/contador";
 import { aplicarTema } from "../lib/temas";
 import {
   puede as puedeCapacidad,
@@ -65,6 +66,13 @@ interface AuthValue {
    * que en un segundo va a tener su menú.
    */
   permisosListos: boolean;
+  /**
+   * false hasta que llegó (o falló) el primer `/licencia/estado` de esta
+   * sesión. Una sesión vieja guardó `negocio.pedidosWeb` de cuando se abrió; un
+   * enlace directo a «Pedidos web» no tiene que rebotar al inicio antes de que
+   * llegue el dato fresco.
+   */
+  estadoListo: boolean;
   /** ¿El plan incluye esta capacidad? Para botones dentro de una pantalla. */
   incluye: (capacidad: Capacidad) => boolean;
   /**
@@ -105,6 +113,7 @@ function leer<T>(clave: string): T | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(tokenStore.get());
+  const [estadoListo, setEstadoListo] = useState(false);
   const [usuario, setUsuario] = useState<SesionUsuario | null>(() =>
     leer<SesionUsuario>(USER_KEY),
   );
@@ -217,6 +226,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Antes de limpiar: con el JWT todavía a mano, el backend borra este
     // dispositivo para que no le lleguen avisos del usuario que se fue.
     olvidarDispositivoPush(tokenStore.get());
+    // El conteo de pedidos web es de la sesión que se va: el siguiente negocio
+    // de esta pestaña no tiene que ver el número del anterior (PW-21).
+    reiniciarContador();
     limpiarSesion();
     olvidarUsuario();
     // Vuelve al verde: el login no es de ningún negocio todavía, y quedarse
@@ -226,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsuario(null);
     setNegocio(null);
     setLicencia(null);
+    setEstadoListo(false);
     // Lo que todavía esté en vuelo es de esta sesión: no tiene que volver.
     actualizarCupo(null);
   }, [actualizarCupo]);
@@ -388,11 +401,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // El contador viaja en este mismo estado: cada 15 min y al volver a
           // la pestaña llega el del día, aunque nadie haya vendido acá.
           aplicarConsulta(turno, estado.cupo);
+          setEstadoListo(true);
         })
         // Falla abierto, igual que Android: un error de red no puede dejar al
         // cajero trabado. Si la licencia de verdad venció, el próximo request
         // que haga responde 403 y ahí sí se corta.
-        .catch(() => undefined);
+        .catch(() => {
+          if (vivo) setEstadoListo(true);
+        });
     };
 
     revisar();
@@ -493,6 +509,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       puede,
       incluye,
       permisosListos,
+      estadoListo,
       cupo,
       actualizarCupo,
       refrescarCupo,
@@ -510,6 +527,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       puede,
       incluye,
       permisosListos,
+      estadoListo,
       cupo,
       actualizarCupo,
       refrescarCupo,
