@@ -858,3 +858,43 @@ describe("BUG-admin-7: «Anular» depende del permiso, no de la feature autoriza
     expect(screen.queryByRole("button", { name: "Anular venta" })).not.toBeInTheDocument();
   });
 });
+
+describe("QA R1 N17: «Efectivo recibido» de un recoger de la página arranca con lo que dijo el cliente", () => {
+  const recojoWeb = {
+    ...venta,
+    id: 19,
+    comprobante: "T-0019",
+    tipoPedido: "RECOGER",
+    estadoEntrega: "PENDIENTE",
+    prepagado: false,
+    clienteNombre: "Beto",
+    total: 35,
+    pedidoWeb: { id: 3, numero: 42, latitud: null, longitud: null, referencia: null, formaPago: "EFECTIVO", pagaCon: 50, salioEn: null },
+  } as Venta;
+
+  async function abrir(v: Venta) {
+    sesion.features = ["pos", "caja", "recoger", "pago_qr_mixto"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([v]);
+    montarHistorial();
+    fireEvent.click(await screen.findByRole("button", { name: "Cobrar y entregar" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cobrar y entregar" });
+    await act(async () => {});
+    return dialogo;
+  }
+
+  it("con «paga con Bs 50» y un total de Bs 35, ya viene Bs 50 y el cambio calculado", async () => {
+    const dialogo = await abrir(recojoWeb);
+    expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("50,00");
+    expect(within(dialogo).getByText(/Cambio: Bs 15,00/)).toBeInTheDocument();
+  });
+
+  it("sin «paga con», o un recoger que no vino de la página, arranca vacío como siempre", async () => {
+    const dialogo = await abrir({ ...recojoWeb, pedidoWeb: { ...recojoWeb.pedidoWeb!, pagaCon: null } } as Venta);
+    expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("");
+  });
+
+  it("un recoger de la caja (sin pedido de la página) no cambia", async () => {
+    const dialogo = await abrir({ ...recojoWeb, pedidoWeb: null } as Venta);
+    expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("");
+  });
+});

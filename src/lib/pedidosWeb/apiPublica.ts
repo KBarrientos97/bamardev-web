@@ -14,11 +14,14 @@ const TIMEOUT_MS = 20_000;
 export class ErrorPedido extends Error {
   status: number;
   codigo?: string;
-  constructor(mensaje: string, status: number, codigo?: string) {
+  /** Con `ITEM_AGOTADO`: los ítems de la carta que ese local no puede servir. */
+  itemIds?: number[];
+  constructor(mensaje: string, status: number, codigo?: string, itemIds?: number[]) {
     super(mensaje);
     this.name = "ErrorPedido";
     this.status = status;
     this.codigo = codigo;
+    this.itemIds = itemIds;
   }
 }
 
@@ -78,7 +81,8 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
     if (res.status >= 500) mensaje = "Algo salió mal de nuestro lado. Probá de nuevo en un momento.";
     const codigo = typeof cuerpo.codigo === "string" ? cuerpo.codigo : undefined;
     if (codigo && TEXTO_POR_CODIGO[codigo] && res.status < 500 && res.status !== 429) mensaje = TEXTO_POR_CODIGO[codigo];
-    throw new ErrorPedido(mensaje, res.status, codigo);
+    const itemIds = Array.isArray(cuerpo.itemIds) ? cuerpo.itemIds.filter((n): n is number => typeof n === "number") : undefined;
+    throw new ErrorPedido(mensaje, res.status, codigo, itemIds);
   }
   return res.json() as Promise<T>;
 }

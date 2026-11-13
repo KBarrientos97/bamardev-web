@@ -23,6 +23,12 @@ export interface OpcionesTurnstile {
   "expired-callback"?: () => void;
   "error-callback"?: () => void;
   "timeout-callback"?: () => void;
+  /** Cloudflare va a pedir que el cliente tilde el recuadro (modo «interaction-only»). */
+  "before-interactive-callback"?: () => void;
+  /** El cliente ya tildó: Cloudflare sigue verificando. */
+  "after-interactive-callback"?: () => void;
+  /** El navegador no soporta el desafío. */
+  "unsupported-callback"?: () => void;
 }
 
 export interface ApiTurnstile {

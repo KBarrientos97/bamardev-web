@@ -26,6 +26,7 @@ import { useHayVariasSucursales, useRotuloSucursal } from "../../lib/useHayVaria
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { usePosicionRepartidor } from "../../lib/pedidosWeb/usePosicionRepartidor";
 import { useAuth } from "../../store/AuthContext";
+import { notaSinPago, recibidoSugerido } from "../../lib/pedidosWeb/cobro";
 import AccionesPedidoWeb from "./AccionesPedidoWeb";
 import type { FormaPago, Venta } from "../../types";
 import { cobradoPorQr, rendicionDelTurno } from "./rendicion";
@@ -205,6 +206,12 @@ export default function Repartidor() {
                   <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"} className="whitespace-nowrap">
                     {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
                   </Badge>
+                  {/* Se distingue de un delivery cargado en la caja: trae el pin y «Ya salí» (QA R1, N14). */}
+                  {p.pedidoWeb && (
+                    <Badge tono="azul" className="whitespace-nowrap">
+                      Pedido de la página
+                    </Badge>
+                  )}
                   <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
                 </div>
               </button>
@@ -355,6 +362,7 @@ function DetalleEntrega({
   // el pedido quedaba pendiente para siempre.
   const aCobrar = p.totalACobrar ?? 0;
   const aRegistrar = p.total ?? 0;
+  const webDelPedido = p.pedidoWeb ?? pedido.pedidoWeb ?? null;
   // Un pedido prepagado sólo se confirma: la plata ya entró a la caja.
   const soloConfirmar = pendiente && (p.prepagado || aCobrar <= 0);
 
@@ -369,7 +377,7 @@ function DetalleEntrega({
   const hrefWhatsApp = !numeroWhatsApp
     ? null
     : pendiente
-      ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p, hayVariasSucursales ? p.almacen?.nombre : null, rotuloSede), negocio?.nombre))
+      ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p, hayVariasSucursales ? p.almacen?.nombre : null, rotuloSede), negocio?.nombre, negocio))
       : `https://wa.me/${numeroWhatsApp}`;
 
   async function confirmarEntrega(pagos?: PagoEntrega[]) {
@@ -432,8 +440,9 @@ function DetalleEntrega({
           <div className="space-y-4">
             <div className="rounded-xl bg-muted p-3.5">
               <p className="text-[13px] text-texto">{p.clienteDireccion}</p>
-              {p.notaPedido && (
-                <p className="mt-1 text-[13px] italic text-texto-3">{p.notaPedido}</p>
+              {/* De la página, «Paga con…» ya lo dice el bloque de cobro de abajo (con el cambio): no se repite. */}
+              {(webDelPedido ? notaSinPago(p.notaPedido) : p.notaPedido) && (
+                <p className="mt-1 text-[13px] italic text-texto-3">{webDelPedido ? notaSinPago(p.notaPedido) : p.notaPedido}</p>
               )}
               {paraLlamar && hrefWhatsApp && (
                 <div className="mt-2.5 flex gap-2">
@@ -460,6 +469,7 @@ function DetalleEntrega({
                 ventaId={p.id}
                 direccion={p.clienteDireccion}
                 web={(p.pedidoWeb ?? pedido.pedidoWeb)!}
+                cobro={{ productos: p.total ?? 0, envio: p.tarifaEnvio ?? 0, aCobrar }}
                 onSalio={onSalio}
               />
             )}
@@ -509,6 +519,7 @@ function DetalleEntrega({
         <DialogoCobroEntrega
           total={aRegistrar}
           aPedirEnMano={aCobrar}
+          pagaCon={webDelPedido?.formaPago === "EFECTIVO" ? webDelPedido.pagaCon : null}
           formasPago={formasPago}
           enviando={enviando}
           onClose={() => setCobrando(false)}
@@ -533,6 +544,7 @@ function DetalleEntrega({
 function DialogoCobroEntrega({
   total,
   aPedirEnMano,
+  pagaCon,
   formasPago,
   enviando,
   onClose,
@@ -542,6 +554,8 @@ function DialogoCobroEntrega({
   total: number;
   /** Lo que el repartidor cobra en mano, con la tarifa de envío incluida. */
   aPedirEnMano: number;
+  /** Con cuánto dijo el cliente que paga (pedido de la página en efectivo): «Efectivo recibido» arranca ahí. */
+  pagaCon?: number | null;
   formasPago: FormaPago[];
   enviando: boolean;
   onClose: () => void;
@@ -556,7 +570,10 @@ function DialogoCobroEntrega({
   const permiteQr = tieneFeature(negocio?.features, "pago_qr_mixto") && !!qr;
 
   const [metodo, setMetodo] = useState<"EFECTIVO" | "QR" | "MIXTO">("EFECTIVO");
-  const [recibido, setRecibido] = useState("");
+  const [recibido, setRecibido] = useState(() => {
+    const dicho = recibidoSugerido(pagaCon, aPedirEnMano);
+    return dicho != null ? montoParaEditar(dicho) : "";
+  });
   const [montoQr, setMontoQr] = useState("");
   const [error, setError] = useState("");
   // El repartidor cobra fuera del local: es donde MÁS hace falta confirmar que

@@ -18,7 +18,7 @@ import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
 import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
 import type { CuerpoPedido, FormaPagoWeb, InfoPedidos, TipoPedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { siteKeyTurnstile } from "../../lib/turnstile";
-import Captcha from "../../publico/Captcha";
+import Captcha, { type EstadoCaptcha } from "../../publico/Captcha";
 import { FAMILIA, LineaCarrito, Trazo } from "./PedidoPagina";
 
 // MapLibre (~1 MB) se baja recién cuando el cliente abre el pedido: la página
@@ -50,7 +50,24 @@ const ATAJOS_BILLETES = [50, 100, 200];
  * 50 px. Ahí la hoja entera pasa a ser la que se desplaza, y el pie va al final
  * del formulario en vez de quedarse fijo.
  */
-export const ESTILO_PANTALLA_CORTA = `@media (max-height:520px){.hoja-pedido{overflow-y:auto!important;max-height:92dvh!important}.cuerpo-pedido{overflow:visible!important;flex:none!important}.pie-pedido{padding-bottom:12px!important}.nota-pie-pedido{display:none}}`;
+export const ESTILO_PANTALLA_CORTA = `@media (max-height:520px){.hoja-pedido{overflow-y:auto!important;max-height:92dvh!important}.cuerpo-pedido{overflow:visible!important;flex:none!important}.pie-pedido{padding-bottom:12px!important}}`;
+
+/** Dónde se corrige cada cosa que falta: a ese campo sube y se enfoca la hoja (QA R1, N5). */
+type CampoForm = "nombre" | "telefono" | "direccion" | "pin" | "otroMonto" | "captcha";
+interface Falta {
+  texto: string;
+  campo?: CampoForm;
+}
+
+/** Cuánto se espera al captcha antes de ofrecer reintentar: «Esperá un segundo» no puede ser eterno (QA R1, N1). */
+export const ESPERA_CAPTCHA_MS = 12_000;
+
+/**
+ * Un local «abierto» por horario puede no tener la caja abierta, y entonces no
+ * recibe pedidos por la página. Se dice eso y no «cerrado», que contradecía al
+ * «Abierto ahora» de la tarjeta del local (QA R1, N2).
+ */
+const TEXTO_SIN_PEDIDOS_AHORA = "No está recibiendo pedidos ahora";
 
 /** Una opción de la lista «Sale desde» / «¿Dónde lo retirás?». */
 interface Fila {
@@ -116,6 +133,12 @@ export default function PanelSistema({
   const [otroMonto, setOtroMonto] = useState("");
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
+  const [estadoCaptcha, setEstadoCaptcha] = useState<EstadoCaptcha>("verificando");
+  /** Campo trampa (honeypot): una persona no lo ve ni lo llena; un bot sí. */
+  const [trampa, setTrampa] = useState("");
+  /** Lo que el backend dijo que está agotado en el local (`ITEM_AGOTADO`), hasta que se recargue la info. */
+  const [agotadosServidor, setAgotadosServidor] = useState<{ almacenId: number; ids: number[] } | null>(null);
+  const campos = useRef<Partial<Record<CampoForm, HTMLElement | null>>>({});
   const [intento, setIntento] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
@@ -135,6 +158,34 @@ export default function PanelSistema({
     cierre.current?.focus();
     return alDescansar(() => precargarMapa(pedazoPin));
   }, []);
+  useEffect(() => setAgotadosServidor(null), [info]);
+
+  // El captcha que no responde no puede dejar al cliente esperando para siempre.
+  useEffect(() => {
+    if (!siteKey || captcha || estadoCaptcha !== "verificando") return;
+    const t = window.setTimeout(() => setEstadoCaptcha("fallo"), ESPERA_CAPTCHA_MS);
+    return () => window.clearTimeout(t);
+  }, [siteKey, captcha, estadoCaptcha, vueltaCaptcha]);
+
+  /** Sube hasta ese campo y lo enfoca (la hoja es larga: el campo con error queda fuera de la pantalla). */
+  function irAlCampo(campo: CampoForm) {
+    const el = campos.current[campo];
+    if (!el) return;
+    el.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    el.focus?.({ preventScroll: true });
+  }
+
+  function alEstadoCaptcha(e: EstadoCaptcha) {
+    setEstadoCaptcha(e);
+    // Cloudflare pidió que tilde el recuadro, que está al final de la hoja: se sube hasta él.
+    if (e === "pide") irAlCampo("captcha");
+  }
+
+  function reintentarCaptcha() {
+    setCaptcha(null);
+    setEstadoCaptcha("verificando");
+    setVueltaCaptcha((v) => v + 1);
+  }
 
   const sinPedidos = avisoSinPedidos(info);
   const sucursales = useMemo(() => info?.sucursales ?? [], [info]);
@@ -152,7 +203,7 @@ export default function PanelSistema({
     if (tipoReal === "DELIVERY") {
       return evaluadas.map((e) => {
         let detalle: string;
-        if (!e.sucursal.abierta) detalle = "Cerrado ahora";
+        if (!e.sucursal.abierta) detalle = TEXTO_SIN_PEDIDOS_AHORA;
         else if (!pin) detalle = "Marcá tu ubicación";
         else if (!e.conCoordenadas) detalle = "No hace delivery";
         else if (!e.dentroDeZona) detalle = "Queda lejos de tu dirección";
@@ -162,7 +213,7 @@ export default function PanelSistema({
     }
     return [...evaluadas]
       .sort((a, b) => a.indice - b.indice)
-      .map((e) => ({ e, puede: e.sucursal.abierta, detalle: e.sucursal.abierta ? "" : "Cerrado ahora" }));
+      .map((e) => ({ e, puede: e.sucursal.abierta, detalle: e.sucursal.abierta ? (e.sucursal.direccion ?? "") : TEXTO_SIN_PEDIDOS_AHORA }));
   }, [evaluadas, tipoReal, pin]);
 
   let elegida: number | null = null;
@@ -177,6 +228,13 @@ export default function PanelSistema({
   }
   const ev = filas.find((f) => f.e.indice === elegida)?.e ?? null;
   const sucursal = ev?.sucursal ?? null;
+  // Lo que ESE local no puede servir hoy: lo que dice la info y lo que acaba de decir el backend.
+  const agotados = useMemo(() => {
+    const ids = new Set(sucursal?.agotados ?? []);
+    if (agotadosServidor && sucursal && agotadosServidor.almacenId === sucursal.id) agotadosServidor.ids.forEach((i) => ids.add(i));
+    return ids;
+  }, [sucursal, agotadosServidor]);
+  const lineasAgotadas = lineas.filter((l) => agotados.has(l.id));
 
   // Con otro local elegido, las líneas toman SUS precios (y se van las que ahí no se ofrecen).
   const antes = useRef(lineas.length);
@@ -223,27 +281,48 @@ export default function PanelSistema({
   const tel = telefonoDe8(telefono);
   const montoOtro = Number(otroMonto.replace(",", "."));
   const pagaConFinal = formaPago === "EFECTIVO" ? (otroMonto.trim() ? montoOtro : pagaCon) : null;
-  const faltas: string[] = [];
-  if (!lineas.length) faltas.push("Sumá algo a tu pedido.");
-  if (nombre.trim().length < 2) faltas.push("Escribí tu nombre.");
-  if (!tel) faltas.push("Escribí tu WhatsApp de 8 dígitos (empieza con 6 o 7).");
+  const faltas: Falta[] = [];
+  if (!lineas.length) faltas.push({ texto: "Sumá algo a tu pedido." });
+  if (lineasAgotadas.length && sucursal) {
+    const nombres = lineasAgotadas.map((l) => `«${l.titulo}»`).join(", ");
+    faltas.push({
+      texto: `${nombres} ${lineasAgotadas.length === 1 ? "está agotado" : "están agotados"} en ${sucursal.nombre}. Sacalo del pedido${sucursales.length > 1 ? " o elegí otro local" : ""}.`,
+    });
+  }
+  if (nombre.trim().length < 2) faltas.push({ texto: "Escribí tu nombre completo (mínimo 2 letras).", campo: "nombre" });
+  if (!tel) faltas.push({ texto: "Escribí tu WhatsApp de 8 dígitos (empieza con 6 o 7).", campo: "telefono" });
   if (tipoReal === "DELIVERY") {
-    if (direccion.trim().length < 5) faltas.push("Escribí tu dirección.");
-    if (!pin) faltas.push("Marcá en el mapa dónde te lo llevamos.");
-    else if (pinSinAjustar) faltas.push("Tu ubicación es poco precisa: movela en el mapa hasta tu puerta.");
-    else if (!sucursal) faltas.push(motivoSinCobertura(punto, sucursales) ?? "Ningún local llega a esa dirección ahora.");
+    if (direccion.trim().length < 5) faltas.push({ texto: "Escribí tu dirección.", campo: "direccion" });
+    if (!pin) faltas.push({ texto: "Marcá en el mapa dónde te lo llevamos.", campo: "pin" });
+    else if (pinSinAjustar) faltas.push({ texto: "Tu ubicación es poco precisa: movela en el mapa hasta tu puerta.", campo: "pin" });
+    else if (!sucursal) faltas.push({ texto: motivoSinCobertura(punto, sucursales) ?? "Ningún local llega a esa dirección ahora.", campo: "pin" });
   } else if (!sucursal) {
-    faltas.push("Elegí un local abierto.");
+    faltas.push({ texto: "Elegí un local abierto." });
   }
   if (pagaConFinal != null && (!Number.isFinite(pagaConFinal) || pagaConFinal < total)) {
-    faltas.push(`Con ese monto no alcanza: tu pedido suma ${formatoPrecio(total)}.`);
+    faltas.push({ texto: `Con ese monto no alcanza: tu pedido suma ${formatoPrecio(total)}.`, campo: "otroMonto" });
   }
-  if (siteKey && !captcha) faltas.push("Esperá un segundo: estamos verificando que no sos un robot.");
+  if (siteKey && !captcha) {
+    faltas.push({
+      texto:
+        estadoCaptcha === "pide"
+          ? "Tildá el recuadro de verificación (está al final de esta hoja)."
+          : estadoCaptcha === "fallo"
+            ? "No pudimos verificar que no sos un robot: tocá «Reintentar la verificación»."
+            : "Esperá un segundo: estamos verificando que no sos un robot.",
+      campo: "captcha",
+    });
+  }
   const bloqueado = faltas.length > 0 || enviando || !!sinPedidos;
 
   async function hacerPedido() {
     setIntento(true);
-    if (faltas.length || enviando || sinPedidos || !sucursal || !tel) return;
+    if (faltas.length || enviando || sinPedidos || !sucursal || !tel) {
+      // Sube al primer campo con problema: en el celular queda fuera de la pantalla y parece que el botón no anda.
+      const campo = faltas.find((f) => f.campo)?.campo;
+      if (campo && !enviando) irAlCampo(campo);
+      return;
+    }
     setError("");
     setEnviando(true);
     const cuerpo: CuerpoPedido = {
@@ -266,6 +345,8 @@ export default function PanelSistema({
       ...(pagaConFinal != null ? { pagaCon: pagaConFinal } : {}),
       ...(nota.trim() ? { nota: nota.trim() } : {}),
       lineas: lineas.map((l) => ({ itemId: l.id, cantidad: l.cantidad })),
+      // Siempre vacío para una persona; el campo trampa sólo lo llena un bot.
+      ...(trampa ? { sitioWeb: trampa } : {}),
     };
     const huella = JSON.stringify({ ...cuerpo, captcha: undefined });
     if (huella !== huellaEnviada.current) requestId.current = nuevoRequestId();
@@ -283,9 +364,10 @@ export default function PanelSistema({
       setError(e instanceof Error ? e.message : "No pudimos enviar tu pedido. Probá de nuevo.");
       // El token del captcha es de un solo uso: se pide otro. El mismo
       // `clienteRequestId` se mantiene mientras el pedido no cambie: si sí había entrado, no se duplica.
-      if (siteKey) {
-        setCaptcha(null);
-        setVueltaCaptcha((v) => v + 1);
+      if (siteKey) reintentarCaptcha();
+      // Lo agotado en ese local: se marca en el carrito y se avisa cuáles son.
+      if (e instanceof ErrorPedido && e.codigo === "ITEM_AGOTADO" && e.itemIds?.length && sucursal) {
+        setAgotadosServidor({ almacenId: sucursal.id, ids: e.itemIds });
       }
       // Cerró el local o la zona cambió: que el aviso se actualice.
       if (e instanceof ErrorPedido && (e.status === 400 || e.status === 409)) onReintentarInfo();
@@ -341,6 +423,11 @@ export default function PanelSistema({
   };
   const etiqueta: CSSProperties = { fontSize: 13, fontWeight: 600, color: "#4B5563" };
   const conError = (malo: boolean): CSSProperties => ({ ...campo, borderColor: intento && malo ? "#DC2626" : "#D1D5DB" });
+  /** Con el intento hecho y el dato mal, el lector de pantalla lo anuncia como inválido (QA R1, N5). */
+  const invalido = (malo: boolean) => (intento && malo ? true : undefined);
+  const guardar = (c: CampoForm) => (el: HTMLElement | null) => {
+    campos.current[c] = el;
+  };
   const piezas = lineas.reduce((n, l) => n + l.cantidad, 0);
   const segmento = (activo: boolean, disponible = true): CSSProperties => ({
     flex: 1,
@@ -434,7 +521,7 @@ export default function PanelSistema({
 
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
             {lineas.map((l) => (
-              <LineaCarrito key={l.id} l={l} fuerte={fuerte} tinte={tinte} pedido={pedido} />
+              <LineaCarrito key={l.id} l={l} fuerte={fuerte} tinte={tinte} pedido={pedido} agotado={agotados.has(l.id) && sucursal ? `Agotado en ${sucursal.nombre}: sacalo del pedido` : undefined} />
             ))}
           </ul>
           <button
@@ -480,17 +567,17 @@ export default function PanelSistema({
 
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={etiqueta}>Tu nombre</span>
-                <input aria-label="Tu nombre" value={nombre} maxLength={60} autoComplete="name" placeholder="Para que sepan de quién es" onChange={(e) => setNombre(e.target.value)} style={conError(nombre.trim().length < 2)} />
+                <input ref={guardar("nombre")} aria-invalid={invalido(nombre.trim().length < 2)} aria-label="Tu nombre" value={nombre} maxLength={60} autoComplete="name" placeholder="Para que sepan de quién es" onChange={(e) => setNombre(e.target.value)} style={conError(nombre.trim().length < 2)} />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={etiqueta}>Tu WhatsApp</span>
-                <input aria-label="Tu WhatsApp" value={telefono} inputMode="tel" autoComplete="tel-national" maxLength={16} placeholder="71234567" onChange={(e) => setTelefono(e.target.value)} style={conError(!tel)} />
+                <input ref={guardar("telefono")} aria-invalid={invalido(!tel)} aria-label="Tu WhatsApp" value={telefono} inputMode="tel" autoComplete="tel-national" maxLength={16} placeholder="71234567" onChange={(e) => setTelefono(e.target.value)} style={conError(!tel)} />
                 <span style={{ fontSize: 12, color: "#6B7280" }}>Para avisarte si pasa algo con tu pedido.</span>
               </label>
 
               {tipoReal === "DELIVERY" && (
                 <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div ref={guardar("pin")} tabIndex={-1} aria-invalid={invalido(!pin || pinSinAjustar)} style={{ display: "flex", flexDirection: "column", gap: 8, outline: "none", ...(intento && (!pin || pinSinAjustar) ? { border: "2px solid #DC2626", borderRadius: 14, padding: 6 } : {}) }}>
                     <span style={etiqueta}>Marcá dónde te lo llevamos</span>
                     <Suspense fallback={<div style={{ height: 260, borderRadius: 14, background: "#EEF0F3" }} />}>
                       <ElegirPin valor={pin} centro={centroMapa} onCambio={alMoverPin} />
@@ -522,7 +609,7 @@ export default function PanelSistema({
                   </div>
                   <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <span style={etiqueta}>Dirección</span>
-                    <input aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={conError(direccion.trim().length < 5)} />
+                    <input ref={guardar("direccion")} aria-invalid={invalido(direccion.trim().length < 5)} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={conError(direccion.trim().length < 5)} />
                   </label>
                   <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <span style={etiqueta}>Referencia (opcional)</span>
@@ -570,7 +657,7 @@ export default function PanelSistema({
               )}
 
               <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
-                <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>¿Cómo pagás? Al recibir</legend>
+                <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>{tipoReal === "DELIVERY" ? "¿Cómo pagás? Al recibir" : "¿Cómo pagás? Al retirar"}</legend>
                 <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
                   {(["EFECTIVO", "QR"] as const).map((f) => (
                     <label key={f} className="seg-pedido" style={segmento(formaPago === f)}>
@@ -607,6 +694,8 @@ export default function PanelSistema({
                       value={otroMonto}
                       placeholder="Otro monto"
                       onChange={(e) => setOtroMonto(e.target.value.replace(/[^\d.,]/g, ""))}
+                      ref={guardar("otroMonto")}
+                      aria-invalid={otroMonto.trim() && montoOtro < total ? true : undefined}
                       style={{ ...campo, width: 130, minHeight: 44, padding: "8px 12px", borderColor: otroMonto.trim() && montoOtro < total ? "#DC2626" : "#D1D5DB" }}
                     />
                   </div>
@@ -615,13 +704,37 @@ export default function PanelSistema({
                   )}
                 </div>
               )}
-              {formaPago === "QR" && <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>Te mostramos el QR para pagar cuando recibas el pedido.</p>}
+              {formaPago === "QR" && <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>Te mostramos el QR para pagar {tipoReal === "DELIVERY" ? "cuando recibas el pedido" : "cuando lo retires"}.</p>}
 
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={etiqueta}>Nota (opcional)</span>
                 <input aria-label="Nota para el negocio" value={nota} maxLength={200} placeholder="Sin cebolla, extra crema…" onChange={(e) => setNota(e.target.value)} style={campo} />
               </label>
-              {siteKey && <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} discreto />}
+              {/* Campo trampa: invisible y fuera del Tab. Una persona no lo ve; un bot que llena todo, sí. */}
+              <div aria-hidden="true" style={{ position: "absolute", left: -9999, width: 1, height: 1, overflow: "hidden" }}>
+                <label>
+                  Sitio web
+                  <input type="text" name="sitioWeb" tabIndex={-1} autoComplete="off" value={trampa} onChange={(e) => setTrampa(e.target.value)} />
+                </label>
+              </div>
+              {siteKey && (
+                <div ref={guardar("captcha")} tabIndex={-1} style={{ display: "flex", flexDirection: "column", gap: 8, outline: "none" }}>
+                  {estadoCaptcha === "pide" && !captcha && (
+                    <p role="status" style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#92400E", background: "#FFFBEB", borderRadius: 10, padding: "8px 10px" }}>
+                      Tildá el recuadro para seguir: así sabemos que no sos un robot.
+                    </p>
+                  )}
+                  {estadoCaptcha === "fallo" && !captcha && (
+                    <div role="alert" style={{ fontSize: 14, color: "#B91C1C", fontWeight: 600, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+                      <span>No pudimos verificar que no sos un robot.</span>
+                      <button type="button" onClick={reintentarCaptcha} style={{ minHeight: 44, borderRadius: 12, border: `1.5px solid ${fuerte}`, background: "#ffffff", color: fuerte, fontWeight: 700, fontSize: 14, padding: "0 14px", cursor: "pointer", fontFamily: "inherit" }}>
+                        Reintentar la verificación
+                      </button>
+                    </div>
+                  )}
+                  <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} onEstado={alEstadoCaptcha} discreto />
+                </div>
+              )}
             </>
           )}
           <button
@@ -631,32 +744,36 @@ export default function PanelSistema({
           >
             Vaciar pedido
           </button>
+          <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
+            El local acepta tu pedido y lo seguís desde tu celular. {tipoReal === "DELIVERY" ? "Pagás al recibir." : "Pagás al retirar."}
+          </p>
         </div>
 
         <footer
           className="pie-pedido"
           style={{
             borderTop: "1px solid #E5E7EB",
-            padding: "12px 18px",
-            paddingBottom: ancho ? 16 : "calc(12px + env(safe-area-inset-bottom, 0px))",
+            padding: "8px 18px",
+            paddingBottom: ancho ? 12 : "calc(8px + env(safe-area-inset-bottom, 0px))",
             display: "flex",
             flexDirection: "column",
-            gap: 8,
+            gap: 6,
             background: "#ffffff",
           }}
         >
-          <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 2, fontSize: 14, color: "#4B5563" }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+          {/* Productos y envío en un solo renglón: el pie fijo se comía el 30 % del alto del celular (QA R1, N7). */}
+          <dl style={{ margin: 0, display: "flex", flexWrap: "wrap", columnGap: 14, rowGap: 0, fontSize: 13, color: "#4B5563" }}>
+            <div style={{ display: "flex", gap: 6 }}>
               <dt>Productos</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(subtotal)}</dd>
             </div>
             {tipoReal === "DELIVERY" && (
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", gap: 6 }}>
                 <dt>Envío</dt>
                 <dd style={{ margin: 0 }}>{envio != null ? `≈ ${formatoPrecio(envio)}` : "Marcá tu ubicación"}</dd>
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexBasis: "100%", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
               <dt>Total</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(total)}</dd>
             </div>
@@ -668,20 +785,28 @@ export default function PanelSistema({
           )}
           {intento && !error && !sinPedidos && faltas.length > 0 && (
             <p role="alert" style={{ margin: 0, fontSize: 14, color: "#B91C1C", fontWeight: 600 }}>
-              {faltas[0]}
+              {faltas[0].texto}
             </p>
+          )}
+          {/* El captcha pide algo al cliente: se le dice acá, donde mira, sin esperar a que toque el botón. */}
+          {siteKey && !captcha && info && !sinPedidos && estadoCaptcha === "pide" && (
+            <button type="button" onClick={() => irAlCampo("captcha")} style={{ border: "none", background: "transparent", color: fuerte, fontWeight: 700, fontSize: 14, textDecoration: "underline", cursor: "pointer", padding: "2px 0", fontFamily: "inherit" }}>
+              Falta tildar el recuadro de verificación
+            </button>
+          )}
+          {siteKey && !captcha && info && !sinPedidos && estadoCaptcha === "fallo" && (
+            <button type="button" onClick={reintentarCaptcha} style={{ border: "none", background: "transparent", color: "#B91C1C", fontWeight: 700, fontSize: 14, textDecoration: "underline", cursor: "pointer", padding: "2px 0", fontFamily: "inherit" }}>
+              No pudimos verificar que no sos un robot: reintentar
+            </button>
           )}
           <button
             type="button"
             aria-disabled={bloqueado}
             onClick={hacerPedido}
-            style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 54, cursor: enviando ? "wait" : "pointer", opacity: bloqueado ? 0.55 : 1, fontFamily: "inherit" }}
+            style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: enviando ? "wait" : "pointer", opacity: bloqueado ? 0.55 : 1, fontFamily: "inherit" }}
           >
             {enviando ? "Enviando tu pedido…" : "Hacer pedido"}
           </button>
-          <p className="nota-pie-pedido" style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
-            El local acepta tu pedido y lo seguís desde tu celular. Pagás al recibir.
-          </p>
         </footer>
       </section>
     </div>

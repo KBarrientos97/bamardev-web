@@ -102,7 +102,8 @@ describe("los botones del repartidor en un pedido de la página", () => {
     expect(maps).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=-17.76,-63.18");
     expect(within(detalle).getByRole("link", { name: /Abrir en Waze/ })).toHaveAttribute("href", "https://waze.com/ul?ll=-17.76,-63.18&navigate=yes");
     expect(detalle).toHaveTextContent("Portón negro");
-    expect(detalle).toHaveTextContent(/paga con efectivo \(trae Bs.200,00\)/);
+    expect(detalle).toHaveTextContent(/paga con efectivo/);
+    expect(detalle).toHaveTextContent(/Dice que paga con Bs.200,00: devolvele Bs.91,00 de cambio/);
     await act(async () => {
       fireEvent.click(within(detalle).getByRole("button", { name: /Copiar dirección/ }));
     });
@@ -212,5 +213,46 @@ describe("la tarjeta de la lista en un celular chico (sesion 2)", () => {
     // renglón con el monto, lo pisaba. Tienen que estar en renglones distintos de la tarjeta.
     const renglon = (el: HTMLElement) => Array.from(tarjeta.children).find((c) => c.contains(el));
     expect(renglon(insignia)).not.toBe(renglon(monto));
+  });
+});
+
+describe("la plata de un pedido de la página (QA R1)", () => {
+  it("dice cuánto cobrarle (productos + envío) y cuánto cambio devolver, y no repite el «Paga con» de la nota (N14)", async () => {
+    const detalle = await abrir({ ...ENTREGA_WEB, notaPedido: "sin apuro · Paga con Bs 200" } as Venta);
+    const cobro = within(detalle).getByRole("list", { name: "Cobro del pedido" });
+    expect(cobro).toHaveTextContent("Cobrale Bs 109,00: Bs 100,00 del pedido + Bs 9,00 de envío.");
+    expect(cobro).toHaveTextContent("Dice que paga con Bs 200,00: devolvele Bs 91,00 de cambio.");
+    // La nota conserva lo que escribió el cliente y pierde el «Paga con».
+    expect(within(detalle).getByText("sin apuro")).toBeInTheDocument();
+    expect(detalle.textContent).not.toMatch(/sin apuro · Paga con/);
+  });
+
+  it("una entrega que no vino de la página conserva su nota entera", async () => {
+    const detalle = await abrir({ ...SIN_WEB, notaPedido: "Paga con Bs 50" } as Venta);
+    expect(within(detalle).getByText("Paga con Bs 50")).toBeInTheDocument();
+    expect(within(detalle).queryByRole("list", { name: "Cobro del pedido" })).not.toBeInTheDocument();
+  });
+
+  it("la tarjeta de la lista dice que viene de la página; las demás no", async () => {
+    vi.mocked(api.getMisEntregas).mockResolvedValue([ENTREGA_WEB, SIN_WEB]);
+    render(<Repartidor />);
+    await act(async () => {});
+    expect(screen.getAllByText("Pedido de la página")).toHaveLength(1);
+  });
+
+  it("«Efectivo recibido» arranca con lo que dijo el cliente que paga (N17)", async () => {
+    const detalle = await abrir(ENTREGA_WEB);
+    fireEvent.click(within(detalle).getByRole("button", { name: /^Cobrar Bs/ }));
+    const cobro = await screen.findByRole("dialog", { name: "Cobrar la entrega" });
+    expect(within(cobro).getByLabelText("Efectivo recibido")).toHaveValue("200,00");
+    expect(within(cobro).getByText(/Cambio: Bs 91,00/)).toBeInTheDocument();
+  });
+
+  it("sin «paga con», o con un billete que no alcanza, «Efectivo recibido» arranca vacío como siempre", async () => {
+    const sin = { ...ENTREGA_WEB, pedidoWeb: { ...ENTREGA_WEB.pedidoWeb!, pagaCon: null } } as Venta;
+    const detalle = await abrir(sin);
+    fireEvent.click(within(detalle).getByRole("button", { name: /^Cobrar Bs/ }));
+    const cobro = await screen.findByRole("dialog", { name: "Cobrar la entrega" });
+    expect(within(cobro).getByLabelText("Efectivo recibido")).toHaveValue("");
   });
 });

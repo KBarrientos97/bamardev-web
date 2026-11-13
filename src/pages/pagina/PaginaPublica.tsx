@@ -197,6 +197,13 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   const carrito = conPedidos || conSistema;
   const infoPedidos = useInfoPedidos(subdominio, conSistema);
   const sinPedidos = conSistema ? avisoSinPedidos(infoPedidos.info) : null;
+  // Lo que el local elegido en el catálogo no puede servir hoy (agotado a mano o sin stock). La info trae las
+  // sucursales en el mismo orden que el catálogo (QA R1, N3).
+  const agotadosCarta = useMemo(() => {
+    if (!conSistema) return undefined;
+    const delLocal = infoPedidos.info?.sucursales[sucursal] ?? infoPedidos.info?.sucursales[0];
+    return delLocal?.agotados?.length ? new Set(delLocal.agotados) : undefined;
+  }, [conSistema, infoPedidos.info, sucursal]);
   const conRegalos = !!pagina?.regalos && contactos.length > 0;
   // El pedido de «Mis productos» con sucursal elegida va al WhatsApp de esa
   // sucursal o, si no tiene, al general. Sin selector, a cualquiera de los
@@ -234,6 +241,7 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
         alAgregarAlPedido={carrito ? pedido.agregar : undefined}
         lineasPedido={carrito ? pedido.lineas : undefined}
         alCambiarPedido={carrito ? pedido.cambiar : undefined}
+        agotados={agotadosCarta}
         urlTienda={urlTiendaDe(pagina.subdominio)}
         tienda={tienda ? { urlInicio: urlPaginaDe(pagina.subdominio), categoria: busqueda.get("categoria") } : undefined}
         sucursalCatalogo={sucursal}

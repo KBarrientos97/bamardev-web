@@ -15,6 +15,9 @@ type Vista = "nuevos" | "aceptados" | "camino" | "hoy";
 /** Cada cuánto se refresca la bandeja: lo mismo que el contador del menú. */
 export const REFRESCO_BANDEJA_MS = 10_000;
 
+/** Cuánto dura en pantalla el aviso de lo que se acaba de hacer (aceptar, rechazar, un conflicto). */
+export const DURACION_AVISO_MS = 8_000;
+
 /** A los 10 minutos un pedido sin respuesta vence: la tarjeta avisa antes. */
 const MIN_AMBAR = 5;
 const MIN_ROJO = 8;
@@ -43,6 +46,19 @@ export default function PedidosWeb() {
   const ahora = useCallback(() => Date.now() + desfase, [desfase]);
   /** La última bandeja pedida: una respuesta lenta de la sucursal anterior no pisa la nueva (PW-17). */
   const vuelta = useRef(0);
+
+  // «Rechazaste el pedido N° 36…» confirma lo que acaba de pasar: a los segundos sobra. Quedaba pegado
+  // encima de «Entregados hoy» mucho después (QA R1, N12). Lo mismo con «Ya lo aceptó…».
+  useEffect(() => {
+    if (!aviso) return;
+    const id = window.setTimeout(() => setAviso(""), DURACION_AVISO_MS);
+    return () => window.clearTimeout(id);
+  }, [aviso]);
+  useEffect(() => {
+    if (!conflicto) return;
+    const id = window.setTimeout(() => setConflicto(""), DURACION_AVISO_MS);
+    return () => window.clearTimeout(id);
+  }, [conflicto]);
 
   const sucursalId = sucursales.sucursalId;
   const cargar = useCallback(async () => {
@@ -121,7 +137,17 @@ export default function PedidosWeb() {
       </header>
 
       {sucursales.elegir && <Chips valor={sucursales.valorChip} opciones={sucursales.opciones} onChange={sucursales.alElegir} />}
-      <Chips envolver valor={vista} opciones={opciones} onChange={setVista} />
+      <Chips
+        envolver
+        valor={vista}
+        opciones={opciones}
+        onChange={(v) => {
+          // Cambiar de pestaña es pasar a otra cosa: el aviso de la acción anterior se va.
+          setAviso("");
+          setConflicto("");
+          setVista(v);
+        }}
+      />
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{conflicto}</ErrorMsg>

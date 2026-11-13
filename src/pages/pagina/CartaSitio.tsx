@@ -30,6 +30,8 @@ export interface PedidoCarta {
   /** Null en la vista previa del editor: el botón se ve pero no suma. */
   agregar: ((item: ItemCatalogoPublico) => void) | null;
   cambiar: ((id: number, delta: number) => void) | null;
+  /** Ese local no lo puede servir hoy (agotado): se ve «Agotado» y no se suma (pedidos al sistema). */
+  agotado?: (id: number) => boolean;
 }
 
 const ICONO_MAS = "M12 5v14M5 12h14";
@@ -719,6 +721,16 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
   const { pedido, c } = b;
   if (!pedido) return null;
   const puede = !!pedido.agregar;
+  if (!cantidad && pedido.agotado?.(it.id)) {
+    return (
+      <span
+        aria-label={`${it.titulo}: agotado`}
+        style={{ flex: "none", height: 44, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 12px", borderRadius: 12, background: "#F3F4F6", color: "#6B7280", fontWeight: 700, fontSize: 13, boxSizing: "border-box", width: forma === "ancho" ? "100%" : undefined }}
+      >
+        Agotado
+      </span>
+    );
+  }
   if (!cantidad) {
     const comun: CSSProperties = {
       ...b.lleno,

@@ -26,12 +26,19 @@ export type MotivoSinPedidos = "SIN_DELIVERY" | "APAGADO" | "CATALOGO_MANUAL";
 export interface SucursalPedido {
   id: number;
   nombre: string;
+  /** Dónde queda, para quien pasa a retirar. Un backend viejo no lo manda. */
+  direccion?: string | null;
   /** Sin coordenadas sólo admite RECOGER. */
   latitud: number | null;
   longitud: number | null;
   /** Tiene una caja abierta: si no, no recibe pedidos. */
   abierta: boolean;
   tarifa: TarifaEnvio;
+  /**
+   * Los ítems de la carta (`itemId`) que ESE local no puede servir hoy (agotado a
+   * mano o sin stock). Un backend viejo no lo manda: se lee como «ninguno».
+   */
+  agotados?: number[];
 }
 
 /** `GET /publico/pedidos/:subdominio`. */
@@ -66,6 +73,8 @@ export interface CuerpoPedido {
   pagaCon?: number;
   nota?: string;
   lineas: LineaPedidoEnvio[];
+  /** Campo trampa (honeypot): siempre vacío; un bot lo llena y el pedido «sale bien» sin crearse. */
+  sitioWeb?: string;
 }
 
 export interface RespuestaCrear {
@@ -110,6 +119,14 @@ export interface Seguimiento {
   cambio: number | null;
   /** Si la caja subió el envío y el billete ya no alcanza: cuánto falta. Un backend viejo no lo manda. */
   faltan?: number | null;
+  /** Quién canceló (sólo en CANCELADO): el cliente o el local. Un backend viejo no lo manda. */
+  canceladoPor?: "CLIENTE" | "LOCAL" | null;
+  /** Por qué canceló el local, si dejó un motivo. */
+  motivoCancelacion?: string | null;
+  /** El envío con el que el cliente hizo el pedido: si la caja lo cambió al aceptar, es distinto de `envio`. */
+  envioPedido?: number | null;
+  /** Por qué la caja cambió el envío, si lo dijo. */
+  motivoEnvio?: string | null;
   direccion: string | null;
   referencia: string | null;
   destino: { latitud: number; longitud: number } | null;

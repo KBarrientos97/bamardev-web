@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, ErrorMsg } from "../../components/ui";
-import { fmtMoney } from "../../lib/format";
 import { urlRuta } from "../../lib/mapa";
+import { frasesDeCobro } from "../../lib/pedidosWeb/cobro";
 import { urlWaze } from "../../lib/pedidosWeb/navegacion";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import type { PedidoWebDeEntrega } from "../../lib/pedidosWeb/tipos";
@@ -16,11 +16,14 @@ export default function AccionesPedidoWeb({
   ventaId,
   direccion,
   web,
+  cobro,
   onSalio,
 }: {
   ventaId: number;
   direccion: string | null;
   web: PedidoWebDeEntrega;
+  /** Los números de la venta: productos (lo que registra), envío (del repartidor) y lo que se le cobra en mano. */
+  cobro: { productos: number; envio: number; aCobrar: number };
   /** Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la posición. */
   onSalio: () => void;
 }) {
@@ -59,9 +62,14 @@ export default function AccionesPedidoWeb({
   return (
     <div className="space-y-2.5 rounded-xl border border-primary/30 bg-primary-50 p-3.5" aria-label="Pedido de la página">
       <p className="text-[13px] font-bold text-primary-700">
-        Pedido N° {String(web.numero).padStart(2, "0")} de la página · paga con{" "}
-        {web.formaPago === "QR" ? "QR" : `efectivo${web.pagaCon != null ? ` (trae ${fmtMoney(web.pagaCon)})` : ""}`}
+        Pedido N° {String(web.numero).padStart(2, "0")} de la página · paga con {web.formaPago === "QR" ? "QR" : "efectivo"}
       </p>
+      {/* El envío no entra al total de la venta: se dice cuánto cobrar, de qué se compone y el cambio (QA R1). */}
+      <ul className="space-y-0.5 text-[13px] text-texto-2" aria-label="Cobro del pedido">
+        {frasesDeCobro(web, cobro).map((f) => (
+          <li key={f}>{f}</li>
+        ))}
+      </ul>
       {web.referencia && <p className="text-[13px] text-texto-2">Referencia: {web.referencia}</p>}
       {pin && (
         <div className="flex gap-2">

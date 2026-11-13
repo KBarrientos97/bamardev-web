@@ -16,7 +16,8 @@ export function pasosDe(tipo: Seguimiento["tipo"]): { estado: EstadoSeguimiento;
       ]
     : [
         { estado: "RECIBIDO", titulo: "Recibido" },
-        { estado: "ACEPTADO", titulo: "Listo para retirar" },
+        // No hay un estado «listo»: el paso se llama como lo que sabemos (aceptado) y la frase dice qué hacer (QA R1, N16).
+        { estado: "ACEPTADO", titulo: "Aceptado" },
         { estado: "ENTREGADO", titulo: "Entregado" },
       ];
 }
@@ -28,12 +29,12 @@ export function pasoActual(s: Pick<Seguimiento, "tipo" | "estado">): number {
 }
 
 /** Una frase para el estado, la primera que lee el cliente. */
-export function fraseDe(s: Pick<Seguimiento, "tipo" | "estado">): string {
+export function fraseDe(s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "canceladoPor">>): string {
   switch (s.estado) {
     case "RECIBIDO":
       return "Recibimos tu pedido. Esperá un momento: el local lo está revisando.";
     case "ACEPTADO":
-      return s.tipo === "DELIVERY" ? "¡Aceptado! Lo estamos preparando." : "¡Aceptado! Pasá a retirarlo cuando esté listo.";
+      return s.tipo === "DELIVERY" ? "¡Aceptado! Lo estamos preparando." : "¡Aceptado! Lo estamos preparando: pasá a retirarlo en un rato.";
     case "EN_CAMINO":
       return "Tu pedido va en camino.";
     case "ENTREGADO":
@@ -43,6 +44,6 @@ export function fraseDe(s: Pick<Seguimiento, "tipo" | "estado">): string {
     case "VENCIDO":
       return "El local no respondió a tiempo.";
     case "CANCELADO":
-      return "Este pedido está cancelado.";
+      return s.canceladoPor === "LOCAL" ? "El local canceló tu pedido." : "Este pedido está cancelado.";
   }
 }
