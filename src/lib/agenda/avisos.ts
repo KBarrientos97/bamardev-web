@@ -9,20 +9,28 @@ import type { AvisoAgenda } from "./tiposAgenda";
 
 const CLAVE = "bamar.avisos.vistoHasta";
 
+/**
+ * La clave de lo "visto". Con una sucursal elegida (la organización con 2+
+ * locales) es una por local: abrir la campana de Norte no da por vistos los
+ * avisos de Central, que nadie miró. Sin sucursal queda la de siempre.
+ */
+const claveDe = (usuarioId: number, sucursalId?: number | null) =>
+  sucursalId != null ? `${CLAVE}.${usuarioId}.s${sucursalId}` : `${CLAVE}.${usuarioId}`;
+
 /** Hasta cuándo vio los avisos este usuario en este dispositivo (ISO), o null. */
-export function leerVistoHasta(usuarioId: number | undefined): string | null {
+export function leerVistoHasta(usuarioId: number | undefined, sucursalId?: number | null): string | null {
   if (usuarioId == null) return null;
   try {
-    return localStorage.getItem(`${CLAVE}.${usuarioId}`);
+    return localStorage.getItem(claveDe(usuarioId, sucursalId));
   } catch {
     return null;
   }
 }
 
-export function guardarVistoHasta(usuarioId: number | undefined, iso: string): void {
+export function guardarVistoHasta(usuarioId: number | undefined, iso: string, sucursalId?: number | null): void {
   if (usuarioId == null) return;
   try {
-    localStorage.setItem(`${CLAVE}.${usuarioId}`, iso);
+    localStorage.setItem(claveDe(usuarioId, sucursalId), iso);
   } catch {
     /* sin storage, el contador vuelve a contar desde la ventana del backend */
   }

@@ -3,6 +3,17 @@ import { fechaLarga, fechaNegocio, horaNegocio } from "./horaAgenda";
 import type { Cita } from "./tiposAgenda";
 
 /**
+ * El local que se dice de una cita: el SUYO (`cita.sucursal`), no el que se está
+ * mirando en la agenda: una cita abierta desde la campana puede ser de otro
+ * local, y el cliente recibiría el recordatorio con la dirección equivocada.
+ * `mirada` es lo que la pantalla ya muestra; si no se pasa nada, no se dice
+ * ningún local (un negocio de una sola sucursal no lo necesita).
+ */
+export function sucursalDeLaCita(cita: Pick<Cita, "sucursal">, mirada?: string | null): string | null {
+  return mirada ? (cita.sucursal ?? mirada) : null;
+}
+
+/**
  * Avisarle al cliente sin integrar nada (PLAN-AGENDA-BELLEZA §9.2): un texto
  * armado que recepción copia, comparte o manda por `wa.me`. No hay API de
  * WhatsApp ni costo: el enlace abre la app con el mensaje escrito y la persona
@@ -18,7 +29,7 @@ export function textoRecordatorio(
   const nombre = cita.cliente.nombre.trim().split(/\s+/)[0] || cita.cliente.nombre;
   const servicios = [...new Set(cita.lineas.map((l) => l.servicio))].join(", ");
   const profesionales = [...new Set(cita.lineas.map((l) => l.recurso))].join(" y ");
-  const donde = [opc.negocio, opc.sucursal].filter(Boolean).join(" · ");
+  const donde = [opc.negocio, sucursalDeLaCita(cita, opc.sucursal)].filter(Boolean).join(" · ");
 
   if (!cita.inicio) {
     return `Hola ${nombre}, ya estás en la lista de espera${donde ? ` de ${donde}` : ""}. Te avisamos cuando te toque.`;

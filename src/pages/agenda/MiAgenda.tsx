@@ -3,7 +3,7 @@ import { BotonCambiarMiPassword } from "../../components/CambiarMiPassword";
 import ChipCupo, { BarraCupo } from "../../components/ChipCupo";
 import { HojaCupoHost } from "../../components/ComprarCreditos";
 import { Icon } from "../../components/Icon";
-import { AvisoOk, Boton, Cargando, ErrorMsg, useAviso } from "../../components/ui";
+import { AvisoOk, Boton, Cargando, ErrorMsg, Modal, useAviso } from "../../components/ui";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { accionesRapidas, esTerminal } from "../../lib/agenda/estadosCita";
 import {
@@ -21,6 +21,7 @@ import type { Cita, MiAgendaRespuesta } from "../../lib/agenda/tiposAgenda";
 import { tramoDe } from "../../lib/agenda/lineasCita";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { etiquetaRol, tienePermiso } from "../../lib/permisos";
+import { useSucursales, hayVariasEntre } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import { useCupo } from "../../store/useCupo";
 import DetalleCita from "./DetalleCita";
@@ -54,6 +55,9 @@ export default function MiAgenda() {
   const [dia, setDia] = useState(hoy);
   const [abierta, setAbierta] = useState<Cita | null>(null);
   const [nueva, setNueva] = useState(false);
+  // Quien atiende en 2+ locales elige en cuál agenda cada cita (PLAN-SUCURSAL-TOTAL).
+  const [pidiendoLocal, setPidiendoLocal] = useState(false);
+  const [localElegido, setLocalElegido] = useState<number | null>(null);
   const [aviso, setAviso] = useAviso(5000);
   const lunes = lunesDe(dia);
 
@@ -80,7 +84,14 @@ export default function MiAgenda() {
   const sinTelefono = delDia.some((c) => !c.cliente.telefono);
   const etiqueta = usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : "Profesional";
   const nombre = usuario?.nombre?.trim() || usuario?.username || "";
-  const sucursalId = usuario?.sucursalId ?? recursos[0]?.sucursalIds[0] ?? null;
+  // Los locales donde atiende. Quien está atado a uno ve y agenda sólo el suyo
+  // (el backend le recorta): el pedir el local es de quien atiende en varios
+  // y no tiene sede fija.
+  const localesDelProfesional = [...new Set(recursos.flatMap((r) => r.sucursalIds))];
+  const enVariosLocales = usuario?.sucursalId == null && localesDelProfesional.length >= 2;
+  // El nombre del local en la tarjeta sólo si las citas de la semana son de 2+ locales.
+  const verLocal = hayVariasEntre(todas, (c) => c.sucursalId);
+  const sucursalId = usuario?.sucursalId ?? localElegido ?? recursos[0]?.sucursalIds[0] ?? null;
   // Si su rol le deja agendar sus citas (`agenda.crear_propias`, antes la
   // regla `profesionalPuedeAgendar` de la agenda; PLAN-ROLES-NEGOCIO). Quien
   // gestiona la agenda de todos también, que lo cubre.
@@ -107,7 +118,7 @@ export default function MiAgenda() {
             <button
               type="button"
               aria-label="Nueva cita"
-              onClick={() => setNueva(true)}
+              onClick={() => (enVariosLocales ? setPidiendoLocal(true) : setNueva(true))}
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-barra"
             >
               <Icon name="plus" size={20} />
@@ -218,6 +229,7 @@ export default function MiAgenda() {
                     onAccion={(a) => rapida.pedir(c, a)}
                     ocupado={rapida.ocupadoId === c.id}
                     mostrarRecurso={recursos.length > 1}
+                    sucursal={verLocal ? c.sucursal : null}
                     destacada={proxima?.cita.id === c.id}
                   />
                 ))}
@@ -240,18 +252,37 @@ export default function MiAgenda() {
         <DetalleCita
           cita={abierta}
           modo="profesional"
+          sucursal={verLocal ? abierta.sucursal : null}
           onClose={() => setAbierta(null)}
           onCambio={(c) => agenda.setDatos((d) => conCita(d, c))}
+        />
+      )}
+      {pidiendoLocal && (
+        <ElegirLocal
+          locales={localesDelProfesional}
+          onElegir={(id) => {
+            setLocalElegido(id);
+            setPidiendoLocal(false);
+            setNueva(true);
+          }}
+          onCerrar={() => setPidiendoLocal(false)}
         />
       )}
       {nueva && sucursalId != null && (
         <NuevaCita
           sucursalId={sucursalId}
           precarga={{ fecha: dia }}
-          soloRecursoIds={recursos.map((r) => r.id)}
-          onClose={() => setNueva(false)}
+          // Con 2+ locales, sólo las suyas de ese local (un recurso en otra sede no se agenda desde acá).
+          soloRecursoIds={(enVariosLocales ? recursos.filter((r) => r.sucursalIds.includes(sucursalId)) : recursos).map(
+            (r) => r.id,
+          )}
+          onClose={() => {
+            setNueva(false);
+            setLocalElegido(null);
+          }}
           onCreada={(c) => {
             setNueva(false);
+            setLocalElegido(null);
             agenda.setDatos((d) => conCita(d, c));
             setAviso(`Cita agendada: ${c.cliente.nombre} a las ${horaNegocio(c.inicio)}`);
           }}
@@ -262,6 +293,36 @@ export default function MiAgenda() {
           piden el chip y la nueva cita se dibuja acá. */}
       <HojaCupoHost />
     </div>
+  );
+}
+
+/**
+ * «¿En qué local?»: sólo para quien atiende en 2+ y no tiene sede fija. Pide la
+ * lista de locales recién acá (nadie más la necesita en esta pantalla).
+ */
+function ElegirLocal({
+  locales,
+  onElegir,
+  onCerrar,
+}: {
+  /** Los ids donde atiende. */
+  locales: number[];
+  onElegir: (id: number) => void;
+  onCerrar: () => void;
+}) {
+  const suc = useSucursales();
+  const mios = suc.sucursales.filter((s) => locales.includes(s.id));
+  return (
+    <Modal abierto titulo="¿En qué local?" subtitulo="Atendés en más de uno: elegí dónde se agenda la cita." onClose={onCerrar}>
+      <div className="space-y-2">
+        {mios.map((s) => (
+          <Boton key={s.id} variante="ghost" className="min-h-11 w-full justify-start" onClick={() => onElegir(s.id)}>
+            {s.nombre}
+          </Boton>
+        ))}
+        {mios.length === 0 && <Cargando />}
+      </div>
+    </Modal>
   );
 }
 

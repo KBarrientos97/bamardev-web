@@ -45,6 +45,9 @@ const ANCHO_HORAS = 48;
 /** Reemplaza (o agrega) una cita en la agenda del día y la saca de la cola si dejó de estar. */
 function conCita(d: AgendaDia | null, c: Cita): AgendaDia | null {
   if (!d) return d;
+  // Una cita abierta desde la campana puede ser de otro local: no se cuela en la
+  // grilla de éste (PLAN-SUCURSAL-TOTAL).
+  if (d.sucursalId != null && c.sucursalId != null && c.sucursalId !== d.sucursalId) return d;
   const enGrilla = c.estado !== "EN_COLA";
   const citas = d.citas.some((x) => x.id === c.id)
     ? d.citas.map((x) => (x.id === c.id ? c : x))
@@ -329,7 +332,7 @@ export default function Agenda() {
         {/* Plan Emprendedor: el contador es el de HOY aunque se mire otro día:
             una cita consume el día en que se agenda, no el de la cita (§2.1). */}
         <ChipCupo unidad="CITA" />
-        <CampanaAvisos onAbrirCita={setAbierta} />
+        <CampanaAvisos onAbrirCita={setAbierta} sucursalId={suc.elegir ? suc.sucursalId : null} />
         <Boton
           icono="plus"
           aria-label="Nueva cita"

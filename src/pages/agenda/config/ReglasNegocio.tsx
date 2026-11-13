@@ -73,7 +73,13 @@ export function ReglasOnline({ onGuardado }: { onGuardado?: () => void }) {
 
 function PanelReglas({ grupo, onGuardado }: { grupo: GrupoRegla; onGuardado?: () => void }) {
   const suc = useSucursales();
-  const reglas = useApi(() => apiConfigAgenda.reglas(suc.sucursalId), [suc.sucursalId]);
+  const { usuario } = useAuth();
+  // Con 2+ locales, quien está atado a una sede mira y guarda las de SU sede (el
+  // backend se las fuerza); si la pantalla creyera que mira «todo el negocio»
+  // rotularía mal de dónde vienen los valores heredados. Con un local, igual
+  // que siempre.
+  const sucursalMirada = suc.modo === "asignado" ? (usuario?.sucursalId ?? null) : suc.sucursalId;
+  const reglas = useApi(() => apiConfigAgenda.reglas(sucursalMirada), [sucursalMirada]);
   const [version, setVersion] = useState(0);
   // Acá y no en el formulario: guardar lo vuelve a montar (la clave cambia)
   // y el aviso se perdería en el mismo instante en que aparece.
@@ -106,10 +112,10 @@ function PanelReglas({ grupo, onGuardado }: { grupo: GrupoRegla; onGuardado?: ()
         <FormReglas
           // Al cambiar de sucursal (o después de guardar) el borrador arranca
           // de nuevo con lo que dice el backend.
-          key={`${suc.sucursalId ?? "negocio"}-${version}`}
+          key={`${sucursalMirada ?? "negocio"}-${version}`}
           grupo={grupo}
           reglas={reglas.datos}
-          sucursalId={suc.sucursalId}
+          sucursalId={sucursalMirada}
           onGuardado={(r) => {
             setAviso("Reglas guardadas.");
             reglas.setDatos(r);
