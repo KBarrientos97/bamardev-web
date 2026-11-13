@@ -1036,6 +1036,18 @@ export interface CajaAbierta {
   fechaApertura: string;
 }
 
+/**
+ * Una caja abierta en una sucursal, vista por quien NO es su dueño: el mesero
+ * que cobra una mesa y tiene que decir a cuál caja va la cuenta cuando hay
+ * varias abiertas en el local (`GET /caja/del-local`). De quién es la caja se
+ * dice con `usuario.nombre`; el mesero no ve montos ni ventas de ella.
+ */
+export interface CajaDelLocal {
+  id: number;
+  fechaApertura: string;
+  usuario: { id: number; nombre: string };
+}
+
 export interface Caja {
   id: number;
   estado: "ABIERTA" | "CERRADA";

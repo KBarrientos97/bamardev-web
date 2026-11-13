@@ -14,6 +14,7 @@ import type {
   CupoUsuarios,
   Caja,
   CajaAbierta,
+  CajaDelLocal,
   Categoria,
   ClienteCredito,
   ComprasInsumos,
@@ -928,6 +929,12 @@ export const api = {
    * de sede del POS y para avisar al cerrar sesión.
    */
   cajasAbiertas: () => request<{ cajas: CajaAbierta[] }>("/caja/abiertas"),
+  /**
+   * Las cajas abiertas de UNA sucursal, de cualquier usuario: con ellas el
+   * mesero elige a cuál va la cuenta de la mesa que cobra cuando hay varias.
+   */
+  cajasDelLocal: (sucursalId: number) =>
+    request<{ cajas: CajaDelLocal[] }>(`/caja/del-local${qs({ sucursalId })}`),
   /** `almacenId` sólo lo manda un usuario de organización: al resto el backend
    *  se lo rechaza porque trabaja en su sucursal asignada. */
   abrirCaja: (input: {
@@ -1357,6 +1364,12 @@ export const api = {
       propina?: number;
       totalEsperado?: number;
       clienteRequestId?: string;
+      /**
+       * Sólo el mesero y sólo cuando hay varias cajas abiertas en el local:
+       * la caja a la que va la cuenta. Sin esto, la abierta del local (la más
+       * reciente si hay varias), como siempre.
+       */
+      cajaId?: number;
     },
   ) => request<Venta>(`/salon/mesas/${id}/cobrar`, {
     method: "POST",

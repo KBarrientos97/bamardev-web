@@ -60,6 +60,7 @@ export default function PantallaCobro({
   titulo = "Cobrar",
   encabezado,
   bloqueado = false,
+  destino,
   recibidoVacioEsExacto = false,
   qrEnUnPaso = false,
   cobroDeMesa,
@@ -96,6 +97,12 @@ export default function PantallaCobro({
   encabezado?: ReactNode;
   /** Confirmar apagado sin decir "Registrando…": falta algo de arriba (el monto). */
   bloqueado?: boolean;
+  /**
+   * Lo que va ANTES del total, sin reemplazarlo (a diferencia de `encabezado`):
+   * el mesero que cobra con varias cajas abiertas en el local elige acá a cuál
+   * va la cuenta. El POS y el resto de los cobros no lo pasan.
+   */
+  destino?: ReactNode;
   /**
    * "Efectivo recibido" vacío = el monto justo, sin "no alcanza" (Cobrar a
    * estudiante, QA 23-oct). El POS no lo pasa: ahí se sigue pidiendo.
@@ -365,6 +372,7 @@ export default function PantallaCobro({
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-6 @3xl:space-y-0 @3xl:py-6">
         <div className="space-y-4">
+          {destino}
           {conDetalle ? encabezado : totalYMetodo}
         </div>
 

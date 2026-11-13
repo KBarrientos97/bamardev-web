@@ -159,6 +159,7 @@ export default function PanelMesero() {
     return (
       <CobrarMesa
         mesa={f.mesa}
+        sucursalId={localDe(f.mesa)}
         onAtras={() => salir()}
         onCobrada={(mensaje, cobrada) =>
           salir(() => {
