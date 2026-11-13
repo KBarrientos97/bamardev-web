@@ -12,7 +12,10 @@ import type { Producto } from "../../types";
  * después se actualiza.
  *
  * Vive sólo en memoria: al cerrar la app se pierde, y no guarda nada en el
- * celular.
+ * celular. Tampoco sobrevive a la sesión: al entrar o salir se descarta
+ * (`olvidarCarta`, desde AuthContext), porque la carta tiene los precios y el
+ * stock del local de quien la bajó y la clave 0 («la de siempre») serviría la
+ * de otro usuario o de otro negocio abierto en la misma pestaña.
  */
 // Una por local (PLAN-SUCURSAL-TOTAL, etapa 5): el de organización toma pedidos
 // de mesas de distintos locales y cada uno tiene sus precios y su stock. La
@@ -20,6 +23,8 @@ import type { Producto } from "../../types";
 // pide (el backend le fuerza el suyo) o el consolidado.
 let guardadas = new Map<number, Producto[]>();
 let enCamino = new Map<number, Promise<Producto[]>>();
+/** Sube cada vez que se descarta todo: una descarga de la sesión anterior no se guarda. */
+let epoca = 0;
 
 const claveDe = (sucursalId?: number | null) => sucursalId ?? 0;
 
@@ -33,14 +38,17 @@ export function bajarCarta(sucursalId?: number | null): Promise<Producto[]> {
   const clave = claveDe(sucursalId);
   const viva = enCamino.get(clave);
   if (viva) return viva;
+  const mia = epoca;
   const promesa = api
     .cartaSalon(sucursalId)
     .then((c) => {
-      guardadas.set(clave, c);
+      // Si la sesión cambió mientras bajaba, la carta es de otro: se entrega a
+      // quien la pidió pero no queda guardada para el que entre después.
+      if (mia === epoca) guardadas.set(clave, c);
       return c;
     })
     .finally(() => {
-      enCamino.delete(clave);
+      if (mia === epoca) enCamino.delete(clave);
     });
   enCamino.set(clave, promesa);
   return promesa;
@@ -51,8 +59,9 @@ export function precargarCarta(): void {
   bajarCarta().catch(() => {});
 }
 
-/** Para los tests: arrancar sin carta guardada. */
+/** Descarta todo lo guardado: al entrar o salir de la sesión, y en los tests. */
 export function olvidarCarta(): void {
+  epoca++;
   guardadas = new Map();
   enCamino = new Map();
 }

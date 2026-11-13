@@ -15,6 +15,15 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+// Quién toma el pedido: sin sesión (los primeros tests), o de organización / de un local.
+const sesion = vi.hoisted(() => ({
+  auth: null as null | {
+    usuario: { sucursalId: number | null };
+    negocio: { sucursalesActivas?: number; tipoNegocio?: string; features?: string[] };
+  },
+}));
+vi.mock("../../store/AuthContext", () => ({ useAuthOpcional: () => sesion.auth }));
+
 // La tarjeta de la carta es de otra pantalla: acá basta con poder sumar.
 vi.mock("./TarjetaCarta", () => ({
   default: (p: { producto: Producto; onAgregar: () => void }) => (
@@ -71,6 +80,7 @@ const idDel = (llamada: number) =>
 beforeEach(() => {
   vi.clearAllMocks();
   olvidarCarta();
+  sesion.auth = null;
   vi.mocked(api.cartaSalon).mockResolvedValue([COCA, BRASA]);
 });
 
@@ -142,10 +152,50 @@ describe("el pedido se siente como una app (UX nativa, 10-nov)", () => {
 });
 
 describe("la carta del local de la mesa (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
-  it("pide la carta del local de la mesa, no la de los otros", async () => {
+  /** La organización de un negocio con varias sucursales (multi_almacen prendido). */
+  const organizacionDe = (locales: number | undefined) => {
+    sesion.auth = {
+      usuario: { sucursalId: null },
+      negocio: { sucursalesActivas: locales, tipoNegocio: "RESTAURANTE", features: ["multi_almacen"] },
+    };
+  };
+
+  it("la organización con 2+ locales pide la carta del local de la mesa, no la de los otros", async () => {
+    organizacionDe(2);
     render(<TomarPedido mesa={MESA} sucursalId={2} onAtras={() => {}} onEnviado={() => {}} />);
     await screen.findByText("Coca-Cola");
     expect(api.cartaSalon).toHaveBeenCalledWith(2);
+  });
+
+  it("con un solo local no manda ?sucursalId aunque la mesa traiga el suyo, y conserva la carta adelantada", async () => {
+    organizacionDe(1);
+    const { bajarCarta } = await import("./cartaGuardada");
+    // El panel adelanta la carta de siempre (clave 0)...
+    await bajarCarta();
+    vi.mocked(api.cartaSalon).mockClear();
+    vi.mocked(api.cartaSalon).mockReturnValue(new Promise(() => {}));
+    render(<TomarPedido mesa={{ ...MESA, sucursalId: 5 }} sucursalId={5} onAtras={() => {}} onEnviado={() => {}} />);
+    // ...y la mesa abre al instante, sin spinner, y pide la fresca igual que antes.
+    expect(screen.getByText("Coca-Cola")).toBeInTheDocument();
+    expect(api.cartaSalon).toHaveBeenCalledWith(undefined);
+    expect(api.cartaSalon).not.toHaveBeenCalledWith(5);
+  });
+
+  it("una sesión vieja que no sabe cuántos locales hay (undefined) cuenta como un solo local", async () => {
+    organizacionDe(undefined);
+    render(<TomarPedido mesa={MESA} sucursalId={2} onAtras={() => {}} onEnviado={() => {}} />);
+    await screen.findByText("Coca-Cola");
+    expect(api.cartaSalon).toHaveBeenCalledWith(undefined);
+  });
+
+  it("quien es de un local pide la de siempre: el backend le fuerza la suya", async () => {
+    sesion.auth = {
+      usuario: { sucursalId: 2 },
+      negocio: { sucursalesActivas: 2, tipoNegocio: "RESTAURANTE", features: ["multi_almacen"] },
+    };
+    render(<TomarPedido mesa={MESA} sucursalId={2} onAtras={() => {}} onEnviado={() => {}} />);
+    await screen.findByText("Coca-Cola");
+    expect(api.cartaSalon).toHaveBeenCalledWith(undefined);
   });
 
   it("sin local conocido pide la de siempre", async () => {

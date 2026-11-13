@@ -20,6 +20,7 @@ import {
 import { apiMonedero } from "../lib/apiMonedero";
 import { apiAcademia } from "../lib/academia/apiAcademia";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
+import { olvidarCarta } from "../pages/salon/cartaGuardada";
 import { olvidarDispositivoPush, sincronizarPushSilencioso } from "../lib/push/registroPush";
 import { fijarMoneda } from "../lib/format";
 import { aplicarTema } from "../lib/temas";
@@ -189,6 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, alias: string) => {
     const res = await api.login(username, password, alias);
+    // La carta del salón guardada es de la sesión anterior (otro usuario, otro local).
+    olvidarCarta();
     // `perfilVersion` viaja en el estado de la licencia y no en el negocio:
     // si el login trae la licencia, se toma de ahí, y así el primer chequeo
     // del poller no repinta lo mismo que se acaba de pintar.
@@ -221,6 +224,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     olvidarDispositivoPush(tokenStore.get());
     limpiarSesion();
     olvidarUsuario();
+    // La carta del salón es de este usuario y de su local: no se la sirve al próximo.
+    olvidarCarta();
     // Vuelve al verde: el login no es de ningún negocio todavía, y quedarse
     // con el color del anterior confundiría a quien comparte la máquina.
     aplicarTema(null);

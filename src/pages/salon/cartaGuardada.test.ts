@@ -35,6 +35,22 @@ describe("la carta guardada por local", () => {
     expect(api.cartaSalon).toHaveBeenCalledWith(undefined);
   });
 
+  it("olvidarCarta descarta todo, y una descarga en vuelo de la sesión anterior no queda guardada", async () => {
+    let soltar!: (c: Producto[]) => void;
+    vi.mocked(api.cartaSalon).mockReturnValue(new Promise((r) => (soltar = r)));
+    const enVuelo = bajarCarta();
+    // Cierra la sesión mientras la carta del usuario anterior todavía baja.
+    olvidarCarta();
+    soltar(carta(26));
+    await enVuelo;
+    expect(cartaGuardada()).toBeNull();
+    // El que entra después pide la suya de nuevo (no se cuelga de la promesa vieja).
+    vi.mocked(api.cartaSalon).mockResolvedValue(carta(30));
+    await bajarCarta();
+    expect(api.cartaSalon).toHaveBeenCalledTimes(2);
+    expect(cartaGuardada()?.[0].precio).toBe(30);
+  });
+
   it("una sola descarga a la vez por local, pero locales distintos no se esperan", () => {
     vi.mocked(api.cartaSalon).mockReturnValue(new Promise(() => {}));
     void bajarCarta(2);

@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { Confirmar, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { esUnLocal, modoDeSucursal } from "../../lib/useSucursales";
 import { useAuthOpcional } from "../../store/AuthContext";
 import { contiene } from "../../lib/texto";
 import type { Mesa } from "../../types/salon";
@@ -55,11 +56,18 @@ export default function TomarPedido({
   // Arranca con la que el panel ya adelantó (`cartaGuardada`) y abre al
   // instante; mientras, pide la fresca, porque el stock cambia con cada mesa.
   //
-  // El usuario de un local pide la de siempre (el backend le fuerza la suya, y
-  // es la que el panel adelantó). El de organización pide la del local de la
-  // mesa: sus precios y su stock no son los del consolidado.
+  // Con un solo local, o siendo de un local, se pide la de siempre: el backend le
+  // fuerza la suya, es la que el panel adelantó (`precargarCarta`, clave 0) y
+  // no se agrega `?sucursalId` ni se pierde la carta adelantada. Sólo la
+  // organización con 2+ locales pide la del local de la mesa: sus precios y su
+  // stock no son los del consolidado. El modo sale de la sesión (sin red).
   const auth = useAuthOpcional();
-  const sucursalCarta = auth?.usuario?.sucursalId == null ? (sucursalId ?? mesa.sucursalId ?? undefined) : undefined;
+  const modo = modoDeSucursal({
+    asignado: auth?.usuario?.sucursalId != null,
+    unLocal: esUnLocal(auth?.negocio),
+    locales: auth?.negocio?.sucursalesActivas,
+  });
+  const sucursalCarta = modo === "organizacion" ? (sucursalId ?? mesa.sucursalId ?? undefined) : undefined;
   const [carta, setCarta] = useState(() => cartaGuardada(sucursalCarta));
   const [errorCarta, setErrorCarta] = useState("");
   useEffect(() => {

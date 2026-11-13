@@ -17,6 +17,7 @@ vi.mock("../lib/apiMonedero", () => ({ apiMonedero: { monedero: vi.fn() } }));
 
 import { CUPO_KEY, LICENCIA_KEY, NEGOCIO_KEY, USER_KEY, api, tokenStore } from "../lib/api";
 import { apiMonedero } from "../lib/apiMonedero";
+import { bajarCarta, cartaGuardada, olvidarCarta } from "../pages/salon/cartaGuardada";
 import { cupoEmprendedor } from "../test/cupoFixtures";
 import { TEMAS } from "../lib/temas";
 import { AuthProvider, useAuth } from "./AuthContext";
@@ -249,6 +250,51 @@ describe("cupo del Plan Emprendedor (§5.2)", () => {
     await act(async () => fireEvent.click(screen.getByText("refrescar")));
     expect(apiMonedero.monedero).toHaveBeenCalledTimes(1);
     expect(screen.getByText("cupo:EMPRENDEDOR 2/50 saldo 50")).toBeInTheDocument();
+  });
+});
+
+describe("la carta del salón guardada no sobrevive a la sesión", () => {
+  function SondaSesion() {
+    const { login, logout } = useAuth();
+    return (
+      <div>
+        <button onClick={() => void login("admin", "x", "barberia")}>entrar</button>
+        <button onClick={logout}>salir</button>
+      </div>
+    );
+  }
+
+  async function montarSesion() {
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaSesion />
+        </AuthProvider>,
+      );
+    });
+  }
+
+  const bajarUna = async () => {
+    olvidarCarta();
+    (api as unknown as { cartaSalon: ReturnType<typeof vi.fn> }).cartaSalon = vi.fn().mockResolvedValue([{ id: 1, nombre: "Brasa" }]);
+    await bajarCarta();
+    expect(cartaGuardada()).not.toBeNull();
+  };
+
+  it("salir la descarta: el próximo usuario de la pestaña no ve la carta (ni los precios) de otro", async () => {
+    await montarSesion();
+    await bajarUna();
+    await act(async () => fireEvent.click(screen.getByText("salir")));
+    expect(cartaGuardada()).toBeNull();
+  });
+
+  it("entrar con otro usuario también la descarta", async () => {
+    vi.mocked(api.login).mockResolvedValue({ accessToken: "t2", usuario: ADMIN, negocio: BARBERIA });
+    await montarSesion();
+    await bajarUna();
+    await act(async () => fireEvent.click(screen.getByText("entrar")));
+    expect(cartaGuardada()).toBeNull();
   });
 });
 
