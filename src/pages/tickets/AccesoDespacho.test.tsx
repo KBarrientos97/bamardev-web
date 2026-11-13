@@ -19,9 +19,11 @@ const accesos = vi.hoisted(() => ({
 vi.mock("../../lib/apiAccesosDespacho", () => ({ apiAccesosDespacho: accesos }));
 
 const almacenes = vi.hoisted(() => ({ lista: [] as { id: number; nombre: string; tipo: string; activo: boolean }[] }));
+/** Quién mira: de organización (`null`) o de un local, y si el negocio tiene Varios almacenes. */
+const sesion = vi.hoisted(() => ({ sucursalId: null as number | null, features: ["multi_almacen"] as string[] }));
 vi.mock("../../lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/api")>();
-  return { ...real, api: { getAlmacenes: vi.fn(async () => almacenes.lista) } };
+  return { ...real, api: { getSucursales: vi.fn(async () => almacenes.lista) } };
 });
 
 vi.mock("../../lib/pagina/qr", async (importOriginal) => {
@@ -30,7 +32,11 @@ vi.mock("../../lib/pagina/qr", async (importOriginal) => {
 });
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ usuario: { id: 1, sucursalId: null }, negocio: { id: 1, alias: "pollos" } }),
+  useAuth: () => ({
+    usuario: { id: 1, sucursalId: sesion.sucursalId },
+    negocio: { id: 1, alias: "pollos", tipoNegocio: "RESTAURANTE", features: sesion.features },
+    rubro: "RESTAURANTE",
+  }),
 }));
 
 import AccesoDespacho from "./AccesoDespacho";
@@ -54,6 +60,8 @@ const llenarClaves = (clave: string, repetida = clave) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.sucursalId = null;
+  sesion.features = ["multi_almacen"];
   almacenes.lista = [{ id: 1, nombre: "Principal", tipo: "SUCURSAL", activo: true }];
 });
 
@@ -139,5 +147,37 @@ describe("Despacho en otro equipo", () => {
     await waitFor(() =>
       expect(accesos.crear).toHaveBeenCalledWith({ username: "despacho-norte", password: "cocina123", sucursalId: 2 }),
     );
+  });
+
+  const DOS = [
+    { id: 1, nombre: "Principal", tipo: "SUCURSAL", activo: true },
+    { id: 2, nombre: "Norte", tipo: "SUCURSAL", activo: true },
+  ];
+
+  it("quien es de un local no ve ni pide la lista de locales: crea sólo el suyo", async () => {
+    // Antes `getAlmacenes` le traía todos los locales y la pantalla los filtraba.
+    sesion.sucursalId = 2;
+    almacenes.lista = DOS;
+    accesos.listar.mockResolvedValue([]);
+    accesos.crear.mockResolvedValue(acceso({ id: 11, sucursalId: 2, sucursal: "Norte" }));
+    render(<AccesoDespacho />);
+    fireEvent.click(await screen.findByRole("button", { name: /Crear acceso/ }));
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    llenarClaves("cocina123");
+    fireEvent.click(screen.getByRole("button", { name: "Crear" }));
+    await waitFor(() =>
+      expect(accesos.crear).toHaveBeenCalledWith({ username: "despacho", password: "cocina123" }),
+    );
+  });
+
+  it("regla 4: sin Varios almacenes el negocio es de un local, aunque haya otra sucursal cargada", async () => {
+    sesion.features = ["tickets_pedido"];
+    almacenes.lista = DOS;
+    accesos.listar.mockResolvedValue([acceso()]);
+    render(<AccesoDespacho />);
+    expect(await screen.findByText("@despacho")).toBeInTheDocument();
+    // Sin local rotulado ni "Para otro local": el negocio se ve como de uno solo.
+    expect(screen.queryByText("Principal")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Para otro local/ })).not.toBeInTheDocument();
   });
 });
