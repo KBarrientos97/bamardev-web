@@ -29,6 +29,19 @@ import { iconoPorLlave } from "../../lib/iconosArticulo";
 import SelectorIcono from "../../components/SelectorIcono";
 import { esBelleza, esFarmacia, termino } from "../../lib/rubro";
 import { FichaMedicamento, TarjetaMedicamento } from "../farmacia/FichaMedicamento";
+import { AvisoCorregido } from "../farmacia/AvisoCorregido";
+import CampoPrincipios from "../farmacia/CampoPrincipios";
+import CampoSugerido from "../farmacia/CampoSugerido";
+import {
+  DROGAS_BASE,
+  FORMAS_BASE,
+  LARGO_MAX_PRINCIPIOS,
+  juntarSugerencias,
+  limpiarRegistro,
+  partirPrincipios,
+  registroConForma,
+  unirPrincipios,
+} from "../farmacia/fichaFarmaceutica";
 import { useBusquedaProductos } from "../farmacia/useBusquedaProductos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { useApi } from "../../lib/useApi";
@@ -90,11 +103,14 @@ const CONDICIONES: Record<
 
 /**
  * El nombre del tipo en este rubro. En un salón el SERVICIO es un servicio
- * (un corte, una manicura), no un "Elaborado" de cocina (QA DIA-17d). Los
- * demás rubros, Omar incluido, siguen con la etiqueta de siempre.
+ * (un corte, una manicura), no un "Elaborado" de cocina (QA DIA-17d). En una
+ * farmacia también: un inyectable aplicado o una toma de presión, que se
+ * cobran sin stock (12-nov, Kevin: "Elaborado" no le dice nada a un
+ * farmacéutico). Los demás rubros, Omar incluido, siguen con la etiqueta de
+ * siempre.
  */
 function etiquetaTipo(t: TipoProducto, rubro: string | null | undefined): string {
-  return t === "SERVICIO" && esBelleza(rubro) ? "Servicio" : TIPOS[t].label;
+  return t === "SERVICIO" && (esBelleza(rubro) || esFarmacia(rubro)) ? "Servicio" : TIPOS[t].label;
 }
 
 /**
@@ -518,6 +534,16 @@ export default function Productos() {
         </div>
       ) : (
         <>
+          {/* Sólo la búsqueda del servidor corrige ("ibprofen" → "ibuprofeno"),
+              y lo tiene que decir: sin el aviso, la lista de otra cosa se lee
+              como la respuesta a lo que se escribió. */}
+          {buscaEnServidor && busqueda.corregido && (
+            <AvisoCorregido
+              tecleado={busqueda.consulta ?? q}
+              corregido={busqueda.corregido}
+              onUsar={setQ}
+            />
+          )}
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {aMostrar.map((p) =>
               // La tarjeta de una farmacia no lleva ícono y pone el vencimiento
@@ -837,6 +863,11 @@ function DetalleProducto({
             <dl className="grid grid-cols-2 gap-3">
               <Dato label="Principio activo" valor={p.principioActivo || "—"} />
               <Dato label="Concentración" valor={p.concentracion || "—"} />
+              {/* En farmacia la descripción ES esto (ver el formulario). Sólo
+                  si se cargó: "Para qué sirve: —" en cada pañal no dice nada. */}
+              {p.descripcion?.trim() && (
+                <Dato label="Para qué sirve" valor={p.descripcion} className="col-span-2" />
+              )}
               <Dato label="Forma" valor={p.formaFarmaceutica || "—"} />
               <Dato label="Laboratorio" valor={p.laboratorio || "—"} />
               <Dato label="Registro sanitario" valor={p.registroSanitario || "—"} />
@@ -902,9 +933,9 @@ function margenDe(p: { precio?: number | null; costo?: number | null }): number 
   return (precio - costo) / precio;
 }
 
-function Dato({ label, valor }: { label: string; valor: string }) {
+function Dato({ label, valor, className = "" }: { label: string; valor: string; className?: string }) {
   return (
-    <div className="rounded-xl bg-muted p-3">
+    <div className={`rounded-xl bg-muted p-3 ${className}`}>
       <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">
         {label}
       </dt>
@@ -941,6 +972,7 @@ function Interruptor({
   activo,
   onChange,
   peligroso,
+  bloqueado,
 }: {
   titulo: string;
   ayuda: string;
@@ -948,10 +980,17 @@ function Interruptor({
   onChange: (v: boolean) => void;
   /** Lo enciende en rojo: no es una preferencia, es una obligación legal. */
   peligroso?: boolean;
+  /**
+   * Fijo en lo que muestra: lo decide otro campo (el controlado con una
+   * receta archivada o valorada). La `ayuda` tiene que decir por qué.
+   */
+  bloqueado?: boolean;
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 transition-colors ${
+      className={`flex items-center justify-between gap-3 rounded-xl border p-3 transition-colors ${
+        bloqueado ? "cursor-not-allowed" : "cursor-pointer"
+      } ${
         activo
           ? peligroso
             ? "border-danger/40 bg-danger-bg/40"
@@ -966,12 +1005,13 @@ function Interruptor({
       <input
         type="checkbox"
         checked={activo}
+        disabled={bloqueado}
         onChange={(e) => onChange(e.target.checked)}
         className="peer sr-only"
       />
       <span
         aria-hidden
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-100 ${
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-primary-100 peer-disabled:opacity-60 ${
           activo ? (peligroso ? "bg-danger" : "bg-primary-boton") : "bg-slate-300"
         }`}
       >
@@ -992,7 +1032,7 @@ interface LineaCombo {
 }
 
 /**
- * Los laboratorios y formas farmacéuticas que ya se teclearon en esta
+ * Los laboratorios, formas farmacéuticas y drogas que ya se teclearon en esta
  * computadora, para sugerirlos en la ficha (sólo farmacia, M11).
  *
  * En farmacia el catálogo viene paginado del servidor y la lista en memoria
@@ -1001,31 +1041,40 @@ interface LineaCombo {
  * ve en pantalla ayuda, pero son 30 renglones; esto recuerda lo que se guardó
  * desde acá. Es una comodidad y no un dato: sin almacenamiento (modo privado,
  * cuota llena) se sigue igual, sólo sin memoria.
+ *
+ * Las drogas se suman el 12-nov, con las fichas de principios activos. Lo
+ * guardado antes no las trae y se lee como "ninguna todavía".
  */
 const CLAVE_SUGERENCIAS = "bamar.farmacia.sugerencias";
 const TOPE_SUGERENCIAS = 50;
 
-interface SugerenciasFicha {
+/** Lo recordado. No es `SugerenciasFicha` (la del servidor): ésa dice `principiosActivos`. */
+interface MemoriaFicha {
   laboratorios: string[];
   formas: string[];
+  principios: string[];
 }
 
-function leerSugerencias(): SugerenciasFicha {
-  const vacias: SugerenciasFicha = { laboratorios: [], formas: [] };
+function leerSugerencias(): MemoriaFicha {
+  const vacias: MemoriaFicha = { laboratorios: [], formas: [], principios: [] };
   try {
     const crudo = localStorage.getItem(CLAVE_SUGERENCIAS);
     if (!crudo) return vacias;
-    const leido = JSON.parse(crudo) as Partial<Record<keyof SugerenciasFicha, unknown>>;
+    const leido = JSON.parse(crudo) as Partial<Record<keyof MemoriaFicha, unknown>>;
     const lista = (x: unknown) =>
       Array.isArray(x) ? x.filter((v): v is string => typeof v === "string") : [];
-    return { laboratorios: lista(leido.laboratorios), formas: lista(leido.formas) };
+    return {
+      laboratorios: lista(leido.laboratorios),
+      formas: lista(leido.formas),
+      principios: lista(leido.principios),
+    };
   } catch {
     return vacias;
   }
 }
 
 /** Anota lo tecleado al guardar: lo más reciente primero, sin repetir, hasta el tope. */
-function recordarSugerencias(laboratorio: string, forma: string) {
+function recordarSugerencias(laboratorio: string, forma: string, principios: readonly string[]) {
   try {
     const antes = leerSugerencias();
     const sumar = (nuevo: string, lista: string[]) => {
@@ -1035,14 +1084,56 @@ function recordarSugerencias(laboratorio: string, forma: string) {
       const resto = lista.filter((v) => normalizar(v) !== normalizar(nuevo));
       return [nuevo, ...resto].slice(0, TOPE_SUGERENCIAS);
     };
-    const despues: SugerenciasFicha = {
+    const despues: MemoriaFicha = {
       laboratorios: sumar(laboratorio, antes.laboratorios),
       formas: sumar(forma, antes.formas),
+      // De atrás para adelante: así la primera droga del remedio queda
+      // primera en la memoria, como se escribió.
+      principios: [...principios].reverse().reduce((l, p) => sumar(p, l), antes.principios),
     };
     localStorage.setItem(CLAVE_SUGERENCIAS, JSON.stringify(despues));
   } catch {
     // Sin almacenamiento no hay memoria, y nada más.
   }
+}
+
+/**
+ * Qué hace de verdad cada condición de venta, para la línea debajo de los
+ * chips (12-nov, Kevin: los cuatro chips no decían qué cambiaba al elegir uno).
+ *
+ * Sale de lo que hace el sistema, no de la ley: `pideConfirmacion`
+ * (`farmacia/medicamento.ts`) frena la venta y abre `DialogoReceta`;
+ * `erroresReceta` (`farmacia/receta.ts`) pide paciente, médico, matrícula y
+ * fecha, y el número sólo en la valorada; el libro lo decide `libroDe` del
+ * backend (`controlado/receta.ts`). La receta médica común no frena nada: el
+ * mostrador la marca y nada más. Si esas reglas cambian, esto tiene que
+ * cambiar con ellas.
+ */
+const QUE_HACE_CONDICION: Record<CondicionVenta, string> = {
+  LIBRE: "Se vende sin pedir nada.",
+  RECETA_MEDICA:
+    "El mostrador lo marca «Receta» para que la pidan. No frena la venta, no pide datos y no va a ningún libro.",
+  RECETA_ARCHIVADA:
+    "Antes de sumarlo a la venta pide paciente, médico, matrícula y fecha de la receta, y la venta queda asentada en el libro de psicotrópicos.",
+  RECETA_VALORADA:
+    "Pide paciente, médico, matrícula, fecha y el número del formulario de la receta valorada, y la venta queda asentada en el libro de estupefacientes.",
+};
+
+/** Las condiciones que ya mandan la venta al libro, sin importar el interruptor. */
+function condicionVaAlLibro(c: CondicionVenta): boolean {
+  return c === "RECETA_ARCHIVADA" || c === "RECETA_VALORADA";
+}
+
+/**
+ * La línea de la condición elegida, contando el interruptor: un Libre
+ * marcado controlado NO "se vende sin pedir nada". El backend lo asienta en
+ * el de psicotrópicos (`libroDe`: nunca en el de estupefacientes, que exige
+ * el formulario numerado que este producto no pide).
+ */
+function queHaceLaCondicion(c: CondicionVenta, controlado: boolean): string {
+  if (controlado && !condicionVaAlLibro(c))
+    return "Como está marcado controlado, antes de sumarlo a la venta pide paciente, médico, matrícula y fecha de la receta, y la venta queda asentada en el libro de psicotrópicos.";
+  return QUE_HACE_CONDICION[c];
 }
 
 function FormProducto({
@@ -1196,7 +1287,11 @@ function FormProductoCuerpo({
   );
   // Ficha farmacéutica. Se carga siempre desde el producto (aunque el rubro no
   // la muestre) para que editar un artículo desde otro rubro no la borre.
-  const [principioActivo, setPrincipioActivo] = useState(producto?.principioActivo ?? "");
+  // Las drogas, de a una (ver `CampoPrincipios`): la columna guarda texto, y
+  // "Paracetamol + Cafeína" de antes vuelve partido en dos fichas.
+  const [principios, setPrincipios] = useState<string[]>(() =>
+    partirPrincipios(producto?.principioActivo),
+  );
   const [concentracion, setConcentracion] = useState(producto?.concentracion ?? "");
   const [formaFarmaceutica, setFormaFarmaceutica] = useState(
     producto?.formaFarmaceutica ?? "",
@@ -1208,6 +1303,17 @@ function FormProductoCuerpo({
   const [condicionVenta, setCondicionVenta] = useState<CondicionVenta>(
     producto?.condicionVenta ?? "LIBRE",
   );
+  // Mientras se escribe el registro no se avisa nada: el aviso de "no tiene
+  // la forma" a mitad de tecleo es retar antes de que termine.
+  const [escribiendoRegistro, setEscribiendoRegistro] = useState(false);
+  /**
+   * El registro sanitario no es una fecha ni un número cualquiera: es el
+   * código de AGEMED (NN-12345/2024). Se aceptaba "65165156165" sin decir
+   * nada (12-nov, Kevin). No se bloquea —los cosméticos traen otro formato
+   * (NSO) y hay registros viejos—: se avisa en ámbar y se guarda igual.
+   */
+  const avisoRegistro =
+    !escribiendoRegistro && !!registroSanitario.trim() && !registroConForma(registroSanitario);
   // Un artículo nuevo arranca con lote SÓLO en una farmacia con `lotes`: ahí
   // casi todo vence (la carga por Excel también toma "Maneja lote" vacío como
   // Sí), olvidarse de apagarlo sólo pide un dato de más al recibir, y olvidarse
@@ -1219,31 +1325,73 @@ function FormProductoCuerpo({
   const [manejaLote, setManejaLote] = useState(
     producto?.manejaLote ?? (conFicha && conLotes),
   );
+  // Lo que la persona eligió en el interruptor. Al editar arranca en lo
+  // guardado aunque lo hubiera prendido la condición (ver `controladoFijo`):
+  // si alguien pasa un psicotrópico de Archivada a Libre, que siga yendo al
+  // libro hasta que lo apague a propósito es el error barato; el otro es una
+  // venta que el SEDES no ve.
   const [controlado, setControlado] = useState(producto?.controlado ?? false);
+  /**
+   * Con receta archivada o valorada la venta ya va al libro por la condición
+   * (`libroDe` del backend), así que el interruptor queda prendido y quieto:
+   * apagado decía "no es controlado" de algo que se asienta igual. Al volver
+   * a Libre o Receta vuelve a lo que la persona había elegido, porque
+   * `controlado` no se tocó.
+   */
+  const controladoFijo = condicionVaAlLibro(condicionVenta);
+  const controladoEfectivo = controladoFijo || controlado;
 
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
   /**
-   * Laboratorios y formas que ya se usaron, para sugerir mientras se escribe.
-   * Son texto libre a propósito (no hay tabla que administrar), y esto evita
-   * que el mismo laboratorio termine cargado de tres maneras distintas.
+   * Lo que ya se cargó en las fichas del negocio entero (12-nov): las drogas,
+   * los laboratorios y las formas. Sin esto, en una farmacia de 1.800
+   * artículos los atajos salían de los 30 que estuvieran en pantalla. Si
+   * falla o tarda, el formulario sigue con lo que tenga: es una ayuda para
+   * escribir, no un dato que falte.
+   */
+  const fichaDelNegocio = useApi(
+    () => (conFicha ? api.sugerenciasFicha() : Promise.resolve(null)),
+    [conFicha],
+  );
+
+  /**
+   * Drogas, laboratorios y formas que ya se usaron, para sugerir mientras se
+   * escribe. Son texto libre a propósito (no hay tabla que administrar), y
+   * esto evita que el mismo laboratorio termine cargado de tres maneras.
    *
-   * Salen de los productos cargados (`productos` y, en farmacia, lo que se ve
-   * de la búsqueda del servidor) más lo que se guardó desde esta computadora
-   * (ver `leerSugerencias`). Sólo con `productos` estaban muertas en farmacia:
-   * ahí esa lista viene vacía (M11).
+   * Por orden: lo que se guardó desde esta computadora (ver
+   * `leerSugerencias`), lo del negocio entero (servidor), lo que se ve en
+   * pantalla y, para drogas y formas, la lista base de siempre. Sólo con
+   * `productos` estaban muertas en farmacia: ahí esa lista viene vacía (M11).
    */
   const sugerencias = useMemo(() => {
-    const unicos = (valores: (string | null)[]) =>
-      [...new Set(valores.filter((v): v is string => !!v?.trim()))].sort();
     const vistos = [...productos, ...(enPantalla ?? [])];
-    const recordadas = conFicha ? leerSugerencias() : { laboratorios: [], formas: [] };
+    const recordadas = conFicha
+      ? leerSugerencias()
+      : { laboratorios: [], formas: [], principios: [] };
+    const servidor = fichaDelNegocio.datos;
     return {
-      laboratorios: unicos([...recordadas.laboratorios, ...vistos.map((p) => p.laboratorio)]),
-      formas: unicos([...recordadas.formas, ...vistos.map((p) => p.formaFarmaceutica)]),
+      laboratorios: juntarSugerencias([
+        recordadas.laboratorios,
+        servidor?.laboratorios,
+        vistos.map((p) => p.laboratorio),
+      ]),
+      formas: juntarSugerencias(
+        [recordadas.formas, servidor?.formas, vistos.map((p) => p.formaFarmaceutica)],
+        FORMAS_BASE,
+      ),
+      principios: juntarSugerencias(
+        [
+          recordadas.principios,
+          servidor?.principiosActivos,
+          vistos.flatMap((p) => partirPrincipios(p.principioActivo)),
+        ],
+        DROGAS_BASE,
+      ),
     };
-  }, [productos, enPantalla, conFicha]);
+  }, [productos, enPantalla, conFicha, fichaDelNegocio.datos]);
 
   // En farmacia el alta arranca con la unidad «Unidad» puesta (B11): es la del
   // 99 % de los medicamentos, y arrancar en "Elegí una" era un clic más por
@@ -1261,13 +1409,21 @@ function FormProductoCuerpo({
   // Sin la capacidad el negocio no arma combos: el tipo ni se ofrece. Un
   // producto que YA es combo se sigue pudiendo editar (el dato existe y
   // esconderlo lo convertiría en otra cosa al guardar).
-  const conCombos = incluye("combos");
+  //
+  // En una farmacia tampoco, aunque el plan lo traiga (12-nov, Kevin): el
+  // combo es del restaurante, y el selector ofrecía «Producto / Elaborado /
+  // Combo» para cargar un ibuprofeno. Ahí quedan Producto y Servicio (el
+  // SERVICIO con la etiqueta de `etiquetaTipo`).
+  const conCombos = incluye("combos") && !conFicha;
   const tiposDisponibles = (Object.keys(TIPOS) as TipoProducto[]).filter(
     (t) => t !== "COMPUESTO" || conCombos || producto?.tipoProducto === "COMPUESTO",
   );
 
   const esCombo = tipo === "COMPUESTO";
+  const esServicio = tipo === "SERVICIO";
   const conStock = TIPOS[tipo].conStock;
+  // Un servicio no se recibe ni vence: no hay lote que pedir al ingresarlo.
+  const muestraLote = conLotes && !esServicio;
 
   // Un combo no puede llevarse a sí mismo ni repetir un ingrediente.
   const candidatos = productos.filter(
@@ -1320,6 +1476,13 @@ function FormProductoCuerpo({
     const sinCantidad = componentes.find((c) => !(c.cantidad > 0));
     if (sinCantidad)
       return setError(`Poné cuánto lleva "${sinCantidad.nombre}" en la receta.`);
+    // El backend corta en 120 (`@MaxLength`) y devolvía un 400 en inglés que
+    // no decía qué campo. Con varias fichas se llega, así que se dice acá.
+    const principioActivo = unirPrincipios(principios);
+    if (conFicha && principioActivo.length > LARGO_MAX_PRINCIPIOS)
+      return setError(
+        `Los principios activos no entran: son ${principioActivo.length} letras y el máximo es ${LARGO_MAX_PRINCIPIOS}.`,
+      );
 
     // Todo menos el precio, que se suma abajo sólo si viaja.
     const input: Omit<ProductoInput, "precio"> = {
@@ -1362,14 +1525,18 @@ function FormProductoCuerpo({
       // cargado desde una farmacia con el mismo catálogo.
       ...(conFicha
         ? {
-            principioActivo: principioActivo.trim(),
+            principioActivo,
             concentracion: concentracion.trim(),
             formaFarmaceutica: formaFarmaceutica.trim(),
             laboratorio: laboratorio.trim(),
-            registroSanitario: registroSanitario.trim(),
+            // Ordenado también acá, por si se guardó sin salir del campo.
+            registroSanitario: limpiarRegistro(registroSanitario),
             condicionVenta,
-            manejaLote,
-            controlado,
+            // Un servicio no tiene lote: con el interruptor escondido, el
+            // valor de antes (un medicamento nuevo nace con lote) le pediría
+            // lote y vencimiento a una toma de presión.
+            manejaLote: esServicio ? false : manejaLote,
+            controlado: controladoEfectivo,
           }
         : {}),
     };
@@ -1390,7 +1557,7 @@ function FormProductoCuerpo({
       }
       // Recién con el guardado confirmado: un laboratorio que el servidor
       // rechazó no es uno que haya que volver a sugerir.
-      if (conFicha) recordarSugerencias(laboratorio.trim(), formaFarmaceutica.trim());
+      if (conFicha) recordarSugerencias(laboratorio.trim(), formaFarmaceutica.trim(), principios);
       onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
@@ -1436,9 +1603,8 @@ function FormProductoCuerpo({
         {conFicha ? (
           // En una farmacia el nombre comercial y la concentración se leen
           // juntos —"Paracetamol" a secas no identifica nada— y la descripción
-          // libre no se usa: la reemplaza la ficha farmacéutica de abajo. El
-          // valor que ya tuviera igual viaja al guardar, así que editar desde
-          // acá no le borra nada a nadie.
+          // libre no va acá: en la ficha de abajo es «Para qué sirve» (12-nov),
+          // que es lo único que una farmacia escribe en ese campo.
           <div className="grid gap-3 sm:grid-cols-2">
             <Campo label="Nombre comercial">
               <Input
@@ -1486,7 +1652,10 @@ function FormProductoCuerpo({
                   ? conFicha
                     ? "Se le lleva stock en las sucursales."
                     : "Se le lleva stock en los almacenes."
-                  : "Se prepara al vender: no lleva stock propio."
+                  : conFicha
+                    ? // "Se prepara al vender" es de una cocina.
+                      "Inyectable aplicado, toma de presión, curación: se cobra sin stock."
+                    : "Se prepara al vender: no lleva stock propio."
             }
           >
             <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoProducto)}>
@@ -1668,49 +1837,103 @@ function FormProductoCuerpo({
               Todo opcional: un pañal o una mamadera no la necesitan.
             </p>
 
+            <CampoPrincipios
+              etiqueta="Principio activo"
+              ayuda="La droga: por acá lo buscan. Si lleva más de una, agregalas todas."
+              valor={principios}
+              onChange={setPrincipios}
+              sugerencias={sugerencias.principios}
+              placeholder="Paracetamol"
+            />
+
+            {/* En farmacia la descripción libre no se muestra (ver arriba), y
+                ésta es la que sí sirve en el mostrador: qué se le dice al
+                cliente. Guarda en `descripcion`, que el buscador del servidor
+                ya lee: "fiebre" encuentra el paracetamol. */}
+            <Campo label="Para qué sirve" hint="Indicaciones o acción terapéutica. Opcional.">
+              <textarea
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                rows={2}
+                maxLength={500}
+                placeholder="Analgésico y antifebril: dolor de cabeza, fiebre, dolor muscular"
+                className="w-full resize-y rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+            </Campo>
+
             <div className="grid gap-3 sm:grid-cols-2">
-              <Campo label="Principio activo" hint="La droga: por acá lo buscan">
-                <Input
-                  value={principioActivo}
-                  onChange={(e) => setPrincipioActivo(e.target.value)}
-                  placeholder="Paracetamol"
+              <Campo label="Forma farmacéutica">
+                <CampoSugerido
+                  valor={formaFarmaceutica}
+                  onChange={setFormaFarmaceutica}
+                  sugerencias={sugerencias.formas}
+                  etiquetaLista="Formas farmacéuticas"
+                  placeholder="Comprimido"
+                  maxLength={60}
                 />
               </Campo>
-              <Campo label="Forma farmacéutica">
-                <Input
-                  list="formas-farmaceuticas"
-                  value={formaFarmaceutica}
-                  onChange={(e) => setFormaFarmaceutica(e.target.value)}
-                  placeholder="Comprimido"
+              <Campo label="Laboratorio">
+                <CampoSugerido
+                  valor={laboratorio}
+                  onChange={setLaboratorio}
+                  sugerencias={sugerencias.laboratorios}
+                  etiquetaLista="Laboratorios"
+                  placeholder="BAGÓ"
+                  maxLength={120}
                 />
-                <datalist id="formas-farmaceuticas">
-                  {sugerencias.formas.map((f) => (
-                    <option key={f} value={f} />
-                  ))}
-                </datalist>
               </Campo>
             </div>
 
+            {/* Los dos códigos del envase, juntos. */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <Campo label="Laboratorio">
-                <Input
-                  list="laboratorios"
-                  value={laboratorio}
-                  onChange={(e) => setLaboratorio(e.target.value)}
-                  placeholder="BAGÓ"
-                />
-                <datalist id="laboratorios">
-                  {sugerencias.laboratorios.map((l) => (
-                    <option key={l} value={l} />
-                  ))}
-                </datalist>
-              </Campo>
-              <Campo label="Registro sanitario" hint="Lo pide el inspector">
+              <Campo
+                label="Registro sanitario"
+                // El aviso reemplaza la ayuda: dos renglones, uno gris y otro
+                // ámbar, debajo de un campo angosto no se leen.
+                hint={avisoRegistro ? undefined : "El código de AGEMED del envase"}
+              >
                 <Input
                   value={registroSanitario}
                   onChange={(e) => setRegistroSanitario(e.target.value)}
-                  placeholder="II-12345/2024"
+                  onFocus={() => setEscribiendoRegistro(true)}
+                  onBlur={(e) => {
+                    setEscribiendoRegistro(false);
+                    setRegistroSanitario(limpiarRegistro(e.target.value));
+                  }}
+                  placeholder="NN-12345/2024"
+                  maxLength={60}
+                  autoComplete="off"
                 />
+                {avisoRegistro && (
+                  <span className="mt-1 block text-xs text-warning-text">
+                    No tiene la forma de un registro de AGEMED: NN-12345/2024 (nacional) o
+                    II-12345/2024 (importado). Se guarda igual; revisalo contra el envase.
+                  </span>
+                )}
+              </Campo>
+              <Campo label="Código de barras">
+                <div className="flex gap-2">
+                  <Input
+                    value={codBarra}
+                    onChange={(e) => setCodBarra(e.target.value)}
+                    className="flex-1"
+                  />
+                  {/* No pide cámara ni permisos: devuelve el foco al campo. El
+                      lector USB del mostrador escribe como un teclado, así que
+                      "escanear" es literalmente eso. Ver `CampoBusqueda`. */}
+                  <Boton
+                    variante="ghost"
+                    icono="barcode"
+                    type="button"
+                    onClick={(e) => {
+                      const campo = (e.currentTarget.previousElementSibling ??
+                        null) as HTMLInputElement | null;
+                      campo?.focus();
+                    }}
+                  >
+                    Escanear
+                  </Boton>
+                </div>
               </Campo>
             </div>
 
@@ -1738,10 +1961,18 @@ function FormProductoCuerpo({
                   </button>
                 ))}
               </div>
+              {/* Qué cambia de verdad al elegir cada uno: sin esto eran cuatro
+                  palabras parecidas y nadie sabía cuál pedía la receta. */}
+              <p aria-live="polite" className="mt-2 flex items-start gap-1.5 text-xs text-texto-3">
+                <span className="mt-px shrink-0 text-texto-4">
+                  <Icon name="info" size={14} />
+                </span>
+                <span>{queHaceLaCondicion(condicionVenta, controlado)}</span>
+              </p>
             </div>
 
-            <div className={`grid gap-3 ${conLotes ? "sm:grid-cols-2" : ""}`}>
-              {conLotes && (
+            <div className={`grid gap-3 ${muestraLote ? "sm:grid-cols-2" : ""}`}>
+              {muestraLote && (
                 <Interruptor
                   titulo="Maneja lote y vencimiento"
                   ayuda="Pide lote y fecha al ingresar"
@@ -1751,37 +1982,19 @@ function FormProductoCuerpo({
               )}
               <Interruptor
                 titulo="Medicamento controlado"
-                ayuda="Psicotrópico o estupefaciente: va al libro"
-                activo={controlado}
+                ayuda={
+                  condicionVenta === "RECETA_VALORADA"
+                    ? "Ya va al libro de estupefacientes por la receta valorada"
+                    : condicionVenta === "RECETA_ARCHIVADA"
+                      ? "Ya va al libro de psicotrópicos por la receta archivada"
+                      : "Psicotrópico o estupefaciente: va al libro"
+                }
+                activo={controladoEfectivo}
                 onChange={setControlado}
                 peligroso
+                bloqueado={controladoFijo}
               />
             </div>
-
-            <Campo label="Código de barras">
-              <div className="flex gap-2">
-                <Input
-                  value={codBarra}
-                  onChange={(e) => setCodBarra(e.target.value)}
-                  className="flex-1"
-                />
-                {/* No pide cámara ni permisos: devuelve el foco al campo. El
-                    lector USB del mostrador escribe como un teclado, así que
-                    "escanear" es literalmente eso. Ver `CampoBusqueda`. */}
-                <Boton
-                  variante="ghost"
-                  icono="barcode"
-                  type="button"
-                  onClick={(e) => {
-                    const campo = (e.currentTarget.previousElementSibling ??
-                      null) as HTMLInputElement | null;
-                    campo?.focus();
-                  }}
-                >
-                  Escanear
-                </Boton>
-              </div>
-            </Campo>
           </>
         )}
 

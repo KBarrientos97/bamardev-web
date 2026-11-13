@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto } from "../../types";
@@ -46,6 +46,11 @@ vi.mock("../../lib/api", () => ({
     buscarProductos: vi.fn(async () => ({ items: [], total: 0, limite: 30, offset: 0 })),
     crearProducto: vi.fn(async () => ({})),
     actualizarProducto: vi.fn(async () => ({})),
+    // Las sugerencias de la ficha del negocio entero (farmacia, 12-nov).
+    sugerenciasFicha: vi.fn(async () => ({ principiosActivos: [], laboratorios: [], formas: [] })),
+    // La ficha del medicamento (la que abre Artículos en una farmacia).
+    lotesDeProducto: vi.fn(async () => []),
+    ubicacionesUsadas: vi.fn(async () => []),
   },
 }));
 
@@ -102,10 +107,14 @@ beforeEach(() => {
   crearProducto.mockClear();
   actualizarProducto.mockClear();
   vi.mocked(api.getUnidades).mockResolvedValue([]);
+  vi.mocked(api.sugerenciasFicha).mockClear();
+  vi.mocked(api.sugerenciasFicha).mockResolvedValue({ principiosActivos: [], laboratorios: [], formas: [] });
+  vi.mocked(api.buscarProductos).mockResolvedValue({ items: [], total: 0, limite: 30, offset: 0 });
   sesion.secciones = [];
   sesion.lotes = true;
   sesion.sucursalId = null;
   sesion.locales = undefined;
+  localStorage.clear();
 });
 
 describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
@@ -765,11 +774,18 @@ describe("farmacia: el alta ayuda a escribir menos (B11 y M11)", () => {
     });
   }
 
-  /** Lo que ofrece un `<datalist>`, por su id. */
-  function opcionesDe(id: string): string[] {
-    return Array.from(document.getElementById(id)?.querySelectorAll("option") ?? []).map(
-      (o) => o.value,
-    );
+  /**
+   * Lo que ofrece el combo de un campo (`CampoSugerido`, desde el 12-nov; antes
+   * era un `<datalist>`), abriéndolo como lo abre la persona: tocándolo.
+   */
+  function opcionesDe(campo: RegExp): string[] {
+    const input = screen.getByRole("combobox", { name: campo });
+    fireEvent.click(input);
+    // Dentro de la lista: los `<select>` del formulario también tienen opciones.
+    const lista = screen.queryByRole("listbox");
+    const textos = lista ? within(lista).getAllByRole("option").map((o) => o.textContent ?? "") : [];
+    fireEvent.blur(input);
+    return textos;
   }
 
   it("B11: en farmacia la unidad arranca en «Unidad», aunque no sea la primera de la lista", async () => {
@@ -809,28 +825,34 @@ describe("farmacia: el alta ayuda a escribir menos (B11 y M11)", () => {
     await act(async () => {
       fireEvent.click(screen.getAllByRole("button", { name: /Nuevo/ })[0]);
     });
-    expect(opcionesDe("laboratorios")).toEqual(["BAGÓ"]);
-    expect(opcionesDe("formas-farmaceuticas")).toEqual(["Comprimido"]);
+    expect(opcionesDe(/^Laboratorio/)).toEqual(["BAGÓ"]);
+    // Lo que se ve va antes que la lista base de formas.
+    expect(opcionesDe(/^Forma farmacéutica/)[0]).toBe("Comprimido");
   });
 
   it("M11: recuerda lo tecleado al guardar y lo vuelve a sugerir", async () => {
     sesion.rubro = "FARMACIA";
     localStorage.setItem(CLAVE, JSON.stringify({ laboratorios: ["INTI"], formas: ["Jarabe"] }));
     await abrirNuevo();
-    expect(opcionesDe("laboratorios")).toEqual(["INTI"]);
-    expect(opcionesDe("formas-farmaceuticas")).toEqual(["Jarabe"]);
+    expect(opcionesDe(/^Laboratorio/)).toEqual(["INTI"]);
+    expect(opcionesDe(/^Forma farmacéutica/)[0]).toBe("Jarabe");
 
     fireEvent.change(screen.getByLabelText(/^Nombre comercial/), { target: { value: "Amoxidal" } });
     fireEvent.change(screen.getByLabelText(/^Precio de venta/), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText(/^Laboratorio/), { target: { value: "Lafar" } });
     fireEvent.change(screen.getByLabelText(/^Forma farmacéutica/), { target: { value: "Cápsula" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Principio activo" }), {
+      target: { value: "Amoxicilina," },
+    });
     await guardar();
 
     expect(crearProducto).toHaveBeenCalledTimes(1);
-    // Lo más reciente primero, y lo de antes se queda.
+    // Lo más reciente primero, y lo de antes se queda. Las drogas se suman
+    // el 12-nov; lo guardado antes no las traía.
     expect(JSON.parse(localStorage.getItem(CLAVE)!)).toEqual({
       laboratorios: ["Lafar", "INTI"],
       formas: ["Cápsula", "Jarabe"],
+      principios: ["Amoxicilina"],
     });
   });
 
@@ -838,15 +860,303 @@ describe("farmacia: el alta ayuda a escribir menos (B11 y M11)", () => {
     sesion.rubro = "FARMACIA";
     localStorage.setItem(CLAVE, "{esto no es json");
     await abrirNuevo();
-    expect(opcionesDe("laboratorios")).toEqual([]);
+    expect(opcionesDe(/^Laboratorio/)).toEqual([]);
     expect(screen.getByLabelText(/^Nombre comercial/)).toBeInTheDocument();
   });
 
-  it("M11: el restaurante no lee ni escribe esa memoria", async () => {
+  it("M11: el restaurante no lee ni escribe esa memoria, ni pide las sugerencias", async () => {
     sesion.rubro = "RESTAURANTE";
     localStorage.setItem(CLAVE, JSON.stringify({ laboratorios: ["INTI"], formas: [] }));
     await abrirNuevo();
-    expect(document.getElementById("laboratorios")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /^Laboratorio/ })).not.toBeInTheDocument();
+    expect(api.sugerenciasFicha).not.toHaveBeenCalled();
+  });
+
+  it("suma lo del negocio entero (servidor) a lo que se ve, y si falla el alta sigue", async () => {
+    sesion.rubro = "FARMACIA";
+    vi.mocked(api.sugerenciasFicha).mockResolvedValue({
+      principiosActivos: ["Tiocolchicósido"],
+      laboratorios: ["Lafar"],
+      formas: ["Granulado"],
+    });
+    await abrirNuevo();
+    expect(opcionesDe(/^Laboratorio/)).toEqual(["Lafar"]);
+    expect(opcionesDe(/^Forma farmacéutica/)[0]).toBe("Granulado");
+    fireEvent.change(screen.getByRole("combobox", { name: "Principio activo" }), {
+      target: { value: "tioco" },
+    });
+    expect(screen.getByRole("option", { name: "Tiocolchicósido" })).toBeInTheDocument();
+  });
+
+  it("si las sugerencias del servidor fallan, quedan la memoria y la lista base", async () => {
+    sesion.rubro = "FARMACIA";
+    vi.mocked(api.sugerenciasFicha).mockRejectedValue(new Error("404"));
+    await abrirNuevo();
+    expect(opcionesDe(/^Forma farmacéutica/)).toContain("Cápsula");
+    expect(screen.queryByText(/404/)).not.toBeInTheDocument();
+  });
+});
+
+/** Abre el alta de un medicamento con lo mínimo ya escrito (nombre y precio). */
+async function abrirAltaFarmacia() {
+  sesion.rubro = "FARMACIA";
+  vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+  getProductos.mockResolvedValue([]);
+  render(<Productos />);
+  const nuevo = await screen.findAllByRole("button", { name: /Nuevo/ });
+  await act(async () => {
+    fireEvent.click(nuevo[0]);
+  });
+  fireEvent.change(screen.getByLabelText(/^Nombre comercial/), { target: { value: "Clofexan" } });
+  fireEvent.change(screen.getByLabelText(/^Precio de venta/), { target: { value: "8" } });
+}
+
+/** Lo que viajó en el alta. */
+const altaEnviada = () => crearProducto.mock.calls[0][0];
+
+describe("farmacia: los principios activos son fichas (12-nov)", () => {
+  const principio = () => screen.getByRole("combobox", { name: "Principio activo" });
+
+  it("dos drogas viajan en la misma columna como «A, B»", async () => {
+    // Clofexan = diclofenaco + paracetamol: el campo de texto invitaba a
+    // cargar una sola.
+    await abrirAltaFarmacia();
+    fireEvent.change(principio(), { target: { value: "diclo" } });
+    fireEvent.click(screen.getByRole("option", { name: "Diclofenaco" }));
+    fireEvent.change(principio(), { target: { value: "Paracetamol" } });
+    fireEvent.keyDown(principio(), { key: "Enter" });
+    await guardar();
+    expect(altaEnviada()).toEqual(
+      expect.objectContaining({ principioActivo: "Diclofenaco, Paracetamol" }),
+    );
+    // Más tiempo que el de siempre: es el primer alta de farmacia del bloque
+    // y con la máquina cargada pasó de los 5 s (dio 3 s suelta).
+  }, 15_000);
+
+  it("los atajos traen la lista base aunque la farmacia sea nueva", async () => {
+    await abrirAltaFarmacia();
+    fireEvent.change(principio(), { target: { value: "losar" } });
+    expect(screen.getByRole("option", { name: "Losartán" })).toBeInTheDocument();
+  });
+
+  it("al editar, el texto guardado vuelve partido en fichas", async () => {
+    sesion.rubro = "FARMACIA";
+    sesion.secciones = ["productos"];
+    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+    const guardado = producto({
+      id: 4,
+      nombre: "Dolofen",
+      principioActivo: "Paracetamol + Cafeína",
+      unidadMedida: UNIDAD,
+    });
+    vi.mocked(api.buscarProductos).mockResolvedValue({ items: [guardado], total: 1, limite: 30, offset: 0 });
+    getProductos.mockResolvedValue([]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByText("Dolofen"));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    });
+    expect(screen.getByRole("button", { name: "Quitar Paracetamol" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar Cafeína" })).toBeInTheDocument();
+
+    await guardar();
+    expect(actualizarProducto).toHaveBeenCalledWith(
+      4,
+      expect.objectContaining({ principioActivo: "Paracetamol, Cafeína" }),
+    );
+  });
+
+  it("más de lo que entra en la columna no se manda: se dice cuánto sobra", async () => {
+    // El backend corta en 120 y devolvía un 400 que no nombraba el campo.
+    await abrirAltaFarmacia();
+    fireEvent.change(principio(), { target: { value: `${"A".repeat(70)}, ${"B".repeat(60)},` } });
+    await guardar();
+    expect(screen.getByText(/Los principios activos no entran/)).toBeInTheDocument();
+    expect(crearProducto).not.toHaveBeenCalled();
+  });
+});
+
+describe("farmacia: «Para qué sirve» guarda en la descripción", () => {
+  it("se escribe en la ficha y viaja como `descripcion`", async () => {
+    // En farmacia el formulario esconde la descripción libre; el buscador
+    // del servidor ya busca por ella ("fiebre" encuentra el paracetamol).
+    await abrirAltaFarmacia();
+    fireEvent.change(screen.getByLabelText(/^Para qué sirve/), {
+      target: { value: "Analgésico y antifebril " },
+    });
+    await guardar();
+    expect(altaEnviada()).toEqual(expect.objectContaining({ descripcion: "Analgésico y antifebril" }));
+  });
+});
+
+describe("farmacia: el registro sanitario avisa, no bloquea", () => {
+  const registro = () => screen.getByLabelText(/^Registro sanitario/);
+
+  it("un número suelto muestra el aviso ámbar al salir del campo, y se guarda igual", async () => {
+    // Kevin cargó "65165156165" y el sistema no dijo nada.
+    await abrirAltaFarmacia();
+    fireEvent.focus(registro());
+    fireEvent.change(registro(), { target: { value: "65165156165" } });
+    // Mientras se escribe no se reta.
+    expect(screen.queryByText(/No tiene la forma de un registro de AGEMED/)).not.toBeInTheDocument();
+    fireEvent.blur(registro());
+    expect(screen.getByText(/No tiene la forma de un registro de AGEMED/)).toBeInTheDocument();
+    expect(screen.getByText(/Se guarda igual/)).toBeInTheDocument();
+
+    await guardar();
+    expect(altaEnviada()).toEqual(expect.objectContaining({ registroSanitario: "65165156165" }));
+  });
+
+  it("al salir del campo queda en mayúsculas y sin espacios de más, y sin aviso si tiene la forma", async () => {
+    await abrirAltaFarmacia();
+    fireEvent.focus(registro());
+    fireEvent.change(registro(), { target: { value: " ii - 12345 / 2024 " } });
+    fireEvent.blur(registro());
+    expect(registro()).toHaveValue("II-12345/2024");
+    expect(screen.queryByText(/No tiene la forma de un registro de AGEMED/)).not.toBeInTheDocument();
+  });
+});
+
+describe("farmacia: la condición de venta dice lo que hace y manda el controlado", () => {
+  const controlado = () => screen.getByRole("checkbox", { name: /Medicamento controlado/ });
+  const condicion = (nombre: string) =>
+    fireEvent.click(screen.getByRole("button", { name: nombre, pressed: false }));
+
+  it("cada condición se explica debajo de los chips", async () => {
+    await abrirAltaFarmacia();
+    expect(screen.getByText("Se vende sin pedir nada.")).toBeInTheDocument();
+    condicion("Receta");
+    expect(screen.getByText(/No frena la venta, no pide datos y no va a ningún libro/)).toBeInTheDocument();
+    condicion("Receta archivada");
+    expect(
+      screen.getByText(/pide paciente, médico, matrícula y fecha de la receta, y la venta queda asentada en el libro de psicotrópicos/),
+    ).toBeInTheDocument();
+    condicion("Receta valorada");
+    expect(screen.getByText(/número del formulario de la receta valorada/)).toBeInTheDocument();
+  });
+
+  it("archivada o valorada prenden y bloquean el controlado; al volver, queda lo que se había elegido", async () => {
+    await abrirAltaFarmacia();
+    expect(controlado()).not.toBeChecked();
+    condicion("Receta archivada");
+    expect(controlado()).toBeChecked();
+    expect(controlado()).toBeDisabled();
+    expect(screen.getByText("Ya va al libro de psicotrópicos por la receta archivada")).toBeInTheDocument();
+    condicion("Receta valorada");
+    expect(screen.getByText("Ya va al libro de estupefacientes por la receta valorada")).toBeInTheDocument();
+
+    condicion("Libre");
+    expect(controlado()).not.toBeChecked();
+    expect(controlado()).toBeEnabled();
+  });
+
+  it("con archivada viaja `controlado: true` aunque nadie haya tocado el interruptor", async () => {
+    await abrirAltaFarmacia();
+    condicion("Receta archivada");
+    await guardar();
+    expect(altaEnviada()).toEqual(
+      expect.objectContaining({ condicionVenta: "RECETA_ARCHIVADA", controlado: true }),
+    );
+  });
+
+  it("un Libre marcado a mano como controlado dice que igual va al libro", async () => {
+    await abrirAltaFarmacia();
+    fireEvent.click(controlado());
+    expect(screen.queryByText("Se vende sin pedir nada.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Como está marcado controlado/)).toBeInTheDocument();
+    condicion("Receta archivada");
+    condicion("Receta");
+    // Lo elegido a mano sigue: la condición no lo pisó.
+    expect(controlado()).toBeChecked();
+  });
+});
+
+describe("farmacia: el tipo es Producto o Servicio", () => {
+  const tipo = () => screen.getByLabelText(/^Tipo/);
+  const opcionesTipo = () =>
+    Array.from((tipo() as HTMLSelectElement).options).map((o) => o.textContent);
+
+  it("no ofrece Elaborado ni Combo, que son del restaurante", async () => {
+    // El plan trae `combos` (el mock dice que sí a todo): igual no se ofrece.
+    await abrirAltaFarmacia();
+    expect(opcionesTipo()).toEqual(["Producto", "Servicio"]);
+  });
+
+  it("un servicio se explica, no pide lote y viaja sin lote", async () => {
+    await abrirAltaFarmacia();
+    expect(screen.getByRole("checkbox", { name: /Maneja lote/ })).toBeChecked();
+    fireEvent.change(tipo(), { target: { value: "SERVICIO" } });
+    expect(screen.getByText(/Inyectable aplicado, toma de presión, curación: se cobra sin stock/)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Maneja lote/ })).not.toBeInTheDocument();
+    await guardar();
+    expect(altaEnviada()).toEqual(
+      expect.objectContaining({ tipoProducto: "SERVICIO", manejaLote: false }),
+    );
+  });
+
+  it("un combo que ya existe se sigue editando como combo (no se convierte al guardar)", async () => {
+    sesion.rubro = "FARMACIA";
+    sesion.secciones = ["productos"];
+    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+    const combo = producto({
+      id: 6,
+      nombre: "Kit de curación",
+      tipoProducto: "COMPUESTO",
+      stockTotal: 3,
+      unidadMedida: UNIDAD,
+      componentes: [{ ingredienteId: 2, nombre: "Gasa", cantidad: 1 }],
+    });
+    vi.mocked(api.buscarProductos).mockResolvedValue({ items: [combo], total: 1, limite: 30, offset: 0 });
+    getProductos.mockResolvedValue([]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByText("Kit de curación"));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    });
+    expect(opcionesTipo()).toEqual(["Producto", "Servicio", "Combo"]);
+    expect(tipo()).toHaveValue("COMPUESTO");
+  });
+
+  it("en el restaurante el tipo sigue siendo Producto / Elaborado / Combo", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await abrirAltaCon();
+    expect(opcionesTipo()).toEqual(["Producto", "Elaborado", "Combo"]);
+    fireEvent.change(tipo(), { target: { value: "SERVICIO" } });
+    expect(screen.getByText("Se prepara al vender: no lleva stock propio.")).toBeInTheDocument();
+  });
+});
+
+describe("farmacia: la búsqueda corregida se dice arriba de la lista", () => {
+  it("muestra lo tecleado y lo que se buscó, y deja pasar al buscador lo corregido", async () => {
+    sesion.rubro = "FARMACIA";
+    getProductos.mockResolvedValue([]);
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [producto({ id: 8, nombre: "Ibuprofeno 400 mg" })],
+      total: 1,
+      limite: 30,
+      offset: 0,
+      corregido: "ibuprofeno",
+    });
+    render(<Productos />);
+    buscar("ibprofen");
+    expect(await screen.findByRole("status")).toHaveTextContent("No hay nada con «ibprofen». Mostrando «ibuprofeno».");
+    fireEvent.click(screen.getByRole("button", { name: "Buscar «ibuprofeno»" }));
+    expect(screen.getByPlaceholderText(/^Buscar por/)).toHaveValue("ibuprofeno");
+  });
+
+  it("sin corrección no hay aviso", async () => {
+    sesion.rubro = "FARMACIA";
+    getProductos.mockResolvedValue([]);
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [producto({ id: 8, nombre: "Ibuprofeno 400 mg" })],
+      total: 1,
+      limite: 30,
+      offset: 0,
+    });
+    render(<Productos />);
+    buscar("ibupro");
+    await screen.findByText("Ibuprofeno 400 mg");
+    expect(screen.queryByText(/Mostrando «/)).not.toBeInTheDocument();
   });
 });
 
