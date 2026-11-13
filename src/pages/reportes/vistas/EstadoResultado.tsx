@@ -21,6 +21,8 @@ import { apiReportes, fraccion, type ClasesAcademiaApi, type CreditosApi, type E
 import { hoja, useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsEntero, bsResta, bsSubtotal } from "../formato";
 import { ProgresoMeta } from "../graficos";
+import { NotaGenerales } from "../NotaGenerales";
+import { useGastosGenerales } from "../useGastosGenerales";
 import { aDia, diasDelMes, esMesEnCurso, mesDe, prosaRango, type Periodo } from "../periodo";
 import { Cargador, Chip, Delta, Nota, Tarjeta } from "../ui";
 import {
@@ -134,6 +136,10 @@ export default function EstadoResultado() {
     [conFiado, rango.desde, rango.hasta, rango.sucursalId],
   );
 
+  // Con UNA sucursal elegida, lo que no es de ningún local no está en la cuenta:
+  // se dice debajo (con "Todas" ya está adentro y el monto viene en 0).
+  const generales = useGastosGenerales(rango);
+
   const [fin, gastos, resumen, efectivo, clases] = datos.datos ?? [null, null, null, null, null];
   const er = fin && gastos ? estadoResultado(fin, gastos, gastosDeCaja(efectivo)) : null;
   const partes = er && fin ? partesDe(perfil, er, fin, resumen) : null;
@@ -164,6 +170,7 @@ export default function EstadoResultado() {
           corteMin={corteMin ?? 0}
           horasMesas={horasJugadas(billar.datos)}
           creditos={creditos.datos}
+          generales={generales}
           veReporte={veReporte}
         />
       )}
@@ -210,6 +217,7 @@ function Contenido({
   corteMin,
   horasMesas,
   creditos,
+  generales,
   veReporte,
 }: {
   er: Er;
@@ -226,6 +234,8 @@ function Contenido({
   corteMin: number;
   horasMesas: string | null;
   creditos: CreditosApi | null;
+  /** Gastos del negocio que no son de ningún local; sólo con una sucursal elegida (0 = nada que decir). */
+  generales: number;
   veReporte: (id: string) => boolean;
 }) {
   const navigate = useNavigate();
@@ -476,6 +486,7 @@ function Contenido({
             )}
             <CajaResultado er={er} periodo={periodo} parcial={parcial} explicacion={explicarResultado(er, perfil, partes, sueldosDocentes)} />
           </Tarjeta>
+          <NotaGenerales monto={generales} />
           {er.sinBajoLaLinea && esPositivo(er.gastosOperativos) && (
             <p className="px-1 text-[12.5px] text-texto-3">
               Es el mismo número que el resultado del local, porque no cargaste impuestos ni gastos del banco en este período.

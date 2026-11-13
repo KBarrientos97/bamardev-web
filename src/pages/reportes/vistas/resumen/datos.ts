@@ -68,6 +68,39 @@ export interface Parte {
 }
 
 /**
+ * El billar con "Todas las sucursales" (PLAN-SUCURSAL-TOTAL §9.6): el reporte
+ * principal del backend es de UN local (la principal) y las ventas que están al
+ * lado son de todos. Cuando trae `porSucursal` (organización, "Todas", 2+
+ * locales con mesas) se arma la versión del negocio entero con los totales:
+ * tiempo, consumos, horas, sesiones, ventas rápidas y cuentas, y la ocupación
+ * PONDERADA. Lo que no se puede sumar sin volverse ilegible (mesa por mesa, el
+ * mapa de calor, la comparación con el período anterior) se quita en vez de
+ * dejar el de la principal haciéndose pasar por el total. Sin `porSucursal`
+ * (un local, o una sucursal elegida) devuelve el reporte tal cual.
+ */
+export function billarConsolidado(b: BillarReporteApi | null | undefined): BillarReporteApi | null {
+  if (!b) return null;
+  const t = b.porSucursal?.total;
+  if (!t) return b;
+  return {
+    ...b,
+    tiempoBs: t.tiempoBs,
+    consumosBs: t.consumosBs,
+    horas: t.horas,
+    ocupacion: t.ocupacion,
+    sesiones: t.sesiones,
+    rapidas: t.rapidas,
+    cuentas: t.cuentas,
+    porMesa: [],
+    porHora: [],
+    calor: undefined,
+    porTipo: undefined,
+    mesasParadas: undefined,
+    anterior: null,
+  };
+}
+
+/**
  * Las tres cifras de abajo de la tarjeta de ventas, según el rubro: el billar
  * separa el tiempo de mesa de los consumos, el restaurante el salón del
  * delivery, una peluquería los servicios de los productos. En el resto, cómo

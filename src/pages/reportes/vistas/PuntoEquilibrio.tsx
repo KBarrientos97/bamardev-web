@@ -16,6 +16,8 @@ import { apiReportes, fraccion } from "../api";
 import { useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsEntero, bsResta, pct } from "../formato";
 import { ProgresoMeta } from "../graficos";
+import { NotaGenerales } from "../NotaGenerales";
+import { useGastosGenerales } from "../useGastosGenerales";
 import { Cargador, Delta, Destacado, FilaLista, Nota, Renglon, Tarjeta } from "../ui";
 import {
   bsPorHoraDeMesa,
@@ -66,15 +68,16 @@ export default function PuntoEquilibrio() {
   }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta]);
 
   // La unidad del rubro es un dato de más: si falla, la meta se ve igual, sin
-  // esa línea. En un billar sale de las mesas (sin sucursal elegida, el
-  // reporte del billar es el de la principal: el Bs por hora de un local
-  // alcanza para convertir la meta, no es una suma); en el resto, del ticket
-  // promedio.
+  // esa línea. En un billar sale de las mesas; en el resto, del ticket
+  // promedio. Con "Todas" y 2+ locales con mesas el reporte del billar trae
+  // `porSucursal`, y el Bs por hora sale de su total (plata de todos los
+  // locales sobre las horas de todos): con el de la principal sola, la meta de
+  // todo el negocio se convertía con la tarifa de un local.
   const unidad = useApi<UnidadRubro | null>(
     () =>
       conMesas
         ? apiReportes.billar(rango).then((b) => {
-            const bsPorHora = bsPorHoraDeMesa(b);
+            const bsPorHora = bsPorHoraDeMesa(b.porSucursal?.total ?? b);
             return bsPorHora == null ? null : { tipo: "horas" as const, bsPorHora };
           })
         : apiReportes.resumen(rango).then((r) => {
@@ -83,6 +86,9 @@ export default function PuntoEquilibrio() {
           }),
     [conMesas, rango.desde, rango.hasta, rango.sucursalId],
   );
+
+  // Con UNA sucursal elegida, los gastos generales del negocio no están en la meta.
+  const generales = useGastosGenerales(rango);
 
   const [fin, gastos] = mitades.datos ?? [null, null];
   const pe = fin && gastos ? puntoEquilibrio(fin, gastos, diasDelRango(rango.desde, rango.hasta)) : null;
@@ -101,6 +107,7 @@ export default function PuntoEquilibrio() {
             unidad={unidad.datos ?? null}
             enBillar={enBillar}
             conGastos={puede("gastos")}
+            generales={generales}
           />
         )
       }
@@ -114,12 +121,15 @@ function Cuerpo({
   unidad,
   enBillar,
   conGastos,
+  generales,
 }: {
   pe: CuentaEquilibrio;
   deltaVentas: number | null;
   unidad: UnidadRubro | null;
   enBillar: boolean;
   conGastos: boolean;
+  /** Gastos del negocio que no son de ningún local (sólo con una sucursal elegida; 0 = nada). */
+  generales: number;
 }) {
   const meta = pe.puntoEquilibrio;
   const hayMeta = meta != null && esPositivo(meta);
@@ -204,6 +214,8 @@ function Cuerpo({
           </div>
         )}
       </div>
+
+      <NotaGenerales monto={generales} />
 
       <Nota>
         {nota ? `${nota} ` : ""}Impuestos y gastos financieros no entran: la meta es la de cubrir la operación.

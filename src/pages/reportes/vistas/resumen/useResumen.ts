@@ -8,7 +8,9 @@ import { useAuth } from "../../../../store/AuthContext";
 import type { RangoReporte } from "../../../../types";
 import { apiReportes } from "../../api";
 import { useReporte } from "../../contexto";
+import { useGastosGenerales } from "../../useGastosGenerales";
 import { gastosDeCaja } from "../EstadoResultado.datos";
+import { billarConsolidado } from "./datos";
 
 /**
  * Los gastos de los mismos días que las ventas, de medianoche local a
@@ -79,6 +81,8 @@ export function useDatosResumen({ paraTexto = false } = {}) {
         : Promise.resolve(null),
     [rentabilidad, conGastos, conEfectivo, paraTexto, ...ant, rango.sucursalId],
   );
+  // Con UNA sucursal elegida, lo general del negocio no está en la ganancia: se avisa.
+  const generales = useGastosGenerales(rango, conGastos);
   const billar = useApi(() => (conBillar ? apiReportes.billar(rango, rangoAnterior) : Promise.resolve(null)), [conBillar, ...r, ...ant]);
   const meseros = useApi(() => (verMeseros ? apiReportes.meseros(rango) : Promise.resolve(null)), [verMeseros, ...r]);
   const agenda = useApi(
@@ -120,7 +124,10 @@ export function useDatosResumen({ paraTexto = false } = {}) {
     gastos,
     er,
     erAnterior,
-    billar: billar.datos,
+    // Con "Todas" y 2+ locales con mesas, la versión del negocio entero (los
+    // totales de `porSucursal`) y no la de la principal sola al lado de las
+    // ventas de todos.
+    billar: billarConsolidado(billar.datos),
     meseros: meseros.datos,
     agenda: agenda.datos,
     mermas: mermas.datos,
@@ -130,5 +137,6 @@ export function useDatosResumen({ paraTexto = false } = {}) {
     horasDelDia: horasDelDia.datos,
     rentabilidad,
     conGastos,
+    generales,
   };
 }
