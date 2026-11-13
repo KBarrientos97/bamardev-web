@@ -56,7 +56,10 @@ vi.mock("../../lib/api", async (original) => ({
   },
 }));
 
-vi.mock("../../lib/useSucursales", () => ({
+// Con las reglas de verdad (`modoDeSucursal`, `esUnLocal`): el QR de cobro las
+// usa para saber si hay que pedirlo por sede.
+vi.mock("../../lib/useSucursales", async (original) => ({
+  ...(await original<typeof import("../../lib/useSucursales")>()),
   useSucursales: () => ({ elegir: false, sucursales: [], sugerida: null }),
 }));
 

@@ -33,14 +33,23 @@ const LARGO_MAX = 85_000;
 /** Calidades a probar, de mejor a peor, hasta que la imagen entre en el tope. */
 const CALIDADES = [0.85, 0.75, 0.65, 0.55, 0.45];
 
-function clave(alias: string | null | undefined): string {
-  return `${PREFIJO}_${alias || "sin_negocio"}`;
+/**
+ * Con "Un QR para cada sucursal" cada sede tiene su copia: la clave lleva la
+ * sucursal. Sin sucursal es la de siempre (la única que había), así que la
+ * copia que ya tiene cada equipo sigue valiendo.
+ */
+function sufijo(sucursalId: number | null | undefined): string {
+  return sucursalId != null ? `_s${sucursalId}` : "";
+}
+
+function clave(alias: string | null | undefined, sucursalId?: number | null): string {
+  return `${PREFIJO}_${alias || "sin_negocio"}${sufijo(sucursalId)}`;
 }
 
 /** El QR guardado en este equipo como data URL, o null si no hay ninguno. */
-export function leerQr(alias: string | null | undefined): string | null {
+export function leerQr(alias: string | null | undefined, sucursalId?: number | null): string | null {
   try {
-    return localStorage.getItem(clave(alias));
+    return localStorage.getItem(clave(alias, sucursalId));
   } catch {
     return null;
   }
@@ -52,25 +61,25 @@ export function hayQr(alias: string | null | undefined): boolean {
 }
 
 /** Borra la copia del equipo: el cobro vuelve a decir que no hay QR. */
-export function borrarQr(alias: string | null | undefined): void {
+export function borrarQr(alias: string | null | undefined, sucursalId?: number | null): void {
   try {
-    localStorage.removeItem(clave(alias));
+    localStorage.removeItem(clave(alias, sucursalId));
   } catch {
     /* sin storage no hay nada que borrar */
   }
 }
 
-function marcarSincronizado(alias: string | null | undefined): void {
+function marcarSincronizado(alias: string | null | undefined, sucursalId?: number | null): void {
   try {
-    localStorage.setItem(`${PREFIJO_SINCRONIZADO}_${alias || "sin_negocio"}`, "1");
+    localStorage.setItem(`${PREFIJO_SINCRONIZADO}_${alias || "sin_negocio"}${sufijo(sucursalId)}`, "1");
   } catch {
     /* sin storage se vuelve a sincronizar la próxima vez, no pasa nada */
   }
 }
 
-function yaSincronizado(alias: string | null | undefined): boolean {
+function yaSincronizado(alias: string | null | undefined, sucursalId?: number | null): boolean {
   try {
-    return localStorage.getItem(`${PREFIJO_SINCRONIZADO}_${alias || "sin_negocio"}`) === "1";
+    return localStorage.getItem(`${PREFIJO_SINCRONIZADO}_${alias || "sin_negocio"}${sufijo(sucursalId)}`) === "1";
   } catch {
     return false;
   }
@@ -81,44 +90,57 @@ function yaSincronizado(alias: string | null | undefined): boolean {
  * que quedó el equipo. Sin internet sigue con la copia que tenía.
  *
  * `puedeSubir`: si quien mira maneja la caja (no el mesero ni el repartidor).
+ *
+ * `sucursalId`: la sede de la caja, para quien es de la organización con un QR
+ * por sucursal (el atado a un local no la manda: el backend ya sabe la suya).
+ * Sin ella, todo como siempre.
  */
 export async function sincronizarQr(
   alias: string | null | undefined,
   puedeSubir: boolean,
+  sucursalId?: number | null,
 ): Promise<string | null> {
   let remoto: string | null;
   try {
-    remoto = (await api.qrCobro()).imagen;
+    remoto = (sucursalId != null ? await api.qrCobro(sucursalId) : await api.qrCobro()).imagen;
   } catch {
-    return leerQr(alias);
+    return leerQr(alias, sucursalId);
   }
   if (remoto) {
     try {
-      localStorage.setItem(clave(alias), remoto);
-      marcarSincronizado(alias);
+      localStorage.setItem(clave(alias, sucursalId), remoto);
+      marcarSincronizado(alias, sucursalId);
     } catch {
       /* sin storage se muestra igual lo que vino, abajo */
       return remoto;
     }
-  } else if (yaSincronizado(alias)) {
+  } else if (yaSincronizado(alias, sucursalId)) {
     // Este equipo ya lo había recibido: alguien lo quitó a propósito, y
     // seguir mostrando la copia sería cobrar a una cuenta dada de baja.
-    borrarQr(alias);
-  } else if (puedeSubir && leerQr(alias)) {
+    borrarQr(alias, sucursalId);
+  } else if (sucursalId == null && puedeSubir && leerQr(alias)) {
     // La caja de antes de que el QR viviera en el backend: ya lo tenía
     // cargado. Se sube para que lo reciban los meseros sin volver a elegirlo.
+    // (Sólo el general: la copia de una sede nunca es de antes.)
     if ((await subirQr(alias)).ok) marcarSincronizado(alias);
   }
-  return leerQr(alias);
+  return leerQr(alias, sucursalId);
 }
 
-/** Sube la copia del equipo al backend, para el resto de los equipos. */
-export async function subirQr(alias: string | null | undefined): Promise<ResultadoQr> {
-  const qr = leerQr(alias);
+/**
+ * Sube la copia del equipo al backend, para el resto de los equipos. Con
+ * `sucursalId`, la copia y el QR son los de esa sede.
+ */
+export async function subirQr(
+  alias: string | null | undefined,
+  sucursalId?: number | null,
+): Promise<ResultadoQr> {
+  const qr = leerQr(alias, sucursalId);
   if (!qr) return { ok: false, error: "No hay QR para compartir." };
   try {
-    await api.subirQrCobro(qr);
-    marcarSincronizado(alias);
+    if (sucursalId != null) await api.subirQrCobro(qr, sucursalId);
+    else await api.subirQrCobro(qr);
+    marcarSincronizado(alias, sucursalId);
     return { ok: true };
   } catch (e) {
     return {
@@ -128,10 +150,14 @@ export async function subirQr(alias: string | null | undefined): Promise<Resulta
   }
 }
 
-/** Lo quita para todos los equipos del negocio, no sólo de éste. */
-export async function quitarQrDelNegocio(): Promise<ResultadoQr> {
+/**
+ * Lo quita para todos los equipos del negocio, no sólo de éste. Con
+ * `sucursalId`, sólo el de esa sede (que vuelve a cobrar con el general).
+ */
+export async function quitarQrDelNegocio(sucursalId?: number | null): Promise<ResultadoQr> {
   try {
-    await api.borrarQrCobro();
+    if (sucursalId != null) await api.borrarQrCobro(sucursalId);
+    else await api.borrarQrCobro();
     return { ok: true };
   } catch (e) {
     return {
@@ -153,13 +179,14 @@ export type ResultadoQr = { ok: true; error?: undefined } | { ok: false; error: 
 export async function guardarQr(
   alias: string | null | undefined,
   archivo: File,
+  sucursalId?: number | null,
 ): Promise<ResultadoQr> {
   if (!archivo.type.startsWith("image/")) {
     return { ok: false, error: "Elegí una imagen (PNG o JPG)." };
   }
   try {
     const dataUrl = await reescalar(archivo);
-    localStorage.setItem(clave(alias), dataUrl);
+    localStorage.setItem(clave(alias, sucursalId), dataUrl);
     return { ok: true };
   } catch (e) {
     // La cuota llena es el fallo esperable, y decir "no se pudo" a secas deja

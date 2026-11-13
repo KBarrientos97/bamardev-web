@@ -267,6 +267,23 @@ function qs(params: object = {}): string {
 }
 
 /**
+ * Lo que contesta `GET /qr-cobro`. `mismoEnTodas`, `sucursalId` y `origen` son
+ * del QR por sucursal (13-nov-2026) y un backend anterior no los manda.
+ */
+export interface QrCobroInfo {
+  imagen: string | null;
+  actualizadoEn: string | null;
+  /** El nombre de quien lo puso (backend del 18-oct en adelante). */
+  actualizadoPor?: string | null;
+  /** true = el mismo QR en todas las sucursales (lo de siempre). */
+  mismoEnTodas?: boolean;
+  /** La sede por la que se preguntó; null cuando rige el mismo para todas. */
+  sucursalId?: number | null;
+  /** "sucursal" = el propio de la sede; "general" = el del negocio (o el de respaldo). */
+  origen?: "general" | "sucursal";
+}
+
+/**
  * Llama al backend agregando el token y traduciendo errores a ApiError.
  *
  * Es el único punto por el que pasa todo el tráfico, así que acá viven las tres
@@ -1288,16 +1305,28 @@ export const api = {
    * El QR vigente; `imagen` null si todavía nadie lo subió. `actualizadoPor`
    * es el nombre de quien lo puso (backend del 18-oct en adelante).
    */
-  qrCobro: () =>
-    request<{ imagen: string | null; actualizadoEn: string | null; actualizadoPor?: string | null }>("/qr-cobro"),
-  /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
-  subirQrCobro: (imagen: string) =>
+  qrCobro: (sucursalId?: number) =>
+    request<QrCobroInfo>(`/qr-cobro${qs({ sucursalId })}`),
+  /**
+   * Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor.
+   * `sucursalId` sólo con "Un QR para cada sucursal": sin él, el general.
+   */
+  subirQrCobro: (imagen: string, sucursalId?: number) =>
     request<{ imagen: string | null }>("/qr-cobro", {
       method: "PUT",
-      body: JSON.stringify({ imagen }),
+      body: JSON.stringify(sucursalId == null ? { imagen } : { imagen, sucursalId }),
     }),
-  borrarQrCobro: () =>
-    request<{ imagen: null }>("/qr-cobro", { method: "DELETE" }),
+  borrarQrCobro: (sucursalId?: number) =>
+    request<{ imagen: null }>(`/qr-cobro${qs({ sucursalId })}`, { method: "DELETE" }),
+  /**
+   * "El mismo QR en todas las sucursales" (`porSucursal: false`) o "uno en cada
+   * una" (`true`). Sólo la administración; rige con 2 o más sucursales.
+   */
+  cambiarModoQrCobro: (porSucursal: boolean) =>
+    request<{ mismoEnTodas: boolean }>("/qr-cobro/modo", {
+      method: "PUT",
+      body: JSON.stringify({ porSucursal }),
+    }),
 
   /**
    * El cajero confirma que recibió la plata.

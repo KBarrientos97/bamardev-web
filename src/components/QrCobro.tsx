@@ -8,6 +8,7 @@ import {
   subirQr,
 } from "../lib/qrPago";
 import { tienePermiso, tieneFeature } from "../lib/permisos";
+import { useSedeDeCobro } from "../lib/useSedeDeCobro";
 import { esBelleza, esBillar } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
 import type { SesionUsuario } from "../types";
@@ -33,8 +34,29 @@ function puedeCambiarQr(usuario: SesionUsuario | null): boolean {
  * También es la pantalla "QR de cobro" del administrador (`grande`, 18-oct):
  * cambiarlo desde la apertura de una caja no era el lugar (el dueño). Avisa
  * con `onCambio` para que esa pantalla vuelva a decir quién lo cambió.
+ *
+ * `sucursalId` (13-nov-2026, "Un QR para cada sucursal"): el QR de ESA sede en
+ * vez del general. Sólo lo manda la pantalla "QR de cobro" cuando la
+ * administración eligió uno por sucursal; en la apertura de caja y en todo lo
+ * demás no viene y se trabaja con el general, como siempre. `puedeQuitar`
+ * oculta «Quitar» cuando lo que se ve es el general prestado a una sede que
+ * todavía no subió el suyo (no hay nada propio que quitar). `soloLectura`: se
+ * ve el QR pero no se toca (quien es de un local cuando el QR es el de todas
+ * las sucursales: lo cambia la administración).
  */
-export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; onCambio?: () => void } = {}) {
+export function CargarQrCobro({
+  grande = false,
+  onCambio,
+  sucursalId,
+  puedeQuitar = true,
+  soloLectura = false,
+}: {
+  grande?: boolean;
+  onCambio?: () => void;
+  sucursalId?: number | null;
+  puedeQuitar?: boolean;
+  soloLectura?: boolean;
+} = {}) {
   const { negocio, usuario, rubro } = useAuth();
   /**
    * A quién más le llega el QR. En un salón de belleza no hay meseros ni, casi
@@ -57,7 +79,8 @@ export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; 
           ? "el reparto"
           : null;
   const alias = negocio?.alias;
-  const [qr, setQr] = useState<string | null>(() => leerQr(alias));
+  const sede = sucursalId ?? null;
+  const [qr, setQr] = useState<string | null>(() => (sede != null ? leerQr(alias, sede) : leerQr(alias)));
   const [error, setError] = useState("");
   // Quitarlo lo borra en todos los equipos: un toque suelto dejaba a las
   // cajas sin QR para cobrar. Se confirma antes (18-oct).
@@ -67,28 +90,29 @@ export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; 
   // Sin el permiso se ve cuál es (para saber que está), pero no se toca: el
   // backend rechaza el cambio y antes el botón estaba igual, y lo elegido
   // quedaba sólo en este equipo con un error de "no se pudo compartir".
-  const puedeCambiar = puedeCambiarQr(usuario);
+  const puedeCambiar = puedeCambiarQr(usuario) && !soloLectura;
 
   // Si otro equipo ya lo subió, se muestra ése: no hay que volver a elegirlo.
   useEffect(() => {
     let vivo = true;
-    void sincronizarQr(alias, puedeCambiarQr(usuario)).then((q) => {
+    const puede = puedeCambiarQr(usuario);
+    void (sede != null ? sincronizarQr(alias, puede, sede) : sincronizarQr(alias, puede)).then((q) => {
       if (vivo) setQr(q);
     });
     return () => {
       vivo = false;
     };
-  }, [alias, usuario]);
+  }, [alias, usuario, sede]);
 
   async function elegir(archivo: File | undefined) {
     if (!archivo) return;
     setError("");
-    const res = await guardarQr(alias, archivo);
+    const res = sede != null ? await guardarQr(alias, archivo, sede) : await guardarQr(alias, archivo);
     if (res.ok) {
-      setQr(leerQr(alias));
+      setQr(sede != null ? leerQr(alias, sede) : leerQr(alias));
       // Si no sube (sin señal), en este equipo igual queda y se cobra; se
       // avisa para que se sepa que los meseros todavía no lo tienen.
-      const subida = await subirQr(alias);
+      const subida = sede != null ? await subirQr(alias, sede) : await subirQr(alias);
       if (!subida.ok) {
         setError(
           `El QR quedó en este equipo, pero no se pudo compartir con ${
@@ -106,11 +130,12 @@ export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; 
 
   async function quitar() {
     setQuitando(true);
-    borrarQr(alias);
+    if (sede != null) borrarQr(alias, sede);
+    else borrarQr(alias);
     setQr(null);
     // Quitarlo acá y dejarlo en los celulares de los meseros sería seguir
     // cobrando a una cuenta dada de baja.
-    const res = await quitarQrDelNegocio();
+    const res = sede != null ? await quitarQrDelNegocio(sede) : await quitarQrDelNegocio();
     setQuitando(false);
     setConfirmarQuitar(false);
     if (!res.ok) setError(res.error);
@@ -155,7 +180,7 @@ export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; 
               >
                 {qr ? "Cambiar" : "Subir QR"}
               </button>
-              {qr && (
+              {qr && puedeQuitar && (
                 <button
                   type="button"
                   onClick={() => setConfirmarQuitar(true)}
@@ -182,7 +207,11 @@ export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; 
       <Confirmar
         abierto={confirmarQuitar}
         titulo="Quitar el QR de cobro"
-        texto="Se borra en todos los equipos del negocio: hasta que subas otro, ninguna caja va a poder mostrarle un QR al cliente."
+        texto={
+          sede != null
+            ? "Se borra el QR de esta sucursal: hasta que subas otro, sus cajas van a mostrar el QR general del negocio."
+            : "Se borra en todos los equipos del negocio: hasta que subas otro, ninguna caja va a poder mostrarle un QR al cliente."
+        }
         etiquetaOk="Quitar QR"
         peligroso
         procesando={quitando}
@@ -220,7 +249,10 @@ export function QrParaCobrar({
 }) {
   const { negocio, usuario } = useAuth();
   const alias = negocio?.alias;
-  const [qr, setQr] = useState<string | null>(() => leerQr(alias));
+  // La sede de la caja, para la organización con un QR por sucursal; para los
+  // demás, nada (`listo` de entrada) y todo como siempre.
+  const { sedeId: sede, listo } = useSedeDeCobro();
+  const [qr, setQr] = useState<string | null>(() => (sede != null ? leerQr(alias, sede) : leerQr(alias)));
   const [ampliado, setAmpliado] = useState(false);
   const puedeCargar = puedeCambiarQr(usuario);
   const input = useRef<HTMLInputElement>(null);
@@ -231,6 +263,8 @@ export function QrParaCobrar({
     if (!archivo) return;
     setErrorCarga("");
     setCargando(true);
+    // Desde acá se sube el QR general, que es el de respaldo de toda sede
+    // (el propio de cada sede se sube en «QR de cobro»).
     const res = await guardarQr(alias, archivo);
     if (res.ok) {
       setQr(leerQr(alias));
@@ -250,14 +284,16 @@ export function QrParaCobrar({
   // Se muestra la copia del equipo al instante y se trae la del backend por
   // si la caja la cambió (o, en el equipo del mesero, porque nunca la tuvo).
   useEffect(() => {
+    if (!listo) return;
     let vivo = true;
-    void sincronizarQr(alias, puedeCambiarQr(usuario)).then((q) => {
+    const puede = puedeCambiarQr(usuario);
+    void (sede != null ? sincronizarQr(alias, puede, sede) : sincronizarQr(alias, puede)).then((q) => {
       if (vivo) setQr(q);
     });
     return () => {
       vivo = false;
     };
-  }, [alias, usuario]);
+  }, [alias, usuario, sede, listo]);
 
   return (
     <div className="space-y-3">
