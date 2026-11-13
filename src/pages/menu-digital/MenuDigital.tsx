@@ -61,22 +61,50 @@ export default function MenuDigital() {
   const [datos, setDatos] = useState<EditorMenu | null>(null);
   const [error, setError] = useState("");
   const [llave, setLlave] = useState<string | null>(null);
+  // De qué local se ven los precios y la disponibilidad, y de cuál es el enlace de
+  // la TV. Sólo la organización con 2+ locales elige (arranca en el principal, que
+  // es el que el backend ya le daba); con un local, o atado a uno, `sucursalId` es
+  // null y la pantalla es la de siempre.
+  const local = useLocalDeTickets();
+  const sucursalId = local.sucursalId;
 
+  // Solo vale la respuesta del último pedido: al cambiar de local de prisa, la
+  // lenta de antes no pisa a la nueva.
+  const pedido = useRef(0);
   const cargar = useCallback(() => {
     setError("");
+    const mio = ++pedido.current;
     apiMenuDigital
-      .editor()
-      .then(setDatos)
-      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cargar el menú"));
+      .editor(sucursalId)
+      .then((d) => {
+        if (mio === pedido.current) setDatos(d);
+      })
+      .catch((e) => {
+        if (mio === pedido.current) setError(e instanceof Error ? e.message : "No se pudo cargar el menú");
+      });
+  }, [sucursalId]);
+  useEffect(cargar, [cargar]);
+  useEffect(() => {
     apiTickets
       .llave()
       .then((r) => setLlave(r.llave))
       .catch(() => undefined);
   }, []);
-  useEffect(cargar, [cargar]);
 
+  // La respuesta de un PATCH es el plato resuelto en el local del USUARIO (o el
+  // principal), no en el que se está mirando: se quedan el precio y la
+  // disponibilidad que ya estaban (§10.5) y se toma lo demás.
   const cambiarPlato = useCallback((p: PlatoMenu) => {
-    setDatos((d) => (d ? { ...d, platos: d.platos.map((x) => (x.id === p.id ? p : x)) } : d));
+    setDatos((d) =>
+      d
+        ? {
+            ...d,
+            platos: d.platos.map((x) =>
+              x.id === p.id ? { ...p, precio: x.precio, ...(x.disponible !== undefined ? { disponible: x.disponible } : {}) } : x,
+            ),
+          }
+        : d,
+    );
   }, []);
 
   return (
@@ -89,15 +117,25 @@ export default function MenuDigital() {
               Lo que se ve en los televisores del local. Los cambios se publican solos.
             </p>
           </div>
-          <PestanasTickets<Pestana>
-            opciones={[
-              { valor: "pantallas", texto: "Pantallas", icono: "pantalla" },
-              { valor: "platos", texto: "Platos y fotos", icono: "camara" },
-            ]}
-            valor={pestana}
-            onCambiar={setPestana}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {local.elegir && (
+              <SelectorLocalTickets locales={local.locales} valor={local.sucursalId} onChange={local.setLocal} />
+            )}
+            <PestanasTickets<Pestana>
+              opciones={[
+                { valor: "pantallas", texto: "Pantallas", icono: "pantalla" },
+                { valor: "platos", texto: "Platos y fotos", icono: "camara" },
+              ]}
+              valor={pestana}
+              onCambiar={setPestana}
+            />
+          </div>
         </header>
+        {local.elegir && local.nombre && (
+          <p role="note" className="mt-3 text-[13px] text-texto-3">
+            Los precios y la disponibilidad son los de {local.nombre}. Marcar un plato como agotado vale para todos los locales.
+          </p>
+        )}
         {error && (
           <div className="mt-4">
             <ErrorMsg onReintentar={cargar}>{error}</ErrorMsg>
@@ -109,6 +147,7 @@ export default function MenuDigital() {
             datos={datos}
             llave={llave}
             onLlave={setLlave}
+            sucursalId={sucursalId}
             onPantallas={(pantallas) => setDatos((d) => (d ? { ...d, pantallas } : d))}
           />
         )}
@@ -167,11 +206,14 @@ function PestanaPantallas({
   datos,
   llave,
   onLlave,
+  sucursalId,
   onPantallas,
 }: {
   datos: EditorMenu;
   llave: string | null;
   onLlave: (l: string) => void;
+  /** El local del enlace de la TV (null = no se agrega al enlace). */
+  sucursalId: number | null;
   onPantallas: (p: PantallaMenu[]) => void;
 }) {
   const navigate = useNavigate();
@@ -314,6 +356,7 @@ function PestanaPantallas({
           datos={datos}
           llave={llave}
           onLlave={onLlave}
+          sucursalId={sucursalId}
           guardado={guardado}
           onCambiar={cambiar}
           onEliminar={() => setBorrar(true)}
@@ -370,6 +413,7 @@ function EditorPantalla({
   datos,
   llave,
   onLlave,
+  sucursalId,
   guardado,
   onCambiar,
   onEliminar,
@@ -378,15 +422,14 @@ function EditorPantalla({
   datos: EditorMenu;
   llave: string | null;
   onLlave: (l: string) => void;
+  sucursalId: number | null;
   guardado: "" | "guardando" | "guardado" | "error";
   onCambiar: (parcial: Partial<PantallaMenu>) => void;
   onEliminar: () => void;
 }) {
   const { negocio } = useAuth();
   // La TV pública muestra el local que dice el enlace (`?sucursal=`); sin él, el
-  // principal. Con 2+ locales, quien es de organización elige de cuál es el
-  // enlace que arma (el editor sigue siendo el del negocio).
-  const local = useLocalDeTickets();
+  // principal. El local lo elige el encabezado de la pantalla, el mismo del editor.
   const vis = useMemo(() => platosDeLaPantalla(p, datos.platos, datos.categorias), [p, datos]);
   const paginas = useMemo(() => paginar(p, vis.platos, vis.categorias), [p, vis]);
   const [pagina, setPagina] = useState<number | "auto">("auto");
@@ -430,7 +473,7 @@ function EditorPantalla({
     return r.llave;
   };
   const enlace = (l: string) =>
-    `${window.location.origin}/tv/menu/${l}/${p.numero}${local.sucursalId != null ? `?sucursal=${local.sucursalId}` : ""}`;
+    `${window.location.origin}/tv/menu/${l}/${p.numero}${sucursalId != null ? `?sucursal=${sucursalId}` : ""}`;
   const abrir = async () => {
     try {
       window.open(enlace(await asegurarLlave()), "_blank", "noopener");
@@ -461,9 +504,6 @@ function EditorPantalla({
           accion={
             <div className="flex flex-wrap items-center gap-2">
               <EstadoGuardado estado={guardado} />
-              {local.elegir && (
-                <SelectorLocalTickets locales={local.locales} valor={local.sucursalId} onChange={local.setLocal} />
-              )}
               <Boton icono="arrowUpRight" className="px-3 py-2" onClick={() => void abrir()}>
                 Abrir en TV
               </Boton>

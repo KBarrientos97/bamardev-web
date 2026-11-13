@@ -23,7 +23,14 @@ const conArchivo = (archivo: Blob, nombre: string) => {
 };
 
 export const apiMenuDigital = {
-  editor: () => request<EditorMenu>("/menu-digital"),
+  /**
+   * `sucursalId` (PLAN-SUCURSAL-TOTAL §10.5): de qué local se ven los precios y la
+   * disponibilidad. Sólo lo manda la organización con 2+ locales (quien es de un
+   * local ve siempre el suyo, y sin él el backend usa el principal). Sólo la
+   * lectura lo acepta: las respuestas de los PATCH vienen del local del usuario.
+   */
+  editor: (sucursalId?: number | null) =>
+    request<EditorMenu>(`/menu-digital${sucursalId != null ? `?sucursalId=${sucursalId}` : ""}`),
   guardarPantallas: (pantallas: PantallaMenu[]) =>
     request<PantallaMenu[]>("/menu-digital/pantallas", { method: "PUT", body: JSON.stringify({ pantallas }) }),
   editarPlato: (
