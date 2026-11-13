@@ -54,7 +54,8 @@ vi.mock("../pagina/MapaSeguimiento", () => ({
 
 import { ApiError, api } from "../../lib/api";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
-import PedidosWeb, { REFRESCO_BANDEJA_MS } from "./PedidosWeb";
+import { REFRESCO_DETALLE_MS } from "./DetallePedidoWeb";
+import PedidosWeb, { DURACION_AVISO_MS, REFRESCO_BANDEJA_MS } from "./PedidosWeb";
 
 const ahora = Date.now();
 const hace = (min: number) => new Date(ahora - min * 60_000).toISOString();
@@ -471,5 +472,93 @@ describe("el detalle", () => {
     await abrirLucia();
     fireEvent.click(screen.getByRole("button", { name: "Volver a los pedidos" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Pedidos web" })).toBeInTheDocument());
+  });
+});
+
+describe("ronda 1 de QA (13-nov)", () => {
+  async function abrirLucia() {
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    return screen.findByRole("heading", { name: /Pedido N° 07 · Lucía/ });
+  }
+
+  it("N11: un pedido que vence con el detalle abierto deja de poder aceptarse", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], shouldAdvanceTime: true });
+    // Lleva 9 min esperando: vence en uno.
+    const casiVencido: PedidoWeb = { ...LUCIA, creadoEn: new Date(Date.now() - 9 * 60_000).toISOString(), venceEn: new Date(Date.now() + 60_000).toISOString() };
+    mock.bandeja.mockResolvedValue(bandeja({ nuevos: [casiVencido] }));
+    mock.detalle.mockResolvedValue(casiVencido);
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    expect(await screen.findByRole("button", { name: "Aceptar pedido" })).toBeEnabled();
+    await act(async () => {
+      vi.advanceTimersByTime(REFRESCO_DETALLE_MS * 7);
+    });
+    expect(await screen.findByText(/Venció: nadie lo respondió a tiempo\. Ya no se puede aceptar\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aceptar pedido" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rechazar" })).not.toBeInTheDocument();
+  });
+
+  it("N11: si el servidor ya lo marcó vencido al refrescar, también", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], shouldAdvanceTime: true });
+    await abrirLucia();
+    mock.detalle.mockResolvedValue({ ...LUCIA, estado: "VENCIDO" });
+    await act(async () => {
+      vi.advanceTimersByTime(REFRESCO_DETALLE_MS);
+    });
+    expect(await screen.findByText("Venció: nadie lo respondió a tiempo.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aceptar pedido" })).not.toBeInTheDocument();
+  });
+
+  it("N12: el aviso «Rechazaste el pedido…» se va solo y no queda pegado en «Hoy»", async () => {
+    mock.rechazar.mockResolvedValue({ ...LUCIA, estado: "RECHAZADO" });
+    await abrirLucia();
+    fireEvent.click(screen.getByRole("button", { name: "Rechazar" }));
+    const form = screen.getByRole("region", { name: "Rechazar el pedido" });
+    fireEvent.click(within(form).getByRole("button", { name: "Se acabó" }));
+    fireEvent.click(within(form).getByRole("button", { name: "Rechazar pedido" }));
+    expect(await screen.findByText(/Rechazaste el pedido N° 07/)).toBeInTheDocument();
+    // Al pasar a «Hoy» ya no está.
+    fireEvent.click(screen.getByRole("button", { name: "Hoy" }));
+    expect(screen.queryByText(/Rechazaste el pedido N° 07/)).not.toBeInTheDocument();
+  });
+
+  it("N12: y si no cambia de pestaña, se va a los segundos", async () => {
+    mock.rechazar.mockResolvedValue({ ...LUCIA, estado: "RECHAZADO" });
+    await abrirLucia();
+    fireEvent.click(screen.getByRole("button", { name: "Rechazar" }));
+    const form = screen.getByRole("region", { name: "Rechazar el pedido" });
+    fireEvent.click(within(form).getByRole("button", { name: "Se acabó" }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    fireEvent.click(within(form).getByRole("button", { name: "Rechazar pedido" }));
+    expect(await screen.findByText(/Rechazaste el pedido N° 07/)).toBeInTheDocument();
+    // Primero se deja que React arme el temporizador (con el reloj de mentira su planificador también espera).
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DURACION_AVISO_MS + 100);
+    });
+    await waitFor(() => expect(screen.queryByText(/Rechazaste el pedido N° 07/)).not.toBeInTheDocument());
+  });
+
+  it("N15: «Pedido falso» avisa, antes de elegirlo, que bloquea el teléfono 30 días", async () => {
+    await abrirLucia();
+    fireEvent.click(screen.getByRole("button", { name: "Rechazar" }));
+    const form = screen.getByRole("region", { name: "Rechazar el pedido" });
+    expect(within(form).getByText(/«Pedido falso» bloquea el teléfono del cliente por 30 días/)).toBeInTheDocument();
+    fireEvent.click(within(form).getByRole("button", { name: "Pedido falso" }));
+    expect(within(form).getByRole("alert")).toHaveTextContent(/bloquea el teléfono de este cliente por 30 días/);
+    // Con otro motivo la advertencia fuerte no está.
+    fireEvent.click(within(form).getByRole("button", { name: "Se acabó" }));
+    expect(within(form).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("N13: la barra Rechazar / Aceptar va al fondo de la pantalla aunque el pedido sea corto", async () => {
+    await abrirLucia();
+    const barra = screen.getByRole("button", { name: "Aceptar pedido" }).parentElement!;
+    expect(barra.className).toMatch(/\bsticky\b/);
+    expect(barra.className).toMatch(/\bmt-auto\b/);
+    expect(barra.parentElement!.className).toMatch(/\bmin-h-full\b/);
   });
 });

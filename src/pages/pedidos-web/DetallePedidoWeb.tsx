@@ -20,6 +20,11 @@ const MapaPedido = lazy(() => import("../pagina/MapaSeguimiento"));
 
 type Modo = "ver" | "aceptar" | "rechazar";
 
+/** Cada cuánto el detalle de un pedido NUEVO vuelve a mirar su estado y la hora (la bandeja lo hace cada 10 s). */
+export const REFRESCO_DETALLE_MS = 10_000;
+/** A los 10 minutos sin respuesta el pedido vence (CONTRATO §7). */
+const VENCE_A_LOS_MS = 10 * 60_000;
+
 /**
  * El detalle de un pedido web (13-nov), en la misma pantalla que la bandeja y
  * no en una hoja encima: productos, nota, cliente (con llamar y WhatsApp), el
@@ -51,7 +56,22 @@ export default function DetallePedidoWeb({
   const [modo, setModo] = useState<Modo>("ver");
   /** «Cambió el precio de X…»: el pedido sigue NUEVO, con los precios de hoy (PW-01). */
   const [precioCambio, setPrecioCambio] = useState("");
-  const esNuevo = p.estado === "NUEVO";
+  const [, latido] = useState(0);
+  const recargar = detalle.recargar;
+  // Un pedido nuevo que se deja abierto: cada 10 s se mira de nuevo. Sin esto seguía con «Aceptar» activo
+  // pasados los 10 minutos y sólo al tocarlo decía «ya no está esperando» (QA R1, N11).
+  const siguiendo = p.estado === "NUEVO";
+  useEffect(() => {
+    if (!siguiendo) return;
+    const id = window.setInterval(() => {
+      latido((n) => n + 1);
+      if (!document.hidden) recargar();
+    }, REFRESCO_DETALLE_MS);
+    return () => window.clearInterval(id);
+  }, [siguiendo, recargar]);
+  // Vencido: el servidor ya lo dijo, o la hora de vencer (la del servidor, que corrige el reloj de la PC) ya pasó.
+  const vencidoYa = siguiendo && Date.parse(p.venceEn ?? new Date(Date.parse(p.creadoEn) + VENCE_A_LOS_MS).toISOString()) <= ahora();
+  const esNuevo = p.estado === "NUEVO" && !vencidoYa;
   const delivery = p.tipo === "DELIVERY";
 
   const tel = Telefono.paraLlamada(p.telefono);
@@ -60,7 +80,7 @@ export default function DetallePedidoWeb({
   const pin = p.latitud != null && p.longitud != null ? { latitud: p.latitud, longitud: p.longitud } : null;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-5 pb-4">
+    <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-4 p-5 pb-4">
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -89,7 +109,8 @@ export default function DetallePedidoWeb({
       )}
 
       {!esNuevo && (
-        <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
+        <div role={vencidoYa ? "alert" : undefined} className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
+          {vencidoYa && "Venció: nadie lo respondió a tiempo. Ya no se puede aceptar."}
           {p.estado === "ACEPTADO" && !p.salioEn && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
           {p.estado === "ACEPTADO" && p.salioEn && `En camino desde las ${horaDe(p.salioEn)}${p.repartidor ? ` con ${p.repartidor.nombre}` : ""}${aceptadoPorDe(p) ? ` · lo aceptó ${aceptadoPorDe(p)}` : ""}.`}
           {p.estado === "RECHAZADO" && `Rechazado${p.motivoRechazo ? `: ${p.motivoRechazo}` : ""}.`}
@@ -226,7 +247,8 @@ export default function DetallePedidoWeb({
 
       {/* La barra fija: una acción principal. Con el formulario abierto, sus botones van en él. */}
       {esNuevo && modo === "ver" && (
-        <div className="sticky bottom-0 -mx-5 flex gap-2 border-t border-borde bg-white/95 px-5 pb-3 pt-3 backdrop-blur">
+        // `mt-auto`: con pocas líneas la barra queda pegada al borde de abajo y no a mitad de pantalla (QA R1, N13).
+        <div className="sticky bottom-0 -mx-5 mt-auto flex gap-2 border-t border-borde bg-white/95 px-5 pb-3 pt-3 backdrop-blur">
           <Boton variante="ghost" className="min-h-12 flex-1" onClick={() => setModo("rechazar")}>
             Rechazar
           </Boton>
@@ -460,6 +482,13 @@ function FormRechazar({
           </button>
         ))}
       </div>
+      {/* «Pedido falso» no es un motivo más: bloquea el teléfono. Se avisa antes de elegirlo (QA R1, N15). */}
+      {codigo !== "PEDIDO_FALSO" && <p className="text-xs text-texto-3">«Pedido falso» bloquea el teléfono del cliente por 30 días.</p>}
+      {codigo === "PEDIDO_FALSO" && (
+        <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+          Esto bloquea el teléfono de este cliente por 30 días: no va a poder volver a pedir por la página. Usalo sólo si de verdad es falso.
+        </p>
+      )}
       {otro && <Input aria-label="Motivo" value={motivo} maxLength={120} placeholder="Contale al cliente qué pasó" onChange={(e) => setMotivo(e.target.value)} />}
       <ErrorMsg>{error}</ErrorMsg>
       <div className="flex gap-2">
