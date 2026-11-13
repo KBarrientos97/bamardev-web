@@ -9,12 +9,16 @@ import type { Venta } from "../../types";
  * que entregar. Lo del vuelto grabado (REP-02) está en `Repartidor.cambio.test`.
  */
 
-const sesion = vi.hoisted(() => ({ features: ["pago_qr_mixto"] as string[] }));
+const sesion = vi.hoisted(() => ({
+  features: ["pago_qr_mixto"] as string[],
+  /** Sucursales activas del negocio (el conteo que trae el login). */
+  locales: undefined as number | undefined,
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 9, nombre: "Rodrigo", username: "rodrigo" },
-    negocio: { nombre: "Pollos Omar", features: sesion.features },
+    negocio: { nombre: "Pollos Omar", features: sesion.features, sucursalesActivas: sesion.locales },
   }),
 }));
 
@@ -37,6 +41,7 @@ vi.mock("../../components/QrCobro", () => ({
 }));
 
 import { api } from "../../lib/api";
+import { mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import Repartidor from "./Repartidor";
 
 const FORMAS = [
@@ -124,6 +129,7 @@ function pagarMixto(dialogo: HTMLElement, qr: string, efectivo: string) {
 }
 
 beforeEach(() => {
+  sesion.locales = undefined;
   vi.mocked(api.getMisEntregas).mockReset();
   vi.mocked(api.getVenta).mockReset();
   vi.mocked(api.getFormasPago).mockReset().mockResolvedValue(FORMAS);
@@ -278,6 +284,25 @@ describe("BUG-pedidos-12: Llamar y WhatsApp con el teléfono armado como en el r
     expect(within(detalle).getByRole("link", { name: /WhatsApp/ })).toHaveAttribute(
       "href",
       "https://wa.me/59170490686",
+    );
+  });
+
+  it("PLAN-SUCURSAL-TOTAL: con 2+ locales el aviso de llegada dice de qué sucursal sale el pedido", async () => {
+    sesion.features = ["pago_qr_mixto", "multi_almacen"];
+    sesion.locales = 2;
+    const detalle = await abrirDetalle({ ...PEDIDO, almacen: { id: 2, nombre: "Norte" } });
+    const href = within(detalle).getByRole("link", { name: /WhatsApp/ }).getAttribute("href") ?? "";
+    expect(decodeURIComponent(href)).toContain("🏪 Sucursal: Norte");
+    sesion.features = ["pago_qr_mixto"];
+  });
+
+  it("con un solo local el aviso es el de siempre, aunque el pedido traiga su almacén", async () => {
+    sesion.locales = 1;
+    const pedido = { ...PEDIDO, almacen: { id: 1, nombre: "Principal" } } as Venta;
+    const detalle = await abrirDetalle(pedido);
+    const href = within(detalle).getByRole("link", { name: /WhatsApp/ }).getAttribute("href") ?? "";
+    expect(href).toBe(
+      `https://wa.me/59170490686?text=${encodeURIComponent(mensajePedido(pedidoDeVenta(PEDIDO), "Pollos Omar"))}`,
     );
   });
 
