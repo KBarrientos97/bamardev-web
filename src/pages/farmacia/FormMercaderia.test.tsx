@@ -22,19 +22,22 @@ import type {
  * Qué compró el negocio. `lotes` es PRO: una farmacia BASICO no lo tiene.
  * `dobleControl` es el extra `aprobacion_inventario`, que no trae ningún plan:
  * la farmacia de QA no lo tiene, y sin él guardar aprobaba solo.
+ * `permisos` son los de quien carga: por defecto sólo mueve inventario, como
+ * la auxiliar; la dueña y el regente suman `inventario.aprobar`.
  */
 const plan = vi.hoisted(() => ({
   lotes: true,
   dobleControl: false,
   /** Quien carga: de organización (null) o atado a un local. */
   sucursalId: null as number | null,
+  permisos: ["inventario.mover"] as string[],
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     incluye: (c: string) =>
       c === "lotes" ? plan.lotes : c === "aprobacion_inventario" ? plan.dobleControl : true,
-    usuario: { sucursalId: plan.sucursalId },
+    usuario: { sucursalId: plan.sucursalId, permisos: plan.permisos },
   }),
 }));
 
@@ -186,6 +189,7 @@ beforeEach(() => {
   plan.lotes = true;
   plan.dobleControl = false;
   plan.sucursalId = null;
+  plan.permisos = ["inventario.mover"];
   buscador.real = false;
   vi.mocked(api.getAlmacenes).mockResolvedValue([
     almacen(DEPOSITO, "Depósito"),
@@ -266,20 +270,83 @@ describe("Recibir sin `lotes` en el plan (16-oct)", () => {
   it("con `lotes`, un medicamento con lote lo pide al recibir", async () => {
     await abrirEdicion();
     await clickEn(/Entrada/);
-    expect(screen.getByPlaceholderText("Lote")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /^Lote de / })).toBeInTheDocument();
   });
 
   it("sin `lotes` no lo pide, y guarda sin hablar de Vencimientos", async () => {
     plan.lotes = false;
     await abrirEdicion();
     await clickEn(/Entrada/);
-    expect(screen.queryByPlaceholderText("Lote")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /^Lote de / })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("MM/AAAA")).not.toBeInTheDocument();
 
     await clickEn(/Guardar cambios/);
     expect(screen.queryByText(/Falta el lote/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Vencimientos/)).not.toBeInTheDocument();
     expect(api.actualizarMovimiento).toHaveBeenCalled();
+  });
+});
+
+describe("Recibir sin número de lote (12-nov)", () => {
+  // En Bolivia parte de lo que se vende llega sin lote impreso (contrabando,
+  // blísteres sueltos). Hasta el 12-nov "Falta el lote" no dejaba guardar y la
+  // salida era inventar un número.
+  const sinLote: Movimiento = {
+    ...salidaPendiente,
+    detalles: [{ ...salidaPendiente.detalles![0], loteCodigo: null, loteVencimiento: null }],
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.getMovimiento).mockResolvedValue(sinLote);
+  });
+
+  async function escribirVencimiento(valor: string) {
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("MM/AAAA"), { target: { value: valor } });
+    });
+  }
+
+  it("con vencimiento y sin número entra como partida S/L de ese mes", async () => {
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    await escribirVencimiento("052030");
+    expect(screen.getByText("Sin lote: entra como «S/L 05/2030»")).toBeInTheDocument();
+
+    await clickEn(/Guardar cambios/);
+    expect(screen.queryByText(/Falta el lote/)).not.toBeInTheDocument();
+    expect(api.actualizarDetalleMovimiento).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ loteCodigo: "S/L 05/2030", loteVencimiento: "2030-05-31" }),
+    );
+  });
+
+  it("sin número ni vencimiento guarda igual y avisa que no va a Vencimientos", async () => {
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    expect(
+      screen.getByText("Sin lote ni vencimiento: no va a aparecer en Vencimientos"),
+    ).toBeInTheDocument();
+
+    await clickEn(/Guardar cambios/);
+    expect(screen.queryByText(/Falta el lote/)).not.toBeInTheDocument();
+    expect(api.actualizarDetalleMovimiento).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ loteCodigo: "", loteVencimiento: "" }),
+    );
+  });
+
+  it("con número de lote el vencimiento sigue siendo obligatorio", async () => {
+    // Un lote impreso siempre trae la fecha al lado: si falta, es un olvido.
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    await act(async () => {
+      fireEvent.change(screen.getByRole("textbox", { name: /^Lote de / }), {
+        target: { value: "L2611" },
+      });
+    });
+    await clickEn(/Guardar cambios/);
+    expect(screen.getByText(/se escribe MM\/AAAA/)).toBeInTheDocument();
+    expect(api.actualizarMovimiento).not.toHaveBeenCalled();
   });
 });
 
@@ -316,7 +383,7 @@ describe("Editar un movimiento pendiente", () => {
     expect(screen.getByText("Amoxicilina 500 mg")).toBeInTheDocument();
     expect(screen.getByText("1 línea")).toBeInTheDocument();
     // Y ahora sí pide lote, que es lo único que cambia al recibir.
-    expect(screen.getByPlaceholderText("Lote")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /^Lote de / })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("MM/AAAA")).toBeInTheDocument();
   });
 
@@ -914,8 +981,9 @@ describe("Guardar o aprobar", () => {
     expect(api.crearMovimiento).not.toHaveBeenCalled();
   });
 
-  it("con el extra de doble control sólo guarda: lo aprueba otra persona", async () => {
-    // Quien compró "Aprobar movimientos" sigue como antes: el que carga no aprueba.
+  it("con el extra de doble control, quien sólo mueve inventario sólo guarda", async () => {
+    // Quien compró "Aprobar movimientos" sigue como antes: la auxiliar carga y
+    // aprueba otra persona.
     plan.dobleControl = true;
     await abrirSalidaNueva();
     expect(screen.queryByRole("button", { name: /Guardar y aprobar/ })).not.toBeInTheDocument();
@@ -923,6 +991,20 @@ describe("Guardar o aprobar", () => {
     await clickEn(/^Guardar salida$/);
     expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
     expect(api.aprobarMovimiento).not.toHaveBeenCalled();
+  });
+
+  it("con el extra de doble control, quien puede aprobar guarda y aprueba ahí mismo", async () => {
+    // 12-nov (Kevin, probando la demo): con el extra el botón no aparecía
+    // para nadie, tampoco para la dueña, que el servidor sí deja aprobar. Tenía
+    // que guardar, ir a Movimientos, abrir el ingreso y aprobarlo.
+    plan.dobleControl = true;
+    plan.permisos = ["inventario.mover", "inventario.aprobar"];
+    await abrirSalidaNueva();
+    await clickEn(/Guardar y aprobar/);
+    await clickEn(/^Aprobar$/);
+
+    expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.aprobarMovimiento).toHaveBeenCalledWith(999);
   });
 
   it("si falta algo, avisa y no pregunta", async () => {

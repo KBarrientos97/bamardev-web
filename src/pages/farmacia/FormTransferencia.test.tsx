@@ -386,8 +386,19 @@ describe("Guardar o aprobar", () => {
     expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
   });
 
-  it("con el extra de doble control sólo guarda: la aprueba otra persona", async () => {
+  it("el doble control no la frena: con «Aprobar transferencias» se aprueba ahí mismo", async () => {
+    // Una transferencia pide siempre su propio permiso, con o sin el extra
+    // (`puedeAprobar` del backend). Hasta el 12-nov el extra escondía el botón
+    // también a quien lo tiene, y había que ir a Movimientos a aprobarla.
     sesion.dobleControl = true;
+    abrir();
+    await screen.findByRole("button", { name: /Buscar y agregar producto/ });
+    expect(screen.getByRole("button", { name: "Guardar y aprobar" })).toBeInTheDocument();
+  });
+
+  it("con el doble control y sin «Aprobar transferencias», sólo guarda", async () => {
+    sesion.dobleControl = true;
+    sesion.apruebaTransferencias = false;
     abrir();
     await screen.findByRole("button", { name: /Buscar y agregar producto/ });
     expect(screen.queryByRole("button", { name: "Guardar y aprobar" })).not.toBeInTheDocument();
