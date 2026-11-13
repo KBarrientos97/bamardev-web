@@ -22,6 +22,12 @@ vi.mock("../../lib/pagina/apiPagina", () => ({
   },
 }));
 
+const licencia = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/api", async (original) => {
+  const real = await original<typeof import("../../lib/api")>();
+  return { ...real, api: { ...real.api, licencia } };
+});
+
 const fijarPedidosWeb = vi.fn();
 let features: string[] = ["pos", "pagina_publica", "delivery"];
 vi.mock("../../store/AuthContext", async (original) => {
@@ -95,10 +101,27 @@ describe("Mi página y la entrada «Pedidos web»", () => {
     expect(fijarPedidosWeb).toHaveBeenCalledWith(true);
   });
 
-  it("al publicar con el interruptor apagado, la entrada se va", async () => {
+  it("al publicar con el interruptor apagado, la entrada se va si el backend dice que no quedan pedidos vivos", async () => {
     vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ pedidosSistema: false }));
+    licencia.mockResolvedValue({ pedidosWeb: false });
     await montarYPublicar();
-    expect(fijarPedidosWeb).toHaveBeenCalledWith(false);
+    await vi.waitFor(() => expect(fijarPedidosWeb).toHaveBeenCalledWith(false));
+  });
+
+  it("apagado con pedidos vivos (el backend sigue diciendo true), la bandeja se queda (R2-14)", async () => {
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ pedidosSistema: false }));
+    licencia.mockResolvedValue({ pedidosWeb: true });
+    await montarYPublicar();
+    await vi.waitFor(() => expect(licencia).toHaveBeenCalled());
+    await vi.waitFor(() => expect(fijarPedidosWeb).toHaveBeenCalledWith(true));
+    expect(fijarPedidosWeb).not.toHaveBeenCalledWith(false);
+  });
+
+  it("apagado y sin poder preguntarle al backend: la entrada se va (el próximo chequeo la corrige)", async () => {
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ pedidosSistema: false }));
+    licencia.mockRejectedValue(new Error("sin red"));
+    await montarYPublicar();
+    await vi.waitFor(() => expect(fijarPedidosWeb).toHaveBeenCalledWith(false));
   });
 
   it("sin la feature delivery en el plan no se toca la sesión", async () => {
