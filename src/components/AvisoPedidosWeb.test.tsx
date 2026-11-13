@@ -158,10 +158,7 @@ describe("el aviso de pedidos web", () => {
         static permission = permiso;
         onclick: (() => void) | null = null;
         close = vi.fn();
-        constructor(
-          public titulo: string,
-          public opciones: NotificationOptions,
-        ) {
+        constructor(titulo: string, opciones: NotificationOptions) {
           mostradas(titulo, opciones);
         }
       }
