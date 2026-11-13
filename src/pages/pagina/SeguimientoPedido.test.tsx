@@ -183,6 +183,15 @@ describe("el seguimiento del pedido", () => {
     expect(screen.queryByRole("button", { name: "Cancelar pedido" })).not.toBeInTheDocument();
   });
 
+  it.each(["RECHAZADO", "VENCIDO", "CANCELADO"] as const)("%s: no hay nada que pagar ni a dónde llevar", async (estado) => {
+    servidor({ estado });
+    await montar();
+    await screen.findByText("Total del pedido");
+    expect(screen.queryByText("Total a pagar")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pagás/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Entrega en/)).not.toBeInTheDocument();
+  });
+
   it("Vencido: «El local no respondió», con salida a WhatsApp", async () => {
     servidor({ estado: "VENCIDO" });
     await montar();

@@ -156,6 +156,8 @@ export default function SeguimientoPedido() {
   const pasos = pasosDe(seg.tipo);
   const actual = pasoActual(seg);
   const fin = esFinal(seg.estado);
+  // Un pedido que no se tomó no cobra nada: ni «a pagar» ni «entrega en».
+  const sinCobro = seg.estado === "RECHAZADO" || seg.estado === "VENCIDO" || seg.estado === "CANCELADO";
   const malo = seg.estado === "RECHAZADO" || seg.estado === "VENCIDO" || seg.estado === "CANCELADO";
   const whatsapp = seg.whatsappLocal;
   const puedeCancelar = seg.estado === "RECIBIDO";
@@ -258,39 +260,43 @@ export default function SeguimientoPedido() {
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
-              <dt>Total a pagar</dt>
+              <dt>{sinCobro ? "Total del pedido" : "Total a pagar"}</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(seg.total)}</dd>
             </div>
           </dl>
-          <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-            {seg.estado === "ENTREGADO"
-              ? seg.formaPago === "QR"
-                ? "Pagaste con QR."
-                : "Pagaste en efectivo."
-              : seg.formaPago === "QR"
-                ? "Pagás con QR al recibir."
-                : "Pagás en efectivo al recibir."}
-            {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && (
-              <>
-                {" "}
-                Con {formatoPrecio(seg.pagaCon)}
-                {seg.cambio != null && seg.cambio > 0 && (
+          {!sinCobro && (
+            <>
+              <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
+                {seg.estado === "ENTREGADO"
+                  ? seg.formaPago === "QR"
+                    ? "Pagaste con QR."
+                    : "Pagaste en efectivo."
+                  : seg.formaPago === "QR"
+                    ? "Pagás con QR al recibir."
+                    : "Pagás en efectivo al recibir."}
+                {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && (
                   <>
-                    : te llevan <strong>{formatoPrecio(seg.cambio)}</strong> de cambio.
+                    {" "}
+                    Con {formatoPrecio(seg.pagaCon)}
+                    {seg.cambio != null && seg.cambio > 0 && (
+                      <>
+                        : te llevan <strong>{formatoPrecio(seg.cambio)}</strong> de cambio.
+                      </>
+                    )}
                   </>
                 )}
-              </>
-            )}
-          </p>
-          {seg.tipo === "DELIVERY" ? (
-            <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-              Entrega en <strong>{seg.direccion}</strong>
-              {seg.referencia ? ` (${seg.referencia})` : ""}.
-            </p>
-          ) : (
-            <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-              Retirás en <strong>{seg.sucursal.nombre}</strong>.
-            </p>
+              </p>
+              {seg.tipo === "DELIVERY" ? (
+                <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
+                  Entrega en <strong>{seg.direccion}</strong>
+                  {seg.referencia ? ` (${seg.referencia})` : ""}.
+                </p>
+              ) : (
+                <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
+                  Retirás en <strong>{seg.sucursal.nombre}</strong>.
+                </p>
+              )}
+            </>
           )}
         </section>
 
