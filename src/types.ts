@@ -1643,6 +1643,12 @@ export interface Credito {
   /** Días que faltan para vencer. 0 = vence hoy. */
   diasParaVencer?: number;
   nota?: string | null;
+  /**
+   * El local de la venta que abrió la cuenta (`venta.almacen`). Opcional: un
+   * backend anterior a PLAN-SUCURSAL-TOTAL no lo manda, y una cuenta vieja
+   * puede venir sin local. Se muestra sólo con 2+ locales entre las filas.
+   */
+  sucursal?: { id: number; nombre: string } | null;
 }
 
 /** Un renglón de lo que se llevó fiado, como lo trae el detalle del crédito. */

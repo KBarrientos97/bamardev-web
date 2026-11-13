@@ -24,9 +24,33 @@ vi.mock("../store/AuthContext", () => ({
   }),
 }));
 
-vi.mock("../lib/useSucursales", () => ({
-  useSucursales: () => ({ sucursalId: null, elegir: false, valorChip: "", opciones: [], alElegir: () => {} }),
+/**
+ * La sucursal de la sesión: por defecto un solo local (nada nuevo en pantalla).
+ * Los tests de PLAN-SUCURSAL-TOTAL la cambian a organización o asignado.
+ */
+const sesionSuc = vi.hoisted(() => ({
+  modo: "una" as "una" | "asignado" | "organizacion",
+  sucursalId: null as number | null,
+  sedeVista: "",
 }));
+
+vi.mock("../lib/useSucursales", async () => {
+  const { hayVariasEntre } = await vi.importActual<typeof import("../lib/useSucursales")>("../lib/useSucursales");
+  return {
+    useSucursales: () => ({
+      sucursalId: sesionSuc.sucursalId,
+      elegir: sesionSuc.modo === "organizacion",
+      modo: sesionSuc.modo,
+      hayVarias: sesionSuc.modo !== "una",
+      sedeVista: sesionSuc.sedeVista,
+      valorChip: "",
+      opciones: [],
+      alElegir: () => {},
+      mostrarColumna: <T,>(filas: readonly T[], clave: (f: T) => number | string | null | undefined) =>
+        sesionSuc.modo === "organizacion" && hayVariasEntre(filas, clave),
+    }),
+  };
+});
 
 vi.mock("../components/QrCobro", () => ({
   QrParaCobrar: (p: { onConfirmar: () => void }) => <button onClick={p.onConfirmar}>ya llegó el QR</button>,
@@ -146,6 +170,9 @@ const idsMandados = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesionSuc.modo = "una";
+  sesionSuc.sucursalId = null;
+  sesionSuc.sedeVista = "";
   vi.mocked(api.getCreditos).mockResolvedValue([ROSA, JUAN]);
   vi.mocked(api.getFormasPago).mockResolvedValue(FORMAS);
   vi.mocked(api.getCredito).mockResolvedValue(DETALLE_ROSA);
@@ -411,5 +438,104 @@ describe("el abono", () => {
       const [primero, segundo] = idsMandados();
       expect(segundo).not.toBe(primero);
     });
+  });
+});
+
+describe("la sucursal de cada cuenta (PLAN-SUCURSAL-TOTAL §3 etapa 4)", () => {
+  const CENTRO = { id: 1, nombre: "Centro" };
+  const NORTE = { id: 2, nombre: "Norte" };
+
+  it("con un solo local la tarjeta queda como siempre, aunque la cuenta traiga su local", async () => {
+    vi.mocked(api.getCreditos).mockResolvedValue([{ ...ROSA, sucursal: CENTRO }, { ...JUAN, sucursal: NORTE }]);
+    await montar();
+    expect(within(tarjeta("Rosa Mamani")).queryByText("Centro")).not.toBeInTheDocument();
+    expect(within(tarjeta("Juan Pérez")).queryByText("Norte")).not.toBeInTheDocument();
+  });
+
+  it("la organización ve el local de cada cuenta cuando las filas son de dos locales", async () => {
+    sesionSuc.modo = "organizacion";
+    vi.mocked(api.getCreditos).mockResolvedValue([{ ...ROSA, sucursal: CENTRO }, { ...JUAN, sucursal: NORTE }]);
+    await montar();
+    expect(within(tarjeta("Rosa Mamani")).getByText("Centro")).toBeInTheDocument();
+    expect(within(tarjeta("Juan Pérez")).getByText("Norte")).toBeInTheDocument();
+  });
+
+  it("si todas las cuentas son del mismo local, no se repite en cada una", async () => {
+    sesionSuc.modo = "organizacion";
+    vi.mocked(api.getCreditos).mockResolvedValue([{ ...ROSA, sucursal: CENTRO }, { ...JUAN, sucursal: CENTRO }]);
+    await montar();
+    expect(screen.queryByText("Centro")).not.toBeInTheDocument();
+  });
+
+  it("el asignado a un local no tiene etiqueta en la lista (sólo ve el suyo)", async () => {
+    sesionSuc.modo = "asignado";
+    vi.mocked(api.getCreditos).mockResolvedValue([{ ...ROSA, sucursal: CENTRO }, { ...JUAN, sucursal: CENTRO }]);
+    await montar();
+    expect(screen.queryByText("Centro")).not.toBeInTheDocument();
+  });
+
+  it("el detalle dice en qué local se fió cuando hay 2+ locales, y no con uno solo", async () => {
+    sesionSuc.modo = "organizacion";
+    vi.mocked(api.getCredito).mockResolvedValue({ ...DETALLE_ROSA, sucursal: NORTE });
+    await montar();
+    fireEvent.click(within(tarjeta("Rosa Mamani")).getByText("Rosa Mamani"));
+    await act(async () => {});
+    const detalle = screen.getByRole("dialog", { name: "Detalle del crédito" });
+    expect(valorDe(detalle, "Sucursal")).toBe("Norte");
+  });
+
+  it("el detalle con un solo local no agrega la fila", async () => {
+    vi.mocked(api.getCredito).mockResolvedValue({ ...DETALLE_ROSA, sucursal: NORTE });
+    await montar();
+    fireEvent.click(within(tarjeta("Rosa Mamani")).getByText("Rosa Mamani"));
+    await act(async () => {});
+    const detalle = screen.getByRole("dialog", { name: "Detalle del crédito" });
+    expect(within(detalle).queryByText("Sucursal")).not.toBeInTheDocument();
+  });
+});
+
+describe("el límite del cliente es de todos los locales (PLAN-SUCURSAL-TOTAL §3 etapa 4)", () => {
+  const DEBE = {
+    id: 5,
+    nombre: "Rosa Mamani",
+    telefono: null,
+    nota: null,
+    saldoTotal: 50,
+    montoVencido: 0,
+    creditosAbiertos: 1,
+    vecesFiado: 2,
+    limiteCredito: 500,
+    // El backend lo calcula con el saldo FILTRADO: 500 - 50.
+    disponible: 450,
+  };
+
+  async function montarConDeudor() {
+    vi.mocked(api.getClientesCredito).mockResolvedValue([DEBE]);
+    await montar();
+    // La tarjeta del cliente, no la del crédito (los dos dicen "Rosa Mamani").
+    return screen.getAllByText("Rosa Mamani").map((n) => n.closest("li")!).find((li) => /Límite|Sin límite/.test(li.textContent ?? ""))!;
+  }
+
+  it("con todos los locales sigue diciendo cuánto le queda", async () => {
+    const t = await montarConDeudor();
+    expect(t).toHaveTextContent(/Límite Bs 500,00 · le quedan Bs 450,00/);
+  });
+
+  it("filtrada por un local rotula el límite como del cliente y no inventa «le quedan»", async () => {
+    sesionSuc.modo = "organizacion";
+    sesionSuc.sucursalId = 2;
+    sesionSuc.sedeVista = "Norte";
+    const t = await montarConDeudor();
+    expect(t).toHaveTextContent("Límite del cliente en todos los locales: Bs 500,00");
+    expect(t).not.toHaveTextContent(/le quedan/);
+    expect(t).toHaveTextContent(/Saldo · Norte/i);
+  });
+
+  it("el usuario asignado a un local ve lo mismo: su saldo es de su local, el límite no", async () => {
+    sesionSuc.modo = "asignado";
+    sesionSuc.sedeVista = "Centro";
+    const t = await montarConDeudor();
+    expect(t).toHaveTextContent("Límite del cliente en todos los locales: Bs 500,00");
+    expect(t).not.toHaveTextContent(/le quedan/);
   });
 });
