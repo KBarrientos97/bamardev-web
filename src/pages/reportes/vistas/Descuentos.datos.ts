@@ -1,7 +1,7 @@
 import { aCentavos, esCero, esPositivo } from "../../../lib/dinero";
 import type { HojaNueva } from "../../../lib/planilla";
 import type { DescuentosApi } from "../api";
-import { hoja } from "../contexto";
+import { columnaSucursal, hoja } from "../contexto";
 
 /**
  * Las cuentas de Descuentos y anulaciones, aparte de la pantalla para poder
@@ -83,7 +83,7 @@ export function sinDescuentos(d: DescuentosApi): boolean {
   );
 }
 
-export function hojasDescuentos(d: DescuentosApi): HojaNueva[] {
+export function hojasDescuentos(d: DescuentosApi, conLocal = false, rotulo = "Sucursal"): HojaNueva[] {
   const hojas: HojaNueva[] = [
     hoja<FilaDescuentoCajero>(
       "Por cajero",
@@ -105,6 +105,7 @@ export function hojasDescuentos(d: DescuentosApi): HojaNueva[] {
           ["Fecha", (a) => a.fecha],
           ["Comprobante", (a) => a.idVenta],
           ["Vendió", (a) => a.cajero],
+          ...columnaSucursal<DescuentosApi["ultimasAnulaciones"][number]>(conLocal, (a) => a.sucursal?.nombre, rotulo),
           ["Motivo", (a) => a.motivo],
           ["Autorizó", (a) => a.autorizadoPor],
           ["Monto (Bs)", (a) => a.monto],

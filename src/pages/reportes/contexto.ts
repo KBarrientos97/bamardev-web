@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { isoDia } from "../../lib/format";
 import { crearXlsx, type HojaNueva } from "../../lib/planilla";
+import { hayVariasEntre } from "../../lib/useSucursales";
 import type { RangoReporte } from "../../types";
 import type { Comparacion, Periodo } from "./periodo";
 
@@ -26,6 +27,13 @@ export interface DatosReporte {
    * las pantallas y tests que arman el contexto a mano.
    */
   sucursalArchivo?: SucursalDeArchivo | null;
+  /**
+   * ¿Es una organización con 2+ sucursales (`useSucursales().elegir`)? Es la
+   * mitad de la regla de la columna «Sucursal»; la otra es que las filas sean de
+   * más de un local (ver `useColumnaSucursal`). Ausente = no: un solo local, o
+   * un usuario de una sede, no ven columna.
+   */
+  variasSucursales?: boolean;
   /**
    * A qué hora termina la jornada (minutos; ver `lib/jornada.ts`). Sólo un
    * billar tiene uno (cierra a las 2 a. m.); 0 o ausente = el calendario.
@@ -87,6 +95,39 @@ export function useReporte(): DatosReporte {
   const d = useContext(ContextoReporte);
   if (!d) throw new Error("useReporte va dentro de la pantalla de Reportes");
   return d;
+}
+
+/**
+ * ¿La lista muestra la columna/etiqueta «Sucursal»? (PLAN-SUCURSAL-TOTAL §1,
+ * `useSucursales().mostrarColumna`): sólo a la organización con 2+ locales y sólo
+ * si las filas son de más de uno. Con un local, o asignado a una sede, no hay
+ * nada nuevo. `rotulo` es la palabra del rubro ("Sucursal", "Sede") para las
+ * columnas del Excel. Las filas sin local (dato viejo) no cuentan como uno más.
+ */
+export function useColumnaSucursal<T>(
+  filas: readonly T[] | null | undefined,
+  clave: (fila: T) => number | string | null | undefined,
+  /** Las filas sin local cuentan como un valor más ("General del negocio" en los gastos). */
+  contarSinSucursal = false,
+): { conLocal: boolean; rotulo: string } {
+  const { variasSucursales, sucursalArchivo } = useReporte();
+  return {
+    conLocal: !!variasSucursales && hayVariasEntre(filas, clave, contarSinSucursal),
+    rotulo: sucursalArchivo?.rotulo ?? "Sucursal",
+  };
+}
+
+/**
+ * La columna «Sucursal» de una hoja, o nada: se esparce en la lista de
+ * columnas (`...columnaSucursal(conLocal, (f) => f.sucursal?.nombre)`) y sin
+ * `conLocal` el Excel queda con las columnas de siempre.
+ */
+export function columnaSucursal<T>(
+  conLocal: boolean,
+  valor: (fila: T) => string | null | undefined,
+  rotulo = "Sucursal",
+): [string, (fila: T) => string | null][] {
+  return conLocal ? [[rotulo, (f) => valor(f) ?? null]] : [];
 }
 
 /**

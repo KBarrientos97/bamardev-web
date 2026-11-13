@@ -125,11 +125,12 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
       rangoAnterior,
       sucursalNombre: suc.nombre,
       sucursalArchivo,
+      variasSucursales: suc.elegir,
       corteMin,
       registrarExportacion,
       veReporte,
     }),
-    [periodo, comparacion, rango, rangoAnterior, suc.nombre, sucursalArchivo, corteMin, registrarExportacion, veReporte],
+    [periodo, comparacion, rango, rangoAnterior, suc.nombre, sucursalArchivo, suc.elegir, corteMin, registrarExportacion, veReporte],
   );
 
   const contenido = useRef<HTMLDivElement>(null);

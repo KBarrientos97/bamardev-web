@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Gasto } from "../../../types";
@@ -31,19 +31,22 @@ vi.mock("../../../store/AuthContext", () => ({
   useAuth: () => ({ rubro: "RESTAURANTE", negocio: { features: [] }, puede: () => true }),
 }));
 
-vi.mock("../../../lib/useSucursales", () => ({
+vi.mock("../../../lib/useSucursales", async (original) => ({
+  // Las funciones puras (`hayVariasEntre`) son las de verdad; sólo el hook es de mentira.
+  ...(await original<typeof import("../../../lib/useSucursales")>()),
   useSucursales: () => ({ elegir: true, sucursales: [], sucursalId: null }),
 }));
 
 const GASTOS = [{ id: 1, concepto: "Alquiler del local", categoria: "ALQUILER", categoriaNombre: "Alquiler", monto: 200, pagado: 0, fecha: "2026-09-01" } as Gasto];
 
-function mostrar(vista: "resultado" | "equilibrio", sucursalId?: number) {
+function mostrar(vista: "resultado" | "equilibrio", sucursalId?: number, variasSucursales?: boolean) {
   const datos: DatosReporte = {
     periodo: { preset: "rango", desde: "2026-09-01", hasta: "2026-09-30" },
     comparacion: { desde: "2026-08-02", hasta: "2026-08-31", contra: "del 02/08 al 31/08/2026", leyenda: "Período anterior" },
     rango: { desde: "2026-09-01", hasta: "2026-09-30", ...(sucursalId != null ? { sucursalId } : {}) },
     rangoAnterior: { desde: "2026-08-02", hasta: "2026-08-31" },
     sucursalNombre: sucursalId != null ? "Norte" : "",
+    variasSucursales,
     registrarExportacion: () => {},
     veReporte: () => true,
   };
@@ -101,5 +104,32 @@ describe.each([["resultado" as const], ["equilibrio" as const]])("nota de gastos
     await waitFor(() => expect(getGastos).toHaveBeenCalled());
     expect(screen.queryByText(/gastos generales/)).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("el detalle de los gastos en el consolidado", () => {
+  const gasto = (id: number, concepto: string, sucursalId: number | null, sucursal: string | null) =>
+    ({ id, concepto, categoria: "ALQUILER", categoriaNombre: "Alquiler", monto: 100, pagado: 0, fecha: "2026-09-01", sucursalId, sucursal }) as Gasto;
+
+  async function abrirGastosDelLocal(varias: boolean) {
+    getGastos.mockResolvedValue([gasto(1, "Alquiler Centro", 1, "Centro"), gasto(2, "Alquiler Norte", 2, "Norte"), gasto(3, "Alquiler oficina", null, null)]);
+    mostrar("resultado", undefined, varias);
+    const paso = (await screen.findAllByRole("button", { name: /Gastos del local/ }))[0];
+    fireEvent.click(paso);
+    return await screen.findByRole("dialog");
+  }
+
+  it("dice de qué local es cada gasto, y que el de la oficina es general", async () => {
+    const detalle = await abrirGastosDelLocal(true);
+    expect(within(detalle).getByText(/· Centro$/)).toBeInTheDocument();
+    expect(within(detalle).getByText(/· Norte$/)).toBeInTheDocument();
+    expect(within(detalle).getByText(/· General del negocio$/)).toBeInTheDocument();
+  });
+
+  it("con un solo local, o asignado a una sede, la lista es la de siempre", async () => {
+    const detalle = await abrirGastosDelLocal(false);
+    expect(within(detalle).getByText("Alquiler Centro")).toBeInTheDocument();
+    expect(within(detalle).queryByText(/General del negocio/)).toBeNull();
+    expect(within(detalle).queryByText(/· Norte$/)).toBeNull();
   });
 });

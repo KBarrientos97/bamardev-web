@@ -2,7 +2,7 @@ import { aCentavos, esCero } from "../../../lib/dinero";
 import { fmtFecha, fmtFechaHora } from "../../../lib/format";
 import type { HojaNueva } from "../../../lib/planilla";
 import type { CierreApi } from "../api";
-import { hoja } from "../contexto";
+import { columnaSucursal, hoja } from "../contexto";
 
 /**
  * Las cuentas de Cierres de caja (y de Ventas por cajero, que suma las mismas
@@ -124,13 +124,15 @@ export function resumenCierres(historial: Pick<CierreApi, "esperado" | "conteo">
 
 const NOMBRE_ESTADO: Record<EstadoCaja, string> = { cuadra: "Cuadró", faltante: "Faltante", sobrante: "Sobrante" };
 
-export function hojaCierres(historial: CierreApi[]): HojaNueva {
+export function hojaCierres(historial: CierreApi[], conLocal = false, rotulo = "Sucursal"): HojaNueva {
   return hoja<CierreApi>(
     "Cierres de caja",
     [
       ["Día", (c) => diaDelTurno(c)],
       ["Turno", (c) => turnoDe(c.fechaApertura)],
       ["Cajero (abrió)", (c) => c.cajero],
+      // Sólo con filas de 2+ locales: con uno, el Excel es el de siempre.
+      ...columnaSucursal<CierreApi>(conLocal, (c) => c.sucursal?.nombre, rotulo),
       ["Abrió", (c) => (c.fechaApertura ? fmtFechaHora(c.fechaApertura) : null)],
       ["Cerró", (c) => (c.fechaCierre ? fmtFechaHora(c.fechaCierre) : null)],
       ["Vendido (Bs)", (c) => c.totalDia],

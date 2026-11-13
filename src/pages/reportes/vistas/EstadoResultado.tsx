@@ -18,7 +18,7 @@ import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import type { Gasto } from "../../../types";
 import { apiReportes, fraccion, type ClasesAcademiaApi, type CreditosApi, type EfectivoBillarApi, type FinancieroApi, type ResumenApi } from "../api";
-import { hoja, useExportar, useReporte } from "../contexto";
+import { hoja, useColumnaSucursal, useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsEntero, bsResta, bsSubtotal } from "../formato";
 import { ProgresoMeta } from "../graficos";
 import { NotaGenerales } from "../NotaGenerales";
@@ -1141,6 +1141,9 @@ function DetalleLinea({
       : detalle.tipo === "categoria"
         ? gastos.filter((g) => g.categoria === detalle.codigo)
         : [];
+  // De qué local es cada gasto: sólo la organización con 2+ locales y sólo si los
+  // gastos de la lista son de más de uno (el general del negocio cuenta como uno).
+  const { conLocal } = useColumnaSucursal(lista, (g) => g.sucursalId, true);
   const local = detalle.tipo === "grupo" && detalle.grupo === "LOCAL";
   const titulo =
     detalle.tipo === "costo"
@@ -1270,14 +1273,14 @@ function DetalleLinea({
                   <ChipEstado estado={estadoLinea(c.gastos)} />
                   <span className="w-24 shrink-0 text-right font-extrabold tabular-nums text-texto">{fmtMoney(c.monto)}</span>
                 </header>
-                <ListaGastos gastos={c.gastos} conCategoria={false} />
+                <ListaGastos gastos={c.gastos} conCategoria={false} conLocal={conLocal} />
               </section>
             ))}
           </div>
         ) : (
           lista.length > 0 && (
             <div className="overflow-hidden rounded-xl border border-borde">
-              <ListaGastos gastos={lista} conCategoria={detalle.tipo === "grupo"} />
+              <ListaGastos gastos={lista} conCategoria={detalle.tipo === "grupo"} conLocal={conLocal} />
             </div>
           )
         )}
@@ -1398,7 +1401,7 @@ function FilaCuenta({ etiqueta, valor, rojo = false, fuerte = false }: { etiquet
   );
 }
 
-function ListaGastos({ gastos, conCategoria }: { gastos: Gasto[]; conCategoria: boolean }) {
+function ListaGastos({ gastos, conCategoria, conLocal }: { gastos: Gasto[]; conCategoria: boolean; conLocal: boolean }) {
   return (
     <ul className="divide-y divide-borde-soft">
       {gastos.map((g) => {
@@ -1410,6 +1413,8 @@ function ListaGastos({ gastos, conCategoria }: { gastos: Gasto[]; conCategoria: 
               <p className="text-[12px] text-texto-3">
                 {fmtFecha(g.fecha)}
                 {conCategoria && g.categoriaNombre ? ` · ${g.categoriaNombre}` : ""}
+                {/* Con el consolidado de 2+ locales: de cuál es el gasto, o que es general. */}
+                {conLocal ? ` · ${g.sucursal ?? "General del negocio"}` : ""}
               </p>
             </div>
             <Badge tono={b.tono}>{b.texto}</Badge>
