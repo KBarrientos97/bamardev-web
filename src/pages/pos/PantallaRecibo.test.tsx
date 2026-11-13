@@ -1055,6 +1055,14 @@ describe("el recibo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     expect(screen.getByText("Sucursal Sur")).toBeInTheDocument();
   });
 
+  it("un instituto con 2+ sedes dice «Sede:» y no «Sucursal:»", () => {
+    sesion.locales = 2;
+    sesion.rubro = "ACADEMIA";
+    dibujar(venta({ almacen: SUR }));
+    expect(screen.getByText("Sede:")).toBeInTheDocument();
+    expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
+  });
+
   it("con un solo local el recibo no cambia: ni la fila ni el nombre", () => {
     sesion.locales = 1;
     const { container } = dibujar(venta({ almacen: SUR }));

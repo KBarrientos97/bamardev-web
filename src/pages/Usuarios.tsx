@@ -82,6 +82,8 @@ export default function Usuarios() {
   // ve de cuál es cada cuenta; quien está atado a una ve sólo su gente (el
   // backend se la recorta) y su sede en el subtítulo. Con una sola, nada.
   const suc = useSucursales();
+  // «Sucursal», o «Sede» en un instituto.
+  const pal = usePalabras();
   const usuarios = useApi(() => api.getUsuarios(), []);
   const roles = useApi(() => apiRoles.listar(), []);
   // El límite del plan, para avisar al apretar "Nuevo" y no después de llenar el
@@ -284,7 +286,7 @@ export default function Usuarios() {
           <Buscador valor={q} onChange={setQ} placeholder="Buscar por nombre o usuario" />
         </div>
         <Chips valor={filtroRol} opciones={opcionesRol} onChange={setFiltroRol} />
-        {suc.elegir && <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
+        {suc.elegir && <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
       </div>
 
       <ErrorMsg>{errorAccion || usuarios.error || roles.error}</ErrorMsg>

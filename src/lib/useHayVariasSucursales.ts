@@ -1,3 +1,4 @@
+import { conMayuscula, termino } from "./rubro";
 import { esUnLocal, modoDeSucursal } from "./useSucursales";
 import { useAuth } from "../store/AuthContext";
 
@@ -22,6 +23,16 @@ export function useHayVariasSucursales(): boolean {
       locales: negocio?.sucursalesActivas,
     }) !== "una"
   );
+}
+
+/**
+ * La palabra del rubro para el local en un papel o un rótulo: «Sucursal», y
+ * «Sede» en un instituto (o la que el negocio eligió en su perfil). Con el rubro
+ * de siempre es exactamente «Sucursal», así el papel de un solo local no cambia.
+ */
+export function useRotuloSucursal(): string {
+  const { rubro, vocabulario } = useAuth();
+  return conMayuscula(termino(rubro, "sucursal", vocabulario));
 }
 
 /** El local de un papel (la venta, la caja), sólo si corresponde mostrarlo; si no, `null`. */

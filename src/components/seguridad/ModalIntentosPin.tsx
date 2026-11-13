@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePalabras } from "../../lib/academia/usePalabras";
 import { apiSeguridad, type Frenado } from "../../lib/seguridad/apiSeguridad";
 import {
   agrupar,
@@ -46,6 +47,7 @@ export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; 
   const yoId = usuario?.id;
   const [pestana, setPestana] = useState<Pestana>(inicial);
   const suc = useSucursales();
+  const pal = usePalabras();
   const sucursalId = suc.sucursalId;
   const datos = useApi(
     () => {
@@ -139,7 +141,7 @@ export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; 
           ))}
         </div>
 
-        {suc.elegir && <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
+        {suc.elegir && <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
 
         {aviso && (
           <p role="status" className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-semibold text-primary-700">

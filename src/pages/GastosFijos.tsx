@@ -324,6 +324,7 @@ function FormPlantilla({
   /** true mientras el cuerpo del formulario muestra el panel de categorías. */
   const [conCategorias, setConCategorias] = useState(false);
   const panel = conCategorias && !!onCatalogo;
+  const pal = usePalabras();
   /** De qué local es la regla: el job mensual copia este valor a cada gasto. */
   const sucursal = useSucursalDelGasto({
     actual: plantilla,
@@ -498,7 +499,7 @@ function FormPlantilla({
 
         <CampoSucursalGasto
           control={sucursal}
-          ayuda="Cada gasto que cree esta regla nace con esta sucursal. «General del negocio» es para lo que no es de ningún local."
+          ayuda={`Cada gasto que cree esta regla nace con esta ${pal.sede}. «General del negocio» es para lo que no es de ningún local.`}
         />
 
         <div className="grid gap-3 sm:grid-cols-2">

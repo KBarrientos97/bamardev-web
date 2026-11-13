@@ -79,6 +79,12 @@ describe("el pedido con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     expect(partes[2]).toBe("🏪 Sucursal: Sucursal Sur");
   });
 
+  it("con la palabra del rubro («Sede») la usa; sin ella, «Sucursal» como la app", () => {
+    const partes = mensajePedido({ ...DELIVERY, sucursal: "Central", rotuloSucursal: "Sede" }, "Instituto").split("\n\n");
+    expect(partes[2]).toBe("🏪 Sede: Central");
+    expect(mensajePedido({ ...DELIVERY, sucursal: "Central" }, "X")).toContain("🏪 Sucursal: Central");
+  });
+
   it("sin sucursal, el texto de la app no cambia ni un carácter", () => {
     expect(mensajePedido({ ...DELIVERY, sucursal: null }, "Pollos Don Omar")).toBe(mensajePedido(DELIVERY, "Pollos Don Omar"));
     expect(mensajePedido(DELIVERY, "Pollos Don Omar")).not.toContain("Sucursal");
@@ -88,5 +94,7 @@ describe("el pedido con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     const v = { id: 1, comprobante: "V-1", tipoPedido: "RECOGER", detalles: [], total: 10, tarifaEnvio: 0 } as unknown as Venta;
     expect(pedidoDeVenta(v)).not.toHaveProperty("sucursal");
     expect(pedidoDeVenta(v, "Norte").sucursal).toBe("Norte");
+    expect(pedidoDeVenta(v, "Norte")).not.toHaveProperty("rotuloSucursal");
+    expect(pedidoDeVenta(v, "Norte", "Sede").rotuloSucursal).toBe("Sede");
   });
 });

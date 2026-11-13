@@ -86,6 +86,15 @@ describe("el recibo por WhatsApp con varios locales (PLAN-SUCURSAL-TOTAL, etapa 
     expect(mensajeRecibo(base, "Pollos Don Omar", undefined)).not.toContain("Sucursal");
   });
 
+  it("un instituto dice «Sede», con la palabra del rubro", () => {
+    const texto = mensajeRecibo(base, "Instituto Bolívar", "Central", "Sede");
+    expect(texto.split("\n")[2]).toBe("Sede: Central");
+    expect(texto).not.toContain("Sucursal");
+    expect(decodeURIComponent(whatsappDelRecibo(base, "Instituto Bolívar", "Central", "Sede"))).toContain("Sede: Central");
+    // Sin la palabra, la de siempre: el papel de un negocio común no cambia.
+    expect(mensajeRecibo(base, "X", "Central")).toBe(mensajeRecibo(base, "X", "Central", "Sucursal"));
+  });
+
   it("el wa.me lleva la misma línea", () => {
     const url = whatsappDelRecibo(base, "Pollos Don Omar", "Sucursal Sur");
     expect(decodeURIComponent(url)).toContain("Sucursal: Sucursal Sur");

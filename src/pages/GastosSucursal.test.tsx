@@ -22,6 +22,8 @@ const sesion = vi.hoisted(() => ({
   sucursal: undefined as string | undefined,
   /** Lo que sabe un usuario atado de cuántos locales hay (login). */
   negocio: undefined as { sucursalesActivas: number } | undefined,
+  /** El rubro: en un instituto la sucursal se llama «sede». */
+  rubro: "RESTAURANTE" as string,
 }));
 
 vi.mock("../store/AuthContext", async () => {
@@ -35,7 +37,7 @@ vi.mock("../store/AuthContext", async () => {
         sucursal: sesion.sucursal,
       },
       negocio: sesion.negocio,
-      rubro: "RESTAURANTE",
+      rubro: sesion.rubro,
     }),
   };
 });
@@ -138,6 +140,7 @@ beforeEach(() => {
   sesion.sucursalId = null;
   sesion.sucursal = undefined;
   sesion.negocio = undefined;
+  sesion.rubro = "RESTAURANTE";
   vi.mocked(api.getSucursales).mockResolvedValue(DOS as never);
   vi.mocked(api.getResumenGastos).mockResolvedValue(resumen);
   vi.mocked(api.getGastos).mockResolvedValue([luz]);
@@ -405,6 +408,15 @@ describe("Gastos automáticos: la sucursal de la regla", () => {
     const [cuerpo] = vi.mocked(api.crearPlantillaGasto).mock.calls[0];
     expect(Object.prototype.hasOwnProperty.call(cuerpo, "sucursalId")).toBe(true);
     expect(cuerpo.sucursalId).toBeNull();
+  });
+
+  it("en un instituto el campo y su ayuda dicen «sede», no «sucursal»", async () => {
+    sesion.rubro = "ACADEMIA";
+    abrir(<GastosFijos />);
+    const form = await nuevaRegla();
+    expect(within(form).getByRole("combobox", { name: /^Sede/ })).toBeInTheDocument();
+    expect(within(form).getByText(/nace con esta sede./)).toBeInTheDocument();
+    expect(within(form).queryByText(/sucursal/i)).not.toBeInTheDocument();
   });
 
   it("con un local filtrado la regla nueva nace en él", async () => {
