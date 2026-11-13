@@ -3,7 +3,7 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Input } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import { calcularEnvio, TARIFA_POR_DEFECTO } from "../../lib/pedidosWeb/tarifa";
-import { filasDe, tarifaDeFilas, type Fila } from "../../lib/pedidosWeb/tarifaEditor";
+import { filasDe, MAX_TRAMOS, tarifaDeFilas, type Fila } from "../../lib/pedidosWeb/tarifaEditor";
 
 /**
  * La tarifa de envío de los pedidos web (13-nov): cuánto se cobra de delivery
@@ -112,6 +112,8 @@ export default function TarifaEnvioEditor() {
       </ul>
       <button
         type="button"
+        // El backend admite hasta 8 tramos (PW-39): al llegar, el botón se apaga en vez de dejar que el error llegue recién al guardar.
+        disabled={filas.length >= MAX_TRAMOS}
         onClick={() => {
           setGuardado(false);
           setFilas((fs) =>
@@ -121,9 +123,9 @@ export default function TarifaEnvioEditor() {
               : [...fs.slice(0, -1), { hasta: "", valor: fs[fs.length - 2]?.valor ?? "1" }, fs[fs.length - 1]],
           );
         }}
-        className="min-h-11 rounded-lg border border-borde px-3 py-1.5 text-sm font-semibold"
+        className="min-h-11 rounded-lg border border-borde px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
       >
-        Agregar un tramo
+        {filas.length >= MAX_TRAMOS ? `Máximo ${MAX_TRAMOS} tramos` : "Agregar un tramo"}
       </button>
       <label className="flex flex-wrap items-center gap-2 text-sm text-texto-2">
         <span>No entregar a más de</span>

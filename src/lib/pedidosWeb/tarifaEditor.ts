@@ -13,6 +13,9 @@ export interface Fila {
   valor: string;
 }
 
+/** Cuántos tramos acepta el backend (`MAX_TRAMOS` de `tarifa.ts`). */
+export const MAX_TRAMOS = 8;
+
 const aNumero = (t: string) => Number(t.trim().replace(",", "."));
 
 export function filasDe(t: TarifaEnvio): Fila[] {
