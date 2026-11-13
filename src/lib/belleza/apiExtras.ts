@@ -334,7 +334,12 @@ export const apiExtras = {
       method: "PUT",
       ...json({ items }),
     }),
-  rentabilidadServicios: (p: { desde?: string; hasta?: string } = {}) =>
+  /**
+   * El costo y margen por servicio. `sucursalId` acota a las ventas de ese local
+   * (la organización con 2+ locales); sin él, todo el negocio. Al atado a una
+   * sede el backend le fuerza la suya.
+   */
+  rentabilidadServicios: (p: { desde?: string; hasta?: string; sucursalId?: number | null } = {}) =>
     request<RentabilidadServicios>(`/consumo-servicio/reporte${qs(p)}`),
   consumosDeCita: (citaId: number) => request<ConsumosDeCita>(`/consumo-servicio/citas/${citaId}`),
   ajustarConsumo: (id: number, cantidad: number) =>
