@@ -1491,23 +1491,21 @@ export interface PanelControl {
  */
 /**
  * Una sede en el comparativo de `GET /academia/reportes` (`porSede`,
- * PLAN-SUCURSAL-TOTAL §9.5). Cada número se agrupa por su criterio: `cobrado`
- * por la CAJA que recibió el cobro; `ingresaron`, `activos`, `alDia`,
- * `enEspera`, `enMora` y `vencido` por la sede del GRUPO; `sueldos` por la
- * sede del gasto. `sede: null` es la fila de los sueldos que no son de ninguna.
+ * PLAN-SUCURSAL-TOTAL §9.5). Es sólo lo académico, todo por la sede del
+ * GRUPO: `ingresaron`, `activos`, `alDia`, `enEspera`, `enMora` y `vencido`.
+ * A propósito NO trae lo cobrado ni los sueldos por sede: el resultado en
+ * plata vive sólo en el Estado de resultado (decisión del dueño, 28-oct).
  */
 export interface FilaSedeAcademia {
-  sede: Ref | null;
+  sede: Ref;
   ingresaron: number;
-  /** Null sin permiso de montos (igual `vencido` y `sueldos`). */
-  cobrado: number | null;
   activos: number;
   alDia: number;
   enEspera: number;
   enMora: number;
   pctMora: number | null;
+  /** Lo que se debe de las cuotas vencidas. Null sin permiso de montos. */
   vencido: number | null;
-  sueldos: number | null;
 }
 
 export interface ReportesAcademia {

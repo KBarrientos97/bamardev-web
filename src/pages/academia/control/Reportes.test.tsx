@@ -179,26 +179,32 @@ describe("E18 · Reportes del instituto (L5)", () => {
   });
 });
 
-/** PLAN-SUCURSAL-TOTAL §9.5: las sedes lado a lado, con el criterio de cada número. */
+/** PLAN-SUCURSAL-TOTAL §9.5: las sedes lado a lado, sólo lo académico (sin plata de resultado). */
 describe("E18 · comparativo por sede", () => {
   const SEDES: NonNullable<ReportesAcademia["porSede"]> = [
-    { sede: { id: 1, nombre: "Norte" }, ingresaron: 12, cobrado: 8400, activos: 61, alDia: 50, enEspera: 4, enMora: 7, pctMora: 11, vencido: 1960, sueldos: 5200 },
-    { sede: { id: 2, nombre: "Sur" }, ingresaron: 5, cobrado: 3100, activos: 22, alDia: 20, enEspera: 1, enMora: 1, pctMora: 5, vencido: 340, sueldos: 1800 },
-    { sede: null, ingresaron: 0, cobrado: 0, activos: 0, alDia: 0, enEspera: 0, enMora: 0, pctMora: null, vencido: 0, sueldos: 600 },
+    { sede: { id: 1, nombre: "Norte" }, ingresaron: 12, activos: 61, alDia: 50, enEspera: 4, enMora: 7, pctMora: 11, vencido: 1960 },
+    { sede: { id: 2, nombre: "Sur" }, ingresaron: 5, activos: 22, alDia: 20, enEspera: 1, enMora: 1, pctMora: 5, vencido: 340 },
   ];
 
-  it("con 2 sedes una tabla lado a lado, rotulada con su criterio, y la fila de sueldos sin sede", async () => {
+  it("con 2 sedes una tabla lado a lado, rotulada con su criterio, sin cobrado ni sueldos", async () => {
     vi.mocked(apiAcademia.reportes).mockResolvedValue({ ...REPORTES, porSede: SEDES });
     mostrar();
     await act(async () => {});
     const tarjeta = screen.getByRole("region", { name: "Por sede" });
-    expect(tarjeta).toHaveTextContent("Cobrado: en la caja de cada sede. Ingresaron, al día y mora: según la sede del grupo.");
+    expect(tarjeta).toHaveTextContent("Ingresaron, al día y mora: según la sede del grupo.");
+    expect(tarjeta).not.toHaveTextContent(/caja de cada sede/);
     const filas = within(tarjeta).getAllByRole("row");
-    expect(filas[1]).toHaveTextContent(/Norte.*12.*8\.400,00.*61.*50.*4.*7 · 11 %.*1\.960,00.*5\.200,00/);
-    expect(filas[2]).toHaveTextContent(/Sur.*5.*3\.100,00/);
-    expect(filas[3]).toHaveTextContent(/Sueldos sin sede.*600,00/);
+    expect(filas).toHaveLength(3);
+    expect(filas[1]).toHaveTextContent(/Norte.*12.*61.*50.*4.*7 · 11 %.*1\.960,00/);
+    expect(filas[2]).toHaveTextContent(/Sur.*5.*22/);
+    // El resultado en plata vive sólo en el Estado de resultado: ni columnas ni fila de sueldos.
+    expect(within(tarjeta).queryByRole("columnheader", { name: "Cobrado" })).not.toBeInTheDocument();
+    expect(within(tarjeta).queryByRole("columnheader", { name: "Sueldos" })).not.toBeInTheDocument();
+    expect(tarjeta).not.toHaveTextContent(/Sueldos sin sede/);
     fireEvent.click(screen.getByRole("button", { name: /Cómo se calcula: Por sede/ }));
-    expect(screen.getByRole("dialog", { name: "Cómo se calcula" })).toHaveTextContent(/CAJA de cada sede/);
+    const ayuda = screen.getByRole("dialog", { name: "Cómo se calcula" });
+    expect(ayuda).toHaveTextContent(/sede del GRUPO/);
+    expect(ayuda).not.toHaveTextContent(/CAJA de cada sede/);
   });
 
   it("con una sola fila (una sede pedida o un usuario atado) no hay nada que comparar", async () => {
@@ -214,16 +220,15 @@ describe("E18 · comparativo por sede", () => {
     expect(document.getElementById("t-sedes")).toBeNull();
   });
 
-  it("sin montos no hay columnas de plata", async () => {
+  it("sin montos no hay columna de vencido ni Bs", async () => {
     vi.mocked(apiAcademia.reportes).mockResolvedValue({
       ...REPORTES,
-      porSede: SEDES.map((f) => ({ ...f, cobrado: null, vencido: null, sueldos: null })),
+      porSede: SEDES.map((f) => ({ ...f, vencido: null })),
     });
     mostrar();
     await act(async () => {});
     const tarjeta = screen.getByRole("region", { name: "Por sede" });
-    expect(within(tarjeta).queryByRole("columnheader", { name: "Cobrado" })).not.toBeInTheDocument();
-    expect(within(tarjeta).queryByRole("columnheader", { name: "Sueldos" })).not.toBeInTheDocument();
+    expect(within(tarjeta).queryByRole("columnheader", { name: "Vencido" })).not.toBeInTheDocument();
     expect(tarjeta).not.toHaveTextContent(/Bs/);
   });
 });

@@ -29,13 +29,13 @@ export function ayudaInstituto(diasEspera: number | undefined) {
       noIncluye: ["Las clases sin lista pasada.", "Las faltas justificadas: no cuentan ni a favor ni en contra."],
     },
     sedes: {
-      queMuestra: "Las sedes lado a lado: cuántos ingresaron, cuánto se cobró, cuántos estudiantes activos hay y cómo pagan, y lo que se pagó en sueldos docentes.",
+      queMuestra: "Las sedes lado a lado: cuántos ingresaron, cuántos estudiantes activos hay y cómo pagan.",
       deDonde:
-        "Cobrado cuenta lo que entró por la CAJA de cada sede, sin importar de qué sede es el grupo del estudiante. Ingresaron, activos, al día, en la espera, en mora y vencido se cuentan por la sede del GRUPO. Sueldos es lo que se pagó a los docentes en el período, por la sede a la que se cargó el gasto.",
+        "Ingresaron, activos, al día, en la espera, en mora y vencido se cuentan por la sede del GRUPO donde cursa el estudiante. Es la misma cuenta de la mora de arriba, partida por sede.",
       incluye: ["Un estudiante que cursa en dos sedes cuenta en cada una."],
       noIncluye: [
-        "Por eso los activos de las sedes pueden sumar más que los del instituto, y lo cobrado de una sede puede no coincidir con lo que deben sus estudiantes: quien paga en la caja de otra sede suma el cobro ahí y su deuda en la suya.",
-        "En «Sueldos sin sede»: los pagos a docentes que no se cargaron a ninguna sede.",
+        "Por eso los activos de las sedes pueden sumar más que los del instituto.",
+        "Lo cobrado y los sueldos por sede: el resultado en plata se mira sólo en Reportes de ventas → Estado de resultado.",
       ],
     },
     mora: {
