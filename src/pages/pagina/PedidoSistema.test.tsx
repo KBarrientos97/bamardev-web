@@ -256,7 +256,7 @@ describe("el carrito con pedidos en el sistema", () => {
     await abrirPedido();
     fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
     expect(screen.getByRole("radio", { name: /Centro/ })).toBeDisabled();
-    expect(screen.getByText("Cerrado ahora")).toBeInTheDocument();
+    expect(screen.getByText("No está recibiendo pedidos ahora")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Las Brisas/ })).toBeChecked();
   });
 
@@ -282,7 +282,7 @@ describe("el carrito con pedidos en el sistema", () => {
   it("con todas las sucursales cerradas avisa en la franja de la página", async () => {
     servidor({ info: { ...INFO, sucursales: [{ ...BRISAS, abierta: false }] } });
     await montar();
-    expect(await screen.findByText(/el local está cerrado/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ahora no estamos recibiendo pedidos por acá/)).toBeInTheDocument();
   });
 
   it("reintentar el MISMO pedido conserva la clave; si cambió el carrito, sale con otra (PW-10)", async () => {

@@ -11,7 +11,8 @@ export function avisoSinPedidos(info: InfoPedidos | null): string | null {
   if (!info) return null;
   if (!info.recibe) return MOTIVOS[info.motivo ?? "APAGADO"] ?? MOTIVOS.APAGADO;
   if (info.sucursales.length > 0 && info.sucursales.every((s) => !s.abierta)) {
-    return "Ahora no estamos recibiendo pedidos: el local está cerrado. Volvé en un rato.";
+    // «Cerrado» contradecía al «Abierto ahora» del horario cuando sólo falta la caja abierta (QA R1, N2).
+    return "Ahora no estamos recibiendo pedidos por acá. Volvé en un rato.";
   }
   return null;
 }

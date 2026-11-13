@@ -309,6 +309,8 @@ export interface PropsVista {
    */
   lineasPedido?: LineaPedido[];
   alCambiarPedido?: (id: number, delta: number) => void;
+  /** Los ítems que el local elegido no puede servir hoy: se marcan «Agotado» y no se suman (pedidos al sistema). */
+  agotados?: ReadonlySet<number>;
   /** A dónde lleva «Ver toda la carta» del sitio (la tienda, 09-nov). Sin esto, la portada muestra todo. */
   urlTienda?: string;
   /**
@@ -343,6 +345,7 @@ export default function VistaPagina({
   alAgregarAlPedido,
   lineasPedido,
   alCambiarPedido,
+  agotados,
   urlTienda,
   tienda,
   sucursalCatalogo,
@@ -555,7 +558,7 @@ export default function VistaPagina({
   const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
   const consultaA = p.reservar ? null : (contactos[0] ?? null);
   const accionCatalogo: AccionCatalogo | null = alAgregarAlPedido
-    ? { texto: "Agregar al pedido", icono: "M12 5v14M5 12h14", href: () => "#", alAgregar: alAgregarAlPedido }
+    ? { texto: "Agregar al pedido", icono: "M12 5v14M5 12h14", href: () => "#", alAgregar: alAgregarAlPedido, agotado: (it) => agotados?.has(it.id) ?? false }
     : p.reservar
     ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
     : consultaA
@@ -743,7 +746,7 @@ export default function VistaPagina({
     // editor el «+» se ve (para que el dueño vea lo mismo) pero no suma.
     const lineas = lineasPedido ?? [];
     const pedidoCarta: PedidoCarta | null = alAgregarAlPedido
-      ? { cantidadDe: (id) => cantidadDe(lineas, id), agregar: alAgregarAlPedido, cambiar: alCambiarPedido ?? null }
+      ? { cantidadDe: (id) => cantidadDe(lineas, id), agregar: alAgregarAlPedido, cambiar: alCambiarPedido ?? null, agotado: (id) => agotados?.has(id) ?? false }
       : p.pedidos && enCaja && contactos.length > 0
         ? { cantidadDe: () => 0, agregar: null, cambiar: null }
         : null;

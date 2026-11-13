@@ -9,13 +9,23 @@ import { cargarTurnstile } from "../lib/turnstile";
  * montar con otra `key` (después de cualquier respuesta del backend, que ya lo
  * gastó).
  */
+/** En qué va la verificación: para que el formulario le diga al cliente qué hacer. */
+export type EstadoCaptcha = "verificando" | "pide" | "listo" | "fallo";
+
 export default function Captcha({
   siteKey,
   onToken,
+  onEstado,
   discreto = false,
 }: {
   siteKey: string;
   onToken: (token: string | null) => void;
+  /**
+   * Opcional: avisa si Cloudflare está verificando solo, si pide que el cliente
+   * tilde el recuadro (`pide`), si ya está (`listo`) o si falló (`fallo`). Con
+   * esto el formulario puede subir hasta el recuadro y ofrecer reintentar.
+   */
+  onEstado?: (estado: EstadoCaptcha) => void;
   /**
    * Invisible salvo que Cloudflare dude ("interaction-only"): para el chat de
    * la página, donde un recuadro antes de la primera pregunta espanta.
@@ -24,11 +34,13 @@ export default function Captcha({
 }) {
   const caja = useRef<HTMLDivElement>(null);
   const avisar = useRef(onToken);
+  const estado = useRef(onEstado);
   const [fallo, setFallo] = useState(false);
 
   useEffect(() => {
     avisar.current = onToken;
-  }, [onToken]);
+    estado.current = onEstado;
+  }, [onToken, onEstado]);
 
   useEffect(() => {
     let vivo = true;
@@ -48,14 +60,34 @@ export default function Captcha({
           // Ocupa el ancho del formulario (mínimo 300 px); si no entra, el compacto.
           size: entra ? "flexible" : "compact",
           ...(discreto ? { appearance: "interaction-only" as const } : {}),
-          callback: (token) => avisar.current(token),
-          "expired-callback": () => avisar.current(null),
-          "timeout-callback": () => avisar.current(null),
-          "error-callback": () => avisar.current(null),
+          callback: (token) => {
+            avisar.current(token);
+            estado.current?.("listo");
+          },
+          "expired-callback": () => {
+            avisar.current(null);
+            estado.current?.("verificando");
+          },
+          "timeout-callback": () => {
+            avisar.current(null);
+            estado.current?.("fallo");
+          },
+          "error-callback": () => {
+            avisar.current(null);
+            estado.current?.("fallo");
+          },
+          "unsupported-callback": () => {
+            avisar.current(null);
+            estado.current?.("fallo");
+          },
+          "before-interactive-callback": () => estado.current?.("pide"),
+          "after-interactive-callback": () => estado.current?.("verificando"),
         });
       })
       .catch(() => {
-        if (vivo) setFallo(true);
+        if (!vivo) return;
+        setFallo(true);
+        estado.current?.("fallo");
       });
     return () => {
       vivo = false;

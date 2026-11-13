@@ -780,11 +780,14 @@ export function LineaCarrito({
   fuerte,
   tinte,
   pedido,
+  agotado,
 }: {
   l: LineaPedido;
   fuerte: string;
   tinte: string;
   pedido: Pedido;
+  /** Si ese local no puede servir esta línea hoy: el aviso que se le muestra (pedidos al sistema). */
+  agotado?: string;
 }) {
   const foto = urlDeImagen(l.fotoUrl ?? null);
   const icono = foto ? null : iconoPorLlave(l.icono);
@@ -860,6 +863,11 @@ export function LineaCarrito({
             </span>
           )}
         </div>
+        {agotado && (
+          <div role="alert" style={{ fontSize: 13, fontWeight: 700, color: "#B91C1C", marginTop: 2 }}>
+            {agotado}
+          </div>
+        )}
       </div>
       {l.servicio ? (
         // Un servicio va una vez: sólo se puede quitar.
