@@ -146,6 +146,109 @@ describe("el aviso de pedidos web", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
+  describe("con la pestaña oculta (R2-05)", () => {
+    const visibilidad = (valor: "hidden" | "visible") =>
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => valor });
+    afterEach(() => visibilidad("visible"));
+
+    /** Una Notification de juguete: cuenta lo que se muestra y trae el permiso del usuario. */
+    const mostradas = vi.fn();
+    function notificacionesCon(permiso: NotificationPermission) {
+      class Falsa {
+        static permission = permiso;
+        onclick: (() => void) | null = null;
+        close = vi.fn();
+        constructor(
+          public titulo: string,
+          public opciones: NotificationOptions,
+        ) {
+          mostradas(titulo, opciones);
+        }
+      }
+      vi.stubGlobal("Notification", Falsa);
+    }
+    beforeEach(() => mostradas.mockClear());
+
+    it("sigue consultando el contador y suena igual", async () => {
+      visibilidad("hidden");
+      await montar();
+      expect(contador).toHaveBeenCalledTimes(1);
+      await avanzar(CADA_MS);
+      expect(contador).toHaveBeenCalledTimes(2);
+
+      fireEvent.pointerDown(window); // el toque que habilita el sonido
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await avanzar(CADA_MS);
+      expect(tonos).toHaveBeenCalled();
+      expect(document.title).toBe("(1) Pedidos nuevos");
+    });
+
+    it("con permiso: una notificación del sistema al llegar un pedido, muda si el sonido ya está", async () => {
+      visibilidad("hidden");
+      notificacionesCon("granted");
+      await montar();
+      fireEvent.pointerDown(window);
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await avanzar(CADA_MS);
+      expect(mostradas).toHaveBeenCalledTimes(1);
+      expect(mostradas.mock.calls[0][0]).toBe("Pedido web nuevo");
+      expect(mostradas.mock.calls[0][1]).toMatchObject({ tag: "pedidos-web-nuevos", silent: true });
+    });
+
+    it("no hace spam: el mismo número y la repetición del sonido no la repiten; uno más sí", async () => {
+      visibilidad("hidden");
+      notificacionesCon("granted");
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await montar();
+      expect(mostradas).toHaveBeenCalledTimes(1);
+      await avanzar(CADA_MS * 5); // sigue el 1 sin atender
+      await avanzar(REPETIR_SONIDO_MS); // y vuelve a sonar
+      expect(mostradas).toHaveBeenCalledTimes(1);
+
+      contador.mockResolvedValue({ nuevos: 2, masViejoEn: null });
+      await avanzar(CADA_MS);
+      expect(mostradas).toHaveBeenCalledTimes(2);
+      expect(mostradas.mock.calls[1][0]).toBe("2 pedidos web nuevos");
+      // Sin sonido habilitado, la notificación trae el del sistema.
+      expect(mostradas.mock.calls[1][1]).toMatchObject({ silent: false });
+    });
+
+    it.each(["default", "denied"] as const)("con el permiso en «%s» no muestra nada, ni se lo pide", async (permiso) => {
+      visibilidad("hidden");
+      const pedir = vi.fn();
+      notificacionesCon(permiso);
+      (globalThis.Notification as unknown as { requestPermission: () => void }).requestPermission = pedir;
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await montar();
+      await avanzar(CADA_MS);
+      expect(mostradas).not.toHaveBeenCalled();
+      expect(pedir).not.toHaveBeenCalled();
+    });
+
+    it("con la pestaña a la vista no hay notificación (ya están la franja, el título y el sonido)", async () => {
+      notificacionesCon("granted");
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await montar();
+      expect(mostradas).not.toHaveBeenCalled();
+    });
+
+    it("un navegador que lanza al crear la notificación no rompe el aviso", async () => {
+      visibilidad("hidden");
+      vi.stubGlobal(
+        "Notification",
+        Object.assign(
+          function () {
+            throw new TypeError("Illegal constructor");
+          },
+          { permission: "granted" },
+        ),
+      );
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await montar();
+      expect(document.title).toBe("(1) Pedidos nuevos");
+    });
+  });
+
   describe("el sonido", () => {
     it("antes del primer toque no suena y ofrece «Activar sonido»", async () => {
       contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });

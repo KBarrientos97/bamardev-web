@@ -5,8 +5,10 @@ import type { ContadorPedidos } from "./tipos";
 /**
  * El contador de pedidos nuevos (pedidos web, 13-nov): lo consultan el menú,
  * el POS y el aviso de cualquier pantalla, así que hay UN solo reloj por
- * pestaña, cada 10 s (la web) y sólo con la pestaña visible. Liviano a
- * propósito: `GET /pedidos-web/contador`.
+ * pestaña, cada 10 s (la web). También con la pestaña OCULTA (R2-05): Chrome en
+ * Windows la marca así cuando otra ventana la tapa entera, y el pedido vence a
+ * los 10 minutos; el navegador la frena a una vez por minuto si pasa mucho
+ * tiempo oculta, y eso alcanza. Liviano a propósito: `GET /pedidos-web/contador`.
  */
 
 export const CADA_MS = 10_000;
@@ -21,7 +23,6 @@ const oyentes = new Set<() => void>();
 
 /** Pide el contador y avisa sólo si cambió (el snapshot tiene que ser estable). */
 export async function consultarContador(): Promise<void> {
-  if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
   try {
     const c = await apiPedidosWeb.contador();
     if (c.nuevos === valor.nuevos && c.masViejoEn === valor.masViejoEn) return;
@@ -177,6 +178,36 @@ export function sonarPedido(): boolean {
   }
 }
 
+/**
+ * El aviso del sistema operativo (R2-05), para el cajero que tiene otra ventana
+ * tapando el POS: sólo si el usuario YA dio permiso a las notificaciones (acá
+ * nunca se lo pedimos), sólo con la pestaña oculta —a la vista ya hay franja,
+ * título y sonido— y una sola notificación con `tag` fijo: la siguiente reemplaza
+ * a la anterior en vez de apilarse. Se llama cuando el contador SUBE, no en cada
+ * repetición del sonido. Si el sonido ya está habilitado, la notificación va muda
+ * para no sonar dos veces; si no, trae el sonido del sistema.
+ */
+export function notificarPedidoNuevo(nuevos: number): boolean {
+  try {
+    if (nuevos <= 0) return false;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+    if (typeof document === "undefined" || document.visibilityState !== "hidden") return false;
+    const n = new Notification(nuevos === 1 ? "Pedido web nuevo" : `${nuevos} pedidos web nuevos`, {
+      body: "Un cliente espera respuesta: el pedido vence en 10 minutos.",
+      tag: "pedidos-web-nuevos",
+      silent: desbloqueado,
+    });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+    };
+    return true;
+  } catch {
+    // Algunos navegadores móviles lanzan al construir una Notification: queda el sonido.
+    return false;
+  }
+}
+
 /** Para los tests. */
 export function reiniciarSonido() {
   if (contexto) contexto.onstatechange = null;
@@ -214,7 +245,10 @@ export function useAvisoPedidosWeb(activo: boolean): ContadorPedidos {
   const previo = useRef(0);
 
   useEffect(() => {
-    if (c.nuevos > previo.current) sonarPedido();
+    if (c.nuevos > previo.current) {
+      sonarPedido();
+      notificarPedidoNuevo(c.nuevos);
+    }
     previo.current = c.nuevos;
   }, [c.nuevos]);
 
