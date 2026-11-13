@@ -282,6 +282,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Cuántas sucursales activas tiene el negocio (`/auth/me` y el login). Lo
+   * necesita el usuario ASIGNADO a un local, que no puede listarlas: sin el
+   * número no sabe si hay más de una y no puede mostrar el nombre de su sede.
+   * Sólo se guarda un número: otra cosa (un backend viejo) no pisa lo que hay.
+   */
+  const fijarSucursalesActivas = useCallback((cantidad: number | undefined) => {
+    if (typeof cantidad !== "number") return;
+    setNegocio((previo) => {
+      if (!previo || previo.sucursalesActivas === cantidad) return previo;
+      const actualizado = { ...previo, sucursalesActivas: cantidad };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
+  /**
    * Trae de `/auth/me` los permisos y el rol (PLAN-ROLES-NEGOCIO §8) y los
    * guarda en la sesión. El rol viaja junto con los permisos: si el dueño le
    * renombra el rol a alguien o se lo cambia, la etiqueta de la cabecera
@@ -289,6 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const traerPermisos = useCallback(async (version?: string) => {
     const me = await api.me();
+    fijarSucursalesActivas(me.sucursalesActivas);
     if (!me.permisos) return;
     setUsuario((previo) => {
       if (!previo) return previo;
@@ -305,7 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(USER_KEY, JSON.stringify(actualizado));
       return actualizado;
     });
-  }, []);
+  }, [fijarSucursalesActivas]);
 
   /**
    * Una sesión guardada antes de que el backend mandara permisos no tiene con
@@ -353,11 +370,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * bloquea: es lo que mantiene fresca la barra de aviso en una pestaña que
    * quedó abierta desde ayer, y lo que echa a quien no toca nada en horas.
    */
+  // Un usuario asignado a un local no puede listar los locales: depende del
+  // número que viene en la sesión, que una sesión vieja no tiene y que puede
+  // quedar viejo si el dueño abre un local nuevo. Se refresca con el mismo
+  // chequeo (sólo para ellos: el de organización lista los locales y no lo usa).
+  const esAsignado = usuario?.sucursalId != null;
   useEffect(() => {
     if (!token) return;
     let vivo = true;
 
     const revisar = () => {
+      if (esAsignado) {
+        // `Promise.resolve().then` para que un `api.me` ausente o roto no
+        // reviente el chequeo: es un dato accesorio y falla cerrado.
+        Promise.resolve()
+          .then(() => api.me())
+          .then((me) => vivo && fijarSucursalesActivas(me.sucursalesActivas))
+          .catch(() => undefined);
+      }
       const turno = pedirTurnoCupo();
       api
         .licencia()
@@ -392,7 +422,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos, pedirTurnoCupo, aplicarConsulta]);
+  }, [
+    token,
+    esAsignado,
+    fijarSucursalesActivas,
+    refrescarFeatures,
+    refrescarPerfil,
+    refrescarPermisos,
+    pedirTurnoCupo,
+    aplicarConsulta,
+  ]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión

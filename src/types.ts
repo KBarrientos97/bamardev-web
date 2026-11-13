@@ -171,6 +171,15 @@ export interface SesionNegocio {
    * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
    */
   usaDespacho?: boolean;
+  /**
+   * Cuántas sucursales activas tiene el negocio (sólo tipo SUCURSAL, no
+   * depósitos). Lo manda el login y `/auth/me`; sirve para que un usuario
+   * ASIGNADO a un local —que no puede listarlos— sepa si hay más de uno.
+   * Opcional: una sesión guardada antes no lo tiene, y ahí vale `undefined`
+   * (= no se sabe: se trata como "un solo local", falla cerrado). No es lo
+   * mismo que 0 ni que 1.
+   */
+  sucursalesActivas?: number;
 }
 
 export interface LoginResponse {
@@ -200,6 +209,8 @@ export interface Me {
   permisosPropios?: string[];
   permisosVersion?: string;
   esDespacho?: boolean;
+  /** Mismo dato que `SesionNegocio.sucursalesActivas`, plano (no hay `negocio` acá). */
+  sucursalesActivas?: number;
 }
 
 // ── Roles del negocio (PLAN-ROLES-NEGOCIO §8) ───────────────────────────────

@@ -338,3 +338,69 @@ describe("cupo: una respuesta vieja no pisa una más nueva", () => {
     expect(screen.getByText("cupo:6/50 saldo 0")).toBeInTheDocument();
   });
 });
+
+describe("cantidad de sucursales del usuario asignado (PLAN-SUCURSAL-TOTAL etapa 1)", () => {
+  const CAJERO_DE_SEDE: SesionUsuario = { ...ADMIN, id: 9, rol: "CAJERO", sucursalId: 3, sucursal: "Norte" };
+
+  function SondaSucursales() {
+    const { negocio } = useAuth();
+    // `undefined` no es `null` ni 0: una sesión vieja no sabe cuántas hay.
+    return <p>activas:{negocio?.sucursalesActivas === undefined ? "?" : negocio.sucursalesActivas}</p>;
+  }
+
+  async function montarSucursales() {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaSucursales />
+        </AuthProvider>,
+      );
+    });
+    await act(async () => {});
+  }
+
+  it("una sesión vieja de un asignado (sin el conteo) lo trae de /auth/me y lo guarda", async () => {
+    localStorage.setItem(USER_KEY, JSON.stringify(CAJERO_DE_SEDE));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockResolvedValue({
+      id: 9,
+      username: "admin",
+      rol: "CAJERO",
+      negocioId: 2,
+      esPlataforma: false,
+      sucursalesActivas: 2,
+    });
+    await montarSucursales();
+    expect(screen.getByText("activas:2")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}")).toMatchObject({ sucursalesActivas: 2 });
+  });
+
+  it("un backend que no manda el campo deja la sesión como estaba (sin inventar)", async () => {
+    localStorage.setItem(USER_KEY, JSON.stringify(CAJERO_DE_SEDE));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockResolvedValue({
+      id: 9,
+      username: "admin",
+      rol: "CAJERO",
+      negocioId: 2,
+      esPlataforma: false,
+    });
+    await montarSucursales();
+    expect(screen.getByText("activas:?")).toBeInTheDocument();
+  });
+
+  it("el usuario de organización no pide /auth/me por esto", async () => {
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await montarSucursales();
+    expect(api.me).not.toHaveBeenCalled();
+    expect(screen.getByText("activas:?")).toBeInTheDocument();
+  });
+
+  it("si /auth/me falla, no revienta ni cambia nada", async () => {
+    localStorage.setItem(USER_KEY, JSON.stringify(CAJERO_DE_SEDE));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockRejectedValue(new Error("sin red"));
+    await montarSucursales();
+    expect(screen.getByText("activas:?")).toBeInTheDocument();
+  });
+});
