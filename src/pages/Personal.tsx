@@ -26,6 +26,7 @@ import { usePalabras } from "../lib/academia/usePalabras";
 import { conMayuscula } from "../lib/rubro";
 import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
+import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
 import { Link, useSearchParams } from "react-router-dom";
@@ -78,8 +79,11 @@ export default function Personal() {
     () => apiPersonal.cargos().then((c) => (Array.isArray(c) ? c : [])).catch(() => [] as CargoRol[]),
     [],
   );
-  const almacenes = useApi(() => api.getSucursales().catch(() => [] as Almacen[]), []);
-  const sucursales = (almacenes.datos ?? []).filter((a) => a.activo && a.tipo !== "DEPOSITO");
+  // La regla de sucursal vive en el hook (PLAN-SUCURSAL-TOTAL §1): `elegir` es
+  // sólo de la organización y sólo con 2+ locales (y respeta la regla 4). Al
+  // asignado el backend le fuerza su sede: no ve ni filtro ni casillas.
+  const suc = useSucursales();
+  const sucursales = suc.sucursales;
   const nombreSucursal = (id: number) => sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`;
 
   const todas = personas.datos ?? [];
@@ -111,7 +115,7 @@ export default function Personal() {
     if (filtro === "sin_acceso" && !(p.activo && !p.conAcceso)) return false;
     if (cargo && String(p.cargoRolId) !== cargo) return false;
     // Sin sucursal = toda la organización (el dueño): aparece en todas.
-    if (sucursal && p.sucursalIds.length > 0 && !p.sucursalIds.includes(Number(sucursal))) return false;
+    if (suc.elegir && sucursal && p.sucursalIds.length > 0 && !p.sucursalIds.includes(Number(sucursal))) return false;
     return !buscar.trim() || contiene(p.nombre, buscar) || contiene(p.cargo ?? "", buscar);
   });
   const activos = todas.filter((p) => p.activo);
@@ -150,7 +154,7 @@ export default function Personal() {
             ))}
           </Select>
         )}
-        {sucursales.length > 1 && (
+        {suc.elegir && (
           <Select
             value={sucursal}
             onChange={(e) => setSucursal(e.target.value)}
@@ -226,7 +230,7 @@ export default function Personal() {
                     {[
                       p.acceso ? `@${p.acceso.username}` : null,
                       p.telefono,
-                      sucursales.length > 1
+                      suc.elegir
                         ? p.sucursalIds.map(nombreSucursal).join(", ") || `Todas las ${sedesTxt}`
                         : null,
                       p.zona || p.vehiculo ? [p.zona, p.vehiculo].filter(Boolean).join(" · ") : null,
@@ -245,6 +249,7 @@ export default function Personal() {
         <FichaPersona
           persona={editando === "nueva" ? null : editando}
           sucursales={sucursales}
+          elegirSede={suc.elegir}
           personas={todas}
           cargos={cargosRol.datos ?? []}
           onCargoNuevo={() => cargosRol.recargar()}
@@ -260,6 +265,7 @@ export default function Personal() {
 function FichaPersona({
   persona,
   sucursales,
+  elegirSede,
   personas,
   cargos,
   onCargoNuevo,
@@ -268,6 +274,8 @@ function FichaPersona({
 }: {
   persona: Persona | null;
   sucursales: Almacen[];
+  /** `useSucursales().elegir`: 2+ locales, de organización y sin la regla 4. */
+  elegirSede: boolean;
   personas: Persona[];
   cargos: CargoRol[];
   onCargoNuevo: () => void;
@@ -338,7 +346,7 @@ function FichaPersona({
   // Docente → rol Docente: el cargo ya dice qué hace.
   const rolElegido =
     rolAcceso || String(roles.find((r) => r.id === cargoRolId)?.id ?? (roles.length === 1 ? roles[0].id : ""));
-  const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
+  const eligeSucursal = elegirSede;
   const sedeElegida = sedeAcceso || String(sucursalIds[0] ?? sucursales[0]?.id ?? "");
 
   // Zona y vehículo son de quien reparte: su cargo entrega pedidos, o ya los
@@ -356,7 +364,7 @@ function FichaPersona({
     if (com !== null && (!Number.isFinite(com) || com < 0 || com > 100)) {
       return setError(conDocentes ? "El % docente va de 0 a 100." : "La comisión va de 0 a 100 %.");
     }
-    if (persona && sucursales.length > 1 && !sucursalIds.length) {
+    if (persona && elegirSede && !sucursalIds.length) {
       return setError(`Elegí al menos una ${sedeTxt} donde trabaja.`);
     }
     // Se revisa el acceso ANTES de guardar a la persona: así un dato mal puesto no
@@ -634,7 +642,7 @@ function FichaPersona({
         <Campo label="Notas" hint="Turno, horarios…">
           <Input value={notas} onChange={(e) => setNotas(e.target.value)} />
         </Campo>
-        {sucursales.length > 1 && (
+        {elegirSede && (
           <fieldset>
             <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">{conMayuscula(sedesTxt)} donde trabaja</legend>
             <div className="flex flex-wrap gap-3">
