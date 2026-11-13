@@ -22,11 +22,14 @@ vi.mock("../../lib/apiTelevisores", async (importOriginal) => {
 // Lo que dice el hook de la sucursal: por defecto, un solo local.
 const suc = vi.hoisted(() => ({
   columna: false,
+  modo: "una" as "una" | "asignado" | "organizacion",
   sucursales: [] as { id: number; nombre: string }[],
 }));
 vi.mock("../../lib/useSucursales", () => ({
   useSucursales: () => ({
+    modo: suc.modo,
     sucursales: suc.sucursales,
+    sugerida: suc.sucursales[0],
     mostrarColumna: <T,>(filas: T[], clave: (f: T) => number | null) =>
       suc.columna && new Set(filas.map(clave).filter((x) => x != null)).size > 1,
   }),
@@ -52,6 +55,7 @@ const tv = (datos: Partial<TelevisorLocal> = {}): TelevisorLocal => ({
 beforeEach(() => {
   vi.clearAllMocks();
   suc.columna = false;
+  suc.modo = "una";
   suc.sucursales = [];
 });
 
@@ -73,6 +77,48 @@ describe("TVs del local", () => {
       expect(api.conectar).toHaveBeenCalledWith({ codigo: "K7P4QX", muestra: "MENU", menu: 1 }),
     );
     expect(await screen.findByText(/"TV 1" conectada: en unos segundos cambia sola/)).toBeInTheDocument();
+  });
+
+  describe("el local de la TV nueva (PLAN-SUCURSAL-TOTAL §10.3)", () => {
+    const LOCALES = [
+      { id: 1, nombre: "Centro" },
+      { id: 4, nombre: "Norte" },
+    ];
+
+    async function abrirConectar() {
+      api.listar.mockResolvedValue({ televisores: [], opciones: [TICKETS] });
+      api.conectar.mockResolvedValue(tv());
+      render(<TelevisoresDelLocal />);
+      fireEvent.click(await screen.findByRole("button", { name: "Conectar una TV" }));
+      fireEvent.change(screen.getByPlaceholderText("K7P 4QX"), { target: { value: "K7P4QX" } });
+    }
+
+    it("la organización con 2+ locales elige dónde queda y se manda sucursalId", async () => {
+      suc.modo = "organizacion";
+      suc.sucursales = LOCALES;
+      await abrirConectar();
+      const selector = screen.getByLabelText("¿En qué local queda la TV?");
+      // Arranca en la sugerida (la principal), que es donde la dejaría el backend.
+      expect(selector).toHaveValue("1");
+      fireEvent.change(selector, { target: { value: "4" } });
+      fireEvent.click(screen.getByRole("button", { name: "Conectar" }));
+      await waitFor(() =>
+        expect(api.conectar).toHaveBeenCalledWith({ codigo: "K7P4QX", muestra: "TICKETS", sucursalId: 4 }),
+      );
+    });
+
+    it.each([
+      ["un solo local", "una", [{ id: 1, nombre: "Centro" }]],
+      ["el encargado de un local", "asignado", []],
+    ] as const)("%s: no hay selector y no se manda sucursalId", async (_quien, modo, sucursales) => {
+      suc.modo = modo;
+      suc.sucursales = [...sucursales];
+      await abrirConectar();
+      expect(screen.queryByLabelText("¿En qué local queda la TV?")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Conectar" }));
+      await waitFor(() => expect(api.conectar).toHaveBeenCalledTimes(1));
+      expect(api.conectar.mock.calls[0][0]).not.toHaveProperty("sucursalId");
+    });
   });
 
   it("con dos cosas para mostrar, no adivina cuál: hay que elegir", async () => {
