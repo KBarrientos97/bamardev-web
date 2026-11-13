@@ -261,7 +261,7 @@ describe("De dónde a dónde", () => {
     // El atado no pide `/almacenes` (valorizado); los destinos salen de `mias`.
     expect(api.getSucursales).toHaveBeenCalled();
     expect(api.getAlmacenes).not.toHaveBeenCalled();
-    expect(destino()).toHaveValue(String(CENTRO));
+    await waitFor(() => expect(destino()).toHaveValue(String(CENTRO)));
   });
 
   it("un local desactivado no recibe nada: con uno solo activo, no hay a dónde", async () => {
