@@ -12,6 +12,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtFecha, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import type { Encargo, EstadoEncargo } from "../../types";
 import { FormEncargo } from "./FormEncargo";
 
@@ -52,13 +53,28 @@ const OPCIONES: readonly (readonly [Filtro, string])[] = [
 
 export default function Encargos() {
   const [filtro, setFiltro] = useState<Filtro>("abiertos");
+  // Con 2+ locales el dueño elige cuál mira; el encargo es del local donde lo
+  // pidieron, y quien llama al cliente es quien está en ese mostrador. Quien es
+  // de un local ve sólo el suyo (el servidor se lo fuerza) y no recibe selector.
+  const suc = useSucursales();
   const lista = useApi(
     () =>
       api
-        .getEncargos(filtro === "abiertos" ? {} : { estado: filtro, incluirCerrados: true })
+        .getEncargos({
+          ...(filtro === "abiertos" ? {} : { estado: filtro, incluirCerrados: true }),
+          sucursalId: suc.sucursalId,
+        })
         // Con qué filtro se pidió: ver `datos`, abajo.
         .then((r) => ({ ...r, filtro })),
-    [filtro],
+    [filtro, suc.sucursalId],
+    // Al cambiar de local, los encargos del anterior no quedan a la vista.
+    { clave: suc.sucursalId },
+  );
+  // La caja abierta del dueño es el local donde está parado: ahí se anota por
+  // defecto. Sólo se pregunta si hay varios locales entre los que elegir.
+  const caja = useApi(
+    () => (suc.elegir ? api.cajaActual().catch(() => null) : Promise.resolve(null)),
+    [suc.elegir],
   );
   const [creando, setCreando] = useState(false);
   const [cancelando, setCancelando] = useState<Encargo | null>(null);
@@ -71,6 +87,8 @@ export default function Encargos() {
   // hay es de OTRO filtro —"Entregados" mostraba un instante los pendientes
   // con sus botones—, así que sólo cuenta lo que se pidió con el de ahora.
   const datos = lista.datos?.filtro === filtro ? lista.datos : null;
+  // El nombre del local en cada tarjeta, sólo si la lista mezcla 2+ locales.
+  const verLocal = suc.mostrarColumna(datos?.items, (e) => e.almacen?.id);
 
   async function mover(encargo: Encargo, estado: EstadoEncargo) {
     setError("");
@@ -90,7 +108,9 @@ export default function Encargos() {
       <EncabezadoPagina
         titulo="Encargos"
         subtitulo={
-          datos ? `${datos.abiertos} esperando` : "Lo que pidieron y no había"
+          (datos ? `${datos.abiertos} esperando` : "Lo que pidieron y no había") +
+          // `sedeVista`: el local elegido (organización) o el propio (asignado, 2+ locales).
+          (suc.sedeVista ? ` · ${suc.sedeVista}` : "")
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>
@@ -120,6 +140,9 @@ export default function Encargos() {
       )}
 
       <Chips valor={filtro} opciones={OPCIONES} onChange={(v) => setFiltro(v as Filtro)} />
+      {suc.elegir && (
+        <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+      )}
 
       <ErrorMsg>{error}</ErrorMsg>
 
@@ -149,6 +172,7 @@ export default function Encargos() {
             <Tarjeta
               key={e.id}
               encargo={e}
+              mostrarLocal={verLocal}
               procesando={moviendo === e.id}
               onAvanzar={() => {
                 const sig = ESTADOS[e.estado].siguiente;
@@ -162,6 +186,14 @@ export default function Encargos() {
 
       {creando && (
         <FormEncargo
+          // El selector del local sólo para el dueño con 2+ locales; los demás
+          // anotan donde están (el servidor usa su caja o su sucursal).
+          sucursales={suc.elegir ? suc.sucursales : undefined}
+          sucursalId={
+            suc.elegir
+              ? (suc.sucursalId ?? caja.datos?.caja?.almacenId ?? suc.sugerida?.id ?? null)
+              : null
+          }
           onClose={() => setCreando(false)}
           onGuardado={() => {
             setCreando(false);
@@ -219,11 +251,14 @@ function Contador({
 
 function Tarjeta({
   encargo: e,
+  mostrarLocal,
   procesando,
   onAvanzar,
   onCancelar,
 }: {
   encargo: Encargo;
+  /** La lista mezcla locales: el nombre del de este encargo. */
+  mostrarLocal: boolean;
   procesando: boolean;
   onAvanzar: () => void;
   onCancelar: () => void;
@@ -238,6 +273,7 @@ function Tarjeta({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] font-bold text-texto">{e.descripcion}</h3>
             <Badge tono={estado.tono}>{estado.label}</Badge>
+            {mostrarLocal && e.almacen && <Badge tono="azul">{e.almacen.nombre}</Badge>}
             {e.muyPedido && <Badge tono="rojo">Muy pedido</Badge>}
           </div>
           {e.producto && (

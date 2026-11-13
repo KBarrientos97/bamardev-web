@@ -69,9 +69,15 @@ export interface RespuestaIntentos {
 
 /** Módulo aparte para poder mockearlo en los tests de la franja. */
 export const apiSeguridad = {
-  /** Lo que no se vio (la franja) o los últimos días (el historial). */
-  intentos: (q: { sinVer: true } | { dias: number }) =>
-    request<RespuestaIntentos>(`/seguridad/intentos-pin?${"sinVer" in q ? "sinVer=true" : `dias=${q.dias}`}`),
+  /**
+   * Lo que no se vio (la franja) o los últimos días (el historial). Con
+   * `sucursalId` (la organización con 2+ locales), sólo lo de ese local; a
+   * quien está atado a uno el backend le fuerza el suyo.
+   */
+  intentos: (q: { sinVer: true } | { dias: number }, sucursalId?: number | null) =>
+    request<RespuestaIntentos>(
+      `/seguridad/intentos-pin?${"sinVer" in q ? "sinVer=true" : `dias=${q.dias}`}${sucursalId != null ? `&sucursalId=${sucursalId}` : ""}`,
+    ),
   /** "Ya lo vi", hasta el último mostrado. */
   marcarVistos: (hastaId: number) =>
     request<{ marcados: number }>("/seguridad/intentos-pin/vistos", {

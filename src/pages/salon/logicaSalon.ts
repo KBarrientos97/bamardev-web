@@ -8,7 +8,7 @@
  * distinto de la misma mesa.
  */
 
-import type { Comanda, EstadoMesa, ItemComanda, Mesa } from "../../types/salon";
+import type { Comanda, EstadoMesa, ItemComanda, Mesa, ZonaSalon } from "../../types/salon";
 
 /** Comandas que el mesero todavía no llevó a la mesa. */
 export function tieneQueLlevarse(c: Comanda): boolean {
@@ -110,10 +110,19 @@ export type MovimientoMesa = "pasar" | "juntar" | "unir";
  *
  * (El salón no trae las arrimadas como mesa propia, así que en la práctica el
  * `unidaAId` no filtra nada; está para que la regla no dependa de eso.)
+ *
+ * En los tres, además, la otra mesa tiene que ser **del mismo local**: lo exige
+ * el backend (`mismaSucursal`) aunque quien mueve sea el de organización.
  */
 export function mesasParaElegir(modo: MovimientoMesa, mesa: Mesa, mesas: Mesa[]): Mesa[] {
+  // La mesa que vuelve de una acción (unir, separar) trae la respuesta del
+  // backend, sin el local: se lo busca en la lista del salón.
+  const local = mesa.sucursalId ?? mesas.find((m) => m.id === mesa.id)?.sucursalId;
   return mesas.filter((m) => {
     if (m.id === mesa.id) return false;
+    // Mover entre locales distintos da 400 ("son de locales distintos"): no se
+    // ofrecen. Si alguna no tiene local (dato viejo) no hay con qué comparar.
+    if (local != null && m.sucursalId != null && m.sucursalId !== local) return false;
     if (modo === "pasar") return m.estado === "LIBRE" && m.unidaAId == null;
     if (modo === "unir") return m.estado === "LIBRE" && !estaUnida(m) && m.unidaAId == null;
     return estaOcupada(m) && m.estado !== "PAGADA";
@@ -148,6 +157,12 @@ export function filtrarMesas(
   mesas: Mesa[],
   opciones: {
     zonaCodigo?: string | null;
+    /**
+     * El local de la zona elegida: dos locales pueden tener una zona con el
+     * mismo código ("salon"), y sin esto el chip de una mostraría las mesas de
+     * las dos. Las mesas sin local conocido pasan.
+     */
+    sucursalId?: number | null;
     soloMias?: boolean;
     miMeseroId?: number | null;
     /**
@@ -157,9 +172,10 @@ export function filtrarMesas(
     estado?: EstadoMesa | null;
   },
 ): Mesa[] {
-  const { zonaCodigo, soloMias, miMeseroId, estado } = opciones;
+  const { zonaCodigo, sucursalId, soloMias, miMeseroId, estado } = opciones;
   return mesas.filter((m) => {
     if (zonaCodigo && m.zonaCodigo !== zonaCodigo) return false;
+    if (sucursalId != null && m.sucursalId != null && m.sucursalId !== sucursalId) return false;
     if (soloMias && (m.meseroId == null || m.meseroId !== miMeseroId)) return false;
     if (estado && m.estado !== estado) return false;
     return true;
@@ -296,3 +312,24 @@ export const COLOR_MESA: Record<EstadoMesa, { chip: string; borde: string }> = {
     borde: "border-texto-4 border-dashed",
   },
 };
+
+/**
+ * El local de cada mesa. El backend ya lo manda por mesa (`Mesa.sucursalId`,
+ * PLAN-SUCURSAL-TOTAL §10.4) y ese manda; de la zona sólo se toma lo que la mesa
+ * no trae: el nombre del local y, para un backend anterior, el id (la mesa hereda
+ * el local de su zona). Sin zonas con local (negocio de un local, dato viejo)
+ * devuelve la misma lista, sin copiarla.
+ */
+export function conLocalDeZona(mesas: Mesa[], zonas: ZonaSalon[]): Mesa[] {
+  const locales = new Map<number, { id: number; nombre: string | null }>();
+  for (const z of zonas) {
+    if (z.sucursalId != null) locales.set(z.id, { id: z.sucursalId, nombre: z.sucursalNombre ?? null });
+  }
+  if (locales.size === 0) return mesas;
+  return mesas.map((m) => {
+    const local = m.zonaId != null ? locales.get(m.zonaId) : undefined;
+    return local
+      ? { ...m, sucursalId: m.sucursalId ?? local.id, sucursalNombre: m.sucursalNombre ?? local.nombre }
+      : m;
+  });
+}

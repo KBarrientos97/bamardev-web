@@ -21,19 +21,34 @@ import { consumoDeMesa, etiquetaMesa } from "./logicaSalon";
  *  - `propina`: sólo si hay. No entra al total ni al cajón: va al turno del
  *    mesero (Mi turno, Ventas por mesero). Ningún cobro de la web la mandaba,
  *    así que esas pantallas sólo mostraban las propinas cargadas desde la app.
+ *  - `cajaId`: sólo el mesero, y sólo si el local tiene varias cajas abiertas y
+ *    eligió una. La caja que cobra con la suya no lo manda nunca.
  */
 export function cuerpoCobroDeMesa(
   total: number,
   pagos: PagoInput[],
   propina: number | undefined,
   clienteRequestId: string,
+  cajaId?: number | null,
 ) {
   return {
     pagos,
     ...(propina != null && esPositivo(propina) ? { propina: aCentavos(propina) } : {}),
     totalEsperado: aCentavos(total),
     clienteRequestId,
+    ...(cajaId != null ? { cajaId } : {}),
   };
+}
+
+/**
+ * ¿El backend frenó el cobro porque la caja elegida ya no está abierta?
+ *
+ * Es un 400 sin código propio, así que se reconoce por el texto, como
+ * `esCuentaCambiada`: si un día cambia, queda el mensaje del backend, que
+ * también lo explica, sólo que sin volver a preguntar por la caja.
+ */
+export function esCajaCerrada(e: unknown): boolean {
+  return e instanceof Error && /caja/i.test(e.message) && /(cerr|ya no|no est[aá] abierta|no hay)/i.test(e.message);
 }
 
 /**

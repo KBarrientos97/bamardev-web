@@ -54,6 +54,7 @@ import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import FichasSucursales from "./pages/sucursales/FichasSucursales";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { SucursalesProvider } from "./lib/SucursalesProvider";
 import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
 import { ActualizarAlNavegar, useRecargarSiQuedoVieja } from "./lib/pwa/actualizarAlNavegar";
 
@@ -1091,12 +1092,16 @@ function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
 export default function AppConSesion() {
   return (
     <AuthProvider>
-      {/* La versión nueva de un deploy, al pasar a otra pantalla (todas: también
-          las que no tienen el menú, como el salón del mesero). */}
-      <ActualizarAlNavegar />
-      <SinPantallaEnBlanco>
-        <Rutas />
-      </SinPantallaEnBlanco>
+      {/* La lista de locales se pide una vez por sesión y la comparten todos
+          los `useSucursales` (antes cada pantalla hacía la suya). */}
+      <SucursalesProvider>
+        {/* La versión nueva de un deploy, al pasar a otra pantalla (todas:
+            también las que no tienen el menú, como el salón del mesero). */}
+        <ActualizarAlNavegar />
+        <SinPantallaEnBlanco>
+          <Rutas />
+        </SinPantallaEnBlanco>
+      </SucursalesProvider>
     </AuthProvider>
   );
 }

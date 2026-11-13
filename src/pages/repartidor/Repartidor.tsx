@@ -22,6 +22,7 @@ import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { tieneFeature } from "../../lib/permisos";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
+import { useHayVariasSucursales, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { usePosicionRepartidor } from "../../lib/pedidosWeb/usePosicionRepartidor";
 import { useAuth } from "../../store/AuthContext";
@@ -336,6 +337,10 @@ function DetalleEntrega({
 }) {
   const completo = useApi(() => api.getVenta(pedido.id), [pedido.id]);
   const { negocio } = useAuth();
+  // El local del pedido va en el mensaje al cliente sólo si el negocio tiene
+  // varios: con uno, el mismo texto de siempre (PLAN-SUCURSAL-TOTAL §1).
+  const hayVariasSucursales = useHayVariasSucursales();
+  const rotuloSede = useRotuloSucursal();
   const [cobrando, setCobrando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
   const [error, setError] = useState("");
@@ -364,7 +369,7 @@ function DetalleEntrega({
   const hrefWhatsApp = !numeroWhatsApp
     ? null
     : pendiente
-      ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p), negocio?.nombre))
+      ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p, hayVariasSucursales ? p.almacen?.nombre : null, rotuloSede), negocio?.nombre))
       : `https://wa.me/${numeroWhatsApp}`;
 
   async function confirmarEntrega(pagos?: PagoEntrega[]) {

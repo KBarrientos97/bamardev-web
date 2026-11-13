@@ -175,6 +175,7 @@ vi.mock("./PantallaCobro", () => ({
     onConfirmar: (p: unknown[], extra?: unknown) => void;
     onCredito?: (extra?: unknown) => void;
     onAtras?: () => void;
+    error?: string;
   }) => {
     const pagos = props.total > 0 ? [{ formaPagoId: 1, monto: props.total }] : [];
     const primero = props.profesionales?.[0];
@@ -182,6 +183,7 @@ vi.mock("./PantallaCobro", () => ({
     return (
       <div>
         <p>propina para: {(props.profesionales ?? []).map((p) => p.nombre).join(", ") || "nadie"}</p>
+        {props.error && <p>error del cobro: {props.error}</p>}
         <button onClick={() => props.onConfirmar(pagos)}>pagar {props.total}</button>
         <button onClick={() => props.onAtras?.()}>volver al carrito</button>
         {propina && (
@@ -364,6 +366,29 @@ describe("cobrar una cita", () => {
     });
     expect(screen.queryByText("La venta no cubre la cita")).not.toBeInTheDocument();
     expect(api.crearVenta).toHaveBeenCalledWith(expect.objectContaining({ citaId: 13 }));
+  });
+
+  it("PLAN-SUCURSAL-TOTAL: la cita es de otro local (409 OTRA_SUCURSAL): el cajero lee el mensaje, no hay recibo y el reintento es manual", async () => {
+    // El backend nombra los dos locales. La pantalla de cobro lo muestra tal
+    // cual, la venta no se da por hecha y no queda "en duda" (un 409 no es un
+    // corte: el cobro no se grabó, no hay que reintentarlo solo).
+    const { ApiError } = await import("../../lib/api");
+    const mensaje = "Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.";
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(
+      Object.assign(new ApiError(mensaje, 409), { status: 409, codigo: "OTRA_SUCURSAL" }),
+    );
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 230" }));
+    });
+    expect(screen.getByText(`error del cobro: ${mensaje}`)).toBeInTheDocument();
+    expect(screen.queryByText("recibo")).not.toBeInTheDocument();
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
   });
 
   it("A-02: sin un servicio, pide confirmación y Cancelar no cobra", async () => {

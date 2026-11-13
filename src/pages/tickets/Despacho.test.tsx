@@ -37,12 +37,27 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/apiTickets", () => ({ apiTickets: api }));
 
+// El local del despacho (PLAN-SUCURSAL-TOTAL, etapa 5): por defecto un solo
+// local, como todos los casos de arriba; los de abajo lo cambian.
+const local = vi.hoisted(() => ({
+  elegir: false,
+  locales: [] as { id: number; nombre: string }[],
+  sucursalId: null as number | null,
+  miSede: null as string | null,
+  setLocal: vi.fn(),
+}));
+vi.mock("./useLocalDeTickets", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./useLocalDeTickets")>();
+  return { ...real, useLocalDeTickets: () => ({ ...local, nombre: "" }) };
+});
+
 import Despacho from "./Despacho";
 
 const tablero = (tickets: TicketPedido[]): TableroTickets => ({ ahora, sucursalId: 1, siguiente: 80, tickets });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(local, { elegir: false, locales: [], sucursalId: null, miSede: null });
   api.tablero.mockResolvedValue(
     tablero([ticket({}), ticket({ id: 2, numero: 69, estado: "LISTO", listoEn: new Date(ahora).toISOString(), llamadoEn: new Date(ahora).toISOString(), llamados: 1 })]),
   );
@@ -143,5 +158,44 @@ describe("Despacho", () => {
     fireEvent.click(screen.getByRole("button", { name: "Salir" }));
     fireEvent.click(screen.getByRole("button", { name: "Sí, salir" }));
     expect(onSalir).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Despacho con varios locales (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  it("la organización elige el local: el tablero y el teclado van con su id", async () => {
+    Object.assign(local, {
+      elegir: true,
+      locales: [
+        { id: 1, nombre: "Centro" },
+        { id: 2, nombre: "Sur" },
+      ],
+      sucursalId: 2,
+    });
+    api.llamarNumero.mockResolvedValue(ticket({ estado: "LISTO" }));
+    render(<Despacho />);
+    await screen.findByText("072");
+    expect(api.tablero).toHaveBeenCalledWith(2);
+    expect(screen.getByRole("combobox", { name: "Sucursal" })).toHaveValue("2");
+    fireEvent.change(screen.getByRole("combobox", { name: "Sucursal" }), { target: { value: "1" } });
+    expect(local.setLocal).toHaveBeenCalledWith(1);
+    act(() => {
+      for (const k of ["7", "2", "Enter"]) window.dispatchEvent(new KeyboardEvent("keydown", { key: k }));
+    });
+    await waitFor(() => expect(api.llamarNumero).toHaveBeenCalledWith(72, 2));
+  });
+
+  it("el usuario de un local no ve selector, sólo el nombre de su sede", async () => {
+    local.miSede = "Sucursal Sur";
+    render(<Despacho />);
+    await screen.findByText("072");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByText(/Sucursal Sur ·/)).toBeInTheDocument();
+  });
+
+  it("con un solo local no aparece nada nuevo", async () => {
+    render(<Despacho />);
+    await screen.findByText("072");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(api.tablero).toHaveBeenCalledWith(null);
   });
 });

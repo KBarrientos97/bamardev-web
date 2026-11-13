@@ -11,12 +11,16 @@ export const REFRESCO_TABLERO_MS = 3_000;
  * comparten. Pregunta cada pocos segundos mientras la pestaña se ve, y apenas
  * vuelve a verse.
  *
+ * `sucursalId`: de qué local es el tablero (sólo lo respeta el usuario de
+ * organización; al de un local el backend le fuerza el suyo). Sin él, el
+ * principal, como siempre.
+ *
  * Una acción (listo, entregado…) se ve al toque: el ticket que devuelve el
  * backend reemplaza al de la lista sin esperar la vuelta siguiente. En un
  * mostrador con gente esperando, un toque que tarda tres segundos en verse se
  * vuelve a tocar.
  */
-export function useTableroTickets() {
+export function useTableroTickets(sucursalId?: number | null) {
   const [datos, setDatos] = useState<TableroTickets | null>(null);
   const [error, setError] = useState("");
   /** La hora del servidor menos la del equipo: el cronómetro de cada pedido. */
@@ -24,6 +28,10 @@ export function useTableroTickets() {
   const enCurso = useRef(false);
   /** Sube con cada acción hecha acá: una vuelta que salió antes trae la lista vieja. */
   const version = useRef(0);
+  // El local se lee de una referencia y no del cierre: una vuelta en vuelo de
+  // antes del cambio de local seguiría pidiendo el tablero del anterior.
+  const local = useRef(sucursalId);
+  local.current = sucursalId;
 
   const recargar = useCallback(async () => {
     if (enCurso.current) return;
@@ -35,7 +43,7 @@ export function useTableroTickets() {
         const pedido = Date.now();
         const antes = version.current;
         try {
-          const r = await apiTickets.tablero();
+          const r = await apiTickets.tablero(local.current);
           setDesfase(r.ahora - (pedido + Date.now()) / 2);
           // Salió antes de un toque (listo, entregado…): la lista es de antes
           // y lo deshacía en pantalla hasta la vuelta siguiente; el
@@ -55,6 +63,17 @@ export function useTableroTickets() {
       enCurso.current = false;
     }
   }, []);
+
+  // Otro local: el tablero que había era del anterior y no se muestra ni un
+  // instante (un despachador llamaría el número de otra sucursal).
+  const localAnterior = useRef(sucursalId);
+  useEffect(() => {
+    if (localAnterior.current === sucursalId) return;
+    localAnterior.current = sucursalId;
+    version.current += 1;
+    setDatos(null);
+    void recargar();
+  }, [sucursalId, recargar]);
 
   useEffect(() => {
     void recargar();

@@ -59,6 +59,9 @@ function contadoresDe(citas: Cita[], cola: Cita[], previos?: ContadoresHoy): Con
 
 function conCita(d: AgendaHoy | null, c: Cita): AgendaHoy | null {
   if (!d) return d;
+  // Una cita abierta desde la campana puede ser de otro local: se actualiza en
+  // su propia agenda, no se cuela en la del día de éste (PLAN-SUCURSAL-TOTAL).
+  if (d.sucursalId != null && c.sucursalId != null && c.sucursalId !== d.sucursalId) return d;
   const citas = d.citas.some((x) => x.id === c.id) ? d.citas.map((x) => (x.id === c.id ? c : x)) : [...d.citas, c];
   const cola = d.cola.filter((x) => x.id !== c.id || c.estado === "EN_COLA");
   // Las tarjetas se recalculan junto con la lista (QA M-10): si no, "Llegaron"
@@ -150,7 +153,7 @@ export default function Hoy() {
         )}
         {/* Plan Emprendedor: "Citas hoy 12/25 · Créditos 240". Sin cupo no existe. */}
         <ChipCupo unidad="CITA" />
-        <CampanaAvisos onAbrirCita={(c) => setAbierta(c)} />
+        <CampanaAvisos onAbrirCita={(c) => setAbierta(c)} sucursalId={suc.elegir ? suc.sucursalId : null} />
         <Boton icono="plus" onClick={() => setNueva(true)} disabled={!sucursalId}>
           Nueva cita
         </Boton>

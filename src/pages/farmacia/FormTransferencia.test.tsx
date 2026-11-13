@@ -41,6 +41,7 @@ vi.mock("../../store/AuthContext", () => ({
 vi.mock("../../lib/api", () => ({
   api: {
     getAlmacenes: vi.fn(),
+    getSucursales: vi.fn(),
     getMovimiento: vi.fn(),
     getArticulosMovimiento: vi.fn(),
     lotesDeProducto: vi.fn(),
@@ -174,6 +175,12 @@ beforeEach(() => {
     almacen(CENTRO, "Centro"),
     almacen(EQUIPETROL, "Equipetrol"),
   ]);
+  // El usuario atado a un local no recibe de `/almacenes` los otros: sus
+  // nombres salen de `/almacenes/mias` (la lista que trae `getSucursales`).
+  vi.mocked(api.getSucursales).mockResolvedValue([
+    almacen(CENTRO, "Centro"),
+    almacen(EQUIPETROL, "Equipetrol"),
+  ]);
   vi.mocked(api.getMovimiento).mockResolvedValue(transferencia());
   vi.mocked(api.getArticulosMovimiento).mockImplementation(async (almacenId?: number) => [
     amoxicilina(STOCK[almacenId ?? CENTRO] ?? 0),
@@ -251,6 +258,10 @@ describe("De dónde a dónde", () => {
       .getAllByRole("option")
       .map((o) => o.textContent);
     expect(opciones).toEqual(["Elegí una", "Equipetrol"]);
+    // El atado no pide `/almacenes` (valorizado); los destinos salen de `mias`.
+    expect(api.getSucursales).toHaveBeenCalled();
+    expect(api.getAlmacenes).not.toHaveBeenCalled();
+    await waitFor(() => expect(destino()).toHaveValue(String(CENTRO)));
   });
 
   it("un local desactivado no recibe nada: con uno solo activo, no hay a dónde", async () => {
@@ -375,8 +386,19 @@ describe("Guardar o aprobar", () => {
     expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
   });
 
-  it("con el extra de doble control sólo guarda: la aprueba otra persona", async () => {
+  it("el doble control no la frena: con «Aprobar transferencias» se aprueba ahí mismo", async () => {
+    // Una transferencia pide siempre su propio permiso, con o sin el extra
+    // (`puedeAprobar` del backend). Hasta el 12-nov el extra escondía el botón
+    // también a quien lo tiene, y había que ir a Movimientos a aprobarla.
     sesion.dobleControl = true;
+    abrir();
+    await screen.findByRole("button", { name: /Buscar y agregar producto/ });
+    expect(screen.getByRole("button", { name: "Guardar y aprobar" })).toBeInTheDocument();
+  });
+
+  it("con el doble control y sin «Aprobar transferencias», sólo guarda", async () => {
+    sesion.dobleControl = true;
+    sesion.apruebaTransferencias = false;
     abrir();
     await screen.findByRole("button", { name: /Buscar y agregar producto/ });
     expect(screen.queryByRole("button", { name: "Guardar y aprobar" })).not.toBeInTheDocument();

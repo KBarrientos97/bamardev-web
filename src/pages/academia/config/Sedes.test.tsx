@@ -12,6 +12,8 @@ import type { Sede } from "../../../lib/academia/tipos";
  */
 
 const quien = vi.hoisted(() => ({ configura: true, deSede: false }));
+// La lista compartida de locales y el conteo de la sesión: crear o editar una sede los renueva.
+const compartida = vi.hoisted(() => ({ invalidar: vi.fn(), refrescar: vi.fn(async () => {}) }));
 
 vi.mock("../../../store/AuthContext", async () => {
   const { SESION_ADMIN } = await import("../../../test/academiaFixtures");
@@ -25,6 +27,7 @@ vi.mock("../../../store/AuthContext", async () => {
         permisos: quien.configura ? SESION_ADMIN.usuario.permisos : ["academia.ver", "academia.grupos"],
       },
       puede: () => true,
+      refrescarSucursalesActivas: compartida.refrescar,
     }),
   };
 });
@@ -59,6 +62,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import { FuenteSucursalesCtx } from "../../../lib/sucursalesCompartidas";
 import Sedes, { SedesConfig } from "./Sedes";
 
 const sede = (id: number, nombre: string, extra: Partial<Sede> = {}): Sede => ({
@@ -90,9 +94,11 @@ const BASE = sede(2, "Base", { aulas: 1, franjas: 0, gruposVigentes: 0 });
 
 async function montar(ruta = "/configuracion/sedes") {
   render(
-    <MemoryRouter initialEntries={[ruta]}>
-      <SedesConfig />
-    </MemoryRouter>,
+    <FuenteSucursalesCtx.Provider value={{ obtener: async () => [], invalidar: compartida.invalidar }}>
+      <MemoryRouter initialEntries={[ruta]}>
+        <SedesConfig />
+      </MemoryRouter>
+    </FuenteSucursalesCtx.Provider>,
   );
   await act(async () => {});
 }
@@ -242,6 +248,9 @@ describe("C4 · Nueva sede", () => {
     expect(screen.getByText(/Norte quedó creada/)).toBeInTheDocument();
     // Recarga la lista y deja a mano sus franjas y aulas.
     expect(apiAcademia.sedes).toHaveBeenCalledTimes(2);
+    // La sede nueva llega a los selectores de la sesión y al conteo de los papeles.
+    expect(compartida.invalidar).toHaveBeenCalledTimes(1);
+    expect(compartida.refrescar).toHaveBeenCalledTimes(1);
   });
 
   it("sin nombre no llama al backend", async () => {
@@ -327,6 +336,8 @@ describe("C4 · Editar los datos de una sede", () => {
       telefono: null,
     });
     expect(screen.getByText("Central se guardó.")).toBeInTheDocument();
+    // Renombrar una sede también cambia la lista compartida (el nombre del selector).
+    expect(compartida.invalidar).toHaveBeenCalledTimes(1);
   });
 
   it("el horario se pasa a días con el editor de la ficha; el texto de antes queda a la vista hasta guardar", async () => {

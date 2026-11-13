@@ -163,6 +163,12 @@ export const TRAMOS: {
  */
 export interface FiltroVencimientos {
   tramo: TramoVencimiento;
+  /**
+   * El local que se estaba mirando al venir (Dashboard o Mermas con una
+   * sucursal elegida): Vencimientos abre en ese mismo local y no en el
+   * consolidado. Ausente = todas.
+   */
+  sucursalId?: number;
 }
 
 /** Cuánto le queda, dicho como lo diría alguien: "venció hace 3 d", "12 días". */

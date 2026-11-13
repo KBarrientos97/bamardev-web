@@ -4,15 +4,17 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../compo
 import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { Producto } from "../../types";
-import { paraVender } from "../pos/useCarrito";
+import { controlaStock, paraVender } from "../pos/useCarrito";
 import CampoBusqueda from "./CampoBusqueda";
 import { FichaMostrador } from "./FichaMedicamento";
 import { FormEncargo } from "./FormEncargo";
 import { CONDICION, concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
+import { AvisoCorregido } from "./AvisoCorregido";
 import { sePuedeVender, useVentaFarmacia } from "./ventaFarmacia";
 
 /**
@@ -55,6 +57,11 @@ export default function BuscarMedicamento() {
   });
   const venta = useVentaFarmacia();
   const { puede, incluye } = useAuth();
+  // De qué local es el stock que se ve, dicho sólo cuando hay 2+ locales: con la
+  // caja abierta, el de la caja; el usuario de un local ve el suyo; el dueño sin
+  // caja ve la suma del negocio y hay que decirlo, o parece el de su estante.
+  const suc = useSucursales();
+  const dondeStock = cajaAbierta?.almacen ?? (suc.hayVarias ? (suc.miSede ?? "todo el negocio") : null);
   // Sin `lotes` el plan no tiene Vencimientos: la columna ("Vence hoy", "Sin
   // fecha") no tiene de dónde salir y se saca entera.
   const conLotes = incluye("lotes");
@@ -108,6 +115,13 @@ export default function BuscarMedicamento() {
         </div>
       ) : (
         <>
+          {busqueda.corregido && (
+            <AvisoCorregido
+              tecleado={busqueda.consulta ?? q}
+              corregido={busqueda.corregido}
+              onUsar={setQ}
+            />
+          )}
           <p className="text-[13px] text-texto-3">
             {busqueda.items.length < busqueda.total
               ? `${busqueda.items.length} de ${busqueda.total}`
@@ -116,7 +130,7 @@ export default function BuscarMedicamento() {
                 }`}
             {/* Con varias sucursales, de cuál es el stock que se ve. Un
                 negocio de un local no recibe el nombre y no ve nada. */}
-            {cajaAbierta?.almacen && ` · stock de ${cajaAbierta.almacen}`}
+            {dondeStock && ` · stock de ${dondeStock}`}
           </p>
 
           <div className="overflow-hidden rounded-2xl border border-borde bg-white">
@@ -134,7 +148,9 @@ export default function BuscarMedicamento() {
                 <Fila
                   key={p.id}
                   producto={p}
-                  q={q}
+                  // Se resalta lo que se encontró: con la búsqueda corregida,
+                  // lo tecleado ("ibprofen") no está en ninguna fila.
+                  q={busqueda.corregido ?? q}
                   columnas={columnas}
                   conVencimiento={conLotes}
                   onFicha={() => setFicha(p)}
@@ -162,6 +178,7 @@ export default function BuscarMedicamento() {
           // Cambiar una ubicación desde la ficha se tiene que ver en la fila.
           onCambio={busqueda.recargar}
           sucursalActual={cajaAbierta?.almacenId ?? null}
+          rotuloStock={suc.hayVarias ? dondeStock : null}
           onAgregar={
             agregar && sePuedeVender(ficha)
               ? () => {
@@ -196,6 +213,7 @@ export default function BuscarMedicamento() {
       {encargando && (
         <FormEncargo
           productoInicial={encargando}
+          sucursalId={cajaAbierta?.almacenId ?? null}
           onClose={() => setEncargando(null)}
           onGuardado={() => {
             setEncargando(null);
@@ -244,12 +262,16 @@ function Fila({
   // hasta la baja pero no se cobran.
   const hay = paraVender(p);
   const vencidas = p.stockVencido ?? 0;
-  const agotado = hay <= 0;
-  const bajo = !agotado && hay <= p.stockMinimo;
+  // Un servicio (un inyectable aplicado, una toma de presión) no tiene stock
+  // que agotar: salía "Agotado" en rojo y ofrecía Encargar, aunque Agregar
+  // andaba (12-nov, con el tipo Servicio en el alta de farmacia).
+  const conStock = controlaStock(p);
+  const agotado = conStock && hay <= 0;
+  const bajo = conStock && !agotado && hay <= p.stockMinimo;
   const punto = puntoVencimiento(p);
   const concentracion = concentracionAparte(p);
   const condicion = CONDICION[p.condicionVenta];
-  const stock = conUnidad(hay, p.unidadMedida?.nombre);
+  const stock = p.tipoProducto === "SERVICIO" ? "Servicio" : conUnidad(hay, p.unidadMedida?.nombre);
   // B3: la columna de stock decía "Vencido", lo mismo que la de vencimiento,
   // y en el teléfono quedaban pegadas: "Vencido · Vencido". Esta columna
   // contesta cuánto se puede vender (nada) y entre paréntesis por qué.

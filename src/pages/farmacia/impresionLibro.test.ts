@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AsientoControlado } from "../../types";
 import {
   medicamentoImpreso,
+  numerarPorSucursal,
   resumenPorMedicamento,
   textoPeriodo,
   tituloLibro,
@@ -139,5 +140,20 @@ describe("el resumen por medicamento", () => {
       ]),
     ).toBe(17);
     expect(totalUnidades([])).toBe(0);
+  });
+});
+
+describe("el N° de cada asiento", () => {
+  it("cada sucursal lleva el suyo, empezando en 1, aunque la lista mezcle locales", () => {
+    const en = (id: number) => asiento({ almacen: { id, nombre: `Local ${id}` } });
+    expect(numerarPorSucursal([en(1), en(2), en(1), en(2), en(2)])).toEqual([1, 1, 2, 2, 3]);
+  });
+
+  it("con un solo local es el 1, 2, 3… de siempre", () => {
+    expect(numerarPorSucursal([asiento({}), asiento({}), asiento({})])).toEqual([1, 2, 3]);
+  });
+
+  it("sin asientos no hay nada que numerar", () => {
+    expect(numerarPorSucursal([])).toEqual([]);
   });
 });

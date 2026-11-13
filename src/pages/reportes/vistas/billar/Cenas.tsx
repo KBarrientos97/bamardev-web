@@ -8,7 +8,6 @@ import { BarrasVerticales } from "../../graficos";
 import { aDia, diasDelMes, esMesEnCurso, mesDe } from "../../periodo";
 import { Cargador, Chip, CifraClara, DeltaClaro, Destacado, FilaLista, KpiR, Lista, Nota, Tarjeta } from "../../ui";
 import { barrasPorDia, etiquetaDia, nochesConCenaTexto, nochesSinCena, proyeccionDelMes } from "./Cenas.datos";
-import { NotaSucursal } from "./NotaSucursal";
 
 type Noche = CenasReporteApi["porNoche"][number];
 
@@ -24,7 +23,7 @@ const DE_ENTRADA = 8;
  * Una noche es una caja, de que la cajera la abre a que la cierra.
  */
 export default function Cenas() {
-  const { rango, rangoAnterior } = useReporte();
+  const { rango, rangoAnterior, sucursalArchivo } = useReporte();
   const estado = useApi(
     () => apiReportes.cenas(rango, rangoAnterior),
     [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta],
@@ -46,6 +45,22 @@ export default function Cenas() {
             ],
             r.porNoche,
           ),
+          // Con «Todas» y 2+ locales: lo de cada local.
+          ...(r.porSucursal?.length
+            ? [
+                hoja<NonNullable<CenasReporteApi["porSucursal"]>[number]>(
+                  "Por sucursal",
+                  [
+                    [sucursalArchivo?.rotulo ?? "Sucursal", (s) => s.sucursal.nombre],
+                    ["Noches abiertas", (s) => s.nochesAbiertas],
+                    ["Noches con cena", (s) => s.nochesConCena],
+                    ["Promedio por noche (Bs)", (s) => s.promedio],
+                    ["Cena (Bs)", (s) => s.total],
+                  ],
+                  r.porSucursal,
+                ),
+              ]
+            : []),
           hoja<CenasReporteApi["porCajera"][number]>(
             "Por cajera",
             [
@@ -91,8 +106,9 @@ function Contenido({ r }: { r: CenasReporteApi }) {
 
   return (
     <div className="space-y-4">
-      <NotaSucursal />
-
+      {/* Con «Todas», las cenas son las de TODOS los locales (el backend las
+          consolida desde el 13-nov): no lleva la nota de «sólo la principal» que
+          tienen los demás reportes del billar. */}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <Destacado
           etiqueta="Gastado en cenas"
@@ -123,6 +139,23 @@ function Contenido({ r }: { r: CenasReporteApi }) {
               valor={fmtMoney(proyeccion)}
               pie={`es lo que costarían las cenas de ${mesDe(periodo)} entero`}
             />
+          )}
+          {r.porSucursal && r.porSucursal.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="px-1 text-[13px] font-bold text-texto">Por sucursal</h3>
+              <Lista>
+                {r.porSucursal.map((s) => (
+                  <FilaLista
+                    key={s.sucursal.id}
+                    icono="home"
+                    tono="gris"
+                    titulo={s.sucursal.nombre}
+                    linea={`${nochesConCenaTexto(s)} noches con cena · ${fmtMoney(s.promedio)} en promedio`}
+                    valor={fmtMoney(s.total)}
+                  />
+                ))}
+              </Lista>
+            </div>
           )}
           {r.porCajera.length > 0 && (
             <div className="space-y-2">

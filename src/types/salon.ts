@@ -114,6 +114,15 @@ export interface Mesa {
   zonaId?: number | null;
   zonaCodigo: string;
   zonaNombre: string;
+  /**
+   * En qué local está la mesa: el de su zona. El backend lo manda por mesa desde
+   * PLAN-SUCURSAL-TOTAL §10.4 (`null` = zona anterior a la migración); para un
+   * backend anterior lo completa la web desde las zonas (`conLocalDeZona`).
+   * Sirve para no ofrecer, al pasar/juntar/unir, mesas de otro local (el backend
+   * responde 400). `null`/ausente = no se sabe.
+   */
+  sucursalId?: number | null;
+  sucursalNombre?: string | null;
   capacidad: number;
   /** Capacidad sumando las mesas unidas. */
   capacidadTotal: number;
@@ -184,6 +193,11 @@ export interface EntregaMesero {
   creadaEn: string;
   aprobadaEn: string | null;
   aprobadaPorNombre: string | null;
+  /**
+   * El local de la caja donde se entrega (PLAN-SUCURSAL-TOTAL §10.4). `null` =
+   * caja anterior a la migración; ausente = backend anterior.
+   */
+  almacen?: { id: number; nombre: string } | null;
 }
 
 /**

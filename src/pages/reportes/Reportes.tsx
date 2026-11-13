@@ -3,7 +3,7 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import { AyudaCalculo } from "../../components/AyudaCalculo";
 import { Icon } from "../../components/Icon";
 import { Cargando, ErrorMsg, Modal } from "../../components/ui";
-import { esBillar } from "../../lib/rubro";
+import { conMayuscula, esBillar, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
@@ -13,7 +13,7 @@ import { ayudaDeReporte } from "./ayuda";
 import { BarraPeriodo } from "./BarraPeriodo";
 import { gruposVisibles, type FichaReporte, type GrupoVisible } from "./catalogo";
 import { BotonExportar } from "./BotonExportar";
-import { ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
+import { ContextoReporte, type DatosReporte, type Exportacion, type SucursalDeArchivo } from "./contexto";
 import { comparacionDe, textoRango, type Periodo } from "./periodo";
 import { usePeriodo } from "./usePeriodo";
 import { FichaIcono } from "./ui";
@@ -69,18 +69,34 @@ function ReportesPorJornada() {
 }
 
 function PantallaReportes({ corteMin }: { corteMin: number }) {
-  const { rubro, negocio, usuario, puede, incluye } = useAuth();
+  const { rubro, negocio, usuario, puede, incluye, vocabulario } = useAuth();
   const [periodo, setPeriodo] = usePeriodo(corteMin);
   const suc = useSucursales();
   const location = useLocation();
   const [exportacion, setExportacion] = useState<Exportacion | null>(null);
   const [enviando, setEnviando] = useState(false);
 
+  // El comparativo de locales sólo existe para la organización con 2+ sucursales
+  // (`suc.elegir`): un solo local no tiene con quién compararse y el asignado a
+  // una sede ve nada más la suya.
   const grupos = useMemo(
-    () => gruposVisibles({ rubro, features: negocio?.features, permisos: usuario?.permisos, puede, incluye }),
-    [rubro, negocio?.features, usuario?.permisos, puede, incluye],
+    () =>
+      gruposVisibles({ rubro, features: negocio?.features, permisos: usuario?.permisos, puede, incluye, variasSucursales: suc.elegir }),
+    [rubro, negocio?.features, usuario?.permisos, puede, incluye, suc.elegir],
   );
-  const fichas = useMemo(() => grupos.flatMap((g) => g.fichas), [grupos]);
+  // Las RUTAS no se filtran mientras llega la lista de locales: `suc.elegir` es
+  // `false` hasta entonces y, con F5 o un enlace directo a «Comparar sucursales»,
+  // el `*` mandaba a /reportes antes de saber si el reporte existe. Sólo el menú
+  // espera; si al final no hay 2+ locales, la ficha deja de existir y la ruta
+  // vuelve al resumen como cualquier enlace viejo.
+  const fichas = useMemo(
+    () =>
+      (suc.cargandoLocales
+        ? gruposVisibles({ rubro, features: negocio?.features, permisos: usuario?.permisos, puede, incluye, variasSucursales: true })
+        : grupos
+      ).flatMap((g) => g.fichas),
+    [grupos, suc.cargandoLocales, rubro, negocio?.features, usuario?.permisos, puede, incluye],
+  );
   // El Resumen y "Enviar resumen" son del permiso general: leen las ventas.
   const conResumen = puede("reportes");
   const id = location.pathname.replace(/^\/reportes\/?/, "").split("/")[0];
@@ -102,11 +118,31 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
     [comparacion.desde, comparacion.hasta, corteMin, suc.elegir, suc.sucursalId],
   );
 
+  // Qué sucursal lleva lo que se baja: la elegida, "Todas" en el consolidado de
+  // una organización con 2+ locales, o la sede del asignado. Con un solo local
+  // es null y los archivos quedan idénticos a los de siempre.
+  const nombreSucursal = suc.elegir ? suc.nombre || suc.todas : suc.miSede;
+  const sucursalArchivo: SucursalDeArchivo | null = useMemo(
+    () => (nombreSucursal ? { nombre: nombreSucursal, rotulo: conMayuscula(termino(rubro, "sucursal", vocabulario)) } : null),
+    [nombreSucursal, rubro, vocabulario],
+  );
+
   const registrarExportacion = useCallback((e: Exportacion | null) => setExportacion(e), []);
   const veReporte = useCallback((idReporte: string) => fichas.some((f) => f.id === idReporte), [fichas]);
   const datos: DatosReporte = useMemo(
-    () => ({ periodo, comparacion, rango, rangoAnterior, sucursalNombre: suc.nombre, corteMin, registrarExportacion, veReporte }),
-    [periodo, comparacion, rango, rangoAnterior, suc.nombre, corteMin, registrarExportacion, veReporte],
+    () => ({
+      periodo,
+      comparacion,
+      rango,
+      rangoAnterior,
+      sucursalNombre: suc.nombre,
+      sucursalArchivo,
+      variasSucursales: suc.elegir,
+      corteMin,
+      registrarExportacion,
+      veReporte,
+    }),
+    [periodo, comparacion, rango, rangoAnterior, suc.nombre, sucursalArchivo, suc.elegir, corteMin, registrarExportacion, veReporte],
   );
 
   const contenido = useRef<HTMLDivElement>(null);
@@ -126,7 +162,10 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
             <div className="min-w-0">
               <h1 className="text-[22px] font-extrabold text-texto">Reportes</h1>
               <p className="text-[13px] text-texto-3">
-                Análisis del negocio{suc.elegir ? ` · ${suc.nombre || suc.todas}` : ""}
+                {/* El de organización ve la sucursal elegida (o "Todas"); el
+                    asignado a un local, el nombre de la suya (2+ sucursales). */}
+                Análisis del negocio
+                {suc.elegir ? ` · ${suc.nombre || suc.todas}` : suc.miSede ? ` · ${suc.miSede}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -154,7 +193,14 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
             <div className="mx-auto max-w-[1080px] space-y-4 px-4 py-5 sm:px-6">
               <SelectorMovil grupos={grupos} ficha={ficha} conResumen={conResumen} />
               {(ficha || conResumen) && (
-                <EncabezadoReporte ficha={ficha} periodo={periodo} exportacion={exportacion} puedeExportar={incluye("exportacion")} conResumen={conResumen} />
+                <EncabezadoReporte
+                  ficha={ficha}
+                  periodo={periodo}
+                  exportacion={exportacion}
+                  puedeExportar={incluye("exportacion")}
+                  conResumen={conResumen}
+                  sucursal={sucursalArchivo}
+                />
               )}
               <Suspense fallback={<Cargando texto="Abriendo el reporte…" />}>
                 <Routes>
@@ -334,12 +380,15 @@ function EncabezadoReporte({
   exportacion,
   puedeExportar,
   conResumen,
+  sucursal,
 }: {
   ficha: FichaReporte | null;
   periodo: Periodo;
   exportacion: Exportacion | null;
   puedeExportar: boolean;
   conResumen: boolean;
+  /** La sucursal de lo que se baja (null con un solo local). */
+  sucursal: SucursalDeArchivo | null;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -379,7 +428,7 @@ function EncabezadoReporte({
           Con clave: el aviso de una exportación ("vino recortada") es de ese
           reporte y ese período; al cambiar cualquiera de los dos se va. */}
       {puedeExportar && exportacion && (
-        <BotonExportar key={`${ficha?.id ?? ""}|${periodo.desde}|${periodo.hasta}`} exportacion={exportacion} />
+        <BotonExportar key={`${ficha?.id ?? ""}|${periodo.desde}|${periodo.hasta}`} exportacion={exportacion} sucursal={sucursal} />
       )}
     </header>
   );

@@ -9,6 +9,7 @@ import { fraccion, type ResumenApi } from "../api";
 import { hoja, useExportar, useReporte } from "../contexto";
 import { bsEntero, bsResta, bsSubtotal, ejeCorto, horas, pct, variacion } from "../formato";
 import { BarrasVerticales, LineaComparada } from "../graficos";
+import { NotaGenerales } from "../NotaGenerales";
 import { enElPeriodo, leyendaDe } from "../periodo";
 import { Cargador, CifraClara, Cifras, Delta, DeltaClaro, Destacado, FichaIcono, KpiR, Leyenda, Renglon, Tarjeta } from "../ui";
 import { consejos, esMensual, estadisticas, filasResumen, partesVenta, pedidosPorCobrar, serie, textoPedidos, type Consejo } from "./resumen/datos";
@@ -192,6 +193,8 @@ function ResumenFinanciero({ d, res }: { d: Datos; res: ResumenApi }) {
             total
             tonoValor={er.enPerdida ? "rojo" : esCero(er.utilidadNeta) ? "normal" : "marca"}
           />
+          {/* Con UNA sucursal elegida, lo que no es de ningún local no está en la cuenta. */}
+          <NotaGenerales monto={d.generales} />
         </>
       ) : d.plata.cargando ? (
         <p className="py-2 text-[12px] text-texto-4">Sumando los gastos…</p>

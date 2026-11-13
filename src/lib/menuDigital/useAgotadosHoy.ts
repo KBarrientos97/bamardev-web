@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../store/AuthContext";
-import { request } from "../api";
+import { apiMenuDigital } from "../apiMenuDigital";
 
 /** Cada cuánto la caja vuelve a mirar qué se agotó (lo marca el encargado en el Menú digital). */
 const CADA_MS = 60_000;
@@ -13,9 +13,12 @@ const NINGUNO = new Set<number>();
  * tiene stock que llegue a cero, así que es la única forma de frenar la venta
  * de lo que ya no hay (la TV ya lo muestra tachado).
  *
+ * "Agotado hoy" es de cada local (como el stock): `sucursalId` es el de la caja.
+ * Sin él el backend usa el del usuario o el principal, que es lo de siempre.
+ *
  * Sin el extra no pide nada y devuelve un conjunto vacío: la caja de siempre.
  */
-export function useAgotadosHoy(): Set<number> {
+export function useAgotadosHoy(sucursalId?: number | null): Set<number> {
   const { negocio } = useAuth();
   const activo = !!negocio?.features?.includes("menu_digital");
   const [ids, setIds] = useState<Set<number>>(NINGUNO);
@@ -23,9 +26,12 @@ export function useAgotadosHoy(): Set<number> {
   useEffect(() => {
     if (!activo) return;
     let vivo = true;
+    // Lo que había es de otro local: no se muestra mientras llega la lista del nuevo.
+    setIds(NINGUNO);
     const traer = () => {
       if (document.hidden) return;
-      request<{ productoIds: number[] }>("/menu-digital/agotados")
+      apiMenuDigital
+        .agotadosHoy(sucursalId)
         .then((r) => vivo && setIds(new Set(r.productoIds)))
         .catch(() => {
           // Sin conexión se queda con lo último: el cobro no se frena por esto.
@@ -39,7 +45,7 @@ export function useAgotadosHoy(): Set<number> {
       clearInterval(id);
       document.removeEventListener("visibilitychange", traer);
     };
-  }, [activo]);
+  }, [activo, sucursalId]);
 
   return activo ? ids : NINGUNO;
 }

@@ -29,11 +29,18 @@ import { sePuedeVender } from "./ventaFarmacia";
 export function Equivalentes({
   producto: p,
   sucursalId = null,
+  rotuloStock = null,
   onAgregar,
 }: {
   producto: Producto;
   /** La sucursal de la caja: de ahí salen el stock y el precio de cada uno. */
   sucursalId?: number | null;
+  /**
+   * De qué local es ese stock, en palabras ("Equipetrol", "todo el negocio"):
+   * quien atiende tiene que saber si "hay 12" es de su estante. Lo manda quien
+   * sabe que hay 2+ locales; sin esto no se dice nada, como con un solo local.
+   */
+  rotuloStock?: string | null;
   /**
    * Sumar un equivalente a la venta. Sin esto no hay botón: la ficha del
    * catálogo (del dueño) no vende, y quien sólo consulta tampoco.
@@ -61,6 +68,9 @@ export function Equivalentes({
       <p className="text-[13px] text-texto-3">
         Mismo principio activo (<span className="font-semibold text-texto-2">{drogaDe(p)}</span>)
       </p>
+      {rotuloStock && (
+        <p className="text-xs text-texto-4">Stock y precio de {rotuloStock}</p>
+      )}
 
       {pedido.cargando ? (
         <Cargando texto="Buscando equivalentes…" />

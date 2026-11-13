@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { isoDia } from "../../lib/format";
 import { crearXlsx, type HojaNueva } from "../../lib/planilla";
+import { hayVariasEntre } from "../../lib/useSucursales";
 import type { RangoReporte } from "../../types";
 import type { Comparacion, Periodo } from "./periodo";
 
@@ -19,6 +20,21 @@ export interface DatosReporte {
   /** El local elegido, para los textos. Vacío = todas las sucursales. */
   sucursalNombre: string;
   /**
+   * Qué sucursal poner en lo que se baja (nombre del archivo y una fila arriba
+   * del Excel): la elegida, "Todas las sucursales" en el consolidado de una
+   * organización con 2+ locales, o la sede del usuario asignado. `null` con un
+   * solo local: ahí los archivos quedan EXACTAMENTE como siempre. Opcional para
+   * las pantallas y tests que arman el contexto a mano.
+   */
+  sucursalArchivo?: SucursalDeArchivo | null;
+  /**
+   * ¿Es una organización con 2+ sucursales (`useSucursales().elegir`)? Es la
+   * mitad de la regla de la columna «Sucursal»; la otra es que las filas sean de
+   * más de un local (ver `useColumnaSucursal`). Ausente = no: un solo local, o
+   * un usuario de una sede, no ven columna.
+   */
+  variasSucursales?: boolean;
+  /**
    * A qué hora termina la jornada (minutos; ver `lib/jornada.ts`). Sólo un
    * billar tiene uno (cierra a las 2 a. m.); 0 o ausente = el calendario.
    * Ya va dentro de `rango`: esto es para lo que calcula la pantalla ("¿es el
@@ -34,9 +50,26 @@ export interface DatosReporte {
   veReporte: (id: string) => boolean;
 }
 
+/**
+ * La sucursal de lo que se baja (PLAN-SUCURSAL-TOTAL §3 etapa 6): `nombre` va
+ * al archivo y a una fila de encabezado; `rotulo` es cómo lo llama el rubro
+ * ("Sucursal", "Sede").
+ */
+export interface SucursalDeArchivo {
+  nombre: string;
+  rotulo: string;
+}
+
 /** Cómo se baja a Excel lo que se ve. Las hojas se arman recién al tocar el botón. */
 export interface Exportacion {
   nombre: string;
+  /**
+   * La sucursal que lleva ESTE reporte, si no es la de la pantalla: el
+   * comparativo junta todos los locales aunque arriba haya uno elegido. Sin el
+   * campo (undefined) vale la de la pantalla (`DatosReporte.sucursalArchivo`);
+   * `null` = no lleva ninguna.
+   */
+  sucursal?: SucursalDeArchivo | null;
   hojas: () => HojaNueva[];
   /**
    * Un reporte paginado del restaurante (Ventas, Movimientos de caja; REP-03,
@@ -65,6 +98,39 @@ export function useReporte(): DatosReporte {
 }
 
 /**
+ * ¿La lista muestra la columna/etiqueta «Sucursal»? (PLAN-SUCURSAL-TOTAL §1,
+ * `useSucursales().mostrarColumna`): sólo a la organización con 2+ locales y sólo
+ * si las filas son de más de uno. Con un local, o asignado a una sede, no hay
+ * nada nuevo. `rotulo` es la palabra del rubro ("Sucursal", "Sede") para las
+ * columnas del Excel. Las filas sin local (dato viejo) no cuentan como uno más.
+ */
+export function useColumnaSucursal<T>(
+  filas: readonly T[] | null | undefined,
+  clave: (fila: T) => number | string | null | undefined,
+  /** Las filas sin local cuentan como un valor más ("General del negocio" en los gastos). */
+  contarSinSucursal = false,
+): { conLocal: boolean; rotulo: string } {
+  const { variasSucursales, sucursalArchivo } = useReporte();
+  return {
+    conLocal: !!variasSucursales && hayVariasEntre(filas, clave, contarSinSucursal),
+    rotulo: sucursalArchivo?.rotulo ?? "Sucursal",
+  };
+}
+
+/**
+ * La columna «Sucursal» de una hoja, o nada: se esparce en la lista de
+ * columnas (`...columnaSucursal(conLocal, (f) => f.sucursal?.nombre)`) y sin
+ * `conLocal` el Excel queda con las columnas de siempre.
+ */
+export function columnaSucursal<T>(
+  conLocal: boolean,
+  valor: (fila: T) => string | null | undefined,
+  rotulo = "Sucursal",
+): [string, (fila: T) => string | null][] {
+  return conLocal ? [[rotulo, (f) => valor(f) ?? null]] : [];
+}
+
+/**
  * Anota el "Exportar a Excel" del reporte. Con `armar` en null (todavía
  * cargando, o sin nada que bajar) el botón no se dibuja: un Exportar que baja
  * una planilla vacía es peor que no tenerlo.
@@ -76,6 +142,8 @@ export function useExportar(
   nombre: string,
   armar: (() => HojaNueva[]) | null,
   completa?: () => Promise<ExportacionCompleta>,
+  /** Ver `Exportacion.sucursal`. Sólo lo pasa un reporte que no sigue el filtro de sucursal. */
+  sucursal?: SucursalDeArchivo | null,
 ) {
   const { registrarExportacion } = useReporte();
   const ref = useRef(armar);
@@ -84,11 +152,16 @@ export function useExportar(
   refCompleta.current = completa;
   const hay = armar != null;
   const conCompleta = completa != null;
+  const sucursalNombre = sucursal === undefined ? undefined : (sucursal?.nombre ?? null);
+  const sucursalRotulo = sucursal?.rotulo ?? "Sucursal";
   useEffect(() => {
     registrarExportacion(
       hay
         ? {
             nombre,
+            ...(sucursalNombre === undefined
+              ? {}
+              : { sucursal: sucursalNombre === null ? null : { nombre: sucursalNombre, rotulo: sucursalRotulo } }),
             hojas: () => ref.current?.() ?? [],
             ...(conCompleta
               ? {
@@ -102,19 +175,60 @@ export function useExportar(
         : null,
     );
     return () => registrarExportacion(null);
-  }, [hay, conCompleta, nombre, registrarExportacion]);
+  }, [hay, conCompleta, nombre, sucursalNombre, sucursalRotulo, registrarExportacion]);
 }
 
-/** Baja el libro. Con la fecha en el nombre: tres exportaciones del mismo reporte no quedan como "(1)" y "(2)". */
-export function bajarXlsx(nombre: string, hojas: HojaNueva[]) {
-  const datos = crearXlsx(hojas);
+/** "Sede Norte" → "sede-norte": sin acentos ni signos, para el nombre de un archivo. */
+export function paraArchivo(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * El nombre del archivo: `estado-de-resultado-2026-11-13.xlsx`, y con una
+ * sucursal `estado-de-resultado-centro-2026-11-13.xlsx` (la fecha va al final,
+ * como siempre). Sin sucursal es el de toda la vida.
+ */
+export function nombreDeArchivo(nombre: string, dia: string, ext: string, sucursal?: SucursalDeArchivo | null): string {
+  const sufijo = sucursal ? paraArchivo(sucursal.nombre) : "";
+  return `${nombre}${sufijo ? `-${sufijo}` : ""}-${dia}.${ext}`;
+}
+
+/**
+ * Una fila arriba de cada hoja que dice de qué sucursal es ("Sucursal: Centro",
+ * "Sucursal: Todas las sucursales"). Los títulos de las columnas bajan una fila
+ * y siguen en negrita y fijos (`encabezadoEn`). Sin sucursal devuelve las hojas
+ * tal cual.
+ */
+export function hojasConSucursal(hojas: HojaNueva[], sucursal?: SucursalDeArchivo | null): HojaNueva[] {
+  if (!sucursal) return hojas;
+  return hojas.map((h) => ({
+    ...h,
+    filas: [[`${sucursal.rotulo}: ${sucursal.nombre}`], ...h.filas],
+    encabezadoEn: (h.encabezadoEn ?? 0) + 1,
+    // Las columnas de texto se cuentan por columna, no por fila: no cambian.
+  }));
+}
+
+/**
+ * Baja el libro. Con la fecha en el nombre: tres exportaciones del mismo
+ * reporte no quedan como "(1)" y "(2)". Con `sucursal` (un local elegido, o el
+ * consolidado de una organización con varios) el nombre y la primera fila lo
+ * dicen; sin ella, nada cambia.
+ */
+export function bajarXlsx(nombre: string, hojas: HojaNueva[], sucursal?: SucursalDeArchivo | null) {
+  const datos = crearXlsx(hojasConSucursal(hojas, sucursal));
   const blob = new Blob([datos as BlobPart], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${nombre}-${isoDia(new Date())}.xlsx`;
+  a.download = nombreDeArchivo(nombre, isoDia(new Date()), "xlsx", sucursal);
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../lib/api";
 import type { Mesa } from "../../types/salon";
-import { avisoCuentaCambiada, cuerpoCobroDeMesa, esCuentaCambiada } from "./cobroDeMesa";
+import { avisoCuentaCambiada, cuerpoCobroDeMesa, esCajaCerrada, esCuentaCambiada } from "./cobroDeMesa";
 
 function mesa(p: Partial<Mesa> = {}): Mesa {
   return {
@@ -77,5 +77,25 @@ describe("la cuenta que cambió mientras se cobraba", () => {
       /^La cuenta de M4 \+ M5 cambió mientras cobrabas: ahora son Bs\s217,00\. Revisá el total con el cliente y cobrá de nuevo\.$/,
     );
     expect(avisoCuentaCambiada(m, "mesero")).toMatch(/Revisala con el cliente antes de cobrar\.$/);
+  });
+});
+
+describe("la caja a la que va la cuenta (mesero con varias cajas abiertas)", () => {
+  it("con una caja elegida viaja como cajaId", () => {
+    expect(cuerpoCobroDeMesa(197, PAGOS, undefined, "id-1", 31)).toMatchObject({ cajaId: 31 });
+  });
+
+  it("sin elegir (la caja, o el mesero con una sola abierta) no manda cajaId", () => {
+    // La caja cobra con la suya y el mesero con una sola abierta va a ella
+    // por defecto: en los dos casos el cuerpo es el de siempre.
+    expect(cuerpoCobroDeMesa(197, PAGOS, undefined, "id-1")).not.toHaveProperty("cajaId");
+    expect(cuerpoCobroDeMesa(197, PAGOS, undefined, "id-1", null)).not.toHaveProperty("cajaId");
+  });
+
+  it("reconoce el rechazo por caja cerrada, y no confunde otros 400", () => {
+    expect(esCajaCerrada(new Error("La caja que elegiste ya se cerró: elegí otra."))).toBe(true);
+    expect(esCajaCerrada(new Error("No hay una caja abierta en esta sucursal."))).toBe(true);
+    expect(esCajaCerrada(new Error("La mesa M1 cambió mientras cobrabas: ahora son Bs 72.00."))).toBe(false);
+    expect(esCajaCerrada("caja cerrada")).toBe(false);
   });
 });

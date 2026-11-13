@@ -133,6 +133,25 @@ describe("A7 · Clientes", () => {
     expect(within(panel).getByText("no permitidas")).toBeInTheDocument();
   });
 
+  it("el local de cada cita sólo se nombra si las de la ficha son de más de uno", async () => {
+    // Con un solo local (el caso de `detalle`) repetirlo en cada fila es ruido.
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ver la ficha de Rosa Mamani" }));
+    });
+    expect(within(screen.getByRole("dialog", { name: "Ficha de Rosa Mamani" })).queryByText(/· Centro/)).not.toBeInTheDocument();
+
+    // Con citas de dos locales, cada una dice el suyo.
+    const otra = { ...detalle.citas[0], id: 31, sucursalId: 2, sucursal: "Norte" };
+    vi.mocked(apiAgenda.cliente).mockResolvedValue({ ...detalle, citas: [detalle.citas[0], otra] });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ver la ficha de Lucía Paz" }));
+    });
+    const panel = screen.getByRole("dialog");
+    expect(within(panel).getByText(/· Centro/)).toBeInTheDocument();
+    expect(within(panel).getByText(/· Norte/)).toBeInTheDocument();
+  });
+
   it("S2-06: la compra del paquete sale en las compras y la sesión dice de qué paquete", async () => {
     vi.mocked(apiAgenda.cliente).mockResolvedValue({
       ...detalle,

@@ -201,8 +201,14 @@ function partirCsv(texto: string, sep: string): Filas {
 
 export interface HojaNueva {
   nombre: string;
-  /** La primera fila va en negrita y queda fija al bajar. */
+  /** La primera fila va en negrita y queda fija al bajar (o la de `encabezadoEn`). */
   filas: (string | number | null)[][];
+  /**
+   * En qué fila (desde 0) están los títulos de las columnas. Por defecto la
+   * primera. Sirve para poner una línea de contexto arriba ("Sucursal: Centro")
+   * sin perder la negrita ni el panel fijo de los títulos de verdad.
+   */
+  encabezadoEn?: number;
   /** Ancho de cada columna, en caracteres. */
   anchos?: number[];
   /**
@@ -284,13 +290,14 @@ function hojaXml(h: HojaNueva): string {
         `<col min="${i + 1}" max="${i + 1}" width="${ancho}" customWidth="1"${texto.has(i) ? ' style="1"' : ""}/>`,
     )
     .join("");
+  const enc = h.encabezadoEn ?? 0;
   const filas = h.filas
     .map((fila, f) => {
       const celdas = fila
         .map((valor, c) => {
           if (valor == null || valor === "") return "";
           const ref = `${letraDe(c)}${f + 1}`;
-          const estilo = f === 0 ? ' s="2"' : texto.has(c) ? ' s="1"' : "";
+          const estilo = f === enc ? ' s="2"' : texto.has(c) ? ' s="1"' : "";
           return typeof valor === "number"
             ? `<c r="${ref}"${estilo}><v>${valor}</v></c>`
             : `<c r="${ref}" t="inlineStr"${estilo}><is><t xml:space="preserve">${escapar(valor)}</t></is></c>`;
@@ -301,7 +308,7 @@ function hojaXml(h: HojaNueva): string {
     .join("");
   return (
     `${CABECERA}<worksheet xmlns="${NS}">` +
-    '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+    `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${enc + 1}" topLeftCell="A${enc + 2}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
     (cols ? `<cols>${cols}</cols>` : "") +
     `<sheetData>${filas}</sheetData></worksheet>`
   );

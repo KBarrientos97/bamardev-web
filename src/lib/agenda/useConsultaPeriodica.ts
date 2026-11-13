@@ -7,6 +7,8 @@ interface Estado<T> {
   datos: T | null;
   cargando: boolean;
   error: string;
+  /** La `clave` con la que se pidieron los datos (ver `opc.clave`). */
+  clave: unknown;
 }
 
 /**
@@ -22,14 +24,21 @@ interface Estado<T> {
  *  - `pausado` lo frena mientras alguien arrastra una cita o tiene un
  *    formulario abierto: un refresco en el medio movería el piso.
  *  - Con la pestaña oculta no consulta; al volver, consulta en el acto.
+ *  - `clave` (opcional): de qué son los datos —la sucursal que se mira—. Si
+ *    cambia, los datos de la clave anterior son ajenos y `datos` vale `null`
+ *    (y `cargando` `true`) hasta que llegue lo nuevo; un refresco con la misma
+ *    clave sigue siendo silencioso. Sin `clave`, se conservan como siempre.
  */
 export function useConsultaPeriodica<T>(
   fn: () => Promise<T>,
   deps: unknown[],
-  opc: { cadaMs?: number; pausado?: boolean } = {},
+  opc: { cadaMs?: number; pausado?: boolean; clave?: unknown } = {},
 ) {
   const { cadaMs = REFRESCO_AGENDA_MS, pausado = false } = opc;
-  const [estado, setEstado] = useState<Estado<T>>({ datos: null, cargando: true, error: "" });
+  const usaClave = "clave" in opc;
+  const [estado, setEstado] = useState<Estado<T>>({ datos: null, cargando: true, error: "", clave: opc.clave });
+  const claveRef = useRef(opc.clave);
+  claveRef.current = opc.clave;
   const fnRef = useRef(fn);
   fnRef.current = fn;
   const peticion = useRef(0);
@@ -38,16 +47,22 @@ export function useConsultaPeriodica<T>(
 
   const consultar = useCallback((silencioso: boolean) => {
     const mia = ++peticion.current;
+    const claveAlPedir = claveRef.current;
     if (!silencioso) setEstado((e) => ({ ...e, cargando: true, error: "" }));
     return fnRef
       .current()
       .then((datos) => {
-        if (mia === peticion.current) setEstado({ datos, cargando: false, error: "" });
+        if (mia === peticion.current) setEstado({ datos, cargando: false, error: "", clave: claveAlPedir });
       })
       .catch((err: unknown) => {
         if (mia !== peticion.current) return;
         const mensaje = err instanceof Error ? err.message : "No se pudo cargar";
-        setEstado((e) => ({ datos: silencioso ? e.datos : null, cargando: false, error: mensaje }));
+        setEstado((e) => ({
+          datos: silencioso ? e.datos : null,
+          cargando: false,
+          error: mensaje,
+          clave: silencioso ? e.clave : claveAlPedir,
+        }));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -79,8 +94,12 @@ export function useConsultaPeriodica<T>(
     setEstado((e) => ({ ...e, datos: cambiar(e.datos) }));
   }, []);
 
+  // Datos de otra clave: ajenos hasta que llegue lo nuevo.
+  const ajenos = usaClave && !Object.is(estado.clave, opc.clave);
   return {
-    ...estado,
+    datos: ajenos ? null : estado.datos,
+    cargando: estado.cargando || ajenos,
+    error: estado.error,
     /** Vuelve a pedir sin pasar por "Cargando…" (después de una acción). */
     refrescar: useCallback(() => consultar(true), [consultar]),
     /** Vuelve a pedir desde cero (el "Reintentar" de un error). */

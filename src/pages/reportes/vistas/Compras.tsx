@@ -8,6 +8,7 @@ import { tzOffsetMin } from "../../../lib/rangoApi";
 import { esFarmacia } from "../../../lib/rubro";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { useApi } from "../../../lib/useApi";
+import { hayVariasEntre } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import type { EstadoDocumento, PaginaMeta, ReporteComprasGeneral, ReporteComprasMensual } from "../../../types";
 import { apiReportes, fraccion } from "../api";
@@ -331,14 +332,19 @@ function Documentos({ conFiltro, almacen }: { conFiltro: boolean; almacen: strin
             : null
         }
       >
-        {(d) => (
-          <>
-            <p className="text-[12px] text-texto-3">{resumenDocumentos(d.totales)}</p>
-            <TablaDocumentos items={d.items} almacen={almacen} onAbrir={setAbierta} />
-            <ListaDocumentos items={d.items} onAbrir={setAbierta} />
-            <Paginador pagina={d.pagina} onPagina={(p) => setPaginaDe({ clave, pagina: p })} />
-          </>
-        )}
+        {(d) => {
+          // La columna del local sólo si las compras de la página son de más
+          // de uno (PLAN-SUCURSAL-TOTAL §1): con un local es la misma en cada fila.
+          const conLocal = hayVariasEntre(d.items, (c) => c.almacen);
+          return (
+            <>
+              <p className="text-[12px] text-texto-3">{resumenDocumentos(d.totales)}</p>
+              <TablaDocumentos items={d.items} almacen={almacen} conLocal={conLocal} onAbrir={setAbierta} />
+              <ListaDocumentos items={d.items} conLocal={conLocal} onAbrir={setAbierta} />
+              <Paginador pagina={d.pagina} onPagina={(p) => setPaginaDe({ clave, pagina: p })} />
+            </>
+          );
+        }}
       </Cargador>
       {abierta != null && <DetalleCompra id={abierta} almacen={almacen} onCerrar={() => setAbierta(null)} />}
     </div>
@@ -372,7 +378,18 @@ function ChipEstado({ estado }: { estado: EstadoDocumento }) {
 }
 
 /** Desde tablet: la tabla. En el celular va la lista de abajo (seis columnas no entran en 375 px). */
-function TablaDocumentos({ items, almacen, onAbrir }: { items: DocumentoCompra[]; almacen: string; onAbrir: (id: number) => void }) {
+function TablaDocumentos({
+  items,
+  almacen,
+  conLocal,
+  onAbrir,
+}: {
+  items: DocumentoCompra[];
+  almacen: string;
+  /** Más de un local entre las filas: recién ahí se muestra la columna. */
+  conLocal: boolean;
+  onAbrir: (id: number) => void;
+}) {
   return (
     <div className="card hidden overflow-hidden md:block">
       <table className="w-full text-[13px]">
@@ -380,7 +397,7 @@ function TablaDocumentos({ items, almacen, onAbrir }: { items: DocumentoCompra[]
           <tr className="border-b border-borde-soft bg-muted/60 text-left text-[11px] font-bold uppercase tracking-wider text-texto-3">
             <th className="px-4 py-2.5">Comprobante</th>
             <th className="px-3 py-2.5">Fecha</th>
-            <th className="px-3 py-2.5">{almacen}</th>
+            {conLocal && <th className="px-3 py-2.5">{almacen}</th>}
             <th className="px-3 py-2.5">Origen</th>
             <th className="px-3 py-2.5 text-right">Artículos</th>
             <th className="px-4 py-2.5 text-right">Total</th>
@@ -404,7 +421,7 @@ function TablaDocumentos({ items, almacen, onAbrir }: { items: DocumentoCompra[]
                 </span>
               </td>
               <td className="whitespace-nowrap px-3 py-2.5 text-texto-2">{fmtFecha(c.fecha)}</td>
-              <td className="px-3 py-2.5 text-texto-2">{c.almacen || "—"}</td>
+              {conLocal && <td className="px-3 py-2.5 text-texto-2">{c.almacen || "—"}</td>}
               <td className="px-3 py-2.5 text-texto-2">{etiquetaOrigen(c.origen)}</td>
               <td className="px-3 py-2.5 text-right tabular-nums text-texto-2">{fmtNum(c.articulos)}</td>
               <td
@@ -422,7 +439,7 @@ function TablaDocumentos({ items, almacen, onAbrir }: { items: DocumentoCompra[]
   );
 }
 
-function ListaDocumentos({ items, onAbrir }: { items: DocumentoCompra[]; onAbrir: (id: number) => void }) {
+function ListaDocumentos({ items, conLocal, onAbrir }: { items: DocumentoCompra[]; conLocal: boolean; onAbrir: (id: number) => void }) {
   return (
     <div className="md:hidden">
       <Lista>
@@ -433,7 +450,7 @@ function ListaDocumentos({ items, onAbrir }: { items: DocumentoCompra[]; onAbrir
             tono="azul"
             titulo={c.comprobante}
             chip={<ChipEstado estado={c.estado} />}
-            linea={`${fmtFecha(c.fecha)}${c.almacen ? ` · ${c.almacen}` : ""}`}
+            linea={`${fmtFecha(c.fecha)}${conLocal && c.almacen ? ` · ${c.almacen}` : ""}`}
             linea2={`${etiquetaOrigen(c.origen)} · ${plural(c.articulos, "artículo", "artículos")}`}
             valor={fmtMoney(c.total)}
             tachado={c.estado === "ANULADO"}

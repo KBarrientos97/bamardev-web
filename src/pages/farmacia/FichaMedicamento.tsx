@@ -217,6 +217,17 @@ export function FichaMedicamento({
             </div>
           </Seccion>
 
+          {/* "Para qué sirve" (12-nov, Kevin): la auxiliar lo lee antes de
+              entregarlo, como en la web de las cadenas grandes. Sólo si alguien
+              lo cargó: un "—" en una sección entera no ayuda a nadie. */}
+          {p.descripcion?.trim() && (
+            <Seccion titulo="Para qué sirve">
+              <p className="whitespace-pre-line text-[13px] leading-relaxed text-texto-2">
+                {p.descripcion.trim()}
+              </p>
+            </Seccion>
+          )}
+
           <StockPorSucursal producto={p} />
 
           <LotesFefo producto={p} />
@@ -279,6 +290,7 @@ export function FichaMostrador({
   onEncargar,
   onCambio,
   sucursalActual,
+  rotuloStock,
 }: {
   producto: Producto;
   onClose: () => void;
@@ -301,6 +313,11 @@ export function FichaMostrador({
   onCambio?: () => void;
   /** Dónde se está vendiendo (la sucursal de la caja): es el "acá". */
   sucursalActual?: number | null;
+  /**
+   * De qué local es el stock de los equivalentes ("Equipetrol", "todo el
+   * negocio"). Sólo con 2+ locales; sin esto no se rotula.
+   */
+  rotuloStock?: string | null;
 }) {
   return (
     <Modal
@@ -338,16 +355,34 @@ export function FichaMostrador({
           </div>
         </Seccion>
 
+        {/* "Para qué sirve" (12-nov, Kevin): la auxiliar lo lee antes de
+            entregarlo, como en la web de las cadenas grandes. Sólo si alguien
+            lo cargó: un "—" en una sección entera no ayuda a nadie. */}
+        {p.descripcion?.trim() && (
+          <Seccion titulo="Para qué sirve">
+            <p className="whitespace-pre-line text-[13px] leading-relaxed text-texto-2">
+              {p.descripcion.trim()}
+            </p>
+          </Seccion>
+        )}
+
         <StockPorSucursal producto={p} onCambio={onCambio} aca={sucursalActual} />
 
         {/* Enseguida del stock: "¿hay acá?" y, si no, "¿hay otro igual?" son
             la misma conversación. Con el stock y el precio de la sucursal de
             la caja, como la tabla de atrás. */}
         <Seccion titulo="Equivalentes">
-          <Equivalentes producto={p} sucursalId={sucursalActual} onAgregar={onAgregarEquivalente} />
+          <Equivalentes
+            producto={p}
+            sucursalId={sucursalActual}
+            rotuloStock={rotuloStock}
+            onAgregar={onAgregarEquivalente}
+          />
         </Seccion>
 
-        <LotesFefo producto={p} conCosto={false} />
+        {/* Los lotes de la sucursal de la caja: es de ahí de donde la venta los
+            descuenta, y un lote de otro local no se le puede dar a quien espera. */}
+        <LotesFefo producto={p} conCosto={false} almacenId={sucursalActual} />
 
         {p.controlado && (
           <p className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
@@ -463,6 +498,7 @@ function StockPorSucursal({
             unidad={unidad}
             productoId={p.id}
             mia
+            minimoGlobal={p.stockMinimo}
             puedeUbicar={puedeUbicar(deAca)}
             onGuardado={alGuardar}
           />
@@ -482,6 +518,7 @@ function StockPorSucursal({
               unidad={unidad}
               productoId={p.id}
               mia={false}
+              minimoGlobal={p.stockMinimo}
               puedeUbicar={puedeUbicar(e)}
               onGuardado={alGuardar}
             />
@@ -510,6 +547,7 @@ function CajaSucursal({
   unidad,
   productoId,
   mia,
+  minimoGlobal,
   puedeUbicar,
   onGuardado,
 }: {
@@ -518,10 +556,18 @@ function CajaSucursal({
   productoId: number;
   /** La sucursal de quien mira: se marca, y no se ofrece llamarse a sí misma. */
   mia: boolean;
+  /** El mínimo del artículo: vale en el local que no tiene uno propio. */
+  minimoGlobal: number;
   puedeUbicar: boolean;
   onGuardado: () => void;
 }) {
   const noHay = e.cantidad <= 0;
+  // El mínimo propio del local (PLAN-SUCURSAL-TOTAL §10.1) o, sin él, el del
+  // artículo. Sólo se avisa "bajo el mínimo" en un local que vende, o en uno al
+  // que se le puso un mínimo a propósito: un depósito con el global sería ruido.
+  const minimo = e.stockMinimo ?? minimoGlobal;
+  const bajo =
+    !noHay && minimo > 0 && e.cantidad <= minimo && (e.tipo !== "DEPOSITO" || e.stockMinimo != null);
   return (
     <div
       className={`min-w-0 rounded-xl p-3 ${
@@ -551,6 +597,11 @@ function CajaSucursal({
       >
         {noHay ? "No hay" : conUnidad(e.cantidad, unidad)}
       </p>
+      {/* El mínimo propio del local, sólo si lo tiene: con el global no se repite. */}
+      {e.stockMinimo != null && (
+        <p className="text-xs text-texto-3">Mínimo propio: {fmtCantidad(e.stockMinimo)}</p>
+      )}
+      {bajo && <p className="text-xs font-semibold text-warning-text">Bajo el mínimo</p>}
       <Ubicacion
         productoId={productoId}
         existencia={e}
@@ -706,18 +757,30 @@ function Ubicacion({
 function LotesFefo({
   producto: p,
   conCosto = true,
+  almacenId = null,
 }: {
   producto: Producto;
   /** El costo de cada partida es del dueño: el mostrador no lo ve. */
   conCosto?: boolean;
+  /**
+   * Sólo los lotes de esta sucursal. Sin esto, los de todos los locales (la
+   * ficha del catálogo, que cada lote rotula con su local); quien es de un
+   * local ve siempre los suyos porque el servidor se lo fuerza.
+   */
+  almacenId?: number | null;
 }) {
   // Sin la feature el servidor responde 403: la sección no se dibuja, como
   // cualquier otra cosa que el plan no incluye.
   const { incluye } = useAuth();
   const conLotes = incluye("lotes");
   const lotes = useApi(
-    () => (conLotes && p.manejaLote ? api.lotesDeProducto(p.id) : Promise.resolve([])),
-    [p.id, p.manejaLote, conLotes],
+    () =>
+      conLotes && p.manejaLote
+        ? almacenId != null
+          ? api.lotesDeProducto(p.id, almacenId)
+          : api.lotesDeProducto(p.id)
+        : Promise.resolve([]),
+    [p.id, p.manejaLote, conLotes, almacenId],
   );
 
   // Un rol sin permiso sobre los lotes (o un corte) recibe un error: la sección

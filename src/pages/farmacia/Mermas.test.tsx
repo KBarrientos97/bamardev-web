@@ -152,6 +152,25 @@ describe("vencimientos y mermas", () => {
     expect(screen.getByText('/vencimientos {"tramo":"VENCIDO"}')).toBeInTheDocument();
   });
 
+  it("embebida en Reportes con un local elegido, el tramo viaja con ese local a Vencimientos", async () => {
+    render(
+      <MemoryRouter initialEntries={["/reportes"]}>
+        <Routes>
+          <Route
+            path="/reportes"
+            element={<MermasPagina embebido={{ desde: "2026-10-01", hasta: "2026-10-07", sucursalId: 5 }} />}
+          />
+          <Route path="/vencimientos" element={<DondeEstoy />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Vencido en el estante/ }));
+    });
+    expect(screen.getByText('/vencimientos {"tramo":"VENCIDO","sucursalId":5}')).toBeInTheDocument();
+  });
+
   it("quien no ve Vencimientos, ve el riesgo pero no lo toca", async () => {
     sesion.vencimientos = false;
     await montar();

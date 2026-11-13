@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { bajarXlsx, type Exportacion } from "./contexto";
+import { bajarXlsx, type Exportacion, type SucursalDeArchivo } from "./contexto";
 
 /**
  * El "Exportar a Excel" del encabezado de Reportes.
@@ -14,10 +14,19 @@ import { bajarXlsx, type Exportacion } from "./contexto";
  * un Excel recortado sin decirlo se lee como el total del período, y uno que
  * no baja sin decir nada parece un botón roto.
  *
+ * `sucursal` es la de la pantalla (la elegida, "Todas las sucursales" o la sede
+ * del asignado): va al nombre del archivo y a una fila de encabezado. Un
+ * reporte que no sigue el filtro (el comparativo) trae la suya en la
+ * `exportacion`. Con un solo local es `null` y el archivo es el de siempre.
+ *
  * Va en un fragmento a propósito: el aviso es otro hijo del encabezado (que es
  * `flex-wrap`) y con `basis-full` baja a su propio renglón, a todo el ancho.
  */
-export function BotonExportar({ exportacion }: { exportacion: Exportacion }) {
+export function BotonExportar({ exportacion, sucursal = null }: { exportacion: Exportacion; sucursal?: SucursalDeArchivo | null }) {
+  const deArchivo = exportacion.sucursal !== undefined ? exportacion.sucursal : sucursal;
+  // Sin sucursal se llama con los dos argumentos de siempre.
+  const bajar = (hojas: Parameters<typeof bajarXlsx>[1]) =>
+    deArchivo ? bajarXlsx(exportacion.nombre, hojas, deArchivo) : bajarXlsx(exportacion.nombre, hojas);
   const [preparando, setPreparando] = useState(false);
   const [aviso, setAviso] = useState<{ texto: string; error: boolean } | null>(null);
   // `preparando` apaga el botón recién en el render siguiente: dos clics en el
@@ -28,14 +37,14 @@ export function BotonExportar({ exportacion }: { exportacion: Exportacion }) {
     if (enCurso.current) return;
     setAviso(null);
     if (!exportacion.completa) {
-      bajarXlsx(exportacion.nombre, exportacion.hojas());
+      bajar(exportacion.hojas());
       return;
     }
     enCurso.current = true;
     setPreparando(true);
     try {
       const r = await exportacion.completa();
-      bajarXlsx(exportacion.nombre, r.hojas);
+      bajar(r.hojas);
       if (r.aviso) setAviso({ texto: r.aviso, error: false });
     } catch (e) {
       // Con el mensaje del backend, que sabe decir por qué ("el período es

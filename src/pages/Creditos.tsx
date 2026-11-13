@@ -230,6 +230,15 @@ export default function Creditos() {
 
   const conDeuda = listaClientes.filter((c) => c.saldoTotal > 0);
 
+  // La sucursal de cada cuenta, sólo si las filas son de más de un local
+  // (PLAN-SUCURSAL-TOTAL §1): con uno solo, o filtrando por uno, es ruido.
+  const verSucursal = suc.mostrarColumna(lista, (c) => c.sucursal?.id);
+  // El saldo de cada cliente se filtra por local pero su límite NO: es del
+  // cliente en todos los locales juntos (el backend lo controla contra la
+  // deuda total). Con la lista de un solo local, "le quedan Bs X" restaba el
+  // saldo de ese local del límite global y daba un número que no es real.
+  const porLocal = suc.sucursalId != null || suc.modo === "asignado";
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
@@ -336,6 +345,7 @@ export default function Creditos() {
             <TarjetaCredito
               key={c.id}
               credito={c}
+              verSucursal={verSucursal}
               onClick={() => setDetalleId(c.id)}
               onAbonar={() => setAbonando(c)}
             />
@@ -353,7 +363,13 @@ export default function Creditos() {
           </h2>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {conDeuda.map((c) => (
-              <TarjetaCliente key={c.id} cliente={c} onLimite={setEditandoLimite} />
+              <TarjetaCliente
+                key={c.id}
+                cliente={c}
+                onLimite={setEditandoLimite}
+                porLocal={porLocal}
+                sedeVista={suc.sedeVista}
+              />
             ))}
           </ul>
         </section>
@@ -362,6 +378,7 @@ export default function Creditos() {
       {detalleId !== null && (
         <DetalleCredito
           id={detalleId}
+          verSucursal={suc.modo === "organizacion"}
           onClose={() => setDetalleId(null)}
           onAbonar={(c) => {
             setDetalleId(null);
@@ -373,6 +390,8 @@ export default function Creditos() {
       {editandoLimite && (
         <FormLimiteCredito
           cliente={editandoLimite}
+          porLocal={porLocal}
+          sedeVista={suc.sedeVista}
           onClose={() => setEditandoLimite(null)}
           onGuardado={() => {
             setEditandoLimite(null);
@@ -441,10 +460,13 @@ function BadgeVencimiento({ credito: c }: { credito: CreditoApi }) {
 
 function TarjetaCredito({
   credito: c,
+  verSucursal,
   onClick,
   onAbonar,
 }: {
   credito: CreditoApi;
+  /** Hay cuentas de más de un local en la lista: cada tarjeta dice la suya. */
+  verSucursal: boolean;
   onClick: () => void;
   onAbonar: () => void;
 }) {
@@ -485,6 +507,7 @@ function TarjetaCredito({
         <div className="mt-2 flex items-center gap-2 text-[11px] text-texto-4">
           <span className="font-semibold">{c.codigo ?? `#${c.id}`}</span>
           {c.comprobante && <span>· venta {c.comprobante}</span>}
+          {verSucursal && c.sucursal && <Badge tono="gris">{c.sucursal.nombre}</Badge>}
         </div>
       </button>
 
@@ -500,9 +523,15 @@ function TarjetaCredito({
 function TarjetaCliente({
   cliente: c,
   onLimite,
+  porLocal,
+  sedeVista,
 }: {
   cliente: ClienteCredito;
   onLimite: (c: ClienteCredito) => void;
+  /** La lista está acotada a un local: el saldo es de ahí, el límite no. */
+  porLocal: boolean;
+  /** El nombre de ese local, para rotular el saldo; vacío si no se sabe. */
+  sedeVista: string;
 }) {
   const { usuario } = useAuth();
   // A quien no puede cambiar límites se le esconde el lápiz: un ícono de
@@ -530,7 +559,9 @@ function TarjetaCliente({
 
       <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-muted p-2.5">
         <div>
-          <p className="text-[11px] font-semibold uppercase text-texto-4">Saldo</p>
+          <p className="text-[11px] font-semibold uppercase text-texto-4">
+            Saldo{porLocal && sedeVista ? ` · ${sedeVista}` : ""}
+          </p>
           <p className="text-sm font-bold text-texto">{fmtMoney(c.saldoTotal)}</p>
         </div>
         <div>
@@ -547,6 +578,9 @@ function TarjetaCliente({
         <p className="text-xs text-texto-3">
           {c.limiteCredito === null ? (
             "Sin límite de crédito"
+          ) : porLocal ? (
+            // Sin "le quedan": se calcularía con el saldo de este local solo.
+            `Límite del cliente en todos los locales: ${fmtMoney(c.limiteCredito)}`
           ) : (
             <>
               Límite {fmtMoney(c.limiteCredito)} · le quedan{" "}
@@ -576,10 +610,13 @@ function TarjetaCliente({
 /** Detalle del crédito con lo que el listado no trae: lo que se llevó y los pagos. */
 function DetalleCredito({
   id,
+  verSucursal,
   onClose,
   onAbonar,
 }: {
   id: number;
+  /** Hay 2+ locales: el detalle dice en cuál se fió. */
+  verSucursal: boolean;
   onClose: () => void;
   onAbonar: (c: CreditoApi) => void;
 }) {
@@ -670,6 +707,7 @@ function DetalleCredito({
             <Dato label="Compromiso" valor={fmtFecha(c.fechaCompromiso)} />
             <Dato label="Venta" valor={c.comprobante || `#${c.ventaId}`} />
             <Dato label="Fecha de venta" valor={fmtFecha(c.fechaVenta)} />
+            {verSucursal && c.sucursal && <Dato label="Sucursal" valor={c.sucursal.nombre} />}
             {c.registradoPor && <Dato label="Registró" valor={c.registradoPor} />}
             <Dato label="Código" valor={c.codigo ?? `#${c.id}`} />
           </dl>
@@ -1008,10 +1046,15 @@ function FormAbono({
  */
 function FormLimiteCredito({
   cliente,
+  porLocal,
+  sedeVista,
   onClose,
   onGuardado,
 }: {
   cliente: ClienteCredito;
+  /** La lista está acotada a un local: lo que "debe hoy" es de ahí. */
+  porLocal: boolean;
+  sedeVista: string;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -1060,8 +1103,10 @@ function FormLimiteCredito({
     >
       <div className="space-y-3">
         <p className="text-[13px] text-texto-3">
-          Debe {fmtMoney(cliente.saldoTotal)} hoy. Por encima del límite, fiarle va a
-          necesitar la firma de un encargado.
+          Debe {fmtMoney(cliente.saldoTotal)}
+          {porLocal ? ` en ${sedeVista || "este local"}` : ""} hoy. Por encima del límite, fiarle
+          va a necesitar la firma de un encargado.
+          {porLocal && " El límite vale para todos los locales juntos."}
         </p>
 
         <div className="flex flex-wrap gap-2">

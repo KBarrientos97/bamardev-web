@@ -27,6 +27,7 @@ import { marcaConsumo } from "../../lib/rubro";
 import { modulosDeCuotaVenta, nombreDeLinea } from "../../lib/academia/cobroCuotas";
 import { useApi } from "../../lib/useApi";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
+import { useHayVariasSucursales, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { conCopia } from "../../lib/offline/copias";
 import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
@@ -437,6 +438,9 @@ function DetalleVenta({
   onVerComprobante?: (venta: Venta) => void;
 }) {
   const { usuario, rubro, negocio } = useAuth();
+  // Con varios locales, el mensaje al cliente dice de cuál sale su pedido.
+  const hayVariasSucursales = useHayVariasSucursales();
+  const rotuloSede = useRotuloSucursal();
   const completa = useApi(() => api.getVenta(venta.id), [venta.id]);
   const [anulando, setAnulando] = useState(false);
 
@@ -585,7 +589,7 @@ function DetalleVenta({
                           ? `https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`
                           : enlaceWhatsApp(
                               Telefono.paraWhatsApp(v.clienteTelefono),
-                              mensajePedido(pedidoDeVenta(v), negocio?.nombre),
+                              mensajePedido(pedidoDeVenta(v, hayVariasSucursales ? v.almacen?.nombre : null, rotuloSede), negocio?.nombre),
                             )
                       }
                       target="_blank"

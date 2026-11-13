@@ -236,7 +236,7 @@ describe("Farmacia: la supervisión del administrador", () => {
     expect(within(caja).getByText("Abierta")).toBeInTheDocument();
     expect(within(caja).getByText("Sigue abierta")).toBeInTheDocument();
     expect(within(caja).getByText(/1 venta · 1 anulada/)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Turno que estás viendo" })).toHaveDisplayValue(/Turno en curso · Rosa Quispe/);
+    expect(screen.getByRole("button", { name: /^Turno que estás viendo/ })).toHaveTextContent(/Turno en curso · Rosa Quispe/);
   });
 
   it("es sólo para mirar: no hay cómo vender, anular, cobrar ni cerrar la caja", async () => {
@@ -312,7 +312,7 @@ describe("Farmacia: la supervisión del administrador", () => {
     ver.mockImplementation(async () => sinCajas());
     await montar();
     expect(screen.getByText("Nadie abrió caja esta semana todavía")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Turno que estás viendo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Turno que estás viendo/ })).toBeNull();
     expect(kpi("Vendido hoy")).toHaveTextContent(/Bs\s0,00/);
   });
 

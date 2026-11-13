@@ -21,6 +21,7 @@ export default function TarjetaCita({
   mostrarRecurso = true,
   destacada = false,
   simple = false,
+  sucursal = null,
 }: {
   cita: Cita;
   rapidas: Rapida[];
@@ -33,10 +34,15 @@ export default function TarjetaCita({
   destacada?: boolean;
   /** Modo simple: "Cobrar Bs 30" con el monto, que es lo que se le dice al cliente. */
   simple?: boolean;
+  /**
+   * El local de la cita, sólo cuando la lista mezcla citas de 2+ locales (Mi
+   * agenda de quien atiende en varios): con uno solo no se repite en cada tarjeta.
+   */
+  sucursal?: string | null;
 }) {
   const servicios = [...new Set(cita.lineas.map((l) => l.servicio))].join(" + ");
   const recursos = [...new Set(cita.lineas.map((l) => l.recurso))].join(", ");
-  const detalle = [servicios, mostrarRecurso ? recursos : "", cita.origen === "ONLINE" ? "online" : ""]
+  const detalle = [servicios, mostrarRecurso ? recursos : "", cita.origen === "ONLINE" ? "online" : "", sucursal ?? ""]
     .filter(Boolean)
     .join(" · ");
   const duracion = cita.inicio && cita.fin ? duracionTexto(minutosEntre(cita.inicio, cita.fin)) : "";

@@ -4,12 +4,13 @@ import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Input, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtNum, isoDia } from "../../lib/format";
+import { normalizar } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { AsientoControlado, LibroControlados as Libro } from "../../types";
 import LibroImpreso from "./LibroImpreso";
-import { tituloLibro } from "./impresionLibro";
+import { numerarPorSucursal, tituloLibro } from "./impresionLibro";
 
 const LIBROS = [
   ["", "Los dos libros"],
@@ -79,17 +80,32 @@ export default function LibroControladosPagina() {
   // La columna de sucursal sólo cuando hay más de una en el período.
   const variasSucursales = new Set(filas.map((a) => a.almacen.id)).size > 1;
   const titulo = tituloLibro(libro);
+  // Para el nombre de la planilla: el local del libro o "todas".
+  const sucursalNombreArchivo = suc.sedeVista || suc.todas;
 
   // La sucursal que encabeza el impreso: la elegida en el filtro o, para quien
-  // entró atado a una (el backend le fuerza la suya), esa. Con un solo local no
-  // se nombra: un negocio de un local no tiene por qué saber de sucursales.
-  const sucursalImpresa = suc.elegir ? suc.nombre : (usuario?.sucursal ?? "");
+  // entró atado a una (el backend le fuerza la suya), esa. Con un solo local el
+  // impreso queda como siempre (el atado lleva su sede, la organización nada).
+  const sucursalImpresa = suc.hayVarias ? suc.sedeVista : (usuario?.sucursal ?? "");
+  // Con 2+ locales cada uno lleva SU libro, con su N° corrido y su encabezado:
+  // el consolidado ("Todas") mezclaría asientos de locales distintos en un papel
+  // que se firma y se presenta al SEDES. Se exporta (la planilla lleva la
+  // sucursal en una columna), pero para imprimir hay que elegir una.
+  const faltaElegirLocal = suc.elegir && suc.sucursalId == null;
+  // El N° de cada asiento en el libro de SU sucursal (con un local, 1, 2, 3…).
+  const numeros = numerarPorSucursal(filas);
   // La sesión no trae dirección ni teléfono del negocio, pero la sucursal sí
-  // (`Almacen`). Se toma la elegida o, sin filtro, la principal: es la que usa
-  // la caja cuando una operación no dice de cuál se trata. En el consolidado
-  // de varias no hay una sola dirección, y el impreso deja el renglón en blanco.
-  const local =
-    suc.sucursales.find((a) => a.id === suc.sucursalId) ?? (suc.elegir ? undefined : suc.sugerida);
+  // (`Almacen`, de `GET /almacenes/mias`: PLAN-SUCURSAL-TOTAL §10.2). Se toma la
+  // elegida o, sin filtro, la principal: es la que usa la caja cuando una
+  // operación no dice de cuál se trata. En el consolidado de varias no hay una
+  // sola dirección, y el impreso deja el renglón en blanco.
+  // SÓLO con 2+ locales: con uno el libro impreso queda idéntico al de siempre
+  // (renglones en blanco para completar a mano), aunque la ficha ya tenga datos.
+  // Y quien es de un local no pide la lista (ver `useSucursales`): su libro
+  // lleva el nombre de su sede y los renglones en blanco.
+  const local = suc.hayVarias
+    ? (suc.sucursales.find((a) => a.id === suc.sucursalId) ?? (suc.elegir ? undefined : suc.sugerida))
+    : undefined;
   const negocioImpreso = negocio
     ? { nombre: negocio.nombre, direccion: local?.direccion, telefono: local?.telefono }
     : null;
@@ -99,21 +115,27 @@ export default function LibroControladosPagina() {
       <div>
         <EncabezadoPagina
           titulo="Libro de controlados"
-          subtitulo="Lo vendido con receta archivada o valorada. Se llena solo al cobrar."
+          subtitulo={
+            "Lo vendido con receta archivada o valorada. Se llena solo al cobrar." +
+            // La sede del usuario asignado (sólo con 2+ locales): apenas el nombre.
+            (suc.miSede ? ` · ${suc.miSede}` : "")
+          }
           accion={
             <div className="flex gap-2">
               <Boton
                 variante="soft"
                 icono="download"
                 disabled={filas.length === 0}
-                onClick={() => bajarCsv(titulo, desde, hasta, filas)}
+                onClick={() =>
+                  bajarCsv(titulo, desde, hasta, filas, numeros, suc.hayVarias ? sucursalNombreArchivo : null)
+                }
               >
                 Exportar a Excel
               </Boton>
               <Boton
                 variante="soft"
                 icono="printer"
-                disabled={filas.length === 0}
+                disabled={filas.length === 0 || faltaElegirLocal}
                 onClick={imprimir}
               >
                 Imprimir
@@ -181,6 +203,12 @@ export default function LibroControladosPagina() {
             onChange={(v) => suc.setSucursalId(v ? Number(v) : null)}
           />
         )}
+        {faltaElegirLocal && (
+          <p className="text-xs text-texto-3">
+            Para imprimir elegí una sucursal: cada local lleva su propio libro, con su
+            numeración y su encabezado. Excel baja todas juntas, con la sucursal de cada asiento.
+          </p>
+        )}
       </div>
 
       {asientos.cargando && !asientos.datos ? (
@@ -210,7 +238,7 @@ export default function LibroControladosPagina() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-[13px] font-bold text-texto">
-                      {i + 1}. {a.producto.nombre}
+                      {numeros[i]}. {a.producto.nombre}
                     </p>
                     <p className="text-xs text-texto-3">{fmtFechaHora(a.fecha)}</p>
                   </div>
@@ -254,7 +282,7 @@ export default function LibroControladosPagina() {
               <tbody className="divide-y divide-borde-soft">
                 {filas.map((a, i) => (
                   <tr key={a.id} className={a.anuladaEn ? "text-texto-4" : "text-texto-2"}>
-                    <td className="px-3 py-2.5 align-top">{i + 1}</td>
+                    <td className="px-3 py-2.5 align-top">{numeros[i]}</td>
                     <td className="whitespace-nowrap px-3 py-2.5 align-top">
                       {fmtFechaHora(a.fecha)}
                     </td>
@@ -286,17 +314,20 @@ export default function LibroControladosPagina() {
             </table>
           </div>
 
-          {/* El papel: oculto en pantalla, lo único que sale al imprimir. */}
-          <LibroImpreso
-            negocio={negocioImpreso}
-            libro={libro}
-            sucursal={sucursalImpresa}
-            desde={desde}
-            hasta={hasta}
-            impresoPor={usuario?.nombre ?? usuario?.username ?? ""}
-            impresoEn={impresoEn ?? hoy}
-            filas={filas}
-          />
+          {/* El papel: oculto en pantalla, lo único que sale al imprimir. Sin
+              elegir local (2+ locales) no se arma: no hay un libro que imprimir. */}
+          {!faltaElegirLocal && (
+            <LibroImpreso
+              negocio={negocioImpreso}
+              libro={libro}
+              sucursal={sucursalImpresa}
+              desde={desde}
+              hasta={hasta}
+              impresoPor={usuario?.nombre ?? usuario?.username ?? ""}
+              impresoEn={impresoEn ?? hoy}
+              filas={filas}
+            />
+          )}
         </>
       )}
     </div>
@@ -351,7 +382,16 @@ function celda(v: string | number): string {
  * La planilla del libro. `;` y coma decimal, como el resto de las
  * exportaciones: en un Excel es-BO la coma es el decimal.
  */
-function bajarCsv(titulo: string, desde: string, hasta: string, filas: AsientoControlado[]) {
+function bajarCsv(
+  titulo: string,
+  desde: string,
+  hasta: string,
+  filas: AsientoControlado[],
+  /** El N° de cada asiento en el libro de su sucursal (ver `numerarPorSucursal`). */
+  numeros: number[],
+  /** De qué local es la planilla, para el nombre del archivo; null = un solo local. */
+  sucursal: string | null,
+) {
   const columnas = [
     "N°",
     "Fecha",
@@ -373,7 +413,7 @@ function bajarCsv(titulo: string, desde: string, hasta: string, filas: AsientoCo
     columnas.map(celda).join(";"),
     ...filas.map((a, i) =>
       [
-        i + 1,
+        numeros[i],
         fmtFechaHora(a.fecha),
         a.producto.nombre,
         [a.producto.principioActivo, a.producto.concentracion].filter(Boolean).join(" "),
@@ -397,7 +437,11 @@ function bajarCsv(titulo: string, desde: string, hasta: string, filas: AsientoCo
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement("a");
   enlace.href = url;
-  enlace.download = `${titulo.toLowerCase().replace(/\s+/g, "-")}-${desde}-a-${hasta}.csv`;
+  // Con 2+ locales el archivo dice de cuál es: los libros de dos locales no se pisan.
+  const deCual = sucursal
+    ? `-${normalizar(sucursal).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`
+    : "";
+  enlace.download = `${titulo.toLowerCase().replace(/\s+/g, "-")}${deCual}-${desde}-a-${hasta}.csv`;
   enlace.click();
   URL.revokeObjectURL(url);
 }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { useSedeDeCaja } from "../lib/useSedeDeCaja";
+import type { CajaAbierta } from "../types";
 import { apiTickets } from "../lib/apiTickets";
 import { sinEntregar } from "../pages/tickets/useTableroTickets";
 import { porSubir, sinSenal, useColaOffline } from "../lib/offline/cola";
@@ -33,6 +35,28 @@ export async function cajaAbiertaAlSalir(espera = ESPERA_CAJA_MS): Promise<boole
   try {
     const r = await Promise.race([api.cajaActual(), tarde]);
     return r === "tarde" ? null : r.caja != null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
+/**
+ * Las cajas abiertas del usuario en TODAS las sedes (13-nov): el admin de una
+ * organización puede tener una en cada local, y `cajaActual` sólo mira la de
+ * la sede en la que está parado. null si no se pudo saber (se deja salir, como
+ * en `cajaAbiertaAlSalir`).
+ */
+export async function cajasAbiertasAlSalir(espera = ESPERA_CAJA_MS): Promise<CajaAbierta[] | null> {
+  if (sinSenal()) return null;
+  let reloj: ReturnType<typeof setTimeout> | undefined;
+  const tarde = new Promise<"tarde">((listo) => {
+    reloj = setTimeout(() => listo("tarde"), espera);
+  });
+  try {
+    const r = await Promise.race([api.cajasAbiertas(), tarde]);
+    return r === "tarde" ? null : r.cajas;
   } catch {
     return null;
   } finally {
@@ -135,12 +159,15 @@ function sinSubirAlSalir(n: number): string {
  */
 export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void } = {}) {
   const { logout, usuario, negocio, rubro, puede } = useAuth();
+  const { usa: variasSedes, sede: sedeActiva, fijar: fijarSede } = useSedeDeCaja();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const pendientes = porSubir(useColaOffline()).length;
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState<"caja" | "despacho" | "sinSubir" | null>(null);
   const [quedan, setQuedan] = useState(0);
+  /** La sede con caja abierta a la que hay que ir para cerrarla (si no es la activa). */
+  const [sedeConCaja, setSedeConCaja] = useState<number | null>(null);
 
   async function pedir() {
     if (revisando) return;
@@ -151,7 +178,17 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
     const esAdministrador = usuario?.esAdministrador === true;
     if (revisaCaja({ operaCaja, esAdministrador, enPos: enPuntoDeVenta(pathname) })) {
       setRevisando(true);
-      const abierta = await cajaAbiertaAlSalir();
+      let abierta: boolean | null;
+      if (variasSedes) {
+        // Una caja abierta en CUALQUIER sede frena la salida, no sólo la de la
+        // sede actual: si no, el admin salía dejando la de otro local abierta.
+        const cajas = await cajasAbiertasAlSalir();
+        abierta = cajas == null ? null : cajas.length > 0;
+        const propia = cajas?.some((c) => c.almacenId === sedeActiva);
+        setSedeConCaja(cajas?.length && !propia ? (cajas[0].almacenId ?? null) : null);
+      } else {
+        abierta = await cajaAbiertaAlSalir();
+      }
       setRevisando(false);
       if (abierta) {
         antesDeAvisar?.();
@@ -178,6 +215,9 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
 
   function irAlCierre() {
     setAviso(null);
+    // Si la caja abierta es de otra sede, el POS tiene que parar en ella para
+    // poder cerrarla (en la sede actual sólo vería «Abrir caja»).
+    if (variasSedes && sedeConCaja != null) fijarSede(sedeConCaja);
     // El POS abre el cierre al llegar con este pedido (ver `Pos.tsx`).
     navigate("/pos", { state: { pantalla: "cierre" } });
   }

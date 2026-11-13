@@ -7,6 +7,11 @@ import { AvisoGastosAtrasados } from "../components/AvisoGastosAtrasados";
 import { CampoCategoria, PanelCategorias } from "../components/CategoriasGasto";
 import { ProximosAutomaticos } from "../components/ProximosAutomaticos";
 import {
+  CampoSucursalGasto,
+  NotaGastosGenerales,
+  SelectFiltroSucursal,
+} from "../components/SucursalGasto";
+import {
   AvisoOk,
   Badge,
   Boton,
@@ -40,7 +45,7 @@ import {
 } from "../lib/gastos";
 import { fmtFecha, fmtMoney } from "../lib/format";
 import { useApi } from "../lib/useApi";
-import { useSucursales } from "../lib/useSucursales";
+import { useFiltroSucursalGasto, useSucursalDelGasto } from "../lib/useSucursalGasto";
 import type {
   CategoriaGasto,
   FiltroGasto,
@@ -91,9 +96,10 @@ export default function Gastos() {
     return () => clearTimeout(t);
   }, [q]);
   // `elegir` ya encapsula la condicion: usuario de organizacion Y mas de un
-  // local. Con un solo local el filtro no aparece, que es lo correcto.
-  const { sucursalId, valorSelect, alElegirSelect, sucursales, elegir } =
-    useSucursales();
+  // local. Con un solo local el filtro no aparece, que es lo correcto. A los
+  // locales se les suma «General del negocio» (los gastos de ningun local).
+  const filtroSuc = useFiltroSucursalGasto();
+  const { suc, sucursalId, sinSucursal } = filtroSuc;
 
   const [editando, setEditando] = useState<Gasto | null | undefined>(undefined);
   const [pagando, setPagando] = useState<Gasto | null>(null);
@@ -105,8 +111,8 @@ export default function Gastos() {
   const hasta = finDeMes(`${mes}-01`);
 
   const resumen = useApi(
-    () => api.getResumenGastos({ desde, hasta, sucursalId }),
-    [desde, hasta, sucursalId],
+    () => api.getResumenGastos({ desde, hasta, sucursalId, sinSucursal }),
+    [desde, hasta, sucursalId, sinSucursal],
   );
   const lista = useApi(
     () =>
@@ -120,8 +126,9 @@ export default function Gastos() {
         filtro: filtro === "TODOS" ? undefined : filtro,
         q: qBuscado || undefined,
         sucursalId,
+        sinSucursal,
       }),
-    [desde, hasta, filtro, qBuscado, sucursalId],
+    [desde, hasta, filtro, qBuscado, sucursalId, sinSucursal],
   );
   const categorias = useApi(() => api.getCategoriasGasto(), []);
 
@@ -131,6 +138,9 @@ export default function Gastos() {
   };
 
   const gastos = lista.datos ?? [];
+  // El badge de sucursal sólo si los gastos de la lista son de más de un local
+  // (PLAN-SUCURSAL-TOTAL §1): con un local, o filtrando por uno, es ruido.
+  const verSucursal = suc.mostrarColumna(gastos, (g) => g.sucursalId);
   const r = resumen.datos;
 
   /**
@@ -192,7 +202,9 @@ export default function Gastos() {
               r && sobreVentas != null
                 ? superaVentas
                   ? `Más que lo vendido (${fmtMoney(r.ventasPeriodo)})`
-                  : `Ventas ${fmtMoney(r.ventasPeriodo)}`
+                  : // Lo general no vende nada: se compara con las ventas de todo
+                    // el negocio, y el pie lo dice para no leerlo como un local.
+                    `${sinSucursal ? "Ventas de todo el negocio" : "Ventas"} ${fmtMoney(r.ventasPeriodo)}`
                 : "Sin ventas en el período"
             }
             alerta={superaVentas}
@@ -200,23 +212,16 @@ export default function Gastos() {
         </div>
       )}
 
+      {/* Con UN local elegido, lo general del negocio no está en las cifras. */}
+      <NotaGastosGenerales generales={r?.generales} unLocalElegido={sucursalId != null} />
+
       <div className="flex flex-wrap items-center gap-3">
         <Campo label="Mes">
           <Input type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
         </Campo>
-        {elegir && (
+        {suc.elegir && (
           <Campo label={pal.Sede}>
-            <Select
-              value={valorSelect}
-              onChange={(e) => alElegirSelect(e.target.value)}
-            >
-              <option value="">Todas las {pal.sedes}</option>
-              {sucursales.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nombre}
-                </option>
-              ))}
-            </Select>
+            <SelectFiltroSucursal filtro={filtroSuc} />
           </Campo>
         )}
         <div className="min-w-[220px] flex-1">
@@ -254,7 +259,7 @@ export default function Gastos() {
         </span>
       </Link>
 
-      <ProximosAutomaticos mes={mes} sucursalId={sucursalId} />
+      <ProximosAutomaticos mes={mes} sucursalId={sucursalId} sinSucursal={sinSucursal} />
 
       {lista.cargando ? (
         <Cargando />
@@ -279,7 +284,7 @@ export default function Gastos() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-medium">{g.concepto}</span>
                     <Badge tono="gris">{g.categoriaNombre ?? g.categoria}</Badge>
-                    {g.sucursal && <Badge tono="gris">{g.sucursal}</Badge>}
+                    {verSucursal && g.sucursal && <Badge tono="gris">{g.sucursal}</Badge>}
                   </div>
                   <div className="mt-1 text-sm text-texto-3">
                     {fmtFecha(g.fecha)}
@@ -348,6 +353,7 @@ export default function Gastos() {
           gasto={editando}
           categorias={categorias.datos ?? []}
           sucursalSugerida={sucursalId}
+          sugerirGeneral={sinSucursal}
           onCerrar={() => setEditando(undefined)}
           onGuardado={(texto) => {
             setEditando(undefined);
@@ -529,6 +535,7 @@ export function FormGasto({
   gasto,
   categorias,
   sucursalSugerida,
+  sugerirGeneral = false,
   onCerrar,
   onGuardado,
   onCatalogo,
@@ -536,7 +543,10 @@ export function FormGasto({
   /** null = alta. */
   gasto: Gasto | null;
   categorias: CategoriaGasto[];
+  /** El local que se estaba filtrando: donde cae un gasto nuevo si no se elige otro. */
   sucursalSugerida: number | null;
+  /** Se venía mirando «General del negocio»: el gasto nuevo nace general. */
+  sugerirGeneral?: boolean;
   onCerrar: () => void;
   onGuardado: (texto: string) => void;
   /**
@@ -563,6 +573,12 @@ export function FormGasto({
   /** true mientras el cuerpo del formulario muestra el panel de categorías. */
   const [conCategorias, setConCategorias] = useState(false);
   const panel = conCategorias && !!onCatalogo;
+  /** A qué local va: un campo sólo para la organización con 2+ locales. */
+  const sucursal = useSucursalDelGasto({
+    actual: gasto,
+    sugerida: sucursalSugerida,
+    sugerirGeneral,
+  });
 
   const guardar = async () => {
     if (enVuelo.current) return;
@@ -591,6 +607,9 @@ export function FormGasto({
     if (vence && vence < fecha) {
       return setError("El vencimiento no puede ser anterior a la fecha del gasto.");
     }
+    // Mirando «Todas» no hay local que sugerir: se elige uno o «General del negocio».
+    const sinLocal = sucursal.validar();
+    if (sinLocal) return setError(sinLocal);
 
     const input: GastoInput = {
       concepto: concepto.trim(),
@@ -600,10 +619,11 @@ export function FormGasto({
       fechaVencimiento: vence || null,
       beneficiario: beneficiario.trim() || null,
       nota: nota.trim() || null,
-      // Al editar se conserva el local que ya tenía; al crear, el que está
-      // filtrado en la pantalla (si el dueño mira la Sucursal Sur, el gasto
-      // que carga es casi seguro de ahí).
-      sucursalId: gasto ? gasto.sucursalId : sucursalSugerida,
+      // Con el campo a la vista, lo elegido (null explícito = «General del
+      // negocio»). Sin él: al editar se conserva el local que ya tenía; al
+      // crear, el que está filtrado en la pantalla (si el dueño mira la
+      // Sucursal Sur, el gasto que carga es casi seguro de ahí).
+      sucursalId: sucursal.paraEnviar(),
       ...(gasto ? {} : { pagado, metodoPago: pagado ? metodo : null }),
     };
 
@@ -702,6 +722,7 @@ export function FormGasto({
         <Campo label="Vence (opcional)">
           <Input type="date" value={vence} onChange={(e) => setVence(e.target.value)} />
         </Campo>
+        <CampoSucursalGasto control={sucursal} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Beneficiario (opcional)">
             <Input

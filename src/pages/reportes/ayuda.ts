@@ -68,6 +68,21 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
             incluye: ["Lo fiado: ya es una venta, aunque la plata no haya entrado.", "Las mermas (lo vencido o dañado), al costo."],
             noIncluye: ["Las compras del período: comprar para tres meses no hunde este mes, el costo entra cuando se vende.", ANULADAS],
           };
+    case "comparar-sucursales":
+      return {
+        queMuestra: "Cada local lado a lado: cuánto vendió, cuántas ventas fueron, lo que costó, lo que dejó y lo que quedó después de sus gastos. Abajo, el total del negocio.",
+        deDonde:
+          "Es la cuenta del Estado de resultado, partida por local: ventas y costo de lo vendido por el local donde se vendió; gastos y mermas por el local al que se cargaron. El total sale de las ventas de todo el negocio juntas, no de sumar las filas (puede apartarse unos centavos por redondeo).",
+        incluye: [
+          "General del negocio: los gastos que no se cargaron a ningún local (el alquiler de la oficina, el contador).",
+          "Un local dado de baja que vendió en el período, para que el total cuadre.",
+        ],
+        noIncluye: [
+          "Impuestos y gastos del banco: van aparte, debajo de la utilidad operativa.",
+          "El filtro de sucursal de arriba: este reporte siempre compara todas.",
+          ANULADAS,
+        ],
+      };
     case "resultado-academia":
       return {
         queMuestra: "Lo que dejó la academia sola en el período: lo cobrado por clases menos los gastos.",

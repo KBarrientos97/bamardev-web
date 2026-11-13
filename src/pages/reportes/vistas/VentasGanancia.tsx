@@ -5,7 +5,7 @@ import { bajarPdf } from "../../../lib/pdf/tablaPdf";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { apiReportes, type VendedorApi } from "../api";
-import { useExportar, useReporte } from "../contexto";
+import { nombreDeArchivo, useExportar, useReporte } from "../contexto";
 import { leyendaDe, textoRango } from "../periodo";
 import { Cargador, Nota } from "../ui";
 import { KpisGanancia, TablaGanancia } from "./TablaGanancia";
@@ -29,17 +29,21 @@ import {
  * historial de Ventas.
  */
 export default function VentasGanancia() {
-  const { rango, periodo, sucursalNombre } = useReporte();
+  const { rango, periodo, sucursalArchivo } = useReporte();
   const { rubro, negocio } = useAuth();
   const [cajero, setCajero] = useState<VendedorApi | null>(null);
   const estado = useApi(
     () => apiReportes.topProductos(rango, cajero?.id),
     [rango.desde, rango.hasta, rango.sucursalId, cajero?.id],
   );
-  const vendedores = useApi(() => apiReportes.vendedores(rango), [rango.desde, rango.hasta]);
+  // Los cajeros son los del local que se mira: al cambiar la sucursal se piden de nuevo.
+  const vendedores = useApi(() => apiReportes.vendedores(rango), [rango.desde, rango.hasta, rango.sucursalId]);
   const datos = useMemo(() => (estado.datos ? armarVentasGanancia(estado.datos) : null), [estado.datos]);
 
-  const subtitulo = [leyendaDe(periodo), textoRango(periodo.desde, periodo.hasta), sucursalNombre]
+  // La sucursal que se mira: el local elegido, "Todas las sucursales" en el
+  // consolidado de una organización con 2+ locales, o la sede del asignado.
+  // Con un solo local no hay nada que decir (null) y el subtítulo es el de siempre.
+  const subtitulo = [leyendaDe(periodo), textoRango(periodo.desde, periodo.hasta), sucursalArchivo?.nombre]
     .filter(Boolean)
     .join(" · ");
 
@@ -54,6 +58,7 @@ export default function VentasGanancia() {
         <FiltroCajero cajero={cajero} vendedores={vendedores.datos ?? []} onCajero={setCajero} />
         {datos && datos.productos > 0 && (
           <BotonPdf
+            nombre={nombreDeArchivo("ventas-y-ganancia", isoDia(new Date()), "pdf", sucursalArchivo)}
             armar={() =>
               documentoVentasGanancia(datos, { negocio: negocio?.nombre, subtitulo, cajero: cajero?.nombre })
             }
@@ -117,7 +122,7 @@ function FiltroCajero({
 }
 
 /** "Exportar PDF": el mismo papel que manda la app. Un toque a la vez: armarlo tarda un instante. */
-function BotonPdf({ armar }: { armar: () => Parameters<typeof bajarPdf>[1] }) {
+function BotonPdf({ nombre, armar }: { nombre: string; armar: () => Parameters<typeof bajarPdf>[1] }) {
   const [armando, setArmando] = useState(false);
   const [error, setError] = useState(false);
   const enCurso = useRef(false);
@@ -127,7 +132,7 @@ function BotonPdf({ armar }: { armar: () => Parameters<typeof bajarPdf>[1] }) {
     setArmando(true);
     setError(false);
     try {
-      await bajarPdf(`ventas-y-ganancia-${isoDia(new Date())}.pdf`, armar());
+      await bajarPdf(nombre, armar());
     } catch {
       setError(true);
     } finally {

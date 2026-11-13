@@ -95,7 +95,7 @@ describe("Tablero: la sucursal", () => {
   it("un negocio de un solo local no ve selector y pide el tablero como siempre", async () => {
     servidor.cajaEn = null;
     await montar();
-    expect(screen.queryByRole("combobox", { name: "Sucursal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Sucursal/ })).toBeNull();
     expect(urls().filter((u) => u.startsWith("/billar/tablero"))).toEqual(["/billar/tablero"]);
     expect(screen.getByRole("button", { name: "Venta rápida" })).toBeInTheDocument();
   });
@@ -103,15 +103,17 @@ describe("Tablero: la sucursal", () => {
   it("el dueño con varios locales elige en el encabezado, y el tablero se pide de ese", async () => {
     sucursales.elegir = true;
     await montar();
-    const selector = screen.getByRole("combobox", { name: "Sucursal" });
-    expect(selector).toHaveValue("1");
+    // La pastilla se llama por la etiqueta y el local que muestra (13-nov: lista
+    // de la app, no un <select>): se abre y se toca el otro local.
+    expect(screen.getByRole("button", { name: "Sucursal Centro" })).toBeInTheDocument();
     servidor.cajaEn = 1;
+    fireEvent.click(screen.getByRole("button", { name: /^Sucursal/ }));
     await act(async () => {
-      fireEvent.change(selector, { target: { value: "2" } });
+      fireEvent.click(screen.getByRole("option", { name: "Norte" }));
     });
     expect(urls()).toContain("/billar/tablero?sucursalId=2");
     expect(localStorage.getItem(`bamardev.billar.sucursal.${sesion.alias}`)).toBe("2");
-    expect(await screen.findByRole("combobox", { name: "Sucursal" })).toHaveValue("2");
+    expect(await screen.findByRole("button", { name: "Sucursal Norte" })).toBeInTheDocument();
   });
 
   it("mirando un local que no es el de su caja, avisa y no ofrece venta rápida", async () => {

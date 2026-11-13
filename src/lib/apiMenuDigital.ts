@@ -16,6 +16,9 @@ export { urlPublica as urlApi } from "../publico/tv/apiTv";
  */
 const conLoQueFalta = (r: AjustesRecibo): AjustesRecibo => ({ ...RECIBO_DE_FABRICA, ...r });
 
+/** `?sucursalId=` sólo cuando hay un local elegido: sin él, la URL es la de siempre. */
+const deLocal = (sucursalId?: number | null) => (sucursalId != null ? `?sucursalId=${sucursalId}` : "");
+
 const conArchivo = (archivo: Blob, nombre: string) => {
   const f = new FormData();
   f.append("archivo", archivo, nombre);
@@ -23,16 +26,32 @@ const conArchivo = (archivo: Blob, nombre: string) => {
 };
 
 export const apiMenuDigital = {
-  editor: () => request<EditorMenu>("/menu-digital"),
+  /**
+   * `sucursalId` (PLAN-SUCURSAL-TOTAL §10.5): de qué local se ven los precios y la
+   * disponibilidad. Sólo lo manda la organización con 2+ locales (quien es de un
+   * local ve siempre el suyo, y sin él el backend usa el principal). Lo aceptan
+   * también los PATCH/POST/DELETE de un plato: ahí es el local donde vale
+   * "Agotado hoy" (es POR local) y el de los precios de la respuesta.
+   */
+  editor: (sucursalId?: number | null) =>
+    request<EditorMenu>(`/menu-digital${sucursalId != null ? `?sucursalId=${sucursalId}` : ""}`),
   guardarPantallas: (pantallas: PantallaMenu[]) =>
     request<PantallaMenu[]>("/menu-digital/pantallas", { method: "PUT", body: JSON.stringify({ pantallas }) }),
   editarPlato: (
     id: number,
     cambios: Partial<Pick<PlatoMenu, "descripcion" | "etiqueta" | "destacado" | "enMenu">> & { agotado?: boolean },
-  ) => request<PlatoMenu>(`/menu-digital/platos/${id}`, { method: "PATCH", body: JSON.stringify(cambios) }),
-  subirFoto: (id: number, archivo: Blob) =>
-    request<PlatoMenu>(`/menu-digital/platos/${id}/foto`, { method: "POST", body: conArchivo(archivo, "plato.webp") }),
-  quitarFoto: (id: number) => request<PlatoMenu>(`/menu-digital/platos/${id}/foto`, { method: "DELETE" }),
+    sucursalId?: number | null,
+  ) => request<PlatoMenu>(`/menu-digital/platos/${id}${deLocal(sucursalId)}`, { method: "PATCH", body: JSON.stringify(cambios) }),
+  subirFoto: (id: number, archivo: Blob, sucursalId?: number | null) =>
+    request<PlatoMenu>(`/menu-digital/platos/${id}/foto${deLocal(sucursalId)}`, {
+      method: "POST",
+      body: conArchivo(archivo, "plato.webp"),
+    }),
+  quitarFoto: (id: number, sucursalId?: number | null) =>
+    request<PlatoMenu>(`/menu-digital/platos/${id}/foto${deLocal(sucursalId)}`, { method: "DELETE" }),
+  /** Los platos marcados "Agotado hoy" EN ESE LOCAL (sin `sucursalId`, el del usuario o el principal). */
+  agotadosHoy: (sucursalId?: number | null) =>
+    request<{ productoIds: number[] }>(`/menu-digital/agotados${deLocal(sucursalId)}`),
 
   recibo: () =>
     request<{ recibo: AjustesRecibo; logo: string | null }>("/pantallas/recibo").then((x) => ({

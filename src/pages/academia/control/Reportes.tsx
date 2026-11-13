@@ -7,7 +7,7 @@ import { Cargando, ErrorMsg } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { tituloMes } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
-import type { AgruparReporte, EstudiantesAcademia, ReportesAcademia, TramoEstudiantes } from "../../../lib/academia/tipos";
+import type { AgruparReporte, EstudiantesAcademia, FilaSedeAcademia, ReportesAcademia, TramoEstudiantes } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney } from "../../../lib/format";
@@ -135,6 +135,19 @@ export default function Reportes() {
               <TablaEstudiantes e={e} />
             )}
           </Tarjeta>
+
+          {/* PLAN-SUCURSAL-TOTAL §9.5: las sedes lado a lado; sólo con 2 o más (la organización). */}
+          {(d.porSede?.length ?? 0) > 1 && (
+            <Tarjeta
+              id="t-sedes"
+              titulo={`Por ${p.sede}`}
+              bajada="Ingresaron, al día y mora: según la sede del grupo."
+              acciones={<AyudaCalculo titulo={`Por ${p.sede}`} ayuda={ayuda.sedes} compacto />}
+              sinRelleno
+            >
+              <TablaSedes filas={d.porSede ?? []} />
+            </Tarjeta>
+          )}
 
           <div className="grid items-start gap-5 lg:grid-cols-2 lg:gap-6">
             <Tarjeta
@@ -310,6 +323,56 @@ function TablaEstudiantes({ e }: { e: EstudiantesAcademia }) {
               <td className={`${TABLA.td} ${TABLA.numero}`}>{e.totales.enMora}</td>
             </tr>
           )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * El comparativo por sede (PLAN-SUCURSAL-TOTAL §9.5): sólo lo académico, todo
+ * por la sede del grupo (se dice en la bajada y en su «Cómo se calcula»). Sin
+ * plata de resultado (ni cobrado ni sueldos): eso vive en el Estado de
+ * resultado. No hay fila de total: los activos de las sedes pueden sumar más
+ * que los del instituto (un estudiante en dos sedes cuenta en cada una).
+ */
+function TablaSedes({ filas }: { filas: FilaSedeAcademia[] }) {
+  const p = usePalabras();
+  const conVencido = filas.some((f) => f.vencido != null);
+  const cero = (n: number) => (n === 0 ? "text-texto-4" : "");
+  return (
+    // scroll-lateral-ok: siete columnas angostas; en un celular el scroll queda dentro de la tarjeta.
+    <div className={TABLA.envoltura}>
+      <table className={`${TABLA.tabla} min-w-[640px] tabular-nums`}>
+        <thead>
+          <tr className={TABLA.encabezado}>
+            <th className={TABLA.th}>{p.Sede}</th>
+            <th className={`${TABLA.th} text-right`}>Ingresaron</th>
+            <th className={`${TABLA.th} text-right`}>Activos</th>
+            <th className={`${TABLA.th} text-right`}>Al día</th>
+            <th className={`${TABLA.th} text-right`}>En la espera</th>
+            <th className={`${TABLA.th} text-right`}>En mora</th>
+            {conVencido && <th className={`${TABLA.th} text-right`}>Vencido</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((f) => (
+            <tr key={f.sede.id} className={`${TABLA.fila} text-texto`}>
+              <td className={`${TABLA.td} whitespace-nowrap font-semibold`}>{f.sede.nombre}</td>
+              <td className={`${TABLA.td} ${TABLA.numero} ${cero(f.ingresaron)}`}>{f.ingresaron}</td>
+              <td className={`${TABLA.td} ${TABLA.numero} ${cero(f.activos)}`}>{f.activos}</td>
+              <td className={`${TABLA.td} ${TABLA.numero} ${cero(f.alDia)}`}>{f.alDia}</td>
+              <td className={`${TABLA.td} ${TABLA.numero} ${cero(f.enEspera)}`}>{f.enEspera}</td>
+              <td className={`${TABLA.td} ${TABLA.numero} ${f.enMora ? "font-semibold text-danger-text" : "text-texto-4"}`}>
+                {`${f.enMora}${f.pctMora != null && f.enMora > 0 ? ` · ${Math.round(f.pctMora)} %` : ""}`}
+              </td>
+              {conVencido && (
+                <td className={`${TABLA.td} ${TABLA.numero} whitespace-nowrap ${f.vencido ? "text-danger-text" : "text-texto-4"}`}>
+                  {f.vencido != null ? fmtMoney(f.vencido) : "—"}
+                </td>
+              )}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

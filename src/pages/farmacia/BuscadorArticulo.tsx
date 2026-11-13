@@ -6,6 +6,7 @@ import type { ArticuloMovimiento, Producto } from "../../types";
 import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
+import { AvisoCorregido } from "./AvisoCorregido";
 
 /**
  * Elegir qué entra o qué sale, buscando.
@@ -88,7 +89,11 @@ export default function BuscadorArticulo({
     const texto = q;
     const items =
       busqueda.consulta === texto && !busqueda.cargando
-        ? busqueda.items
+        ? // Corregida, lo tecleado no encontró nada: el Enter no agrega lo
+          // parecido por la persona (ver `buscarAhora`).
+          busqueda.corregido
+          ? []
+          : busqueda.items
         : await busqueda.buscarAhora(texto);
     if (items?.length !== 1 || !elegible(items[0])) return;
     const articulo = articulos.find((a) => a.id === items[0].id);
@@ -186,6 +191,13 @@ export default function BuscadorArticulo({
           />
         ) : (
           <>
+            {busqueda.corregido && (
+              <AvisoCorregido
+                tecleado={busqueda.consulta ?? q}
+                corregido={busqueda.corregido}
+                onUsar={setQ}
+              />
+            )}
             {/* Alto acotado y scroll propio: la lista no tiene que empujar el
                 buscador fuera de la vista. */}
             <ul className="max-h-[52vh] divide-y divide-borde-soft overflow-y-auto rounded-xl border border-borde">

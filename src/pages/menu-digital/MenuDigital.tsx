@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import TelevisoresDelLocal from "../tickets/TelevisoresDelLocal";
+import { SelectorLocalTickets, useLocalDeTickets } from "../tickets/useLocalDeTickets";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Boton, Confirmar, ErrorMsg } from "../../components/ui";
@@ -60,22 +61,54 @@ export default function MenuDigital() {
   const [datos, setDatos] = useState<EditorMenu | null>(null);
   const [error, setError] = useState("");
   const [llave, setLlave] = useState<string | null>(null);
+  // De qué local se ven los precios y la disponibilidad, y de cuál es el enlace de
+  // la TV. Sólo la organización con 2+ locales elige (arranca en el principal, que
+  // es el que el backend ya le daba); con un local, o atado a uno, `sucursalId` es
+  // null y la pantalla es la de siempre.
+  const local = useLocalDeTickets();
+  const sucursalId = local.sucursalId;
 
+  // Solo vale la respuesta del último pedido: al cambiar de local de prisa, la
+  // lenta de antes no pisa a la nueva.
+  const pedido = useRef(0);
   const cargar = useCallback(() => {
     setError("");
+    // Lo que había es de OTRO local (o falló): se va a "Cargando el menú…" en
+    // vez de seguir mostrando, con el aviso del local nuevo, los precios del
+    // anterior. Si había un cambio de TV sin guardar, el desmontaje lo manda.
+    setDatos(null);
+    const mio = ++pedido.current;
     apiMenuDigital
-      .editor()
-      .then(setDatos)
-      .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cargar el menú"));
+      .editor(sucursalId)
+      .then((d) => {
+        if (mio === pedido.current) setDatos(d);
+      })
+      .catch((e) => {
+        if (mio === pedido.current) setError(e instanceof Error ? e.message : "No se pudo cargar el menú");
+      });
+  }, [sucursalId]);
+  useEffect(cargar, [cargar]);
+  useEffect(() => {
     apiTickets
       .llave()
       .then((r) => setLlave(r.llave))
       .catch(() => undefined);
   }, []);
-  useEffect(cargar, [cargar]);
 
+  // La respuesta de un PATCH es el plato resuelto en el local que se está mirando
+  // (`sucursalId` viaja con el cambio); aun así se quedan el precio y la
+  // disponibilidad que ya estaban (§10.5) y se toma lo demás.
   const cambiarPlato = useCallback((p: PlatoMenu) => {
-    setDatos((d) => (d ? { ...d, platos: d.platos.map((x) => (x.id === p.id ? p : x)) } : d));
+    setDatos((d) =>
+      d
+        ? {
+            ...d,
+            platos: d.platos.map((x) =>
+              x.id === p.id ? { ...p, precio: x.precio, ...(x.disponible !== undefined ? { disponible: x.disponible } : {}) } : x,
+            ),
+          }
+        : d,
+    );
   }, []);
 
   return (
@@ -88,15 +121,25 @@ export default function MenuDigital() {
               Lo que se ve en los televisores del local. Los cambios se publican solos.
             </p>
           </div>
-          <PestanasTickets<Pestana>
-            opciones={[
-              { valor: "pantallas", texto: "Pantallas", icono: "pantalla" },
-              { valor: "platos", texto: "Platos y fotos", icono: "camara" },
-            ]}
-            valor={pestana}
-            onCambiar={setPestana}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {local.elegir && (
+              <SelectorLocalTickets locales={local.locales} valor={local.sucursalId} onChange={local.setLocal} />
+            )}
+            <PestanasTickets<Pestana>
+              opciones={[
+                { valor: "pantallas", texto: "Pantallas", icono: "pantalla" },
+                { valor: "platos", texto: "Platos y fotos", icono: "camara" },
+              ]}
+              valor={pestana}
+              onCambiar={setPestana}
+            />
+          </div>
         </header>
+        {local.elegir && local.nombre && (
+          <p role="note" className="mt-3 text-[13px] text-texto-3">
+            Los precios y la disponibilidad son los de {local.nombre}. Marcar un plato como agotado vale sólo para {local.nombre}: en los demás locales sigue a la venta.
+          </p>
+        )}
         {error && (
           <div className="mt-4">
             <ErrorMsg onReintentar={cargar}>{error}</ErrorMsg>
@@ -108,10 +151,18 @@ export default function MenuDigital() {
             datos={datos}
             llave={llave}
             onLlave={setLlave}
+            sucursalId={sucursalId}
             onPantallas={(pantallas) => setDatos((d) => (d ? { ...d, pantallas } : d))}
           />
         )}
-        {datos && pestana === "platos" && <PestanaPlatos datos={datos} onPlato={cambiarPlato} />}
+        {datos && pestana === "platos" && (
+          <PestanaPlatos
+            datos={datos}
+            onPlato={cambiarPlato}
+            sucursalId={sucursalId}
+            nombreLocal={local.elegir ? local.nombre : null}
+          />
+        )}
       </div>
     </div>
   );
@@ -166,11 +217,14 @@ function PestanaPantallas({
   datos,
   llave,
   onLlave,
+  sucursalId,
   onPantallas,
 }: {
   datos: EditorMenu;
   llave: string | null;
   onLlave: (l: string) => void;
+  /** El local del enlace de la TV (null = no se agrega al enlace). */
+  sucursalId: number | null;
   onPantallas: (p: PantallaMenu[]) => void;
 }) {
   const navigate = useNavigate();
@@ -313,6 +367,7 @@ function PestanaPantallas({
           datos={datos}
           llave={llave}
           onLlave={onLlave}
+          sucursalId={sucursalId}
           guardado={guardado}
           onCambiar={cambiar}
           onEliminar={() => setBorrar(true)}
@@ -369,6 +424,7 @@ function EditorPantalla({
   datos,
   llave,
   onLlave,
+  sucursalId,
   guardado,
   onCambiar,
   onEliminar,
@@ -377,11 +433,14 @@ function EditorPantalla({
   datos: EditorMenu;
   llave: string | null;
   onLlave: (l: string) => void;
+  sucursalId: number | null;
   guardado: "" | "guardando" | "guardado" | "error";
   onCambiar: (parcial: Partial<PantallaMenu>) => void;
   onEliminar: () => void;
 }) {
   const { negocio } = useAuth();
+  // La TV pública muestra el local que dice el enlace (`?sucursal=`); sin él, el
+  // principal. El local lo elige el encabezado de la pantalla, el mismo del editor.
   const vis = useMemo(() => platosDeLaPantalla(p, datos.platos, datos.categorias), [p, datos]);
   const paginas = useMemo(() => paginar(p, vis.platos, vis.categorias), [p, vis]);
   const [pagina, setPagina] = useState<number | "auto">("auto");
@@ -424,7 +483,8 @@ function EditorPantalla({
     onLlave(r.llave);
     return r.llave;
   };
-  const enlace = (l: string) => `${window.location.origin}/tv/menu/${l}/${p.numero}`;
+  const enlace = (l: string) =>
+    `${window.location.origin}/tv/menu/${l}/${p.numero}${sucursalId != null ? `?sucursal=${sucursalId}` : ""}`;
   const abrir = async () => {
     try {
       window.open(enlace(await asegurarLlave()), "_blank", "noopener");
@@ -1155,7 +1215,19 @@ function ControlesAnimacion({
 
 type Filtro = "todos" | "sinFoto" | "agotados" | number;
 
-function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: PlatoMenu) => void }) {
+function PestanaPlatos({
+  datos,
+  onPlato,
+  sucursalId,
+  nombreLocal,
+}: {
+  datos: EditorMenu;
+  onPlato: (p: PlatoMenu) => void;
+  /** El local elegido (sólo la organización con 2+ locales); null = el de quien edita. */
+  sucursalId: number | null;
+  /** Se pasa sólo cuando hay 2+ locales y se elige: con uno solo, nada cambia. */
+  nombreLocal: string | null;
+}) {
   const navigate = useNavigate();
   const [buscar, setBuscar] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -1181,7 +1253,7 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
   const editar = async (p: PlatoMenu, cambios: Parameters<typeof apiMenuDigital.editarPlato>[1]) => {
     setError("");
     try {
-      onPlato(await apiMenuDigital.editarPlato(p.id, cambios));
+      onPlato(await apiMenuDigital.editarPlato(p.id, cambios, sucursalId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
     }
@@ -1230,7 +1302,15 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
       <ul className="card divide-y divide-borde">
         {lista.length === 0 && <li className="p-8 text-center text-sm text-texto-3">No hay platos con ese filtro.</li>}
         {lista.map((p) => (
-          <FilaPlato key={p.id} plato={p} onEditar={(c) => void editar(p, c)} onPlato={onPlato} onError={setError} />
+          <FilaPlato
+            key={p.id}
+            plato={p}
+            sucursalId={sucursalId}
+            nombreLocal={nombreLocal}
+            onEditar={(c) => void editar(p, c)}
+            onPlato={onPlato}
+            onError={setError}
+          />
         ))}
       </ul>
     </div>
@@ -1239,11 +1319,15 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
 
 function FilaPlato({
   plato: p,
+  sucursalId,
+  nombreLocal,
   onEditar,
   onPlato,
   onError,
 }: {
   plato: PlatoMenu;
+  sucursalId: number | null;
+  nombreLocal: string | null;
   onEditar: (cambios: Parameters<typeof apiMenuDigital.editarPlato>[1]) => void;
   onPlato: (p: PlatoMenu) => void;
   onError: (e: string) => void;
@@ -1263,7 +1347,7 @@ function FilaPlato({
     onError("");
     try {
       const preparada = await prepararFotoPlato(f, sacarFondo);
-      onPlato(await apiMenuDigital.subirFoto(p.id, preparada.blob));
+      onPlato(await apiMenuDigital.subirFoto(p.id, preparada.blob, sucursalId));
       setUltimo(f);
       setFondo(preparada.fondoQuitado ? "quitado" : sacarFondo ? null : "con-fondo");
     } catch (e) {
@@ -1275,7 +1359,7 @@ function FilaPlato({
   };
   const quitar = async () => {
     try {
-      onPlato(await apiMenuDigital.quitarFoto(p.id));
+      onPlato(await apiMenuDigital.quitarFoto(p.id, sucursalId));
       setUltimo(null);
       setFondo(null);
     } catch (e) {
@@ -1384,7 +1468,7 @@ function FilaPlato({
         <button
           type="button"
           aria-pressed={p.agotadoHoy}
-          title="Se tacha en las TVs hasta mañana"
+          title={nombreLocal ? `Se tacha en las TVs de ${nombreLocal} hasta mañana` : "Se tacha en las TVs hasta mañana"}
           onClick={() => onEditar({ agotado: !p.agotadoHoy })}
           className={`shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${
             p.agotadoHoy ? "bg-danger-bg text-danger-text" : p.agotado ? "bg-muted text-texto-3" : "text-texto-3 hover:bg-muted"

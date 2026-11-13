@@ -28,6 +28,13 @@ describe("mesas por cobrar (web)", () => {
     expect(screen.queryByText(/Ninguna mesa pidió la cuenta/)).not.toBeInTheDocument();
   });
 
+  it("pide las cuentas del local de la caja", async () => {
+    mesasPorCobrar.mockResolvedValue([]);
+    render(<MesasPorCobrar sucursalId={4} onAtras={() => {}} onCobrar={() => {}} />);
+    await screen.findByText("Ninguna mesa pidió la cuenta.");
+    expect(mesasPorCobrar).toHaveBeenCalledWith(4);
+  });
+
   it("con la respuesta vacía sí lo dice", async () => {
     mesasPorCobrar.mockResolvedValue([]);
     render(<MesasPorCobrar onAtras={() => {}} onCobrar={() => {}} />);

@@ -108,9 +108,26 @@ export function PieDelRecibo({ r }: { r: AjustesRecibo | null }) {
   );
 }
 
-export function CabeceraNegocio({ r, logo, nombre }: { r: AjustesRecibo; logo: string | null; nombre: string }) {
+export function CabeceraNegocio({
+  r,
+  logo,
+  nombre,
+  sede,
+}: {
+  r: AjustesRecibo;
+  logo: string | null;
+  nombre: string;
+  /**
+   * El local de la venta, sólo con 2+ sucursales: su dirección y su teléfono
+   * (los de su ficha) reemplazan a los del negocio, que son los de uno solo.
+   * Sin él, la cabecera de siempre.
+   */
+  sede?: { direccion?: string | null; telefono?: string | null } | null;
+}) {
   const conLogo = r.logo && !!logo;
-  const contacto = [r.direccion, r.telefono ? `Tel. ${r.telefono}` : ""].filter(Boolean).join(" · ");
+  const direccion = sede?.direccion?.trim() || r.direccion;
+  const telefono = sede?.telefono?.trim() || r.telefono;
+  const contacto = [direccion, telefono ? `Tel. ${telefono}` : ""].filter(Boolean).join(" · ");
   return (
     <header className="pb-2 text-center">
       {conLogo && (

@@ -3,6 +3,7 @@ import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtMoney, fmtNum, isoDia } from "../../lib/format";
+import { normalizar } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import type { ItemSugerencia } from "../../types";
@@ -54,6 +55,13 @@ export default function SugerenciaCompraPagina({ embebido }: { embebido?: { sucu
   const [vista, setVista] = useState<(typeof VISTAS)[number][0]>("urgencia");
   const suc = useSucursales();
   const sucursalId = embebido ? embebido.sucursalId : suc.elegir ? suc.sucursalId : null;
+  // De qué local es el pedido, para la planilla: el elegido, el propio (asignado)
+  // o "todas". Sólo con 2+ locales; con uno solo la planilla queda como siempre.
+  const sucursalDelPedido = suc.hayVarias
+    ? (suc.sucursales.find((s) => s.id === sucursalId)?.nombre ??
+      suc.miSede ??
+      (sucursalId == null ? suc.todas : null))
+    : null;
 
   const sugerencia = useApi(
     () =>
@@ -84,13 +92,16 @@ export default function SugerenciaCompraPagina({ embebido }: { embebido?: { sucu
     });
   }
 
-  const subtitulo = `Qué pedir para que alcance ${etiqueta(COBERTURA, cobertura)}, según lo vendido en los últimos ${dias} días.`;
+  const subtitulo =
+    `Qué pedir para que alcance ${etiqueta(COBERTURA, cobertura)}, según lo vendido en los últimos ${dias} días.` +
+    // La sede del usuario asignado (sólo con 2+ locales): sin selector, apenas el nombre.
+    (suc.miSede ? ` Sede: ${suc.miSede}.` : "");
   const exportar = (
     <Boton
       variante="soft"
       icono="download"
       disabled={totales.articulos === 0}
-      onClick={() => bajarCsv(items, ajustes, Number(dias))}
+      onClick={() => bajarCsv(items, ajustes, Number(dias), sucursalDelPedido)}
     >
       Exportar a Excel
     </Boton>
@@ -422,8 +433,15 @@ function celda(v: string | number): string {
 }
 
 /** El pedido como planilla, por laboratorio, con lo que se ajustó a mano. */
-function bajarCsv(items: ItemSugerencia[], ajustes: ReadonlyMap<number, number>, dias: number) {
+function bajarCsv(
+  items: ItemSugerencia[],
+  ajustes: ReadonlyMap<number, number>,
+  dias: number,
+  /** De qué local es el pedido; null = un solo local, la planilla no lo nombra. */
+  sucursal: string | null,
+) {
   const columnas = [
+    ...(sucursal ? ["Sucursal"] : []),
     "Laboratorio",
     "Medicamento",
     "Droga",
@@ -443,6 +461,7 @@ function bajarCsv(items: ItemSugerencia[], ajustes: ReadonlyMap<number, number>,
       .map((i) => {
         const pedir = cantidadPedida(i, ajustes);
         return [
+          ...(sucursal ? [sucursal] : []),
           g.laboratorio === SIN_LABORATORIO ? "" : g.laboratorio,
           i.nombre,
           [i.principioActivo, i.concentracion].filter(Boolean).join(" "),
@@ -468,7 +487,11 @@ function bajarCsv(items: ItemSugerencia[], ajustes: ReadonlyMap<number, number>,
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement("a");
   enlace.href = url;
-  enlace.download = `pedido-sugerido-${isoDia(new Date())}.csv`;
+  // Con 2+ locales el archivo dice de cuál es: dos pedidos del mismo día no se pisan.
+  const deCual = sucursal
+    ? `-${normalizar(sucursal).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`
+    : "";
+  enlace.download = `pedido-sugerido${deCual}-${isoDia(new Date())}.csv`;
   enlace.click();
   URL.revokeObjectURL(url);
 }

@@ -53,17 +53,20 @@ export default function FormTransferencia() {
   const { id } = useParams();
   const movId = id ? Number(id) : null;
   const { state } = useLocation();
-  const { incluye, usuario } = useAuth();
-  // El extra "Aprobar movimientos" (doble control): quien carga sólo guarda y
-  // aprueba otra persona desde Movimientos, igual que en Ingreso y Salida.
-  const dobleControl = incluye("aprobacion_inventario");
+  const { usuario } = useAuth();
   /**
    * "Guardar y aprobar" sólo para quien puede aprobar una transferencia
    * (`inventario.aprobar_transferencias`, 16-oct). Sin el permiso, el botón
    * guardaba y el servidor rechazaba la aprobación: quedaba pendiente con un
    * aviso de error por algo que no era un error.
+   *
+   * El doble control (`aprobacion_inventario`) no entra en la cuenta: una
+   * transferencia pide SIEMPRE su propio permiso, con o sin el extra
+   * (`puedeAprobar` del backend). Hasta el 12-nov el extra escondía el botón
+   * también a quien tiene ese permiso, que tenía que ir a Movimientos a
+   * aprobar lo que acababa de cargar.
    */
-  const soloGuardar = dobleControl || !ofreceAprobarMovimiento(usuario, "TRANSFERENCIA");
+  const soloGuardar = !ofreceAprobarMovimiento(usuario, "TRANSFERENCIA");
   /** El usuario de una sucursal sólo manda desde la suya: el servidor no le deja otra. */
   const miSucursal = usuario?.sucursalId ?? null;
 
@@ -78,7 +81,14 @@ export default function FormTransferencia() {
   const [guardando, setGuardando] = useState(false);
   const [confirmandoAprobar, setConfirmandoAprobar] = useState(false);
 
-  const almacenes = useApi(() => api.getAlmacenes(), []);
+  // El encargado de un local ya no recibe de `/almacenes` los otros locales
+  // (traen la valorización de su inventario y no son suyos), pero el destino de
+  // una transferencia es justamente otro: para él los nombres salen de
+  // `/almacenes/mias`, que no lleva números. La organización sigue como antes.
+  const almacenes = useApi(
+    () => (miSucursal != null ? api.getSucursales() : api.getAlmacenes()),
+    [miSucursal],
+  );
   const mov = useApi(
     () => (movId ? api.getMovimiento(movId) : Promise.resolve(null)),
     [movId],
@@ -522,11 +532,9 @@ export default function FormTransferencia() {
             {fmtCantidad(unidades)} u.
           </p>
           <p className="mt-0.5 text-[12px] text-texto-3">
-            {dobleControl
-              ? "Queda pendiente: la mercadería se mueve cuando alguien la aprueba en Movimientos."
-              : soloGuardar
-                ? "Queda pendiente: la mercadería se mueve cuando la aprueba alguien con el permiso «Aprobar transferencias»."
-                : "Guardar la deja pendiente: la mercadería se mueve recién al aprobarla."}
+            {soloGuardar
+              ? "Queda pendiente: la mercadería se mueve cuando la aprueba alguien con el permiso «Aprobar transferencias»."
+              : "Guardar la deja pendiente: la mercadería se mueve recién al aprobarla."}
           </p>
         </div>
         {/* En el celular: Cancelar y Guardar se reparten la fila, aprobar abajo entero. */}

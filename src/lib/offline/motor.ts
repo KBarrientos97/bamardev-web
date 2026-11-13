@@ -6,7 +6,8 @@ import { useAuth } from "../../store/AuthContext";
 import { useCupo } from "../../store/useCupo";
 import type { Venta } from "../../types";
 import { cargarCola, porSubir, sincronizar, type ResultadoSync } from "./cola";
-import { claveCatalogo, conCopia } from "./copias";
+import { claveCaja, claveCatalogo, conCopia } from "./copias";
+import { sedeDeCajaActual } from "./sesionLocal";
 import { ventaSinInternet } from "./modo";
 
 /**
@@ -39,7 +40,7 @@ export function sincronizarAhora(): Promise<ResultadoSync> {
  * Cada pedido por su lado: si uno falla, los demás se guardan igual.
  */
 async function precargar(opts: { catalogo: boolean; fiado: boolean }) {
-  const caja = await conCopia("caja", () => api.cajaActual()).catch(() => null);
+  const caja = await conCopia(claveCaja(sedeDeCajaActual()), () => api.cajaActual()).catch(() => null);
   const almacen = caja?.caja?.almacenId ?? null;
   await Promise.allSettled([
     conCopia("formas_pago", () => api.getFormasPago()),

@@ -16,12 +16,14 @@ const sesion = vi.hoisted(() => ({
   conPin: true,
   /** El rubro del negocio: en el instituto la sucursal se llama «sede». */
   rubro: undefined as string | undefined,
+  /** Cuántas sucursales tiene el negocio (PLAN-SUCURSAL-TOTAL): con 1 no se ve nada de sede. */
+  locales: 1,
 }));
 
 vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: sesion.actor,
-    negocio: { id: 1, nombre: "Pollos", tipoNegocio: "RESTAURANTE" },
+    negocio: { id: 1, nombre: "Pollos", tipoNegocio: "RESTAURANTE", sucursalesActivas: sesion.locales },
     rubro: sesion.rubro,
     incluye: (c: string) => c !== "autorizacion_pin" || sesion.conPin,
     puede: () => true,
@@ -42,6 +44,12 @@ vi.mock("../lib/api", () => ({
   api: {
     getUsuarios: vi.fn(),
     getAlmacenes: vi.fn(async () => []),
+    getSucursales: vi.fn(async () =>
+      [
+        { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+        { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+      ].slice(0, sesion.locales),
+    ),
     actualizarUsuario: vi.fn(),
     crearUsuario: vi.fn(),
     quitarPin: vi.fn(async () => ({ mensaje: "PIN quitado" })),
@@ -151,6 +159,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sesion.actor = usuarioDe("ADMIN", { id: 1, username: "omar" }, { extra: ["roles.gestionar", "usuarios.asignar_pin", "sucursales.todas"] });
   sesion.conPin = true;
+  sesion.locales = 1;
   vi.mocked(apiRoles.asignables).mockResolvedValue([ENCARGADO, CAJERO, MESERO, REPARTIDOR]);
 });
 
@@ -735,5 +744,54 @@ describe("el límite de usuarios del plan", () => {
       fireEvent.click(nuevo());
     });
     expect(screen.getByText("Nuevo usuario")).toBeInTheDocument();
+  });
+});
+
+describe("la sede de cada cuenta (PLAN-SUCURSAL-TOTAL §1)", () => {
+  const EN_CENTRAL = de(CAJERO, { id: 8, nombre: "Rosa", usuario: "rosa", sucursalId: 1, sucursal: "Central" });
+  const EN_NORTE = de(CAJERO, { id: 9, nombre: "Saúl", usuario: "saul", sucursalId: 2, sucursal: "Norte" });
+
+  it("con 2 sedes entre las cuentas, cada tarjeta dice la suya y la organización filtra por sede", async () => {
+    sesion.locales = 2;
+    await montar([OMAR, EN_CENTRAL, EN_NORTE]);
+    expect(within(screen.getByRole("button", { name: /@rosa\b/ })).getByText("Central")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /@saul\b/ })).getByText("Norte")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Norte" }));
+    expect(screen.getByRole("button", { name: /@saul\b/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /@rosa\b/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Todas las sucursales" }));
+    expect(screen.getByRole("button", { name: /@rosa\b/ })).toBeInTheDocument();
+  });
+
+  it("al filtrar por una sede siguen las cuentas de toda la organización (sin sede), no sólo las de esa sede", async () => {
+    sesion.locales = 2;
+    await montar([OMAR, EN_CENTRAL, EN_NORTE]);
+    fireEvent.click(screen.getByRole("button", { name: "Norte" }));
+    expect(screen.getByRole("button", { name: /@saul\b/ })).toBeInTheDocument();
+    // El dueño no es de Norte ni de Central: es de todas, y no desaparece.
+    expect(screen.getByRole("button", { name: /@omar\b/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /@rosa\b/ })).not.toBeInTheDocument();
+  });
+
+  it("si todas las cuentas con sede son de la misma, no se repite la sede en cada tarjeta", async () => {
+    sesion.locales = 2;
+    await montar([OMAR, EN_CENTRAL]);
+    expect(within(screen.getByRole("button", { name: /@rosa\b/ })).queryByText("Central")).not.toBeInTheDocument();
+  });
+
+  it("quien está atado a una sede ve la suya en el subtítulo, sin selector ni sede por tarjeta", async () => {
+    sesion.locales = 2;
+    sesion.actor = usuarioDe("SUPERVISOR", { id: 5, username: "elsa", sucursalId: 1, sucursal: "Central" });
+    await montar([EN_CENTRAL, ELSA]);
+    expect(screen.getByText(/cuentas en Central/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Todas las sucursales" })).not.toBeInTheDocument();
+  });
+
+  it("con una sola sucursal no aparece nada de sede", async () => {
+    await montar([OMAR, EN_CENTRAL, EN_NORTE]);
+    expect(screen.queryByRole("button", { name: "Todas las sucursales" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /@rosa\b/ })).queryByText("Central")).not.toBeInTheDocument();
+    expect(screen.getByText(/cuentas en el negocio/)).toBeInTheDocument();
   });
 });

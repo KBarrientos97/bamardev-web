@@ -24,6 +24,9 @@ const auth = vi.hoisted(() => ({
 
 vi.mock("../../../store/AuthContext", () => ({ useAuth: () => auth }));
 
+// Un solo local: el desglose por sucursal no aparece (ver ComisionesSucursal.test.tsx).
+vi.mock("../../../lib/useSucursales", () => ({ useSucursales: () => ({ hayVarias: false }) }));
+
 vi.mock("../../../lib/agenda/apiComisiones", () => ({
   apiComisiones: {
     resumen: vi.fn(),

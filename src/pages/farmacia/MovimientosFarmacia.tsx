@@ -19,6 +19,7 @@ import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney } from "../../lib/format"
 import { contiene } from "../../lib/texto";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type {
   DetalleMovimiento,
@@ -115,7 +116,15 @@ const TONO_ESTADO: Record<EstadoDocumento, "verde" | "amarillo" | "rojo"> = {
  */
 export default function MovimientosFarmacia() {
   const navigate = useNavigate();
-  const movimientos = useApi(() => api.getMovimientos(), []);
+  // Con depósitos: la mercadería entra ahí antes de repartirse. Con 2+ locales
+  // el dueño elige cuál mira (el servidor ya acota la lista); el de un local
+  // ve sólo el suyo y recibe, apenas, su nombre en el subtítulo.
+  const suc = useSucursales({ incluirDepositos: true });
+  // `clave`: al cambiar de local no quedan a la vista (con sus botones de
+  // aprobar) los movimientos del anterior.
+  const movimientos = useApi(() => api.getMovimientos(suc.sucursalId), [suc.sucursalId], {
+    clave: suc.sucursalId,
+  });
 
   const [q, setQ] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
@@ -164,9 +173,11 @@ export default function MovimientosFarmacia() {
           // (el "cargando" ya lo dice la lista).
           !movimientos.datos && movimientos.cargando
             ? "Entradas y salidas de stock"
-            : pendientes
-              ? `${lista.length} registrados · ${pendientes} sin aprobar`
-              : `${lista.length} ${lista.length === 1 ? "registrado" : "registrados"} · entradas y salidas de stock`
+            : (pendientes
+                ? `${lista.length} registrados · ${pendientes} sin aprobar`
+                : `${lista.length} ${lista.length === 1 ? "registrado" : "registrados"} · entradas y salidas de stock`) +
+              // `sedeVista`: el local elegido (organización) o el propio (asignado, 2+ locales).
+              (suc.sedeVista ? ` · ${suc.sedeVista}` : "")
         }
         accion={
           <Boton icono="plus" onClick={() => navigate("/inventario/movimientos/ingreso")}>
@@ -198,6 +209,9 @@ export default function MovimientosFarmacia() {
           />
         </div>
         <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
+        {suc.elegirSucursal && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
       </div>
 
       <ErrorMsg>{errorAccion || movimientos.error}</ErrorMsg>

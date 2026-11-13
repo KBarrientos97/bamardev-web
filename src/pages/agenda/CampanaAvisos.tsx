@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import { guardarVistoHasta, haceCuanto, leerVistoHasta, sinVer } from "../../lib/agenda/avisos";
 import type { AvisoAgenda, Cita, TipoAviso } from "../../lib/agenda/tiposAgenda";
+import { hayVariasEntre } from "../../lib/useSucursales";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { useEsCelular } from "../../lib/agenda/useEsCelular";
 import { useAuth } from "../../store/AuthContext";
@@ -18,11 +19,22 @@ const URGENTE: TipoAviso[] = ["SOLICITUD_ONLINE", "NO_SHOW_SUGERIDO", "COBRO_REV
  * Consulta cada 45 s mientras la pantalla está abierta, como el resto de la
  * agenda. El backend ya filtra: lo que uno hizo no se le avisa a uno, y al
  * profesional sólo lo de sus recursos.
+ *
+ * `sucursalId` (PLAN-SUCURSAL-TOTAL §3, etapa 5): la organización con 2+
+ * locales pasa el que está mirando y la campana avisa sólo de ése. Sin él,
+ * (un solo local, o quien está atado a uno) pide como siempre. Si igual llegan
+ * avisos de 2+ locales, cada uno dice el suyo.
  */
-export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cita) => void }) {
+export default function CampanaAvisos({
+  onAbrirCita,
+  sucursalId = null,
+}: {
+  onAbrirCita: (cita: Cita) => void;
+  sucursalId?: number | null;
+}) {
   const { usuario } = useAuth();
   const [abierta, setAbierta] = useState(false);
-  const [vistoHasta, setVistoHasta] = useState(() => leerVistoHasta(usuario?.id));
+  const [vistoHasta, setVistoHasta] = useState(() => leerVistoHasta(usuario?.id, sucursalId));
   const [error, setError] = useState("");
   const caja = useRef<HTMLDivElement>(null);
   /**
@@ -36,9 +48,17 @@ export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cit
 
   // `Promise.resolve().then` para que un error al armar el pedido sea un
   // rechazo (la campana queda quieta) y no tumbe la pantalla de la agenda.
-  const consulta = useConsultaPeriodica(() => Promise.resolve().then(() => apiAgenda.avisos()), []);
+  const consulta = useConsultaPeriodica(
+    () => Promise.resolve().then(() => (sucursalId != null ? apiAgenda.avisos(undefined, sucursalId) : apiAgenda.avisos())),
+    [sucursalId],
+  );
   const avisos = consulta.datos?.avisos ?? [];
+  // Cambiar de local es otra lista de avisos con su propio "visto hasta".
+  useEffect(() => {
+    setVistoHasta(leerVistoHasta(usuario?.id, sucursalId));
+  }, [usuario?.id, sucursalId]);
   const nuevos = sinVer(avisos, vistoHasta);
+  const conLocal = hayVariasEntre(avisos, (a) => a.sucursalId);
 
   // Afuera del panel, o Escape, lo cierra.
   useEffect(() => {
@@ -65,7 +85,7 @@ export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cit
     // Abrir la campana es verlos: el contador vuelve a cero, y los que
     // lleguen después vuelven a contar.
     if (abrir && consulta.datos) {
-      guardarVistoHasta(usuario?.id, consulta.datos.ahora);
+      guardarVistoHasta(usuario?.id, consulta.datos.ahora, sucursalId);
       setVistoHasta(consulta.datos.ahora);
     }
   }
@@ -130,6 +150,7 @@ export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cit
                         <span className="block text-[11px] text-texto-3">
                           {haceCuanto(a.en)}
                           {a.usuario ? ` · ${a.usuario}` : ""}
+                          {conLocal && a.sucursal ? ` · ${a.sucursal}` : ""}
                         </span>
                       </span>
                     </button>

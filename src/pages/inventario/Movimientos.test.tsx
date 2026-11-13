@@ -19,13 +19,15 @@ const sesion = vi.hoisted(() => ({
   permisos: ["inventario.mover"] as string[],
   // Sin rubro: como una sesión vieja, ve el stock de todo como siempre.
   rubro: undefined as string | undefined,
+  // El local del usuario; null = organización.
+  sucursalId: 1 as number | null,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     // Sin el doble control: guardar aprueba de una, como en los planes de hoy.
     incluye: (c: string) => c !== "aprobacion_inventario",
-    usuario: { sucursalId: 1, permisos: sesion.permisos },
+    usuario: { sucursalId: sesion.sucursalId, sucursal: "Sede propia", permisos: sesion.permisos },
     rubro: sesion.rubro,
   }),
 }));
@@ -105,8 +107,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   sesion.permisos = ["inventario.mover"];
   sesion.rubro = undefined;
+  sesion.sucursalId = 1;
   vi.mocked(api.getMovimientos).mockResolvedValue([movimiento(1)]);
-  vi.mocked(api.getAlmacenes).mockResolvedValue([PRINCIPAL]);
+  vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL]);
   vi.mocked(api.getArticulosMovimiento).mockResolvedValue(ARTICULOS);
 });
 
@@ -557,7 +560,7 @@ describe("Registrar compra: ?nuevo=entrada abre el formulario (28-oct)", () => {
     // El formulario elige el almacén al montarse: abierto con la lista vacía
     // arrancaba en "Elegí uno", y el buscador decía "Elegí primero un almacén…".
     let soltar!: (lista: Almacen[]) => void;
-    vi.mocked(api.getAlmacenes).mockReturnValue(
+    vi.mocked(api.getSucursales).mockReturnValue(
       new Promise<Almacen[]>((r) => {
         soltar = r;
       }),
@@ -754,5 +757,61 @@ describe("Un día se pide entero, no se recorta de los últimos 200 (BUG-insumos
     montar();
     await screen.findByText("MOV-1");
     expect(screen.queryByText("DE-OTRO-DIA")).not.toBeInTheDocument();
+  });
+});
+
+describe("Nuevo movimiento: en qué almacén arranca (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  const DEPOSITO: Almacen = { ...PRINCIPAL, id: 7, nombre: "Almacén central", tipo: "DEPOSITO", esPrincipal: false };
+  const NORTE: Almacen = { ...PRINCIPAL, id: 3, nombre: "Norte", esPrincipal: false };
+  const CERRADA: Almacen = { ...PRINCIPAL, id: 4, nombre: "Cerrada", activo: false, esPrincipal: false };
+
+  it("el de organización arranca en la principal, no en el primero de la lista, y no ve los inactivos", async () => {
+    sesion.sucursalId = null;
+    // El orden del backend es por nombre: el depósito va primero.
+    vi.mocked(api.getSucursales).mockResolvedValue([DEPOSITO, CERRADA, NORTE, PRINCIPAL]);
+    await abrirNuevo();
+    const almacen = screen.getByRole("combobox", { name: "Almacén" });
+    expect(almacen).toHaveValue(String(PRINCIPAL.id));
+    expect(almacen).not.toBeDisabled();
+    const nombres = within(almacen).getAllByRole("option").map((o) => o.textContent);
+    expect(nombres).toEqual(["Elegí uno", "Almacén central", "Norte", "Principal"]);
+  });
+
+  it("el de un local lo tiene fijo en el suyo, sin poder elegir otro", async () => {
+    sesion.sucursalId = 3;
+    vi.mocked(api.getSucursales).mockResolvedValue([DEPOSITO, NORTE, PRINCIPAL]);
+    await abrirNuevo();
+    const almacen = screen.getByRole("combobox", { name: "Almacén" });
+    expect(almacen).toHaveValue("3");
+    expect(almacen).toBeDisabled();
+    expect(within(almacen).getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("lee los locales del listado básico: no pide el de administrar almacenes", async () => {
+    sesion.sucursalId = null;
+    await abrirNuevo();
+    expect(api.getSucursales).toHaveBeenCalled();
+    expect(api.getAlmacenes).not.toHaveBeenCalled();
+  });
+});
+
+describe("una transferencia se lee de dónde a dónde", () => {
+  it("la tarjeta dice origen → destino", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(2, {
+        tipo: "TRANSFERENCIA",
+        comprobante: "TR-2",
+        almacenDestino: { id: 3, nombre: "Norte" },
+      }),
+    ]);
+    montar();
+    await screen.findByText("TR-2");
+    expect(screen.getByText("Principal → Norte")).toBeInTheDocument();
+  });
+
+  it("los demás movimientos siguen con su almacén a secas", async () => {
+    montar();
+    await screen.findByText("MOV-1");
+    expect(screen.queryByText(/→/)).not.toBeInTheDocument();
   });
 });

@@ -33,7 +33,18 @@ const enviar = <T>(ruta: string, method: "POST" | "PATCH", cuerpo: object) =>
 
 export const apiTelevisores = {
   listar: () => request<{ televisores: TelevisorLocal[]; opciones: OpcionTv[] }>("/pantallas/televisores"),
-  conectar: (datos: { codigo: string; muestra: MuestraTv; menu?: number; nombre?: string }) =>
+  /**
+   * `sucursalId` (PLAN-SUCURSAL-TOTAL §10.3): el local donde queda la TV. Sólo lo
+   * manda la organización con 2+ locales; sin él, el backend la deja en el local
+   * de quien la conecta (o en el principal).
+   */
+  conectar: (datos: {
+    codigo: string;
+    muestra: MuestraTv;
+    menu?: number;
+    nombre?: string;
+    sucursalId?: number;
+  }) =>
     enviar<TelevisorLocal>("/pantallas/televisores", "POST", datos),
   cambiar: (id: number, datos: { muestra?: MuestraTv; menu?: number; nombre?: string }) =>
     enviar<TelevisorLocal>(`/pantallas/televisores/${id}`, "PATCH", datos),

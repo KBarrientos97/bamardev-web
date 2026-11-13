@@ -2,9 +2,9 @@ import { esCero } from "../../../lib/dinero";
 import { fmtMoney, fmtNum } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { apiReportes, type DescuentosApi } from "../api";
-import { useExportar, useReporte } from "../contexto";
+import { useColumnaSucursal, useExportar, useReporte } from "../contexto";
 import { bsResta, pct, plural, variacion } from "../formato";
-import { Cargador, Delta, FilaLista, KpiR, Nota, Tarjeta } from "../ui";
+import { Cargador, Chip, Delta, FilaLista, KpiR, Nota, Tarjeta } from "../ui";
 import {
   hojasDescuentos,
   porCajero,
@@ -38,7 +38,9 @@ export default function Descuentos() {
     [rangoAnterior.desde, rangoAnterior.hasta, rangoAnterior.sucursalId],
   );
   const d = datos.datos?.[0] ?? null;
-  useExportar("descuentos-y-anulaciones", d && !sinDescuentos(d) ? () => hojasDescuentos(d) : null);
+  // De qué local es cada anulación: sólo la organización y sólo si son de 2+ locales.
+  const { conLocal, rotulo } = useColumnaSucursal(d?.ultimasAnulaciones, (a) => a.sucursal?.id);
+  useExportar("descuentos-y-anulaciones", d && !sinDescuentos(d) ? () => hojasDescuentos(d, conLocal, rotulo) : null);
 
   return (
     <Cargador
@@ -89,7 +91,7 @@ export default function Descuentos() {
             </div>
             <div className="grid items-start gap-4 lg:grid-cols-2">
               <PorCajero filas={porCajero(x)} />
-              <UltimasAnulaciones lista={x.ultimasAnulaciones} total={anuladas} />
+              <UltimasAnulaciones lista={x.ultimasAnulaciones} total={anuladas} conLocal={conLocal} />
             </div>
             <Nota>
               Las anulaciones cuentan por el día de la venta y van a nombre de quien vendió, no de quien anuló. No hay
@@ -151,7 +153,7 @@ function Celda({ monto, cantidad, uno, varios }: { monto: number; cantidad: numb
   );
 }
 
-function UltimasAnulaciones({ lista, total }: { lista: DescuentosApi["ultimasAnulaciones"]; total: number }) {
+function UltimasAnulaciones({ lista, total, conLocal }: { lista: DescuentosApi["ultimasAnulaciones"]; total: number; conLocal: boolean }) {
   // El backend manda las 20 más nuevas: si hubo más, se dice de cuántas.
   const subtitulo =
     lista.length === 0
@@ -171,6 +173,7 @@ function UltimasAnulaciones({ lista, total }: { lista: DescuentosApi["ultimasAnu
               icono="x"
               tono="rosa"
               titulo={`Anulación · ${a.idVenta}`}
+              chip={conLocal && a.sucursal ? <Chip>{a.sucursal.nombre}</Chip> : undefined}
               linea={[a.cajero, a.fecha, a.motivo].filter(Boolean).join(" · ")}
               // Las anteriores a la trazabilidad (1-oct-2026) no guardan quién
               // dio el visto bueno: se dice, en vez de dejar el hueco.

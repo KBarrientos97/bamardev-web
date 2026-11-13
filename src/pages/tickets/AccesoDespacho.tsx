@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { AvisoOk, Badge, Boton, Campo, Confirmar, ErrorMsg, Input, InputPassword, Modal, Select, useAviso } from "../../components/ui";
-import { api } from "../../lib/api";
 import { apiAccesosDespacho, type AccesoDespacho as Acceso } from "../../lib/apiAccesosDespacho";
 import { tiempoRelativo } from "../../lib/format";
 import { svgDeQr, textoEnlace } from "../../lib/pagina/qr";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import { Tarjeta } from "./piezas";
 
@@ -24,9 +24,13 @@ import { Tarjeta } from "./piezas";
  * se escribe la contraseña.
  */
 export default function AccesoDespacho() {
-  const { usuario: actor, negocio } = useAuth();
+  const { negocio } = useAuth();
   const accesos = useApi(() => apiAccesosDespacho.listar(), []);
-  const almacenes = useApi(() => api.getAlmacenes(), []);
+  // La regla de sucursal vive en el hook (PLAN-SUCURSAL-TOTAL §1): se pregunta
+  // por local sólo a la organización con 2+ sucursales (y respetando la regla 4:
+  // sin Varios almacenes el negocio es de un local). Quien es de un local ve y
+  // crea sólo el suyo, sin preguntar: el servidor se lo fuerza.
+  const suc = useSucursales();
   const [creando, setCreando] = useState(false);
   const [cambiandoClave, setCambiandoClave] = useState<Acceso | null>(null);
   const [apagando, setApagando] = useState<Acceso | null>(null);
@@ -35,16 +39,14 @@ export default function AccesoDespacho() {
   const [aviso, setAviso] = useAviso();
 
   const lista = accesos.datos ?? [];
-  // Sólo las sucursales activas: un depósito no despacha pedidos.
-  const locales = (almacenes.datos ?? []).filter((a) => a.tipo !== "DEPOSITO" && a.activo);
+  // Sólo las sucursales activas (el hook no trae depósitos: no despachan pedidos).
+  const variosLocales = suc.elegir;
+  const locales = variosLocales ? suc.sucursales : [];
   const conAcceso = new Set(lista.map((a) => a.sucursalId));
-  // Quien es de un local lo crea sólo para el suyo (el servidor igual lo fuerza).
-  const sinAcceso = locales.filter(
-    (l) => !conAcceso.has(l.id) && (actor?.sucursalId == null || l.id === actor.sucursalId),
-  );
-  // Sin la lista de locales (todavía cargando, o un error), uno solo.
+  const sinAcceso = locales.filter((l) => !conAcceso.has(l.id));
+  // Sin la lista de locales (un solo local, quien es de uno, o todavía
+  // cargando), uno solo.
   const puedeCrear = !accesos.cargando && (locales.length ? sinAcceso.length > 0 : lista.length === 0);
-  const variosLocales = locales.length > 1;
 
   async function cambiarEstado(a: Acceso, activo: boolean) {
     setError("");

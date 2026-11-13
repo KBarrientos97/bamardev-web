@@ -253,7 +253,7 @@ describe("Supervisión del local: lo que ve el dueño", () => {
     expect(kpi("Pedidos en camino")).not.toHaveTextContent(/Bs\s1,00/);
     // Descuentos en cero no se muestra: un "Bs 0,00" ahí se lee como un dato.
     expect(screen.queryByText("Descuentos")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Turno que estás viendo" })).toHaveDisplayValue(/Turno en curso · Rosa Quispe/);
+    expect(screen.getByRole("button", { name: /^Turno que estás viendo/ })).toHaveTextContent(/Turno en curso · Rosa Quispe/);
   });
 
   it("sin pedidos en camino ni fiado, esos números no aparecen", async () => {

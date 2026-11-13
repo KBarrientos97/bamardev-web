@@ -9,6 +9,7 @@ import type { CitaHistorial, ClienteFicha, ClienteFichaDetalle } from "../../lib
 import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
+import { hayVariasEntre } from "../../lib/useSucursales";
 import { FichaTecnicaCliente } from "../belleza/ExtrasAgenda";
 import { BadgeEstado, Rotulo } from "./piezas";
 import FichaSpa from "./FichaSpa";
@@ -319,6 +320,9 @@ function Dato({
 }
 
 function HistorialCitas({ citas }: { citas: CitaHistorial[] }) {
+  // El local de cada cita sólo si las de esta ficha son de más de uno
+  // (PLAN-SUCURSAL-TOTAL §1): con un solo local, repetirlo en cada fila es ruido.
+  const variosLocales = hayVariasEntre(citas, (c) => c.sucursalId);
   return (
     <section className="space-y-2">
       <Rotulo>Citas</Rotulo>
@@ -331,7 +335,7 @@ function HistorialCitas({ citas }: { citas: CitaHistorial[] }) {
               <div className="flex items-center gap-2">
                 <p className="min-w-0 flex-1 text-[13px] font-semibold text-texto">
                   {c.inicio ? `${fmtFecha(c.inicio)} · ${horaNegocio(c.inicio)}` : "En la cola"}
-                  <span className="font-normal text-texto-3"> · {c.sucursal}</span>
+                  {variosLocales && <span className="font-normal text-texto-3"> · {c.sucursal}</span>}
                 </p>
                 <BadgeEstado estado={c.estado} />
               </div>

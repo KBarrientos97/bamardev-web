@@ -8,7 +8,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * el tope de ventas.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string, soloAgenda: false }));
+const sesion = vi.hoisted(() => ({
+  rubro: "FARMACIA" as string,
+  soloAgenda: false,
+  /** Sucursales activas que trae la sesión (el login); sin dato = sesión vieja. */
+  activas: undefined as number | undefined,
+  /** Un administrador de la organización (sin sede) en vez del asignado a una. */
+  organizacion: false,
+}));
 
 vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
@@ -28,8 +35,10 @@ vi.mock("../../store/AuthContext", async () => {
             rubro: sesion.rubro,
             incluye: () => true,
             puede: (s: string) => !["reportes_billar", "reportes_agenda"].includes(s),
-            usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
-            negocio: { id: 1, nombre: "Prueba", features: [] },
+            usuario: sesion.organizacion
+              ? { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null }
+              : { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917, sucursal: "Sucursal Norte" },
+            negocio: { id: 1, nombre: "Prueba", features: sesion.organizacion ? ["multi_almacen"] : [], sucursalesActivas: sesion.activas },
           },
   };
 });
@@ -74,6 +83,8 @@ const enMenu = (titulo: string) =>
 beforeEach(() => {
   sesion.rubro = "FARMACIA";
   sesion.soloAgenda = false;
+  sesion.activas = undefined;
+  sesion.organizacion = false;
   sessionStorage.clear();
   vi.mocked(api.reporte).mockImplementation(() => new Promise(() => {}));
 });
@@ -98,6 +109,86 @@ describe("cada rubro ve sus reportes en el menú", () => {
   it("un reporte que este usuario no ve (un link viejo) vuelve al resumen", async () => {
     sesion.rubro = "RESTAURANTE";
     await montar("/reportes/mermas");
+    expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
+  });
+});
+
+describe("el usuario asignado a una sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
+  it("con 2+ sucursales el subtítulo lleva el nombre de su sede, sin selector", async () => {
+    sesion.activas = 2;
+    await montar();
+    expect(screen.getByText(/Análisis del negocio · Sucursal Norte/)).toBeInTheDocument();
+    expect(screen.queryByText("Todas")).not.toBeInTheDocument();
+  });
+
+  it("con una sola sucursal (o una sesión vieja) no dice nada", async () => {
+    sesion.activas = 1;
+    await montar();
+    expect(screen.queryByText(/Sucursal Norte/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Comparar sucursales (PLAN-SUCURSAL-TOTAL §3 etapa 6)", () => {
+  const LOCALES = [
+    { id: 1, nombre: "Centro", tipo: "SUCURSAL", activo: true, esPrincipal: true },
+    { id: 2, nombre: "Norte", tipo: "SUCURSAL", activo: true, esPrincipal: false },
+  ];
+
+  it("la organización con 2+ sucursales lo tiene en el menú, debajo del Estado de resultado", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES as never);
+    await montar();
+    expect(enMenu("Comparar sucursales")?.getAttribute("href")).toBe("/reportes/comparar-sucursales");
+    expect(enMenu("Estado de resultado")).not.toBeNull();
+  });
+
+  it("con una sola sucursal no existe", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES.slice(0, 1) as never);
+    await montar();
+    expect(enMenu("Estado de resultado")).not.toBeNull();
+    expect(enMenu("Comparar sucursales")).toBeNull();
+  });
+
+  it("quien está asignado a una sede ve la suya y nada de comparar", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.activas = 2;
+    await montar();
+    expect(enMenu("Estado de resultado")).not.toBeNull();
+    expect(enMenu("Comparar sucursales")).toBeNull();
+  });
+
+  it("con F5 en /reportes/comparar-sucursales no rebota al resumen mientras llega la lista de locales", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    let soltar!: (v: never) => void;
+    vi.mocked(api.getSucursales).mockReturnValue(new Promise((r) => (soltar = r as never)));
+    await montar("/reportes/comparar-sucursales");
+    // La lista no llegó: la ruta sigue en pie (el menú todavía no la ofrece).
+    expect(screen.queryByText("Lo más importante del período", { exact: false })).not.toBeInTheDocument();
+    expect(enMenu("Comparar sucursales")).toBeNull();
+
+    await act(async () => soltar(LOCALES as never));
+    expect(enMenu("Comparar sucursales")?.getAttribute("href")).toBe("/reportes/comparar-sucursales");
+    expect(screen.queryByText("Lo más importante del período", { exact: false })).not.toBeInTheDocument();
+  });
+
+  it("con un solo local y el enlace a mano, al llegar la lista vuelve al resumen", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    let soltar!: (v: never) => void;
+    vi.mocked(api.getSucursales).mockReturnValue(new Promise((r) => (soltar = r as never)));
+    await montar("/reportes/comparar-sucursales");
+    await act(async () => soltar(LOCALES.slice(0, 1) as never));
+    expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
+  });
+
+  it("el link a mano de quien no lo ve vuelve al resumen", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.activas = 2;
+    await montar("/reportes/comparar-sucursales");
     expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
   });
 });

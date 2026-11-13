@@ -14,10 +14,17 @@ import { consumoDeMesa, estaUnida, etiquetaMesa, hace } from "../salon/logicaSal
  * cajera no retipea nada de lo que el cliente comió.
  */
 export default function MesasPorCobrar({
+  sucursalId,
   onAtras,
   onCobrar,
   onIrAEntregas,
 }: {
+  /**
+   * El local de la caja abierta. El usuario de un local ya recibe sólo el suyo;
+   * el de organización, que abre una caja en una sucursal, no tiene que ver las
+   * cuentas de las demás.
+   */
+  sucursalId?: number | null;
   onAtras: () => void;
   onCobrar: (mesa: Mesa) => void;
   /**
@@ -29,7 +36,7 @@ export default function MesasPorCobrar({
    */
   onIrAEntregas?: () => void;
 }) {
-  const mesas = useApi(() => api.mesasPorCobrar(), []);
+  const mesas = useApi(() => api.mesasPorCobrar(sucursalId), [sucursalId]);
   const lista = mesas.datos ?? [];
 
   return (

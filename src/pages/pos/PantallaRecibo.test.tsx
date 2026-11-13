@@ -16,13 +16,16 @@ import { RECIBO_DE_FABRICA, type AjustesRecibo } from "../../types/menuDigital";
 const sesion = vi.hoisted(() => ({
   rubro: "RESTAURANTE" as string | undefined,
   features: [] as string[],
+  /** Cuántas sucursales tiene el negocio (`negocio.sucursalesActivas` del login). */
+  locales: undefined as number | undefined,
 }));
 
 vi.mock("../../store/AuthContext", async () => {
   const { puede } = await import("../../lib/permisos");
   return {
     useAuth: () => ({
-      negocio: { nombre: "Negocio de prueba" },
+      negocio: { nombre: "Negocio de prueba", sucursalesActivas: sesion.locales },
+      usuario: { sucursalId: null },
       rubro: sesion.rubro,
       incluye: (c: Parameters<typeof puede>[1]) =>
         puede(
@@ -96,6 +99,7 @@ function dibujar(v: Venta, extra: { reimpresion?: boolean } = {}) {
 
 beforeEach(() => {
   sesion.features = [];
+  sesion.locales = undefined;
 });
 
 describe("bamardev-restaurant: marcas de mesa y llevar en el ticket", () => {
@@ -1038,5 +1042,44 @@ describe("enviar el recibo por WhatsApp (Derick, 04-nov)", () => {
   it("una venta que todavía no subió no se manda", () => {
     dibujar(venta({ pendienteSync: true } as Partial<Venta>));
     expect(screen.queryByRole("button", { name: "Enviar por WhatsApp" })).not.toBeInTheDocument();
+  });
+});
+
+describe("el recibo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  const SUR = { id: 2, nombre: "Sucursal Sur", direccion: "Av. Sur 12", telefono: "700 11111" };
+
+  it("con 2+ sucursales dice de cuál es la venta", () => {
+    sesion.locales = 2;
+    dibujar(venta({ almacen: SUR }));
+    expect(screen.getByText("Sucursal:")).toBeInTheDocument();
+    expect(screen.getByText("Sucursal Sur")).toBeInTheDocument();
+  });
+
+  it("un instituto con 2+ sedes dice «Sede:» y no «Sucursal:»", () => {
+    sesion.locales = 2;
+    sesion.rubro = "ACADEMIA";
+    dibujar(venta({ almacen: SUR }));
+    expect(screen.getByText("Sede:")).toBeInTheDocument();
+    expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
+  });
+
+  it("con un solo local el recibo no cambia: ni la fila ni el nombre", () => {
+    sesion.locales = 1;
+    const { container } = dibujar(venta({ almacen: SUR }));
+    expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
+    expect(container.textContent).not.toContain("Sucursal Sur");
+  });
+
+  it("y es idéntico al de una venta sin local (el HTML, carácter por carácter)", () => {
+    sesion.locales = 1;
+    const con = dibujar(venta({ almacen: SUR })).container.innerHTML;
+    const sin = dibujar(venta()).container.innerHTML;
+    expect(con).toBe(sin);
+  });
+
+  it("una venta sin local conocido (sin internet, backend viejo) no inventa fila", () => {
+    sesion.locales = 3;
+    dibujar(venta({ almacen: null }));
+    expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
   });
 });

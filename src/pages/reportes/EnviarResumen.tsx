@@ -43,7 +43,7 @@ function cual(p: Periodo): string {
  */
 export default function EnviarResumen({ onCerrar }: { onCerrar: () => void }) {
   const d = useDatosResumen({ paraTexto: true });
-  const { periodo, comparacion, sucursalNombre } = useReporte();
+  const { periodo, comparacion, sucursalNombre, sucursalArchivo } = useReporte();
   const { negocio, rubro } = useAuth();
   const [numero, setNumero] = useState(() => {
     try {
@@ -58,7 +58,10 @@ export default function EnviarResumen({ onCerrar }: { onCerrar: () => void }) {
   const texto = r
     ? textoResumen({
         negocio: negocio?.nombre ?? "Mi negocio",
-        sucursal: sucursalNombre,
+        // El local elegido; "Todas las sucursales" en el consolidado de una
+        // organización con 2+ locales (sin esto el texto no decía de cuáles era);
+        // la sede del asignado. Con un solo local, nada (como siempre).
+        sucursal: sucursalArchivo?.nombre ?? sucursalNombre,
         cual: cual(periodo),
         rango: textoRango(periodo.desde, periodo.hasta),
         rubro,

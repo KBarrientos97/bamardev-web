@@ -16,6 +16,7 @@ import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "./PiezasRecibo";
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
+import { useLocalDelPapel, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 
 /**
@@ -49,6 +50,11 @@ export default function PantallaRecibo({
   reimpresion?: boolean;
 }) {
   const { negocio, incluye, rubro } = useAuth();
+  // El local de la venta, sólo con 2+ sucursales (PLAN-SUCURSAL-TOTAL §1): con
+  // una sola el papel sale exactamente igual que siempre.
+  const sede = useLocalDelPapel(venta.almacen);
+  // «Sucursal», o «Sede» en un instituto.
+  const rotuloSede = useRotuloSucursal();
   // El diseño del recibo (logo, datos del negocio, QR, pie): sólo en un
   // negocio con las pantallas del local. Sin él, null, y el recibo sale
   // como siempre (la línea de BamarDev del pie va en todos).
@@ -93,7 +99,7 @@ export default function PantallaRecibo({
     const res = await compartirComoImagen(
       ticket.current,
       venta.comprobante ?? `recibo-${venta.id}`,
-      venta.pendienteSync ? undefined : mensajeRecibo(venta, negocio?.nombre ?? ""),
+      venta.pendienteSync ? undefined : mensajeRecibo(venta, negocio?.nombre ?? "", sede?.nombre, rotuloSede),
     );
     setCompartiendo(false);
     avisar(
@@ -110,7 +116,7 @@ export default function PantallaRecibo({
    * como desde el 04-nov.
    */
   async function enviarWhatsapp() {
-    const url = whatsappDelRecibo(venta, negocio?.nombre ?? "");
+    const url = whatsappDelRecibo(venta, negocio?.nombre ?? "", sede?.nombre, rotuloSede);
     if (!incluye("recibo_pdf") || !ticket.current) {
       abrirWhatsapp(url);
       return;
@@ -121,7 +127,7 @@ export default function PantallaRecibo({
     const res = await enviarPorWhatsapp(
       ticket.current,
       venta.comprobante ?? `recibo-${venta.id}`,
-      mensajeRecibo(venta, negocio?.nombre ?? ""),
+      mensajeRecibo(venta, negocio?.nombre ?? "", sede?.nombre, rotuloSede),
       url,
     );
     setCompartiendo(false);
@@ -353,7 +359,7 @@ export default function PantallaRecibo({
       }}
     >
       {r ? (
-        <CabeceraNegocio r={r} logo={conf?.logo ?? null} nombre={negocio?.nombre ?? "BamarDev"} />
+        <CabeceraNegocio r={r} logo={conf?.logo ?? null} nombre={negocio?.nombre ?? "BamarDev"} sede={sede} />
       ) : (
         <header className="pb-2 text-center">
           <h2 className="text-base font-bold text-texto">
@@ -374,6 +380,8 @@ export default function PantallaRecibo({
           valor={venta.pendienteSync ? "SIN SINCRONIZAR" : (venta.comprobante ?? `#${venta.id}`)}
         />
         <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
+        {/* El local, sólo con 2+ sucursales: dónde se hizo la venta. */}
+        {sede && <FilaDato etiqueta={`${rotuloSede}:`} valor={sede.nombre} />}
         {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
             mesa ni mesero (visto en QA). El cliente reconoce su cuenta por
             la mesa, y el mesero es a quien se le reclama. */}
@@ -628,6 +636,7 @@ export default function PantallaRecibo({
                   venta={venta}
                   numero={numero}
                   negocio={negocio?.nombre ?? ""}
+                  sede={sede?.nombre}
                   minutos={r?.minutosEstimados ?? 0}
                   tamano={r?.tamanoLetraComanda}
                 />

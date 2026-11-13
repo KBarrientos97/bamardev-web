@@ -5,7 +5,7 @@ import { urlRegaloDe } from "../../lib/pagina/rutas";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { compartirComoImagen, puedeCompartirImagen } from "../../lib/compartirTicket";
 import type { DisenoVale } from "../../lib/belleza/apiExtras";
-import { EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina } from "../../components/filtros";
 import {
   AvisoOk,
   Badge,
@@ -34,6 +34,7 @@ import { useExtras } from "../../lib/belleza/useExtras";
 import { cubre, parsearMontoO, vuelto } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 
 /**
  * ¿El vale se usó de verdad? Neto por venta: un uso cuya venta se anuló (y le
@@ -94,12 +95,22 @@ export function EstadoValeBadge({ estado }: { estado: EstadoVale }) {
  *
  * Vender un vale no es una venta: el efectivo entra a la caja del turno como
  * un ingreso, y el servicio se cuenta como venta recién cuando el vale se usa.
+ *
+ * Con 2+ locales (PLAN-SUCURSAL-TOTAL §1) la organización puede acotar el
+ * listado a lo vendido en un local, y cada vale dice dónde se vendió. El saldo
+ * se canjea en cualquier local: sólo se filtra la venta, no el uso. Quien está
+ * atado a uno ve lo vendido en el suyo, con su nombre arriba.
  */
 export default function GiftCards() {
   const ctx = useExtras();
+  const suc = useSucursales();
   const [filtro, setFiltro] = useState<FiltroVales>("USABLES");
   const [q, setQ] = useState("");
-  const lista = useApi(() => apiExtras.vales(filtro, q.trim() || undefined), [filtro, q]);
+  const lista = useApi(
+    () => (suc.sucursalId != null ? apiExtras.vales(filtro, q.trim() || undefined, suc.sucursalId) : apiExtras.vales(filtro, q.trim() || undefined)),
+    [filtro, q, suc.sucursalId],
+  );
+  const verLocal = suc.mostrarColumna(lista.datos?.vales, (v) => v.emitidaEn?.id);
   const [vender, setVender] = useState(false);
   const [vendido, setVendido] = useState<(Vale & { cambio: number }) | null>(null);
   const [verId, setVerId] = useState<number | null>(null);
@@ -117,7 +128,7 @@ export default function GiftCards() {
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Gift cards"
-        subtitulo="Vales con saldo que el cliente usa para pagar, entero o en partes."
+        subtitulo={`Vales con saldo que el cliente usa para pagar, entero o en partes.${suc.miSede ? ` · ${suc.miSede}` : ""}`}
         accion={
           <Boton icono="plus" onClick={() => setVender(true)}>
             Vender vale
@@ -125,12 +136,14 @@ export default function GiftCards() {
         }
       />
 
+      {suc.elegir && <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <Kpi
           etiqueta="Saldo por usar"
           valor={fmtMoney(lista.datos?.saldoVigente ?? 0)}
           icono="gift"
-          pie={`${lista.datos?.vigentes ?? 0} vales con saldo · es servicio que el negocio debe`}
+          pie={`${lista.datos?.vigentes ?? 0} vales con saldo · es servicio que el negocio debe${suc.sedeVista ? ` (vendidos en ${suc.sedeVista})` : ""}`}
         />
         <ConsultarSaldo onVer={setVerId} />
       </div>
@@ -184,6 +197,7 @@ export default function GiftCards() {
                   <p className="truncate text-[12px] text-texto-3">
                     {v.beneficiario ? `Para ${v.beneficiario}` : "Sin nombre"}
                     {v.venceEn ? ` · vence ${dia(v.venceEn)}` : " · no vence"}
+                    {verLocal && v.emitidaEn?.nombre ? ` · vendido en ${v.emitidaEn.nombre}` : ""}
                   </p>
                 </div>
                 <div className="text-right">
@@ -602,6 +616,10 @@ function DetalleVale({
   onClose: () => void;
   onCambio: () => void;
 }) {
+  // «Vendido en {local}» es del dueño con 2+ locales; al asignado no se le
+  // suma un local que no es el suyo (PLAN-SUCURSAL-TOTAL §1).
+  const { modo } = useSucursales();
+  const verLocalVenta = modo === "organizacion";
   const detalle = useApi<ValeDetalle | null>(
     () => (id ? apiExtras.vale(id) : Promise.resolve(null)),
     [id],
@@ -652,6 +670,7 @@ function DetalleVale({
           <p className="text-[13px] text-texto-2">
             {v.beneficiario ? `Para ${v.beneficiario}. ` : ""}
             {v.comprador ? `Lo compró ${v.comprador}. ` : ""}
+            {verLocalVenta && v.emitidaEn?.nombre ? `Vendido en ${v.emitidaEn.nombre}. ` : ""}
             {v.venceEn ? `Vence el ${dia(v.venceEn)}.` : "No vence."}
           </p>
           <div>

@@ -34,6 +34,11 @@ export interface Vale {
   creadoEn: string;
   anuladaEn: string | null;
   motivoAnulacion: string | null;
+  /**
+   * Dónde se vendió (campo nuevo del backend, aditivo). Sólo informa: el saldo
+   * se canjea en cualquier local. null = de antes de las sucursales.
+   */
+  emitidaEn?: { id: number; nombre: string | null } | null;
 }
 
 export interface MovimientoVale {
@@ -152,6 +157,9 @@ export interface ReportePropinas {
     comprobante: string | null;
     /** La caja de la venta: el comprobante se repite entre turnos (QA DIA-12). */
     cajaId?: number;
+    /** De qué local es la venta (campo nuevo, aditivo; un backend anterior no lo manda). */
+    sucursalId?: number | null;
+    sucursal?: string | null;
     recursoId: number;
     recurso: string;
     monto: number;
@@ -286,8 +294,8 @@ const json = (body: unknown) => ({ body: JSON.stringify(body) });
 
 export const apiExtras = {
   // Gift cards
-  vales: (estado: FiltroVales = "TODAS", q?: string) =>
-    request<ListaVales>(`/gift-cards${qs({ estado, q })}`),
+  vales: (estado: FiltroVales = "TODAS", q?: string, sucursalId?: number | null) =>
+    request<ListaVales>(`/gift-cards${qs({ estado, q, sucursalId })}`),
   vale: (id: number) => request<ValeDetalle>(`/gift-cards/${id}`),
   consultarVale: (codigo: string) =>
     request<Vale>(`/gift-cards/codigo/${encodeURIComponent(codigo.trim())}`),
@@ -306,12 +314,16 @@ export const apiExtras = {
     ),
 
   // Propinas
-  propinas: (p: { desde?: string; hasta?: string; recursoId?: number } = {}) =>
+  propinas: (p: { desde?: string; hasta?: string; recursoId?: number; sucursalId?: number | null } = {}) =>
     request<ReportePropinas>(`/propinas${qs(p)}`),
-  pagarPropinas: (recursoId: number, desdeCaja = true, incluirOtras = false) =>
+  /**
+   * Con `sucursalId` (la organización con 2+ locales) sólo se entregan las
+   * propinas de ventas de ese local; sin él, todas. Al atado el backend le fuerza el suyo.
+   */
+  pagarPropinas: (recursoId: number, desdeCaja = true, incluirOtras = false, sucursalId?: number | null) =>
     request<PagoPropinas>("/propinas/pagar", {
       method: "POST",
-      ...json({ recursoId, desdeCaja, incluirOtras }),
+      ...json({ recursoId, desdeCaja, incluirOtras, ...(sucursalId != null ? { sucursalId } : {}) }),
     }),
 
   // Consumo de insumos
@@ -322,7 +334,12 @@ export const apiExtras = {
       method: "PUT",
       ...json({ items }),
     }),
-  rentabilidadServicios: (p: { desde?: string; hasta?: string } = {}) =>
+  /**
+   * El costo y margen por servicio. `sucursalId` acota a las ventas de ese local
+   * (la organización con 2+ locales); sin él, todo el negocio. Al atado a una
+   * sede el backend le fuerza la suya.
+   */
+  rentabilidadServicios: (p: { desde?: string; hasta?: string; sucursalId?: number | null } = {}) =>
     request<RentabilidadServicios>(`/consumo-servicio/reporte${qs(p)}`),
   consumosDeCita: (citaId: number) => request<ConsumosDeCita>(`/consumo-servicio/citas/${citaId}`),
   ajustarConsumo: (id: number, cantidad: number) =>

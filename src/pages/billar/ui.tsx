@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Desplegable } from "../../components/Desplegable";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
@@ -161,10 +162,15 @@ export function Encabezado({
 }
 
 /**
- * La sucursal del billar, para el dueño con varios locales (13-oct): va en el
- * lugar de la etiqueta. Desplegable nativo y no chips ni menú propio: en el
- * celular abre la lista del sistema y no le suma un renglón al encabezado.
- * Sin "Todas": un tablero es UN salón, como la agenda de un local.
+ * La sucursal, para el dueño con varios locales (13-oct): va en el lugar de
+ * la etiqueta, una pastilla que no le suma un renglón al encabezado. Sin
+ * "Todas": un tablero es UN salón, como la agenda de un local.
+ *
+ * Era un `<select>` nativo "para que en el celular abra la lista del
+ * sistema"; esa lista es el diálogo oscuro del sistema, con botones de radio
+ * y nada de la app (Kevin, con captura de Supervisión, 13-nov). Ahora la lista
+ * es la de la app (`Desplegable`): hoja inferior en el celular, lista pegada
+ * a la pastilla en la compu. La pastilla ocupa lo mismo que antes.
  */
 export function SelectorSucursal({
   valor,
@@ -175,25 +181,17 @@ export function SelectorSucursal({
   sucursales: { id: number; nombre: string }[];
   onElegir: (id: number) => void;
 }) {
+  const nombre = sucursales.find((s) => s.id === valor)?.nombre;
   return (
-    <span className="relative inline-flex shrink-0 items-center">
-      <select
-        aria-label="Sucursal"
-        value={valor ?? ""}
-        onChange={(ev) => onElegir(Number(ev.target.value))}
-        className="h-8 max-w-[12rem] cursor-pointer appearance-none truncate rounded-full bg-slate-100 pl-3 pr-7 text-[12px] font-semibold text-slate-700 outline-none hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-primary-100"
-      >
-        {valor == null && <option value="">Elegí la sucursal</option>}
-        {sucursales.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.nombre}
-          </option>
-        ))}
-      </select>
-      <span className="pointer-events-none absolute right-2.5 text-slate-500">
-        <Icon name="chevronDown" size={13} />
-      </span>
-    </span>
+    <Desplegable
+      etiqueta="Sucursal"
+      valor={valor}
+      opciones={sucursales.map((s) => ({ id: s.id, etiqueta: s.nombre }))}
+      onElegir={onElegir}
+      className="inline-flex h-8 max-w-[12rem] shrink-0 items-center gap-1 rounded-full bg-slate-100 pl-3 pr-2 text-[12px] font-semibold text-slate-700 outline-none hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-primary-100"
+    >
+      <span className="truncate">{nombre ?? "Elegí la sucursal"}</span>
+    </Desplegable>
   );
 }
 

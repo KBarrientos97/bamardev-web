@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePalabras } from "../../lib/academia/usePalabras";
 import { apiSeguridad, type Frenado } from "../../lib/seguridad/apiSeguridad";
 import {
   agrupar,
@@ -12,7 +13,9 @@ import {
   paraQue,
 } from "../../lib/seguridad/intentosPin";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
+import { Chips } from "../filtros";
 import { Boton, Campo, ErrorMsg, Input, Modal } from "../ui";
 
 type Pestana = "sinVer" | 7 | 30;
@@ -33,14 +36,25 @@ export const EVENTO_INTENTOS_PIN = "intentos-pin-cambiaron";
  * ("Sin revisar") y el botón de Usuarios ("7 días").
  *
  * Nunca muestra un PIN: el backend no lo guarda.
+ *
+ * Con 2+ sucursales (PLAN-SUCURSAL-TOTAL §1) la organización puede acotar a un
+ * local y cada incidente dice en cuál pasó (el backend sólo trae el id: el
+ * nombre sale de la lista compartida de locales). Quien está atado a una sede
+ * ve sólo lo de la suya, con su nombre en el subtítulo.
  */
 export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; onClose: () => void }) {
   const { usuario } = useAuth();
   const yoId = usuario?.id;
   const [pestana, setPestana] = useState<Pestana>(inicial);
+  const suc = useSucursales();
+  const pal = usePalabras();
+  const sucursalId = suc.sucursalId;
   const datos = useApi(
-    () => apiSeguridad.intentos(pestana === "sinVer" ? { sinVer: true } : { dias: pestana }),
-    [pestana],
+    () => {
+      const q = pestana === "sinVer" ? ({ sinVer: true } as const) : { dias: pestana };
+      return sucursalId != null ? apiSeguridad.intentos(q, sucursalId) : apiSeguridad.intentos(q);
+    },
+    [pestana, sucursalId],
   );
   const [habilitando, setHabilitando] = useState<Frenado | null>(null);
   const [password, setPassword] = useState("");
@@ -53,6 +67,10 @@ export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; 
   const ahoraMs = new Date(ahora).getTime();
   const frenados = r?.frenados ?? [];
   const incidentes = agrupar(r?.intentos ?? []);
+  // El local de cada incidente, sólo si los intentos son de 2+ locales (a la organización).
+  const verLocal = suc.mostrarColumna(r?.intentos, (i) => i.sucursalId);
+  const nombreLocal = (id: number | null | undefined) =>
+    id == null ? null : (suc.sucursales.find((s) => s.id === id)?.nombre ?? null);
 
   const avisarCambio = () => window.dispatchEvent(new Event(EVENTO_INTENTOS_PIN));
 
@@ -93,7 +111,7 @@ export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; 
     <Modal
       abierto
       titulo="Intentos de PIN"
-      subtitulo="Quién escribió mal un PIN, para qué y cuándo"
+      subtitulo={`Quién escribió mal un PIN, para qué y cuándo${suc.miSede ? ` · ${suc.miSede}` : ""}`}
       onClose={onClose}
       ancho="max-w-2xl"
       acciones={
@@ -122,6 +140,8 @@ export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; 
             </button>
           ))}
         </div>
+
+        {suc.elegir && <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
 
         {aviso && (
           <p role="status" className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-semibold text-primary-700">
@@ -198,6 +218,7 @@ export function ModalIntentosPin({ inicial = 7, onClose }: { inicial?: Pestana; 
                       <p className="mt-1 font-semibold text-texto-2">{descripciones.join(" · ")}</p>
                       <p className="mt-0.5 text-texto-3">
                         {conQueIncidente(inc)} · {cuando(inc.filas[0].creadoEn, ahora)}
+                        {verLocal && nombreLocal(inc.filas[0].sucursalId) ? ` · ${nombreLocal(inc.filas[0].sucursalId)}` : ""}
                       </p>
                     </>
                   )}

@@ -26,6 +26,14 @@ const claveDe = (ambito: string, nombre: string) => `copia:${ambito}:${nombre}`;
 /** La copia del catálogo es por sucursal: de ahí salen el precio y el stock. */
 export const claveCatalogo = (almacenId: number | null) => `productos:${almacenId ?? "todos"}`;
 
+/**
+ * La copia de la caja es por sede: el admin de una organización puede tener una
+ * abierta en cada local, y al saltar de una a otra sin señal la copia de la
+ * anterior mostraría la caja equivocada. Sin sede activa (todos los demás
+ * usuarios) la clave es la de siempre: `caja`.
+ */
+export const claveCaja = (sedeId: number | null) => (sedeId == null ? "caja" : `caja:${sedeId}`);
+
 export const SIN_COPIA =
   "Sin conexión y sin datos guardados. Conectate al menos una vez para usar el modo offline.";
 

@@ -20,6 +20,7 @@ import {
 import { apiMonedero } from "../lib/apiMonedero";
 import { apiAcademia } from "../lib/academia/apiAcademia";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
+import { olvidarCarta } from "../pages/salon/cartaGuardada";
 import { olvidarDispositivoPush, sincronizarPushSilencioso } from "../lib/push/registroPush";
 import { fijarMoneda } from "../lib/format";
 import { reiniciarContador } from "../lib/pedidosWeb/contador";
@@ -97,6 +98,14 @@ interface AuthValue {
    * al próximo chequeo de la licencia.
    */
   fijarPedidosWeb: (recibe: boolean) => void;
+  /**
+   * Vuelve a pedir a `/auth/me` cuántas sucursales activas tiene el negocio y lo
+   * guarda en la sesión. Para después de crear, desactivar o pasar a depósito un
+   * local: los papeles (recibo, comanda, cierre, WhatsApp) deciden con ese número
+   * si llevan el nombre del local, y esperar al próximo chequeo (hasta 15 min)
+   * los dejaría con el número viejo. Falla en silencio.
+   */
+  refrescarSucursalesActivas: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -196,6 +205,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, alias: string) => {
     const res = await api.login(username, password, alias);
+    // La carta del salón guardada es de la sesión anterior (otro usuario, otro local).
+    olvidarCarta();
     // `perfilVersion` viaja en el estado de la licencia y no en el negocio:
     // si el login trae la licencia, se toma de ahí, y así el primer chequeo
     // del poller no repinta lo mismo que se acaba de pintar.
@@ -231,6 +242,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     reiniciarContador();
     limpiarSesion();
     olvidarUsuario();
+    // La carta del salón es de este usuario y de su local: no se la sirve al próximo.
+    olvidarCarta();
     // Vuelve al verde: el login no es de ningún negocio todavía, y quedarse
     // con el color del anterior confundiría a quien comparte la máquina.
     aplicarTema(null);
@@ -310,6 +323,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Cuántas sucursales activas tiene el negocio (`/auth/me` y el login). Lo
+   * necesitan el usuario ASIGNADO a un local, que no puede listarlas, y los
+   * papeles de todos (recibo, comanda, cierre), que deciden con él si llevan el
+   * nombre del local. Sólo se guarda un número: otra cosa (un backend viejo) no
+   * pisa lo que hay.
+   */
+  const fijarSucursalesActivas = useCallback((cantidad: number | undefined) => {
+    if (typeof cantidad !== "number") return;
+    setNegocio((previo) => {
+      if (!previo || previo.sucursalesActivas === cantidad) return previo;
+      const actualizado = { ...previo, sucursalesActivas: cantidad };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
+  const refrescarSucursalesActivas = useCallback(async () => {
+    try {
+      const me = await api.me();
+      fijarSucursalesActivas(me?.sucursalesActivas);
+    } catch {
+      // Dato accesorio: falla cerrado, se queda el número que había.
+    }
+  }, [fijarSucursalesActivas]);
+
+  /**
    * Trae de `/auth/me` los permisos y el rol (PLAN-ROLES-NEGOCIO §8) y los
    * guarda en la sesión. El rol viaja junto con los permisos: si el dueño le
    * renombra el rol a alguien o se lo cambia, la etiqueta de la cabecera
@@ -317,6 +356,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const traerPermisos = useCallback(async (version?: string) => {
     const me = await api.me();
+    fijarSucursalesActivas(me.sucursalesActivas);
     if (!me.permisos) return;
     setUsuario((previo) => {
       if (!previo) return previo;
@@ -333,7 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(USER_KEY, JSON.stringify(actualizado));
       return actualizado;
     });
-  }, []);
+  }, [fijarSucursalesActivas]);
 
   /**
    * Una sesión guardada antes de que el backend mandara permisos no tiene con
@@ -381,11 +421,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * bloquea: es lo que mantiene fresca la barra de aviso en una pestaña que
    * quedó abierta desde ayer, y lo que echa a quien no toca nada en horas.
    */
+  // El número de sucursales de la sesión lo usan el asignado (que no puede
+  // listarlas) y los papeles de todos. Una sesión anterior al deploy no lo tiene
+  // y puede quedar viejo si se abre o se cierra un local, así que se renueva con
+  // este mismo chequeo, para quien sea. (El único pedido de más a `/auth/me`.)
   useEffect(() => {
     if (!token) return;
     let vivo = true;
 
     const revisar = () => {
+      // `Promise.resolve().then` para que un `api.me` ausente o roto no
+      // reviente el chequeo: es un dato accesorio y falla cerrado.
+      Promise.resolve()
+        .then(() => api.me())
+        .then((me) => vivo && fijarSucursalesActivas(me.sucursalesActivas))
+        .catch(() => undefined);
       const turno = pedirTurnoCupo();
       api
         .licencia()
@@ -425,7 +475,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures, refrescarPerfil, fijarPedidosWeb, refrescarPermisos, pedirTurnoCupo, aplicarConsulta]);
+  }, [
+    token,
+    fijarSucursalesActivas,
+    refrescarFeatures,
+    refrescarPerfil,
+    fijarPedidosWeb,
+    refrescarPermisos,
+    pedirTurnoCupo,
+    aplicarConsulta,
+  ]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
@@ -515,6 +574,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refrescarCupo,
       fijarUsaDespacho,
       fijarPedidosWeb,
+      refrescarSucursalesActivas,
     }),
     [
       token,
@@ -533,6 +593,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refrescarCupo,
       fijarUsaDespacho,
       fijarPedidosWeb,
+      refrescarSucursalesActivas,
     ],
   );
 

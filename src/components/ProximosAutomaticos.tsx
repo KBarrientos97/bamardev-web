@@ -34,12 +34,18 @@ function cuando(iso: string, hoy: string): string {
 export function ProximosAutomaticos({
   mes,
   sucursalId,
+  sinSucursal = false,
 }: {
   /** El mes que se está mirando, `yyyy-MM`. */
   mes: string;
   sucursalId: number | null;
+  /** Se mira «General del negocio»: sólo las reglas que no son de ningún local. */
+  sinSucursal?: boolean;
 }) {
-  const reglas = useApi(() => api.getPlantillasGasto(sucursalId), [sucursalId]);
+  const reglas = useApi(
+    () => api.getPlantillasGasto(sucursalId, sinSucursal),
+    [sucursalId, sinSucursal],
+  );
   const hoy = hoyIso();
   const proximos = proximosAutomaticos(reglas.datos ?? [], mes, hoy);
   if (proximos.length === 0) return null;

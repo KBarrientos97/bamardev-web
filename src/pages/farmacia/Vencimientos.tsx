@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { ContadorTramo, LotePorVencer, TramoVencimiento } from "../../types";
 import { COLOR_TRAMO, TRAMOS, textoVida, type FiltroVencimientos } from "./medicamento";
@@ -43,10 +44,24 @@ function tramoDe(state: unknown): TramoVencimiento | null {
   return TRAMOS.some((x) => x.clave === t) ? (t as TramoVencimiento) : null;
 }
 
+/** El local con el que se llega desde el Dashboard o Mermas; cualquier otra cosa, ninguno. */
+function sucursalDe(state: unknown): number | null {
+  const s = (state as Partial<FiltroVencimientos> | null)?.sucursalId;
+  return typeof s === "number" && Number.isInteger(s) ? s : null;
+}
+
 export default function Vencimientos() {
   const navigate = useNavigate();
   const { state } = useLocation();
-  const datos = useApi(() => api.vencimientos(), []);
+  // Con depósitos, como el Dashboard: la mercadería también vence ahí. El
+  // local elegido arranca en el que se venía mirando (`state`) y no en el
+  // consolidado; el hook sólo pone las opciones y dice si hay que mostrarlas.
+  const suc = useSucursales({ incluirDepositos: true });
+  const [localElegido, setLocalElegido] = useState<number | null>(() => sucursalDe(state));
+  const datos = useApi(
+    () => api.vencimientos({ almacenId: localElegido ?? undefined }),
+    [localElegido],
+  );
   const [tramo, setTramo] = useState<TramoVencimiento | null>(() => tramoDe(state));
   const [elegido, setElegido] = useState<LotePorVencer | null>(null);
 
@@ -81,8 +96,20 @@ export default function Vencimientos() {
     <div className="mx-auto max-w-5xl space-y-4 p-5">
       <EncabezadoPagina
         titulo="Vencimientos"
-        subtitulo="Los lotes ordenados por lo que vence primero"
+        subtitulo={
+          "Los lotes ordenados por lo que vence primero" +
+          // La sede del usuario asignado (sólo con 2+ locales): sin selector, apenas el nombre.
+          (suc.miSede ? ` · ${suc.miSede}` : "")
+        }
       />
+
+      {suc.elegirSucursal && (
+        <Chips
+          valor={localElegido == null ? "" : String(localElegido)}
+          opciones={suc.opciones}
+          onChange={(v) => setLocalElegido(v === "" ? null : Number(v))}
+        />
+      )}
 
       <ErrorMsg>{datos.error}</ErrorMsg>
 

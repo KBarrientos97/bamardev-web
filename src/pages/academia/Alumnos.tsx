@@ -103,9 +103,10 @@ export default function Alumnos() {
   const preinscripciones = useApi(
     () =>
       puede("academia_preinscripciones")
-        ? apiAcademia.preinscripciones({ pageSize: 1 }).then((r) => r.total).catch(() => 0)
+        ? // Con una sede elegida el número es el de esa sede; el del menú suma todas las que ve.
+          apiAcademia.preinscripciones({ pageSize: 1, sede: sede.sucursalId }).then((r) => r.total).catch(() => 0)
         : Promise.resolve(0),
-    [],
+    [sede.sucursalId],
   );
   const inscribe = tienePermiso(usuario, "academia.inscribir");
   const hayFiltros = !!buscado || vista !== "todos";

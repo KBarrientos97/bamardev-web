@@ -15,6 +15,7 @@ import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import type { Mesa } from "../../types/salon";
+import { conLocalDeZona } from "../salon/logicaSalon";
 
 /**
  * Las mesas del salón, del lado del dueño.
@@ -31,16 +32,26 @@ export default function Mesas() {
   const zonas = useApi(() => api.getZonas(suc.sucursalId), [suc.sucursalId]);
 
   const [q, setQ] = useState("");
-  const [zona, setZona] = useState<string | null>(null);
+  // Por id y no por código: dos locales pueden tener una zona con el mismo
+  // código ("salon") y sus chips se marcarían a la vez.
+  const [zona, setZona] = useState<number | null>(null);
   const [editando, setEditando] = useState<Mesa | null>(null);
   const [creando, setCreando] = useState(false);
 
-  const lista = useMemo(() => mesas.datos ?? [], [mesas.datos]);
+  // La mesa hereda el local de su zona; el backend no lo manda por mesa.
+  const lista = useMemo(
+    () => conLocalDeZona(mesas.datos ?? [], zonas.datos ?? []),
+    [mesas.datos, zonas.datos],
+  );
+  // La etiqueta de local, sólo a quien es de organización y con mesas de 2+
+  // locales a la vista; con uno solo (o un usuario de un local) sería ruido.
+  const verLocal = suc.mostrarColumna(lista, (m) => m.sucursalId);
+  const verLocalZonas = suc.mostrarColumna(zonas.datos ?? [], (z) => z.sucursalId);
 
   const visibles = useMemo(
     () =>
       lista.filter((m) => {
-        if (zona && m.zonaCodigo !== zona) return false;
+        if (zona && m.zonaId !== zona) return false;
         if (q && !contiene(m.nombre, q) && !contiene(m.codigo, q)) return false;
         return true;
       }),
@@ -123,8 +134,9 @@ export default function Mesas() {
           Todas
         </Chip>
         {(zonas.datos ?? []).map((z) => (
-          <Chip key={z.id} activo={zona === z.codigo} onClick={() => setZona(z.codigo)}>
+          <Chip key={z.id} activo={zona === z.id} onClick={() => setZona(z.id)}>
             {z.nombre}
+            {verLocalZonas && z.sucursalNombre ? ` · ${z.sucursalNombre}` : ""}
           </Chip>
         ))}
       </div>
@@ -154,7 +166,10 @@ export default function Mesas() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-bold text-texto">{m.nombre}</p>
-                <p className="truncate text-[13px] text-texto-3">{m.zonaNombre}</p>
+                <p className="truncate text-[13px] text-texto-3">
+                  {m.zonaNombre}
+                  {verLocal && m.sucursalNombre ? ` · ${m.sucursalNombre}` : ""}
+                </p>
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <Dato etiqueta="Capacidad" valor={`${m.capacidad} personas`} />
                   <Dato etiqueta="Zona" valor={m.zonaNombre} />

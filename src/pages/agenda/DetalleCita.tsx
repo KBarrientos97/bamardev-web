@@ -20,6 +20,7 @@ import {
   copiarTexto,
   enlaceWhatsApp,
   puedeCompartirTexto,
+  sucursalDeLaCita,
   textoRecordatorio,
 } from "../../lib/agenda/recordatorio";
 import type { AccionCita, Cita, EventoCita } from "../../lib/agenda/tiposAgenda";
@@ -167,7 +168,9 @@ export default function DetalleCita({
   const noVinoGrande = !conPasos && principal?.accion !== "NO_ASISTIO" && acciones.includes("NO_ASISTIO");
 
   const fecha = cita.inicio ? fechaNegocio(cita.inicio) : null;
-  const recordatorio = textoRecordatorio(cita, { negocio: negocio?.nombre, sucursal });
+  // El local de la cita, no el que se mira: abierta desde la campana puede ser de otro.
+  const donde = sucursalDeLaCita(cita, sucursal);
+  const recordatorio = textoRecordatorio(cita, { negocio: negocio?.nombre, sucursal: donde });
   const whatsapp = enlaceWhatsApp(cita.cliente.telefono, recordatorio);
   const conPrecios = !profesional || cita.lineas.some((l) => l.precio > 0);
 
@@ -187,7 +190,7 @@ export default function DetalleCita({
               {fecha
                 ? `${capitalizar(fechaLarga(fecha))} · ${horaNegocio(cita.inicio)} – ${horaNegocio(cita.fin)}`
                 : "En la cola, sin hora todavía"}
-              {sucursal ? ` · ${sucursal}` : ""}
+              {donde ? ` · ${donde}` : ""}
             </p>
           </div>
           <button
