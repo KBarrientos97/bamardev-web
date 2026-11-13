@@ -366,6 +366,29 @@ describe("la ficha del mostrador", () => {
     expect(aca.compareDocumentPosition(todas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("los lotes son los de la sucursal de la caja, y el encargo se anota en ese local", async () => {
+    vi.mocked(api.cajaActual).mockResolvedValue({
+      caja: { almacenId: 1141, almacen: "Sucursal Equipetrol" } as never,
+    });
+    await montar();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    await within(ficha).findByText(/Lotes/);
+    expect(api.lotesDeProducto).toHaveBeenCalledWith(2, 1141);
+
+    await tocar(within(ficha).getByRole("button", { name: "Encargar" }));
+    await tocar(within(screen.getByRole("dialog", { name: "Nuevo encargo" })).getByRole("button", { name: "Anotar" }));
+    expect(api.crearEncargo).toHaveBeenCalledWith(
+      expect.objectContaining({ productoId: 2, almacenId: 1141 }),
+    );
+  });
+
+  it("sin caja abierta los lotes no se acotan a un local", async () => {
+    await montar();
+    const ficha = await abrirFicha("Amoxicilina 500 mg");
+    await within(ficha).findByText(/Lotes/);
+    expect(api.lotesDeProducto).toHaveBeenCalledWith(1);
+  });
+
   it("el dueño carga la ubicación ahí mismo, y la fila se actualiza", async () => {
     await montar();
     const ficha = await abrirFicha("Ranitidina 150 mg");

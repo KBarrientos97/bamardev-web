@@ -347,7 +347,9 @@ export function FichaMostrador({
           <Equivalentes producto={p} sucursalId={sucursalActual} onAgregar={onAgregarEquivalente} />
         </Seccion>
 
-        <LotesFefo producto={p} conCosto={false} />
+        {/* Los lotes de la sucursal de la caja: es de ahí de donde la venta los
+            descuenta, y un lote de otro local no se le puede dar a quien espera. */}
+        <LotesFefo producto={p} conCosto={false} almacenId={sucursalActual} />
 
         {p.controlado && (
           <p className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
@@ -706,18 +708,30 @@ function Ubicacion({
 function LotesFefo({
   producto: p,
   conCosto = true,
+  almacenId = null,
 }: {
   producto: Producto;
   /** El costo de cada partida es del dueño: el mostrador no lo ve. */
   conCosto?: boolean;
+  /**
+   * Sólo los lotes de esta sucursal. Sin esto, los de todos los locales (la
+   * ficha del catálogo, que cada lote rotula con su local); quien es de un
+   * local ve siempre los suyos porque el servidor se lo fuerza.
+   */
+  almacenId?: number | null;
 }) {
   // Sin la feature el servidor responde 403: la sección no se dibuja, como
   // cualquier otra cosa que el plan no incluye.
   const { incluye } = useAuth();
   const conLotes = incluye("lotes");
   const lotes = useApi(
-    () => (conLotes && p.manejaLote ? api.lotesDeProducto(p.id) : Promise.resolve([])),
-    [p.id, p.manejaLote, conLotes],
+    () =>
+      conLotes && p.manejaLote
+        ? almacenId != null
+          ? api.lotesDeProducto(p.id, almacenId)
+          : api.lotesDeProducto(p.id)
+        : Promise.resolve([]),
+    [p.id, p.manejaLote, conLotes, almacenId],
   );
 
   // Un rol sin permiso sobre los lotes (o un corte) recibe un error: la sección
