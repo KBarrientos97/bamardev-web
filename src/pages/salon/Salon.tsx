@@ -4,11 +4,13 @@ import TirarParaActualizar from "../../components/TirarParaActualizar";
 import { ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { EstadoMesa, Mesa } from "../../types/salon";
 import { EsqueletoSalon } from "./Esqueletos";
 import TarjetaMesa, { TarjetaMesaLibre } from "./TarjetaMesa";
 import {
+  conLocalDeZona,
   filtrarMesas,
   inicialesDe,
   porServir,
@@ -71,7 +73,10 @@ export default function Salon({
   onMeserosCobran?: (valor: boolean) => void;
 }) {
   const { usuario } = useAuth();
-  const salon = useApi(() => api.salon(), []);
+  // El selector de local sólo le sale al de organización con 2+ locales; el de
+  // un local ve el suyo (el backend se lo fuerza) y su nombre en la barra.
+  const suc = useSucursales();
+  const salon = useApi(() => api.salon(suc.sucursalId), [suc.sucursalId]);
 
   /**
    * El salón se refresca solo cada 15 segundos (eran 30 hasta el 10-nov: el
@@ -103,7 +108,9 @@ export default function Salon({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [zona, setZona] = useState<string | null>(null);
+  // La zona elegida por id y no por código: dos locales pueden tener una zona
+  // con el mismo código ("salon") y sus chips se marcarían a la vez.
+  const [zonaId, setZonaId] = useState<number | null>(null);
   const [soloMias, setSoloMias] = useState(false);
   /**
    * El contador tocado ("5 Ocupadas"): filtra el salón a ese estado. Parecían
@@ -112,7 +119,10 @@ export default function Salon({
    */
   const [estado, setEstado] = useState<EstadoMesa | null>(null);
 
-  const mesas = useMemo(() => salon.datos?.mesas ?? [], [salon.datos]);
+  const zonas = useMemo(() => salon.datos?.zonas ?? [], [salon.datos]);
+  // La mesa hereda el local de su zona: se lo pone la web para no ofrecer, al
+  // pasar/juntar/unir, mesas de otro local (el backend responde 400).
+  const mesas = useMemo(() => conLocalDeZona(salon.datos?.mesas ?? [], zonas), [salon.datos, zonas]);
   useEffect(() => {
     if (salon.datos) onMesas?.(mesas);
   }, [salon.datos, mesas, onMesas]);
@@ -136,15 +146,23 @@ export default function Salon({
   useEffect(() => {
     if (salon.datos) onMeserosCobran?.(meserosCobran);
   }, [salon.datos, meserosCobran, onMeserosCobran]);
-  const zonas = salon.datos?.zonas ?? [];
+  const zonaElegida = zonas.find((z) => z.id === zonaId) ?? null;
+  // Con "Todas" y zonas de 2+ locales, cada zona dice de cuál es.
+  const verLocalZonas = suc.mostrarColumna(zonas, (z) => z.sucursalId);
   const pendientes = useMemo(() => porServir(mesas), [mesas]);
 
   // Los números cuentan lo que hay en la zona y en "mis mesas" elegidas: en la
   // terraza, "Ocupadas" dice cuántas hay en la terraza. Si no, el contador y lo
   // que muestra al tocarlo no coincidirían.
   const delFiltro = useMemo(
-    () => filtrarMesas(mesas, { zonaCodigo: zona, soloMias, miMeseroId: usuario?.id }),
-    [mesas, zona, soloMias, usuario?.id],
+    () =>
+      filtrarMesas(mesas, {
+        zonaCodigo: zonaElegida?.codigo,
+        sucursalId: zonaElegida?.sucursalId,
+        soloMias,
+        miMeseroId: usuario?.id,
+      }),
+    [mesas, zonaElegida, soloMias, usuario?.id],
   );
   const resumen = useMemo(() => resumirSalon(delFiltro), [delFiltro]);
   const visibles = useMemo(
@@ -187,6 +205,9 @@ export default function Salon({
                 parecía un error. Cuántas mesas tiene sí le dice algo. */}
             {primerNombre(nombre)}
             {mias > 0 && ` · ${mias} ${mias === 1 ? "mesa tuya" : "mesas tuyas"}`}
+            {/* El local que se mira (el elegido, o el propio del que está
+                asignado): sólo con 2+ locales; con uno `sedeVista` es vacío. */}
+            {suc.sedeVista && ` · ${suc.sedeVista}`}
           </p>
         </div>
         <button
@@ -223,6 +244,24 @@ export default function Salon({
           <EsqueletoSalon />
         ) : (
           <>
+            {/* ══════ Local (sólo la organización con 2+) ══════ */}
+            {suc.elegir && (
+              <div className="sin-barra -mx-4 mb-2 flex gap-2 overflow-x-auto px-4 pb-1">
+                {suc.opciones.map(([valor, etiqueta]) => (
+                  <Chip
+                    key={valor || "todas"}
+                    activo={suc.valorChip === valor}
+                    onClick={() => {
+                      suc.alElegir(valor);
+                      setZonaId(null);
+                    }}
+                  >
+                    {etiqueta}
+                  </Chip>
+                ))}
+              </div>
+            )}
+
             {/* ══════ Filtros ══════ */}
             <div className="sin-barra -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
               {/* "Mis mesas" va primero: es el filtro que más usa un mesero, y
@@ -232,12 +271,13 @@ export default function Salon({
               <Chip activo={soloMias} onClick={() => setSoloMias((v) => !v)}>
                 Mis mesas
               </Chip>
-              <Chip activo={zona === null} onClick={() => setZona(null)}>
+              <Chip activo={zonaId === null} onClick={() => setZonaId(null)}>
                 Todas
               </Chip>
               {zonas.map((z) => (
-                <Chip key={z.id} activo={zona === z.codigo} onClick={() => setZona(z.codigo)}>
+                <Chip key={z.id} activo={zonaId === z.id} onClick={() => setZonaId(z.id)}>
                   {z.nombre}
+                  {verLocalZonas && z.sucursalNombre ? ` · ${z.sucursalNombre}` : ""}
                 </Chip>
               ))}
             </div>

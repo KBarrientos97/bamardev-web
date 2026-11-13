@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mesa } from "../../types/salon";
 
@@ -8,11 +8,22 @@ import type { Mesa } from "../../types/salon";
  */
 
 vi.mock("../../lib/api", () => ({
-  api: { salon: vi.fn() },
+  api: { salon: vi.fn(), getSucursales: vi.fn() },
 }));
 
+// Un usuario de organización (sin `sucursalId`) o de un local, según el caso.
+const sesion = vi.hoisted(() => ({ sucursalId: null as number | null, locales: undefined as number | undefined }));
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ usuario: { id: 7, nombre: "Mesero Prueba", username: "mesero.prueba" } }),
+  useAuth: () => ({
+    usuario: {
+      id: 7,
+      nombre: "Mesero Prueba",
+      username: "mesero.prueba",
+      sucursalId: sesion.sucursalId,
+      sucursal: sesion.sucursalId == null ? null : "Sucursal Sur",
+    },
+    negocio: { sucursalesActivas: sesion.locales },
+  }),
 }));
 
 import { api } from "../../lib/api";
@@ -63,6 +74,11 @@ const contador = (etiqueta: string) =>
     .find((b) => within(b).queryByText(etiqueta) && /^\d/.test(b.textContent ?? ""))!;
 
 beforeEach(() => {
+  vi.mocked(api.getSucursales).mockClear();
+  vi.mocked(api.salon).mockClear();
+  sesion.sucursalId = null;
+  sesion.locales = undefined;
+  vi.mocked(api.getSucursales).mockResolvedValue([]);
   vi.mocked(api.salon).mockResolvedValue({ mesas: MESAS, zonas: ZONAS, meserosCobran: false } as never);
 });
 
@@ -121,5 +137,60 @@ describe("el salón del mesero (UX-MESEROS §1)", () => {
     fireEvent.click(contador("Por liberar"));
     expect(screen.getByText("No hay mesas en «Por liberar».")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Ver todas" }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("el salón con varios locales (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  const LOCALES = [
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Sur", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+  const ZONAS_2 = [
+    { id: 1, codigo: "salon", nombre: "Salón", sucursalId: 1, sucursalNombre: "Centro" },
+    { id: 2, codigo: "salon", nombre: "Salón", sucursalId: 2, sucursalNombre: "Sur" },
+  ];
+  const MESAS_2 = [
+    mesa({ id: 1, codigo: "C1", zonaId: 1 }),
+    mesa({ id: 2, codigo: "S1", zonaId: 2 }),
+  ];
+
+  it("la organización elige el local y el salón se pide con su id", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES as never);
+    vi.mocked(api.salon).mockResolvedValue({ mesas: MESAS_2, zonas: ZONAS_2 } as never);
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "Sur" }));
+    await waitFor(() => expect(api.salon).toHaveBeenLastCalledWith(2));
+  });
+
+  it("con Todas, cada zona dice de qué local es, y elegir una no mezcla la del otro", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES as never);
+    vi.mocked(api.salon).mockResolvedValue({ mesas: MESAS_2, zonas: ZONAS_2 } as never);
+    montar();
+    const chip = await screen.findByRole("button", { name: "Salón · Sur" });
+    expect(screen.getByRole("button", { name: "Salón · Centro" })).toBeInTheDocument();
+    fireEvent.click(chip);
+    expect(screen.getByText("Libres · 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Abrir S1/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Abrir C1/ })).not.toBeInTheDocument();
+  });
+
+  it("el usuario de un local no ve selector ni local en las zonas: sólo su sede en la barra", async () => {
+    sesion.sucursalId = 2;
+    sesion.locales = 2;
+    vi.mocked(api.salon).mockResolvedValue({ mesas: [MESAS_2[1]], zonas: [ZONAS_2[1]] } as never);
+    montar();
+    await screen.findByRole("button", { name: /Abrir S1/ });
+    expect(api.getSucursales).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Sur" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Salón · Sur" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Sucursal Sur/)).toBeInTheDocument();
+  });
+
+  it("con un solo local no aparece nada nuevo", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([LOCALES[0]] as never);
+    montar();
+    await screen.findByText("Sr. Mamani");
+    expect(screen.queryByRole("button", { name: "Centro" })).not.toBeInTheDocument();
+    expect(api.salon).toHaveBeenLastCalledWith(null);
   });
 });

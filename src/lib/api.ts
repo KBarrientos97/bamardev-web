@@ -1120,10 +1120,14 @@ export const api = {
   // el backend las dedupe: si el POST llegó pero la respuesta se perdió, el
   // reintento devuelve lo que ya existe en vez de duplicarlo — una comanda
   // repetida es un pedido que la cocina hace dos veces.
-  salon: () => request<Salon>("/salon"),
+  // `sucursalId`: el local del salón que se mira (sólo lo respeta el usuario de
+  // organización; al de un local el backend le fuerza el suyo). Sin él, igual
+  // que siempre: el consolidado, o el propio.
+  salon: (sucursalId?: number | null) => request<Salon>(`/salon${qs({ sucursalId })}`),
   mesa: (id: number) => request<Mesa>(`/salon/mesas/${id}`),
   /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
-  cartaSalon: () => request<Producto[]>("/salon/carta"),
+  cartaSalon: (sucursalId?: number | null) =>
+    request<Producto[]>(`/salon/carta${qs({ sucursalId })}`),
   turnoMesero: () => request<TurnoMesero>("/salon/turno"),
   /**
    * Una mesa ya cobrada del turno, para volver a darle el recibo al cliente.
@@ -1223,7 +1227,8 @@ export const api = {
     request<Mesa>(`/salon/mesas/${id}/reserva`, { method: "DELETE" }),
 
   /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
-  mesasPorCobrar: () => request<Mesa[]>("/salon/por-cobrar"),
+  mesasPorCobrar: (sucursalId?: number | null) =>
+    request<Mesa[]>(`/salon/por-cobrar${qs({ sucursalId })}`),
   /**
    * Convierte la cuenta de la mesa en venta.
    *

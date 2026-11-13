@@ -14,27 +14,36 @@ import type { Producto } from "../../types";
  * Vive sólo en memoria: al cerrar la app se pierde, y no guarda nada en el
  * celular.
  */
-let guardada: Producto[] | null = null;
-let enCamino: Promise<Producto[]> | null = null;
+// Una por local (PLAN-SUCURSAL-TOTAL, etapa 5): el de organización toma pedidos
+// de mesas de distintos locales y cada uno tiene sus precios y su stock. La
+// clave 0 es "sin local": la carta por defecto, la del propio local de quien la
+// pide (el backend le fuerza el suyo) o el consolidado.
+let guardadas = new Map<number, Producto[]>();
+let enCamino = new Map<number, Promise<Producto[]>>();
+
+const claveDe = (sucursalId?: number | null) => sucursalId ?? 0;
 
 /** La última carta bajada, si hay. */
-export function cartaGuardada(): Producto[] | null {
-  return guardada;
+export function cartaGuardada(sucursalId?: number | null): Producto[] | null {
+  return guardadas.get(claveDe(sucursalId)) ?? null;
 }
 
-/** Baja la carta (una sola vez a la vez) y la guarda. */
-export function bajarCarta(): Promise<Producto[]> {
-  if (enCamino) return enCamino;
-  enCamino = api
-    .cartaSalon()
+/** Baja la carta (una sola vez a la vez por local) y la guarda. */
+export function bajarCarta(sucursalId?: number | null): Promise<Producto[]> {
+  const clave = claveDe(sucursalId);
+  const viva = enCamino.get(clave);
+  if (viva) return viva;
+  const promesa = api
+    .cartaSalon(sucursalId)
     .then((c) => {
-      guardada = c;
+      guardadas.set(clave, c);
       return c;
     })
     .finally(() => {
-      enCamino = null;
+      enCamino.delete(clave);
     });
-  return enCamino;
+  enCamino.set(clave, promesa);
+  return promesa;
 }
 
 /** Para adelantarla sin esperar: un error acá no le importa a nadie. */
@@ -44,6 +53,6 @@ export function precargarCarta(): void {
 
 /** Para los tests: arrancar sin carta guardada. */
 export function olvidarCarta(): void {
-  guardada = null;
-  enCamino = null;
+  guardadas = new Map();
+  enCamino = new Map();
 }

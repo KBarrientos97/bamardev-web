@@ -234,8 +234,13 @@ function PuntoDeVenta() {
    * es un error que mostrarle a la cajera — simplemente no hay mesas.
    */
   const porCobrar = useApi(
-    () => (veMesasPorCobrar ? api.mesasPorCobrar().catch(() => []) : Promise.resolve([])),
-    [veMesasPorCobrar],
+    () =>
+      veMesasPorCobrar
+        ? // Las del local de la caja: el de organización que abre una caja en
+          // una sucursal no tiene que ver las cuentas de las demás.
+          api.mesasPorCobrar(almacenCaja).catch(() => [])
+        : Promise.resolve([]),
+    [veMesasPorCobrar, almacenCaja],
   );
 
   /**
@@ -917,6 +922,7 @@ function PuntoDeVenta() {
   if (pantalla === "mesasPorCobrar")
     return (
       <MesasPorCobrar
+        sucursalId={almacenCaja}
         onAtras={() => setPantalla("venta")}
         onIrAEntregas={() => irAEntregas("mesasPorCobrar")}
         // El cobro de una mesa reusa la pantalla de cobro del POS: es la misma

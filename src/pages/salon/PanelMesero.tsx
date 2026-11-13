@@ -122,6 +122,12 @@ export default function PanelMesero() {
     if (mensaje) setTimeout(() => setAviso(""), 3000);
   }
 
+  /**
+   * De qué local es una mesa. La que devuelve el backend al abrirla, unirla o
+   * separarla no lo trae (lo agrega la web a las del salón): se lo busca ahí.
+   */
+  const localDe = (m: Mesa) => m.sucursalId ?? mesas.find((x) => x.id === m.id)?.sucursalId ?? null;
+
   /** Abrir mesa, el pedido, cobrar y las entregas: se apilan sobre el panel. */
   const apilada = flujo && flujo.tipo !== "detalle" ? flujo : null;
 
@@ -144,6 +150,7 @@ export default function PanelMesero() {
       return (
         <TomarPedido
           mesa={f.mesa}
+          sucursalId={localDe(f.mesa)}
           onAtras={() => salir()}
           onEnviado={(mensaje) => salir(() => volverAlSalon(mensaje))}
         />

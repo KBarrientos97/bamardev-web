@@ -114,6 +114,14 @@ export interface Mesa {
   zonaId?: number | null;
   zonaCodigo: string;
   zonaNombre: string;
+  /**
+   * En qué local está la mesa. **No lo manda el backend por mesa**: lo agrega la
+   * web desde las zonas del salón (`conLocalDeZona`), porque la mesa hereda la
+   * sucursal de su zona. Sirve para no ofrecer, al pasar/juntar/unir, mesas de
+   * otro local (el backend responde 400). `null`/ausente = no se sabe.
+   */
+  sucursalId?: number | null;
+  sucursalNombre?: string | null;
   capacidad: number;
   /** Capacidad sumando las mesas unidas. */
   capacidadTotal: number;

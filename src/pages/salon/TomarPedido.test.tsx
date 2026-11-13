@@ -140,3 +140,17 @@ describe("el pedido se siente como una app (UX nativa, 10-nov)", () => {
     expect(onVolver).not.toHaveBeenCalled();
   });
 });
+
+describe("la carta del local de la mesa (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  it("pide la carta del local de la mesa, no la de los otros", async () => {
+    render(<TomarPedido mesa={MESA} sucursalId={2} onAtras={() => {}} onEnviado={() => {}} />);
+    await screen.findByText("Coca-Cola");
+    expect(api.cartaSalon).toHaveBeenCalledWith(2);
+  });
+
+  it("sin local conocido pide la de siempre", async () => {
+    render(<TomarPedido mesa={MESA} onAtras={() => {}} onEnviado={() => {}} />);
+    await screen.findByText("Coca-Cola");
+    expect(api.cartaSalon).toHaveBeenCalledWith(undefined);
+  });
+});
