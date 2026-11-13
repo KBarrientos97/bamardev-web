@@ -78,7 +78,14 @@ export default function FormTransferencia() {
   const [guardando, setGuardando] = useState(false);
   const [confirmandoAprobar, setConfirmandoAprobar] = useState(false);
 
-  const almacenes = useApi(() => api.getAlmacenes(), []);
+  // El encargado de un local ya no recibe de `/almacenes` los otros locales
+  // (traen la valorización de su inventario y no son suyos), pero el destino de
+  // una transferencia es justamente otro: para él los nombres salen de
+  // `/almacenes/mias`, que no lleva números. La organización sigue como antes.
+  const almacenes = useApi(
+    () => (miSucursal != null ? api.getSucursales() : api.getAlmacenes()),
+    [miSucursal],
+  );
   const mov = useApi(
     () => (movId ? api.getMovimiento(movId) : Promise.resolve(null)),
     [movId],
