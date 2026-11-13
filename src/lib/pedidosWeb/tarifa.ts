@@ -45,11 +45,7 @@ export function distanciaEntregaKm(sucursal: Punto, pin: Punto): number {
   return aDosDecimales(haversineKm(sucursal, pin) * FACTOR_CALLES);
 }
 
-/**
- * El redondeo del total, aislado a propósito: «hacia arriba al boliviano» es
- * la regla del §3. (El ejemplo «12 km = 22» del mismo contrato sale 22,5 antes
- * de redondear y no cierra con esta regla: ver §9 Desvíos, 13-nov.)
- */
+/** El redondeo del total: «hacia arriba al boliviano» (§3; 12 km son 22,50 y dan Bs 23). */
 export function redondearAlBoliviano(monto: number): number {
   // Los 1e-9 evitan que un 13,000000000002 por coma flotante suba a 14.
   return Math.ceil(monto - 1e-9);

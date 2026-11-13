@@ -13,7 +13,7 @@ import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { MOTIVOS_RECHAZO, haceCuanto, totalDe } from "./logica";
+import { MOTIVOS_RECHAZO, aceptadoPorDe, haceCuanto, totalDe } from "./logica";
 
 // MapLibre (~1 MB) se baja recién cuando se abre un pedido con ubicación.
 const MapaPedido = lazy(() => import("../pagina/MapaSeguimiento"));
@@ -79,7 +79,7 @@ export default function DetallePedidoWeb({
 
       {!esNuevo && (
         <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
-          {p.estado === "ACEPTADO" && `Aceptado${p.aceptadoPor ? ` por ${p.aceptadoPor}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
+          {p.estado === "ACEPTADO" && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
           {p.estado === "RECHAZADO" && `Rechazado${p.motivoRechazo ? `: ${p.motivoRechazo}` : ""}.`}
           {p.estado === "VENCIDO" && "Venció: nadie lo respondió a tiempo."}
           {p.estado === "CANCELADO" && "Lo canceló el cliente."}
@@ -138,8 +138,8 @@ export default function DetallePedidoWeb({
           </div>
           {delivery && (
             <div className="flex justify-between text-texto-2">
-              <dt>Envío sugerido{p.distanciaKm != null ? ` (${fmtCantidad(p.distanciaKm, 2)} km)` : ""}</dt>
-              <dd>{fmtMoney(p.envioSugerido)}</dd>
+              <dt>{p.envio != null && p.estado !== "NUEVO" ? "Envío" : "Envío sugerido"}{p.distanciaKm != null ? ` (${fmtCantidad(p.distanciaKm, 2)} km)` : ""}</dt>
+              <dd>{fmtMoney(p.estado !== "NUEVO" && p.envio != null ? p.envio : p.envioSugerido)}</dd>
             </div>
           )}
           <div className="flex justify-between border-t border-borde pt-1.5 text-base font-extrabold text-texto">

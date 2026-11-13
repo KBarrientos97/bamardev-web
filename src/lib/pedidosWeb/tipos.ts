@@ -157,7 +157,12 @@ export interface PedidoWeb {
   lineas: LineaPedidoWeb[];
   motivoRechazo: string | null;
   ventaId: number | null;
-  aceptadoPor?: string | null;
+  /** Quién lo aceptó: el backend manda `{ id, nombre }` y, aparte, `aceptadoPorNombre`. */
+  aceptadoPor?: { id: number; nombre: string } | string | null;
+  aceptadoPorNombre?: string | null;
+  /** Lo que el cliente paga: el envío confirmado si ya hay venta, y el total con él. */
+  envio?: number;
+  total?: number;
   repartidor?: { id: number; nombre: string } | null;
   creadoEn: string;
   aceptadoEn: string | null;

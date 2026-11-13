@@ -290,6 +290,25 @@ describe("el carrito con pedidos en el sistema", () => {
     expect(sessionStorage.getItem("pedido:elganadero")).not.toBeNull();
   });
 
+  it.each([
+    ["FUERA_DE_ZONA", /queda fuera de la zona de entrega/],
+    ["SUCURSAL_CERRADA", /acaba de cerrar/],
+    ["TOPE_PEDIDOS", /Ya tenés pedidos en curso/],
+    ["NO_DISPONIBLE_ONLINE", /Escribile al local por WhatsApp/],
+    ["CAPTCHA", /No pudimos verificar que no sos un robot/],
+  ])("el código %s se explica en lenguaje del cliente", async (codigo, texto) => {
+    servidor({ respuestaCrear: { status: 409, cuerpo: { statusCode: 409, message: "texto técnico", codigo } } });
+    await montar();
+    await abrirPedido();
+    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    escribir("Dirección", "Calle Los Tajibos 23");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    expect(await screen.findByText(texto)).toBeInTheDocument();
+    expect(screen.queryByText("texto técnico")).not.toBeInTheDocument();
+  });
+
   it("un GPS poco preciso pide mover el pin antes de mandar", async () => {
     const s = servidor();
     const pedirPosicion = vi.fn((ok: PositionCallback) =>

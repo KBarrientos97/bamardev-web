@@ -17,7 +17,7 @@ describe("tarifa de envío", () => {
     expect(calcularEnvio(km)).toBe(bs);
   });
 
-  it("12 km: 22,5 antes de redondear, y «hacia arriba al boliviano» da 23 (el contrato dice 22: §9)", () => {
+  it("12 km son 22,50 y «hacia arriba al boliviano» da 23", () => {
     expect(calcularEnvio(12)).toBe(23);
   });
 

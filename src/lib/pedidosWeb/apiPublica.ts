@@ -10,15 +10,35 @@ import type { CuerpoPedido, InfoPedidos, RespuestaCrear, Seguimiento } from "./t
 const BASE = import.meta.env.VITE_API_URL || "/api";
 const TIMEOUT_MS = 20_000;
 
-/** Un error con el status y el mensaje del backend, ya en español para mostrar. */
+/** Un error con el status, el `codigo` del backend (si trae) y un mensaje ya en español para mostrar. */
 export class ErrorPedido extends Error {
   status: number;
-  constructor(mensaje: string, status: number) {
+  codigo?: string;
+  constructor(mensaje: string, status: number, codigo?: string) {
     super(mensaje);
     this.name = "ErrorPedido";
     this.status = status;
+    this.codigo = codigo;
   }
 }
+
+/**
+ * Qué se le dice al cliente según el `codigo` de la API pública (CONTRATO §9,
+ * backend). Los que dependen del caso (un producto agotado, un dato mal
+ * escrito) quedan con el texto del backend, que ya nombra lo que pasó.
+ */
+const TEXTO_POR_CODIGO: Record<string, string> = {
+  NO_RECIBE: "Ahora no estamos recibiendo pedidos por acá.",
+  PEDIDOS_NO_DISPONIBLES: "Este negocio todavía no recibe pedidos desde la página.",
+  SUCURSAL_NO_DISPONIBLE: "Ese local no está disponible para pedidos. Elegí otro.",
+  SUCURSAL_CERRADA: "Ese local acaba de cerrar. Probá con otro o un poco más tarde.",
+  SOLO_RECOGER: "Ese local sólo atiende pedidos para pasar a recoger.",
+  FUERA_DE_ZONA: "Esa dirección queda fuera de la zona de entrega. Probá con otra o pasá a recoger.",
+  TOPE_PEDIDOS: "Ya tenés pedidos en curso. Esperá a que el local los atienda para hacer otro.",
+  NO_DISPONIBLE_ONLINE: "No podemos tomar tu pedido por acá. Escribile al local por WhatsApp.",
+  CAPTCHA: "No pudimos verificar que no sos un robot. Probá de nuevo.",
+  PEDIDO_NO_ENCONTRADO: "No encontramos este pedido.",
+};
 
 async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   const corte = new AbortController();
@@ -53,7 +73,9 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
     let mensaje = Array.isArray(m) ? m.join(". ") : typeof m === "string" ? m : "Algo salió mal. Probá de nuevo.";
     if (res.status === 429) mensaje = "Demasiados intentos seguidos. Esperá un minuto y probá de nuevo.";
     if (res.status >= 500) mensaje = "Algo salió mal de nuestro lado. Probá de nuevo en un momento.";
-    throw new ErrorPedido(mensaje, res.status);
+    const codigo = typeof cuerpo.codigo === "string" ? cuerpo.codigo : undefined;
+    if (codigo && TEXTO_POR_CODIGO[codigo] && res.status < 500 && res.status !== 429) mensaje = TEXTO_POR_CODIGO[codigo];
+    throw new ErrorPedido(mensaje, res.status, codigo);
   }
   return res.json() as Promise<T>;
 }

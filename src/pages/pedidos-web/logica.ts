@@ -9,9 +9,17 @@ export const MOTIVOS_RECHAZO: readonly (readonly [CodigoRechazo, string])[] = [
   ["OTRO", "Otro motivo"],
 ];
 
-/** Lo que el cliente tiene que pagar, según lo que se sabe del pedido. */
-export function totalDe(p: Pick<PedidoWeb, "subtotal" | "envioSugerido" | "tipo">): number {
+/** Lo que el cliente tiene que pagar: el total que manda el backend o, si falta, productos más envío sugerido. */
+export function totalDe(p: Pick<PedidoWeb, "subtotal" | "envioSugerido" | "tipo"> & { total?: number }): number {
+  if (typeof p.total === "number") return p.total;
   return Math.round((p.subtotal + (p.tipo === "DELIVERY" ? p.envioSugerido : 0)) * 100) / 100;
+}
+
+/** Quién aceptó el pedido, venga como objeto, como texto o aparte. */
+export function aceptadoPorDe(p: Pick<PedidoWeb, "aceptadoPor" | "aceptadoPorNombre">): string | null {
+  if (p.aceptadoPorNombre) return p.aceptadoPorNombre;
+  if (!p.aceptadoPor) return null;
+  return typeof p.aceptadoPor === "string" ? p.aceptadoPor : p.aceptadoPor.nombre;
 }
 
 /** «hace 3 min», para saber cuánto lleva esperando (a los 10 minutos vence). */
