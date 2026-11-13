@@ -95,11 +95,17 @@ export default function LibroControladosPagina() {
   // El N° de cada asiento en el libro de SU sucursal (con un local, 1, 2, 3…).
   const numeros = numerarPorSucursal(filas);
   // La sesión no trae dirección ni teléfono del negocio, pero la sucursal sí
-  // (`Almacen`). Se toma la elegida o, sin filtro, la principal: es la que usa
-  // la caja cuando una operación no dice de cuál se trata. En el consolidado
-  // de varias no hay una sola dirección, y el impreso deja el renglón en blanco.
-  const local =
-    suc.sucursales.find((a) => a.id === suc.sucursalId) ?? (suc.elegir ? undefined : suc.sugerida);
+  // (`Almacen`, de `GET /almacenes/mias`: PLAN-SUCURSAL-TOTAL §10.2). Se toma la
+  // elegida o, sin filtro, la principal: es la que usa la caja cuando una
+  // operación no dice de cuál se trata. En el consolidado de varias no hay una
+  // sola dirección, y el impreso deja el renglón en blanco.
+  // SÓLO con 2+ locales: con uno el libro impreso queda idéntico al de siempre
+  // (renglones en blanco para completar a mano), aunque la ficha ya tenga datos.
+  // Y quien es de un local no pide la lista (ver `useSucursales`): su libro
+  // lleva el nombre de su sede y los renglones en blanco.
+  const local = suc.hayVarias
+    ? (suc.sucursales.find((a) => a.id === suc.sucursalId) ?? (suc.elegir ? undefined : suc.sugerida))
+    : undefined;
   const negocioImpreso = negocio
     ? { nombre: negocio.nombre, direccion: local?.direccion, telefono: local?.telefono }
     : null;

@@ -564,8 +564,13 @@ export interface Almacen {
    * dice de cuál se trata. Hay exactamente una por negocio.
    */
   esPrincipal: boolean;
-  direccion: string | null;
-  telefono: string | null;
+  /**
+   * Los de la ficha de la sucursal. Opcionales: `GET /almacenes/mias` (el listado
+   * del hook `useSucursales`) los trae desde PLAN-SUCURSAL-TOTAL §10.2, y un
+   * backend anterior no los manda. `null` = el local no cargó su ficha.
+   */
+  direccion?: string | null;
+  telefono?: string | null;
   /** Dónde está, para el mapa de la página (PLAN-PAGINA-WEB §3.1). */
   latitud?: number | null;
   longitud?: number | null;

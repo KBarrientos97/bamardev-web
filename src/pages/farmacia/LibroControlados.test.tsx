@@ -163,8 +163,24 @@ describe("el impreso", () => {
 
 describe("la sucursal en el libro (PLAN-SUCURSAL-TOTAL)", () => {
   const dosLocales = [
-    { id: 917, nombre: "Sucursal Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
-    { id: 918, nombre: "Sucursal Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    {
+      id: 917,
+      nombre: "Sucursal Centro",
+      activo: true,
+      tipo: "SUCURSAL",
+      esPrincipal: true,
+      direccion: "Av. Principal 123",
+      telefono: "70011122",
+    },
+    {
+      id: 918,
+      nombre: "Sucursal Equipetrol",
+      activo: true,
+      tipo: "SUCURSAL",
+      esPrincipal: false,
+      direccion: "Calle Los Cusis 45",
+      telefono: null,
+    },
   ];
   const deEquipetrol = (id: number, ventaId: number) =>
     asiento({ id, ventaId, almacen: { id: 918, nombre: "Sucursal Equipetrol" } });
@@ -224,6 +240,31 @@ describe("la sucursal en el libro (PLAN-SUCURSAL-TOTAL)", () => {
     expect(screen.getByRole("button", { name: /Imprimir/ })).toBeEnabled();
     expect(screen.queryByText(/Para imprimir elegí una sucursal/)).toBeNull();
     expect(document.querySelector(".libro-impreso")).toHaveTextContent("Sucursal: Sucursal Equipetrol");
+  });
+
+  it("el libro de la sucursal elegida lleva SU dirección y teléfono (de /almacenes/mias)", async () => {
+    comoOrganizacion();
+    await montar();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Sucursal Equipetrol" }));
+    });
+    const papel = document.querySelector(".libro-impreso")!;
+    expect(papel).toHaveTextContent("Dirección: Calle Los Cusis 45");
+    // Esa sucursal no cargó el teléfono: el renglón queda para completarlo.
+    expect(papel).not.toHaveTextContent("70011122");
+    expect(papel.querySelectorAll(".renglon")).toHaveLength(1);
+  });
+
+  it("con un solo local el papel no cambia: renglones en blanco aunque la ficha tenga datos", async () => {
+    sesion.sucursalId = null;
+    sesion.sucursal = null;
+    sesion.activas = 1;
+    vi.mocked(api.getSucursales).mockResolvedValue([dosLocales[0]] as never);
+    vi.mocked(api.libroControlados).mockResolvedValue([asiento({ id: 1 })]);
+    await montar();
+    const papel = document.querySelector(".libro-impreso")!;
+    expect(papel).not.toHaveTextContent("Av. Principal 123");
+    expect(papel.querySelectorAll(".renglon")).toHaveLength(2);
   });
 
   it("el Excel consolidado numera cada local en su libro y dice de cuál es en el archivo", async () => {
