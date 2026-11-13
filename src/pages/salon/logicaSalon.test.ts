@@ -302,6 +302,16 @@ describe("el local de la mesa (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
     expect(todas[2].sucursalNombre).toBe("Sur");
   });
 
+  it("el local que ya trae la mesa (backend nuevo) manda; de la zona sólo se toma el nombre", () => {
+    const delBackend = mesa({ id: 9, codigo: "N1", zonaId: 2, sucursalId: 20 });
+    const [m] = conLocalDeZona([delBackend], zonas);
+    expect(m.sucursalId).toBe(20);
+    expect(m.sucursalNombre).toBe("Sur");
+    // Con un local propio y distinto al de la zona, no se pisa.
+    const [otra] = conLocalDeZona([mesa({ id: 9, codigo: "N1", zonaId: 2, sucursalId: 99 })], zonas);
+    expect(otra.sucursalId).toBe(99);
+  });
+
   it("sin zonas con local devuelve la misma lista, sin copiarla", () => {
     const lista = [c1, c2];
     expect(conLocalDeZona(lista, [{ id: 1, codigo: "salon", nombre: "Salón" }])).toBe(lista);

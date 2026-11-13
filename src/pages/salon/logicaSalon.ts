@@ -314,10 +314,11 @@ export const COLOR_MESA: Record<EstadoMesa, { chip: string; borde: string }> = {
 };
 
 /**
- * Le pone a cada mesa el local de su zona. El backend no lo manda por mesa
- * (`Mesa.sucursalId`), pero sí en cada zona del salón, y la mesa hereda el de la
- * zona. Sin zonas con local (negocio de un local, dato viejo) devuelve la misma
- * lista, sin copiarla.
+ * El local de cada mesa. El backend ya lo manda por mesa (`Mesa.sucursalId`,
+ * PLAN-SUCURSAL-TOTAL §10.4) y ese manda; de la zona sólo se toma lo que la mesa
+ * no trae: el nombre del local y, para un backend anterior, el id (la mesa hereda
+ * el local de su zona). Sin zonas con local (negocio de un local, dato viejo)
+ * devuelve la misma lista, sin copiarla.
  */
 export function conLocalDeZona(mesas: Mesa[], zonas: ZonaSalon[]): Mesa[] {
   const locales = new Map<number, { id: number; nombre: string | null }>();
@@ -327,6 +328,8 @@ export function conLocalDeZona(mesas: Mesa[], zonas: ZonaSalon[]): Mesa[] {
   if (locales.size === 0) return mesas;
   return mesas.map((m) => {
     const local = m.zonaId != null ? locales.get(m.zonaId) : undefined;
-    return local ? { ...m, sucursalId: local.id, sucursalNombre: local.nombre } : m;
+    return local
+      ? { ...m, sucursalId: m.sucursalId ?? local.id, sucursalNombre: m.sucursalNombre ?? local.nombre }
+      : m;
   });
 }

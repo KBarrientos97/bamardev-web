@@ -4,6 +4,7 @@ import { Boton, Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { hayVariasEntre } from "../../lib/useSucursales";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { EntregaMesero } from "../../types/salon";
@@ -42,6 +43,9 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
   const datos = entregas.datos;
   const items = datos?.items ?? [];
   const pendientes = items.filter((e) => e.estado === "PENDIENTE");
+  // El local de cada entrega, sólo si la lista mezcla 2+ (la lista es de una caja,
+  // así que casi siempre es una sola y no hay nada que rotular).
+  const verLocal = hayVariasEntre(items, (e) => e.almacen?.id);
 
   function alternar(id: number) {
     setMarcadas((antes) => {
@@ -144,6 +148,7 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
             <Fila
               key={e.id}
               entrega={e}
+              verLocal={verLocal}
               puedeAprobar={puedeAprobar}
               marcada={marcadas.has(e.id)}
               onAlternar={() => alternar(e.id)}
@@ -199,11 +204,13 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
  */
 function Fila({
   entrega,
+  verLocal,
   puedeAprobar,
   marcada,
   onAlternar,
 }: {
   entrega: EntregaMesero;
+  verLocal: boolean;
   puedeAprobar: boolean;
   marcada: boolean;
   onAlternar: () => void;
@@ -221,6 +228,11 @@ function Fila({
           {entrega.comprobante && (
             <span className="text-[12px] text-texto-3">
               {entrega.comprobante}
+            </span>
+          )}
+          {verLocal && entrega.almacen?.nombre && (
+            <span className="text-[12px] text-texto-3">
+              · {entrega.almacen.nombre}
             </span>
           )}
         </div>
