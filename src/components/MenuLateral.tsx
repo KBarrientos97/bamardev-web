@@ -20,6 +20,7 @@ import {
 import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
 import { useContadorBillar } from "../lib/billar/contador";
 import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
+import { usePedidosNuevos } from "../lib/pedidosWeb/contador";
 import { revisaPagosEnLinea } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
@@ -101,6 +102,8 @@ export default function MenuLateral({
     menu.planos.some((n) => n.item.seccion === "academia_preinscripciones"),
     revisaPagosEnLinea(usuario),
   );
+  // Pedidos de la página sin responder (13-nov): el mismo reloj que usa el aviso.
+  const pedidosWeb = usePedidosNuevos(menu.planos.some((n) => n.item.seccion === "pedidos_web")).nuevos;
   const contadorDe = (n: NodoMenu) =>
     n.item.seccion === "solicitudes"
       ? solicitudes
@@ -108,8 +111,11 @@ export default function MenuLateral({
         ? preinscripciones
         : n.item.seccion === "billar"
           ? billar.abiertas
-          : 0;
-  const queCuenta = (n: NodoMenu) => (n.item.seccion === "billar" ? "mesas abiertas" : "por atender");
+          : n.item.seccion === "pedidos_web"
+            ? pedidosWeb
+            : 0;
+  const queCuenta = (n: NodoMenu) =>
+    n.item.seccion === "billar" ? "mesas abiertas" : n.item.seccion === "pedidos_web" ? "pedidos nuevos" : "por atender";
   const enAlerta = (n: NodoMenu) => n.item.seccion === "billar" && billar.alerta;
   // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra
   // las pendientes en vez de cuántas pantallas guarda, o nadie las vería.

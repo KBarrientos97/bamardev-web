@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from "react";
 import { iconoPorLlave } from "../../lib/iconosArticulo";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_RED, paleta } from "../../lib/pagina/aspecto";
@@ -12,6 +12,7 @@ import {
   type LineaPedido,
 } from "../../lib/pagina/pedido";
 import type { Pedido } from "../../lib/pagina/usePedido";
+import type { InfoPedidos } from "../../lib/pedidosWeb/tipos";
 import type { ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import { conMayuscula, termino } from "../../lib/rubro";
 import { ElegirDestino } from "./EleccionWhatsapp";
@@ -25,7 +26,28 @@ import { ElegirDestino } from "./EleccionWhatsapp";
  */
 
 const VERDE_WHATSAPP = "#0C7A55";
-const FAMILIA = "Roboto, system-ui, sans-serif";
+export const FAMILIA = "Roboto, system-ui, sans-serif";
+
+// El pedido «al sistema» (pedidos web, 13-nov) vive en su propio pedazo: la
+// página con carrito de WhatsApp no baja nada de esto.
+const PanelSistema = lazy(() => import("./PanelSistema"));
+
+/**
+ * Con `pedidosSistema` el carrito no abre WhatsApp: manda el pedido al
+ * sistema del negocio. Lo arma `PaginaPublica` (la info de las sucursales se
+ * pide ahí, para avisar «estamos cerrados» antes de que el cliente arme todo).
+ */
+export interface ModoSistema {
+  info: InfoPedidos | null;
+  errorInfo: string;
+  onReintentarInfo: () => void;
+  /** La sucursal elegida en el catálogo y cómo cambiarla (de ella son los precios). */
+  sucursalCatalogo: number;
+  onSucursal: (indice: number) => void;
+  muchasSucursales: boolean;
+  /** Dónde escribirle al local si hoy no se puede pedir por acá. */
+  whatsappUrl: string | null;
+}
 
 /** Nombre, entrega y dirección se recuerdan en este navegador para la próxima vez (no la nota). */
 function claveDatos(sub: string) {
@@ -88,7 +110,7 @@ function useAncho(min: number): boolean {
   return ancho;
 }
 
-function Trazo({
+export function Trazo({
   d,
   color,
   size = 18,
@@ -131,6 +153,7 @@ export default function PedidoPagina({
   rubro,
   subdominio,
   asistente = false,
+  sistema,
 }: {
   negocio: string;
   color: string;
@@ -148,6 +171,8 @@ export default function PedidoPagina({
   subdominio?: string;
   /** Con el chat del asistente abajo a la derecha, la barra le deja su lugar. */
   asistente?: boolean;
+  /** Pedidos directo al sistema: reemplaza al WhatsApp (ver `ModoSistema`). */
+  sistema?: ModoSistema;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [destinoElegido, setDestino] = useState<string | null>(null);
@@ -357,6 +382,23 @@ export default function PedidoPagina({
         </span>
         <Trazo d={ICONO_SEGUIR} color="#ffffff" size={18} grosor={2.6} />
       </button>
+    );
+  }
+
+  if (sistema && subdominio) {
+    return (
+      <Suspense fallback={null}>
+        <PanelSistema
+          subdominio={subdominio}
+          negocio={negocio}
+          fuerte={fuerte}
+          tinte={tinte}
+          pedido={pedido}
+          ancho={ancho}
+          onCerrar={() => setAbierto(false)}
+          {...sistema}
+        />
+      </Suspense>
     );
   }
 
@@ -733,7 +775,7 @@ export default function PedidoPagina({
   );
 }
 
-function LineaCarrito({
+export function LineaCarrito({
   l,
   fuerte,
   tinte,

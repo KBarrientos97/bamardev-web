@@ -4,12 +4,19 @@ import TarjetaRegalo from "../../components/regalos/TarjetaRegalo";
 import { DISENOS_REGALO, esDiseno, NOMBRE_DISENO, type DisenoRegalo } from "../../lib/regalos/disenos";
 import type { CambiosPagina, ConfigRegalos } from "../../lib/pagina/tipos";
 import Seccion from "./Seccion";
+import TarifaEnvioEditor from "./TarifaEnvioEditor";
 
 /**
  * "Pedidos y gift cards" en el editor de Mi página (IDEAS/6 #1 y #6):
  *
  * · Pedidos por WhatsApp: el catálogo arma el pedido y lo manda al WhatsApp
  *   de la página.
+ * · Pedidos en el sistema (13-nov): el pedido llega a la caja con aviso y el
+ *   cliente lo sigue en un mapa. Pide `delivery` y el catálogo «Mis productos».
+ *   Con WhatsApp también prendido, gana WhatsApp. Acá también va la tarifa de envío.
+ * · Pedidos en el sistema (13-nov): el pedido llega a la caja con aviso y el
+ *   cliente lo sigue en un mapa. Pide `delivery` y el catálogo «Mis productos».
+ *   Con WhatsApp también prendido, gana WhatsApp. Acá también va la tarifa de envío.
  * · Gift cards: qué montos sugerir, si se acepta otro monto, cuáles de los 10
  *   diseños ofrecer (pintados con TU color y los motivos de TU rubro), cuál va
  *   primero, la vigencia y las condiciones.
@@ -34,6 +41,7 @@ const DEFECTO: ConfigRegalos = {
 export default function EditorPedidosRegalos({
   guardado,
   pedidosGuardado,
+  sistemaGuardado,
   borrador,
   cambiar,
   negocio,
@@ -43,9 +51,13 @@ export default function EditorPedidosRegalos({
   conGiftCards,
   conPedidos,
   conWhatsapp,
+  conDelivery = false,
+  conProductos = false,
 }: {
   guardado: ConfigRegalos | undefined;
   pedidosGuardado: boolean | undefined;
+  /** `pedidosSistema` guardado (13-nov). */
+  sistemaGuardado?: boolean;
   borrador: CambiosPagina;
   cambiar: (c: CambiosPagina) => void;
   negocio: string;
@@ -58,6 +70,10 @@ export default function EditorPedidosRegalos({
   conPedidos: boolean;
   /** La página tiene un WhatsApp: adónde llegan pedidos y pedidos de gift card. */
   conWhatsapp: boolean;
+  /** El negocio tiene la feature `delivery`: sin ella no hay pedidos en el sistema. */
+  conDelivery?: boolean;
+  /** El catálogo está en «Mis productos» (sin productos detrás no hay qué pedir). */
+  conProductos?: boolean;
 }) {
   const g = guardado ?? DEFECTO;
   const r: ConfigRegalos = {
@@ -70,6 +86,7 @@ export default function EditorPedidosRegalos({
     condiciones: borrador.regalosCondiciones !== undefined ? borrador.regalosCondiciones : g.condiciones,
   };
   const pedidos = borrador.pedidosWhatsapp ?? pedidosGuardado ?? false;
+  const sistema = borrador.pedidosSistema ?? sistemaGuardado ?? false;
   // Vacío = todos (así lo guarda el backend).
   const ofrecidos: DisenoRegalo[] = r.disenos.filter(esDiseno).length ? r.disenos.filter(esDiseno) : [...DISENOS_REGALO];
   const porDefecto: DisenoRegalo = esDiseno(r.diseno) && ofrecidos.includes(r.diseno) ? r.diseno : ofrecidos[0];
@@ -133,6 +150,44 @@ export default function EditorPedidosRegalos({
           <strong className="text-texto">Pedidos por WhatsApp</strong>: tus clientes arman el pedido
           desde tu catálogo y te llega escrito, con el total. Es un extra: pedilo a BamarDev para
           activarlo.
+        </p>
+      )}
+
+      {conDelivery ? (
+        <div className="space-y-3 border-t border-borde pt-4">
+          <label className={`flex items-start gap-3 ${conProductos ? "" : "opacity-60"}`}>
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={sistema && conProductos}
+              disabled={!conProductos}
+              onChange={(ev) => cambiar({ pedidosSistema: ev.target.checked })}
+            />
+            <span>
+              <strong className="block text-sm text-texto">Recibir pedidos en el sistema</strong>
+              <span className="text-[13px] text-texto-3">
+                Tus clientes piden desde la página, marcan su casa en el mapa y el pedido te llega a la caja con aviso y sonido. Lo aceptás,
+                elegís quién lo lleva y el cliente ve la moto en su celular.
+              </span>
+            </span>
+          </label>
+          {!conProductos && (
+            <p className="text-[13px] text-warning-text">
+              Para recibir pedidos en el sistema, pasá tu catálogo a «Mis productos»: así cada pedido descuenta stock y entra a tus ventas.
+            </p>
+          )}
+          {sistema && conProductos && pedidos && (
+            <p className="rounded-xl bg-warning-bg px-3 py-2 text-[13px] text-warning-text">
+              Tenés prendidos los dos: gana WhatsApp. El carrito de tu página seguirá abriendo WhatsApp hasta que apagues «Recibir pedidos por
+              WhatsApp».
+            </p>
+          )}
+          {sistema && conProductos && <TarifaEnvioEditor />}
+        </div>
+      ) : (
+        <p className="border-t border-borde pt-3 text-[13px] text-texto-3">
+          <strong className="text-texto">Pedidos en el sistema</strong>: los pedidos de tu página llegan directo a tu caja y el cliente sigue al repartidor en
+          un mapa. Es parte del módulo de Delivery: pedilo a BamarDev para activarlo.
         </p>
       )}
 

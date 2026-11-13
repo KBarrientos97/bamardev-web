@@ -49,6 +49,8 @@ export type Seccion =
   | "reportes"
   | "usuarios"
   | "reparto"
+  /** La bandeja de pedidos que los clientes hacen desde la página (13-nov). */
+  | "pedidos_web"
   /** El panel del mesero: el salón, lo que hay por servir y su turno. */
   | "salon"
   /** ABM de mesas y zonas: es del admin, no del mesero. */
@@ -303,6 +305,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // "Mis entregas" es la pantalla de quien reparte lo que le asignan; quien
   // gestiona todos los pedidos (`delivery.asignar`) lo hace desde el POS.
   reparto: { permiso: "entregas.realizar", sinGeneral: "delivery.asignar", feature: "delivery" },
+  // Los pedidos que llegan de la página (13-nov): los acepta quien asigna los
+  // deliveries (cajero, encargado, administrador), con la feature `delivery`.
+  pedidos_web: { permiso: "delivery.asignar", feature: "delivery" },
   // El panel del salón: el mesero (sus mesas) y quien supervisa el salón.
   salon: { permiso: "salon.atender", feature: "salon" },
   // El ABM de mesas y zonas, parte de la misma sección vendida.

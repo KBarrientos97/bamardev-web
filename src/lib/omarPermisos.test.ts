@@ -113,7 +113,12 @@ const HOY = {
       // Desde el 12-nov, la Supervisión del local, pegada al Punto de venta:
       // el administrador tiene `caja.ver_todas` y su plan trae `caja`. Es una
       // pantalla más para mirar; no cambia a dónde entra ni le saca nada.
-      { bloque: "vender", items: ["Punto de venta /pos", "Supervisión /supervision-local"] },
+      // Desde el 13-nov, «Pedidos web»: la bandeja de lo que los clientes piden
+      // desde la página. Va con la feature `delivery` y `delivery.asignar`
+      // (CONTRATO-PEDIDOS-WEB §8), así que aparece aunque el negocio no haya
+      // prendido «Recibir pedidos en el sistema»: la pantalla está vacía hasta
+      // entonces. No cambia a dónde entra nadie ni le saca nada.
+      { bloque: "vender", items: ["Punto de venta /pos", "Supervisión /supervision-local", "Pedidos web /pedidos-web"] },
       {
         bloque: "stock",
         items: [
@@ -160,7 +165,7 @@ const HOY = {
   CAJERO: {
     ruta: "/pos",
     menu: [
-      { bloque: "vender", items: ["Punto de venta /pos"] },
+      { bloque: "vender", items: ["Punto de venta /pos", "Pedidos web /pedidos-web"] },
       // Una carpeta "Finanzas" con una sola cosa adentro sería un clic de más.
       { bloque: "administracion", items: ["Cuentas por cobrar /creditos"] },
     ],
@@ -169,7 +174,12 @@ const HOY = {
   COMPLETO_ADMIN: {
     ruta: "/inventario",
     menu: [
-      { bloque: "vender", items: ["Punto de venta /pos", "Supervisión /supervision-local"] },
+      // Desde el 13-nov, «Pedidos web»: la bandeja de lo que los clientes piden
+      // desde la página. Va con la feature `delivery` y `delivery.asignar`
+      // (CONTRATO-PEDIDOS-WEB §8), así que aparece aunque el negocio no haya
+      // prendido «Recibir pedidos en el sistema»: la pantalla está vacía hasta
+      // entonces. No cambia a dónde entra nadie ni le saca nada.
+      { bloque: "vender", items: ["Punto de venta /pos", "Supervisión /supervision-local", "Pedidos web /pedidos-web"] },
       {
         bloque: "stock",
         items: [
@@ -232,11 +242,13 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
     const QR = "QR de cobro /configuracion/qr-cobro";
     const STOCK = "Inventario y stock /configuracion/inventario";
     const SUPERVISION = "Supervisión /supervision-local";
+    // Los pedidos de la página (13-nov): con `delivery` y `delivery.asignar`.
+    const PEDIDOS_WEB = "Pedidos web /pedidos-web";
     expect(pantallas("ADMIN", OMAR)).toEqual(
-      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR, STOCK, SUPERVISION].sort(),
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR, STOCK, SUPERVISION, PEDIDOS_WEB].sort(),
     );
     expect(pantallas("ADMIN", COMPLETO)).toEqual(
-      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR, STOCK, SUPERVISION].sort(),
+      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR, STOCK, SUPERVISION, PEDIDOS_WEB].sort(),
     );
     // El cajero, igual que siempre: es a quien se supervisa.
     expect(pantallas("CAJERO", OMAR)).not.toContain(SUPERVISION);

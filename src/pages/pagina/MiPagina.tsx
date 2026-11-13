@@ -1293,6 +1293,9 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
           <EditorPedidosRegalos
             guardado={e.pagina.regalos}
             pedidosGuardado={e.pagina.pedidosWhatsapp}
+            sistemaGuardado={e.pagina.pedidosSistema}
+            conDelivery={tieneFeature(negocioSesion?.features, "delivery")}
+            conProductos={modoCatalogo === "PRODUCTOS"}
             borrador={borrador}
             cambiar={cambiar}
             negocio={nombreVisible}

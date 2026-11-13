@@ -5,6 +5,7 @@
 import type { Tema } from "./lib/temas";
 import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
+import type { PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -1248,6 +1249,11 @@ export interface Venta {
   notaPedido: string | null;
   entregadoEn: string | null;
   repartidor?: { id: number; nombre: string } | null;
+  /**
+   * Sólo si la venta vino de un pedido de la página (13-nov): su ubicación y
+   * cómo paga, para navegar y para «Ya salí del local». null en las demás.
+   */
+  pedidoWeb?: PedidoWebDeEntrega | null;
   /** Lo que se cobra al entregar (0 si ya se pagó en caja). */
   totalACobrar?: number;
   /** Lo que el repartidor entrega al negocio (sin su tarifa de envío). */
