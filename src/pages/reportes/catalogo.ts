@@ -51,6 +51,12 @@ export interface FichaReporte {
   /** Rubros donde no existe, pase lo que pase con el plan. */
   fueraDeRubro?: Rubro[];
   /**
+   * Sólo existe para la organización con 2+ sucursales (`useSucursales().elegir`):
+   * el comparativo de locales. Con un solo local, o para quien es de una sede,
+   * no se ve (PLAN-SUCURSAL-TOTAL §1).
+   */
+  soloConVariasSucursales?: boolean;
+  /**
    * Es una foto de HOY y no cambia con el período (lo que queda en stock, lo
    * que hay que pedir): el encabezado no muestra las fechas elegidas arriba,
    * que harían creer que filtra por ellas.
@@ -65,6 +71,7 @@ const RENTABILIDAD = { capacidad: "reportes_rentabilidad", permiso: "reportes.re
 const v = {
   ventas: lazy(() => import("./vistas/Ventas")),
   resultado: lazy(() => import("./vistas/EstadoResultado")),
+  comparar: lazy(() => import("./vistas/CompararSucursales")),
   resultadoAcademia: lazy(() => import("./vistas/ResultadoAcademia")),
   equilibrio: lazy(() => import("./vistas/PuntoEquilibrio")),
   metodos: lazy(() => import("./vistas/MetodosPago")),
@@ -117,6 +124,20 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
       // siempre falla.
       seccion: "gastos",
       vista: v.resultado,
+    },
+    {
+      id: "comparar-sucursales",
+      titulo: "Comparar sucursales",
+      descripcion: "Ventas, costo y ganancia de cada local, lado a lado",
+      icono: "home",
+      tono: "azul",
+      grupo: "plata",
+      // Lo mismo que el Estado de resultado (trae costo, utilidad y gastos): el
+      // permiso y el plan de rentabilidad, y poder ver los gastos.
+      ...RENTABILIDAD,
+      seccion: "gastos",
+      soloConVariasSucursales: true,
+      vista: v.comparar,
     },
     {
       id: "resultado-academia",
@@ -294,11 +315,14 @@ export interface ContextoCatalogo {
   permisos?: string[];
   puede: (seccion: Seccion) => boolean;
   incluye: (capacidad: Capacidad) => boolean;
+  /** ¿El usuario es de organización y hay 2+ sucursales? (`useSucursales().elegir`). Ausente = no. */
+  variasSucursales?: boolean;
 }
 
 export function esVisible(f: FichaReporte, ctx: ContextoCatalogo): boolean {
   if (f.soloEnRubro && !f.soloEnRubro(ctx.rubro)) return false;
   if (f.fueraDeRubro && ctx.rubro && (f.fueraDeRubro as string[]).includes(ctx.rubro)) return false;
+  if (f.soloConVariasSucursales && !ctx.variasSucursales) return false;
   if (f.capacidad && !ctx.incluye(f.capacidad)) return false;
   if (f.permiso && !ctx.permisos?.includes(f.permiso)) return false;
   if (f.ademas && (!ctx.incluye(f.ademas.capacidad) || !ctx.permisos?.includes(f.ademas.permiso))) return false;

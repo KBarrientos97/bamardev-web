@@ -235,7 +235,16 @@ export interface DescuentosApi {
   /** Por quien VENDIÓ, no por quien anuló. */
   anulacionesPorCajero: { cajero: string; monto: number; cantidad: number }[];
   /** Máx. 20, las más nuevas primero. `fecha` ya viene escrita ("12 oct · 21:30"). */
-  ultimasAnulaciones: { fecha: string; idVenta: string; cajero: string; monto: number; autorizadoPor: string | null; motivo: string | null }[];
+  ultimasAnulaciones: {
+    fecha: string;
+    idVenta: string;
+    cajero: string;
+    monto: number;
+    autorizadoPor: string | null;
+    motivo: string | null;
+    /** El local de la venta anulada (§9.3). */
+    sucursal?: SucursalRef | null;
+  }[];
 }
 
 export interface MeserosApi {
@@ -266,8 +275,55 @@ export interface MeserosApi {
   }[];
 }
 
+/**
+ * De qué sucursal es una fila (PLAN-SUCURSAL-TOTAL §9.3). `null` = dato viejo
+ * sin local: se trata como "general". Opcional: un backend anterior no lo manda.
+ */
+export interface SucursalRef {
+  id: number;
+  nombre: string;
+}
+
+/**
+ * Una fila del comparativo (`GET /reportes/por-sucursal`, §9.4). La fila
+ * «General del negocio» (`general: true`, `sucursalId: null`) junta los gastos
+ * que no son de ningún local; `total` sale de las ventas de todo el negocio
+ * juntas, no de sumar las filas (puede apartarse ±Bs 0,01 por redondeo).
+ */
+export interface FilaPorSucursal {
+  sucursalId: number | null;
+  nombre: string;
+  general: boolean;
+  tipo: "SUCURSAL" | "DEPOSITO" | null;
+  activa: boolean;
+  esPrincipal: boolean;
+  ventas: number;
+  tickets: number;
+  costoVentas: number;
+  utilidadBruta: number;
+  /** Null sin ventas: crecer desde cero no es un 0 %. */
+  margenBrutoPct: number | null;
+  ventasSinCosto: number;
+  mermas: number;
+  gastosOperativos: number;
+  /** Impuestos y gastos financieros: debajo de la utilidad operativa, informativo. */
+  bajoLaLinea: number;
+  utilidadOperativa: number;
+}
+
+export interface PorSucursalApi {
+  desde: string;
+  hasta: string;
+  /** "organizacion" ve todas; "sucursal" (un usuario atado) recibe sólo la suya. */
+  alcance: "organizacion" | "sucursal";
+  filas: FilaPorSucursal[];
+  total: FilaPorSucursal;
+}
+
 export interface CierreApi {
   id: number;
+  /** El local de la caja. Sólo se muestra si las filas son de 2+ locales. */
+  sucursal?: SucursalRef | null;
   /** "30 sep": el día del cierre. */
   fecha: string;
   fechaApertura: string;
@@ -395,11 +451,54 @@ export interface CreditosApi {
     creditos: number;
     /** Atraso del crédito más atrasado (0 si ninguno venció). */
     diasAtrasoMax: number;
+    /** Los locales donde debe (§9.2). */
+    sucursales?: SucursalRef[];
+    /** Ese local si debe en uno solo; null si debe en varios. */
+    sucursal?: SucursalRef | null;
   }[];
-  cobros: { id: number; fecha: string; codigo: string | null; cliente: string; monto: number; formaPago: string; usuario: string | null }[];
+  cobros: {
+    id: number;
+    fecha: string;
+    codigo: string | null;
+    cliente: string;
+    monto: number;
+    formaPago: string;
+    usuario: string | null;
+    /** El local donde ENTRÓ el cobro (el de su caja). */
+    sucursal?: SucursalRef | null;
+  }[];
+}
+
+/**
+ * El billar con "Todas" (§9.6): el reporte principal sigue siendo de UN local
+ * (la principal), y `porSucursal` trae la fila de cada local con mesas.
+ */
+export interface FilaBillarSucursal {
+  sucursal: SucursalRef;
+  esPrincipal: boolean;
+  mesas: number;
+  sesiones: number;
+  horas: number;
+  horasDisponibles: number;
+  /** 0..1. */
+  ocupacion: number;
+  tiempoBs: number;
+  consumosBs: number;
+  rapidas: { cantidad: number; bs: number };
+  cuentas: { cantidad: number; bs: number };
+}
+
+export interface BillarPorSucursalApi {
+  filas: FilaBillarSucursal[];
+  /** Suma de todo; su `ocupacion` es ponderada (Σ horas / Σ horasDisponibles). */
+  total: Omit<FilaBillarSucursal, "sucursal" | "esPrincipal">;
 }
 
 export interface BillarReporteApi {
+  /** De qué local son TODOS los números del reporte (con "Todas": la principal). */
+  sucursal?: SucursalRef;
+  /** Sólo con "Todas" y 2+ locales con mesas; si no, null. */
+  porSucursal?: BillarPorSucursalApi | null;
   desde: number;
   hasta: number;
   jornadas: number;
@@ -474,6 +573,10 @@ export interface BillarReporteApi {
  * cenas de `efectivoBillar`, que cuenta igual pero consolida las sucursales.
  */
 export interface CenasReporteApi {
+  /** El filtro (§9.6); null = consolidado de todos los locales. */
+  sucursal?: SucursalRef | null;
+  /** Sólo con "Todas" y 2+ locales; si no, null. */
+  porSucursal?: { sucursal: SucursalRef; total: number; nochesAbiertas: number; nochesConCena: number; promedio: number }[] | null;
   /** Los días del período, AAAA-MM-DD, y cuántos son. */
   desde: string;
   hasta: string;
@@ -598,6 +701,11 @@ export const apiReportes = {
   meseros: (r: RangoReporte) => api.reporte<MeserosApi>("meseros", r),
   cierres: (r: RangoReporte) => api.reporte<CierresApi>("cierres", r),
   creditos: (r: RangoReporte) => api.reporte<CreditosApi>("creditos", r),
+  /**
+   * El comparativo de locales (§9.4). Es el corte por sucursal: NO manda
+   * `sucursalId` aunque el rango lo traiga (el backend no lo acepta).
+   */
+  porSucursal: (r: RangoReporte) => api.reporte<PorSucursalApi>("por-sucursal", { ...r, sucursalId: undefined }),
   /** Foto de hoy: no lleva fechas. `dias` de historia (7..180) y `cobertura` a cubrir (1..90). */
   sugerencia: (p: { dias: number; cobertura: number; sucursalId?: number }) =>
     request<SugerenciaApi>(`/reportes/sugerencia-compra${qs(p)}`),

@@ -13,6 +13,8 @@ const sesion = vi.hoisted(() => ({
   soloAgenda: false,
   /** Sucursales activas que trae la sesión (el login); sin dato = sesión vieja. */
   activas: undefined as number | undefined,
+  /** Un administrador de la organización (sin sede) en vez del asignado a una. */
+  organizacion: false,
 }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -33,8 +35,10 @@ vi.mock("../../store/AuthContext", async () => {
             rubro: sesion.rubro,
             incluye: () => true,
             puede: (s: string) => !["reportes_billar", "reportes_agenda"].includes(s),
-            usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917, sucursal: "Sucursal Norte" },
-            negocio: { id: 1, nombre: "Prueba", features: [], sucursalesActivas: sesion.activas },
+            usuario: sesion.organizacion
+              ? { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null }
+              : { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917, sucursal: "Sucursal Norte" },
+            negocio: { id: 1, nombre: "Prueba", features: sesion.organizacion ? ["multi_almacen"] : [], sucursalesActivas: sesion.activas },
           },
   };
 });
@@ -80,6 +84,7 @@ beforeEach(() => {
   sesion.rubro = "FARMACIA";
   sesion.soloAgenda = false;
   sesion.activas = undefined;
+  sesion.organizacion = false;
   sessionStorage.clear();
   vi.mocked(api.reporte).mockImplementation(() => new Promise(() => {}));
 });
@@ -120,6 +125,46 @@ describe("el usuario asignado a una sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
     sesion.activas = 1;
     await montar();
     expect(screen.queryByText(/Sucursal Norte/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Comparar sucursales (PLAN-SUCURSAL-TOTAL §3 etapa 6)", () => {
+  const LOCALES = [
+    { id: 1, nombre: "Centro", tipo: "SUCURSAL", activo: true, esPrincipal: true },
+    { id: 2, nombre: "Norte", tipo: "SUCURSAL", activo: true, esPrincipal: false },
+  ];
+
+  it("la organización con 2+ sucursales lo tiene en el menú, debajo del Estado de resultado", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES as never);
+    await montar();
+    expect(enMenu("Comparar sucursales")?.getAttribute("href")).toBe("/reportes/comparar-sucursales");
+    expect(enMenu("Estado de resultado")).not.toBeNull();
+  });
+
+  it("con una sola sucursal no existe", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES.slice(0, 1) as never);
+    await montar();
+    expect(enMenu("Estado de resultado")).not.toBeNull();
+    expect(enMenu("Comparar sucursales")).toBeNull();
+  });
+
+  it("quien está asignado a una sede ve la suya y nada de comparar", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.activas = 2;
+    await montar();
+    expect(enMenu("Estado de resultado")).not.toBeNull();
+    expect(enMenu("Comparar sucursales")).toBeNull();
+  });
+
+  it("el link a mano de quien no lo ve vuelve al resumen", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.activas = 2;
+    await montar("/reportes/comparar-sucursales");
+    expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
   });
 });
 

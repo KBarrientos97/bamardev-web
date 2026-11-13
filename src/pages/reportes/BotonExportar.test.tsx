@@ -27,6 +27,20 @@ describe("Exportar a Excel", () => {
     expect(bajarXlsx).toHaveBeenCalledWith("top-productos", [HOJA]);
   });
 
+  it("con una sucursal la manda a bajar; con un solo local, nada más que el nombre y las hojas", () => {
+    const centro = { nombre: "Centro", rotulo: "Sucursal" };
+    const { unmount } = render(<BotonExportar exportacion={{ nombre: "cierres", hojas: () => [HOJA] }} sucursal={centro} />);
+    fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
+    expect(bajarXlsx).toHaveBeenLastCalledWith("cierres", [HOJA], centro);
+    unmount();
+
+    // El reporte que junta todos los locales trae la suya y gana sobre la de la pantalla.
+    const todas = { nombre: "Todas las sucursales", rotulo: "Sucursal" };
+    render(<BotonExportar exportacion={{ nombre: "comparar", hojas: () => [HOJA], sucursal: todas }} sucursal={centro} />);
+    fireEvent.click(screen.getByRole("button", { name: "Exportar a Excel" }));
+    expect(bajarXlsx).toHaveBeenLastCalledWith("comparar", [HOJA], todas);
+  });
+
   it("uno paginado dice «Preparando…» mientras baja el período, y un segundo toque no lo pide de nuevo", async () => {
     let terminar: (r: ExportacionCompleta) => void = () => {};
     const completa = vi.fn(() => new Promise<ExportacionCompleta>((ok) => (terminar = ok)));
