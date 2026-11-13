@@ -2,6 +2,7 @@ import { fmtCantidad, fmtFecha, fmtFechaHora, fmtNum } from "../../lib/format";
 import type { AsientoControlado, LibroControlados } from "../../types";
 import {
   medicamentoImpreso,
+  numerarPorSucursal,
   resumenPorMedicamento,
   textoPeriodo,
   tituloLibro,
@@ -15,7 +16,10 @@ export interface DatosLibroImpreso {
    */
   negocio: { nombre: string; direccion?: string | null; telefono?: string | null } | null;
   libro: "" | LibroControlados;
-  /** La sucursal del libro. Vacía si es el consolidado o el negocio tiene un solo local. */
+  /**
+   * La sucursal del libro. Vacía si el negocio tiene un solo local. Con 2+ locales
+   * la pantalla no deja imprimir el consolidado: siempre llega la de ESTE libro.
+   */
   sucursal: string;
   desde: string;
   hasta: string;
@@ -142,6 +146,8 @@ export default function LibroImpreso({
   // Igual que en pantalla: la sucursal de cada asiento sólo cuando hay más de
   // una en el período (el consolidado). Con una sola ya está en el encabezado.
   const variasSucursales = new Set(filas.map((a) => a.almacen.id)).size > 1;
+  // Cada local lleva su libro con su N° corrido: con uno solo es 1, 2, 3…
+  const numeros = numerarPorSucursal(filas);
 
   return (
     <section className="libro-impreso hidden" aria-hidden="true">
@@ -188,7 +194,7 @@ export default function LibroImpreso({
         <tbody>
           {filas.map((a, i) => (
             <tr key={a.id} className={a.anuladaEn ? "anulada" : undefined}>
-              <td className="num">{i + 1}</td>
+              <td className="num">{numeros[i]}</td>
               <td className="corto">{fmtFechaHora(a.fecha)}</td>
               <td className="corto">{a.recetaNumero ?? "—"}</td>
               <td className="corto">{fmtFecha(a.recetaFecha.slice(0, 10))}</td>

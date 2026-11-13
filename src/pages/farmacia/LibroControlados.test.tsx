@@ -8,18 +8,26 @@ import type { AsientoControlado } from "../../types";
  * sigue ahí, marcada.
  */
 
+// Quién mira: por defecto un usuario de un local en un negocio de un local.
+const sesion = vi.hoisted(() => ({
+  sucursalId: 917 as number | null,
+  sucursal: "Sucursal Centro" as string | null,
+  activas: undefined as number | undefined,
+}));
+
 vi.mock("../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
   const { permisosDe } = await import("../../test/sesiones");
   return {
     useAuth: () => ({
-      negocio: { id: 1, nombre: "Farmacia San Rafael" },
+      negocio: { id: 1, nombre: "Farmacia San Rafael", sucursalesActivas: sesion.activas },
       usuario: {
+        id: 1,
         rol: "ADMIN",
         ...permisosDe("ADMIN"),
         nombre: "Marcela Quiroga",
-        sucursalId: 917,
-        sucursal: "Sucursal Centro",
+        sucursalId: sesion.sucursalId,
+        sucursal: sesion.sucursal,
       },
     }),
   };
@@ -62,6 +70,9 @@ async function montar() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.sucursalId = 917;
+  sesion.sucursal = "Sucursal Centro";
+  sesion.activas = undefined;
   vi.mocked(api.libroControlados).mockResolvedValue([
     asiento({}),
     asiento({
@@ -147,5 +158,99 @@ describe("el impreso", () => {
       fireEvent.click(screen.getByRole("button", { name: "Estupefacientes" }));
     });
     expect(document.querySelector(".libro-impreso")).toHaveTextContent("Libro de Estupefacientes");
+  });
+});
+
+describe("la sucursal en el libro (PLAN-SUCURSAL-TOTAL)", () => {
+  const dosLocales = [
+    { id: 917, nombre: "Sucursal Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 918, nombre: "Sucursal Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+  const deEquipetrol = (id: number, ventaId: number) =>
+    asiento({ id, ventaId, almacen: { id: 918, nombre: "Sucursal Equipetrol" } });
+
+  /** Baja la planilla y devuelve su texto y el nombre del archivo. */
+  async function bajar() {
+    const bajado: { planilla?: Blob; archivo?: string } = {};
+    const original = { crear: URL.createObjectURL, revocar: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob | MediaSource) => {
+      bajado.planilla = b as Blob;
+      return "blob:planilla";
+    });
+    URL.revokeObjectURL = vi.fn();
+    const clic = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        bajado.archivo = this.download;
+      });
+    try {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Exportar a Excel/ }));
+      });
+      return { texto: await bajado.planilla!.text(), archivo: bajado.archivo ?? "" };
+    } finally {
+      URL.createObjectURL = original.crear;
+      URL.revokeObjectURL = original.revocar;
+      clic.mockRestore();
+    }
+  }
+
+  function comoOrganizacion() {
+    sesion.sucursalId = null;
+    sesion.sucursal = null;
+    sesion.activas = 2;
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    vi.mocked(api.libroControlados).mockResolvedValue([
+      asiento({ id: 1 }),
+      deEquipetrol(2, 51),
+      asiento({ id: 3, ventaId: 52 }),
+    ]);
+  }
+
+  it("con 'Todas' y 2+ locales no se puede imprimir: pide elegir una sucursal, sin armar el papel", async () => {
+    comoOrganizacion();
+    await montar();
+    expect(screen.getByRole("button", { name: /Imprimir/ })).toBeDisabled();
+    expect(screen.getByText(/Para imprimir elegí una sucursal/)).toBeInTheDocument();
+    expect(document.querySelector(".libro-impreso")).toBeNull();
+  });
+
+  it("elegida una sucursal, se imprime su libro con su nombre en el encabezado", async () => {
+    comoOrganizacion();
+    await montar();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Sucursal Equipetrol" }));
+    });
+    expect(screen.getByRole("button", { name: /Imprimir/ })).toBeEnabled();
+    expect(screen.queryByText(/Para imprimir elegí una sucursal/)).toBeNull();
+    expect(document.querySelector(".libro-impreso")).toHaveTextContent("Sucursal: Sucursal Equipetrol");
+  });
+
+  it("el Excel consolidado numera cada local en su libro y dice de cuál es en el archivo", async () => {
+    comoOrganizacion();
+    await montar();
+    const { texto, archivo } = await bajar();
+    const lineas = texto.split("\r\n");
+    // Centro 1, Equipetrol 1, Centro 2: cada local empieza en 1.
+    expect(lineas[1].startsWith('"1";')).toBe(true);
+    expect(lineas[2].startsWith('"1";')).toBe(true);
+    expect(lineas[3].startsWith('"2";')).toBe(true);
+    expect(archivo).toMatch(/^libro-de-controlados-todas-las-sucursales-/);
+  });
+
+  it("el atado a un local con 2+ locales lee su sede, sin selector, y su libro la lleva", async () => {
+    sesion.activas = 2;
+    await montar();
+    expect(screen.getByText(/Se llena solo al cobrar\. · Sucursal Centro/)).toBeInTheDocument();
+    expect(screen.queryByText(/Para imprimir elegí una sucursal/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Imprimir/ })).toBeEnabled();
+    expect(document.querySelector(".libro-impreso")).toHaveTextContent("Sucursal: Sucursal Centro");
+    expect(api.getSucursales).not.toHaveBeenCalled();
+  });
+
+  it("con un solo local el Excel y el papel quedan como siempre: sin nombre en el archivo", async () => {
+    await montar();
+    const { archivo } = await bajar();
+    expect(archivo).toMatch(/^libro-de-controlados-\d{4}-\d{2}-\d{2}-a-\d{4}-\d{2}-\d{2}\.csv$/);
   });
 });
