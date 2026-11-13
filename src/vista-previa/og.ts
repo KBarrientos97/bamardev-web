@@ -188,8 +188,12 @@ export function cabecerasSeguridad(pathname: string): Record<string, string> {
     };
   }
   if (pathname.startsWith("/p/")) {
+    // El seguimiento de un pedido lleva su token en la URL: como la gestión de
+    // la reserva, ni indexado ni referer (PW-14).
+    const pedido = /^\/p\/[^/]+\/pedido\//.test(pathname);
     return {
-      "Referrer-Policy": "strict-origin-when-cross-origin",
+      ...(pedido ? { "X-Robots-Tag": "noindex, nofollow" } : {}),
+      "Referrer-Policy": pedido ? "no-referrer" : "strict-origin-when-cross-origin",
       "X-Frame-Options": "DENY",
       "Content-Security-Policy": "frame-ancestors 'none'",
     };

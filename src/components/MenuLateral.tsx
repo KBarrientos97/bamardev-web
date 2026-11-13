@@ -22,6 +22,7 @@ import { useContadorBillar } from "../lib/billar/contador";
 import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
 import { usePedidosNuevos } from "../lib/pedidosWeb/contador";
 import { revisaPagosEnLinea } from "../lib/permisos";
+import { queCuentaElMenu } from "../lib/rotuloContador";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 import { textoInstalar } from "../lib/pwa/guia";
@@ -114,8 +115,7 @@ export default function MenuLateral({
           : n.item.seccion === "pedidos_web"
             ? pedidosWeb
             : 0;
-  const queCuenta = (n: NodoMenu) =>
-    n.item.seccion === "billar" ? "mesas abiertas" : n.item.seccion === "pedidos_web" ? "pedidos nuevos" : "por atender";
+  const queCuenta = (n: NodoMenu, cantidad: number) => queCuentaElMenu(n.item.seccion, cantidad);
   const enAlerta = (n: NodoMenu) => n.item.seccion === "billar" && billar.alerta;
   // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra
   // las pendientes en vez de cuántas pantallas guarda, o nadie las vería.
@@ -232,7 +232,7 @@ export default function MenuLateral({
           onClick={() => navegar(n)}
           // En la barra de íconos el número es sólo un punto: el lector de
           // pantalla igual tiene que oír cuántas hay (QA PER-09).
-          aria-label={contadorDe(n) > 0 ? `${nombre(n)}, ${contadorDe(n)} ${queCuenta(n)}` : nombre(n)}
+          aria-label={contadorDe(n) > 0 ? `${nombre(n)}, ${contadorDe(n)} ${queCuenta(n, contadorDe(n))}` : nombre(n)}
           aria-current={activo ? "page" : undefined}
           data-fila=""
           data-nav-id={n.id}
@@ -295,7 +295,7 @@ export default function MenuLateral({
                 className={`ml-auto rounded-full px-1.5 text-[11px] font-bold leading-[18px] tabular-nums ${
                   enAlerta(n) ? "bg-amber-400 text-amber-950" : "bg-barra-texto text-barra"
                 }`}
-                aria-label={`${contadorDe(n)} ${queCuenta(n)}`}
+                aria-label={`${contadorDe(n)} ${queCuenta(n, contadorDe(n))}`}
               >
                 {contadorDe(n)}
               </span>

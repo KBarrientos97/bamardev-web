@@ -94,7 +94,9 @@ export default function Repartidor() {
   const enCaminoWeb = useRef<number[]>([]);
   if (entregas.datos) {
     enCaminoWeb.current = entregas.datos
-      .filter((v) => v.pedidoWeb?.salioEn && v.estadoEntrega === "PENDIENTE")
+      // Sólo las SUYAS: quien también tiene `delivery.asignar` recibe todas las
+      // entregas, y mandar la posición de una ajena da 403 cada 15 s (PW-16).
+      .filter((v) => v.pedidoWeb?.salioEn && v.estadoEntrega === "PENDIENTE" && v.repartidor?.id === usuario?.id)
       .map((v) => v.id);
   }
   const posicion = usePosicionRepartidor(enCaminoWeb.current);
@@ -177,7 +179,7 @@ export default function Repartidor() {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     {/* Entregado ya no debe nada: seguía en ámbar "Cobra al
                         entregar" al lado de "Cobrado Bs 35,00" (QA 29-oct). */}
-                    <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"}>
+                    <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"} className="whitespace-nowrap">
                       {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
                     </Badge>
                     <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>

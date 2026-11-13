@@ -55,6 +55,7 @@ const ENTREGA_WEB = {
   formasPago: [],
   pagos: [],
   detalles: [{ productoId: 1, producto: "Arroz con leche grande", cantidad: 2, precio: 50, subtotal: 100, nota: null, consumo: "LLEVAR" }],
+  repartidor: { id: 9, nombre: "Pedro" },
   pedidoWeb: { id: 12, numero: 7, latitud: -17.76, longitud: -63.18, referencia: "Portón negro", formaPago: "EFECTIVO", pagaCon: 200, salioEn: null },
 } as Venta;
 
@@ -144,6 +145,15 @@ describe("compartir la posición con el cliente", () => {
   it("sin ningún pedido en camino no pide la ubicación", async () => {
     await abrir(ENTREGA_WEB);
     expect(watchPosition).not.toHaveBeenCalled();
+  });
+
+  it("una entrega en camino de OTRO repartidor no activa la ubicación (quien también asigna ve todas) (PW-16)", async () => {
+    const AJENA = { ...SALIO, repartidor: { id: 5, nombre: "Mario" } } as Venta;
+    vi.mocked(api.getMisEntregas).mockResolvedValue([AJENA]);
+    render(<Repartidor />);
+    await act(async () => {});
+    expect(watchPosition).not.toHaveBeenCalled();
+    expect(screen.queryByText("Compartiendo tu ubicación con el cliente")).not.toBeInTheDocument();
   });
 
   it("con uno en camino avisa «Compartiendo tu ubicación» y manda la posición cada 15 s como máximo", async () => {

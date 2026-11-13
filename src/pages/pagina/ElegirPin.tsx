@@ -71,7 +71,11 @@ export default function ElegirPin({
           }
           if (volar) m!.flyTo({ center: [u.lng, u.lat], zoom: Math.max(m!.getZoom(), 17) });
         };
-        if (v0) colocar(v0, false);
+        // El pin que corresponde AHORA, no el del primer render: si «Usar mi
+        // ubicación» contestó mientras el mapa todavía se bajaba, `poner` era null y
+        // ese pin se perdía (el formulario ya lo tenía, el cliente no lo veía) (PW-11).
+        const ya = ultimo.current;
+        if (ya) colocar(ya, !v0 || ya.lat !== v0.lat || ya.lng !== v0.lng);
         m.on("click", (e) => {
           const u = redondear({ lat: e.lngLat.lat, lng: e.lngLat.lng });
           colocar(u, false);
