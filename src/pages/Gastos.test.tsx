@@ -141,6 +141,36 @@ describe("Gastos operativos", () => {
     expect(screen.getByRole("option", { name: "Todas las sucursales" })).toBeInTheDocument();
   });
 
+  describe("el badge de sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
+    const DOS = [
+      { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ];
+    const deCentral: Gasto = { ...luz, id: 11, concepto: "Luz Central", sucursalId: 1, sucursal: "Central" };
+    const deNorte: Gasto = { ...luz, id: 12, concepto: "Luz Norte", sucursalId: 2, sucursal: "Norte" };
+
+    it("con gastos de dos locales, cada fila dice el suyo", async () => {
+      vi.mocked(api.getSucursales).mockResolvedValue(DOS as never);
+      vi.mocked(api.getGastos).mockResolvedValue([deCentral, deNorte]);
+      const { container } = render(<MemoryRouter><Gastos /></MemoryRouter>);
+      await screen.findByText("Luz Norte");
+      const filas = container.querySelectorAll("li");
+      expect(filas[0]).toHaveTextContent("Central");
+      expect(filas[1]).toHaveTextContent("Norte");
+    });
+
+    it("con todos los gastos del mismo local no se repite en cada fila", async () => {
+      vi.mocked(api.getSucursales).mockResolvedValue(DOS as never);
+      vi.mocked(api.getGastos).mockResolvedValue([deCentral, { ...deCentral, id: 13, concepto: "Agua Central" }]);
+      const { container } = render(<MemoryRouter><Gastos /></MemoryRouter>);
+      await screen.findByText("Agua Central");
+      const filas = container.querySelectorAll("li");
+      // Sin el concepto ("Luz Central", "Agua Central") no queda "Central" suelto.
+      expect((filas[0].textContent ?? "").replace("Luz Central", "")).not.toContain("Central");
+      expect((filas[1].textContent ?? "").replace("Agua Central", "")).not.toContain("Central");
+    });
+  });
+
   it("tiene margen, cada gasto es una tarjeta y lo vencido sale en rojo", async () => {
     const raiz = abrir(<Gastos />);
     expect(raiz.className).toMatch(/\bp-4\b/);

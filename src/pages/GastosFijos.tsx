@@ -57,7 +57,8 @@ const ETIQUETA_FRECUENCIA: Record<FrecuenciaGasto, string> = Object.fromEntries(
 ) as Record<FrecuenciaGasto, string>;
 
 export default function GastosFijos() {
-  const { sucursalId } = useSucursales();
+  const suc = useSucursales();
+  const { sucursalId } = suc;
   const { rubro } = useAuth();
   const [editando, setEditando] = useState<PlantillaGasto | null | undefined>(
     undefined,
@@ -70,6 +71,8 @@ export default function GastosFijos() {
   const categorias = useApi(() => api.getCategoriasGasto(), []);
 
   const plantillas = lista.datos ?? [];
+  // El badge de sucursal sólo si las plantillas son de más de un local.
+  const verSucursal = suc.mostrarColumna(plantillas, (p) => p.sucursalId);
   const activas = plantillas.filter((p) => p.activa);
 
   /** Lo que van a sumar las reglas activas la próxima vez que corran. */
@@ -156,7 +159,7 @@ export default function GastosFijos() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{p.concepto}</span>
                   <Badge tono="gris">{p.categoriaNombre ?? p.categoria}</Badge>
-                  {p.sucursal && <Badge tono="gris">{p.sucursal}</Badge>}
+                  {verSucursal && p.sucursal && <Badge tono="gris">{p.sucursal}</Badge>}
                   {!p.activa && <Badge tono="amarillo">Pausado</Badge>}
                 </div>
                 <div className="mt-1 text-sm text-texto-3">

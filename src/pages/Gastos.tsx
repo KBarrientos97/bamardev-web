@@ -92,8 +92,8 @@ export default function Gastos() {
   }, [q]);
   // `elegir` ya encapsula la condicion: usuario de organizacion Y mas de un
   // local. Con un solo local el filtro no aparece, que es lo correcto.
-  const { sucursalId, valorSelect, alElegirSelect, sucursales, elegir } =
-    useSucursales();
+  const suc = useSucursales();
+  const { sucursalId, valorSelect, alElegirSelect, sucursales, elegir } = suc;
 
   const [editando, setEditando] = useState<Gasto | null | undefined>(undefined);
   const [pagando, setPagando] = useState<Gasto | null>(null);
@@ -131,6 +131,9 @@ export default function Gastos() {
   };
 
   const gastos = lista.datos ?? [];
+  // El badge de sucursal sólo si los gastos de la lista son de más de un local
+  // (PLAN-SUCURSAL-TOTAL §1): con un local, o filtrando por uno, es ruido.
+  const verSucursal = suc.mostrarColumna(gastos, (g) => g.sucursalId);
   const r = resumen.datos;
 
   /**
@@ -279,7 +282,7 @@ export default function Gastos() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-medium">{g.concepto}</span>
                     <Badge tono="gris">{g.categoriaNombre ?? g.categoria}</Badge>
-                    {g.sucursal && <Badge tono="gris">{g.sucursal}</Badge>}
+                    {verSucursal && g.sucursal && <Badge tono="gris">{g.sucursal}</Badge>}
                   </div>
                   <div className="mt-1 text-sm text-texto-3">
                     {fmtFecha(g.fecha)}
