@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -153,6 +153,74 @@ describe("rendimiento por mesa", () => {
     vi.mocked(apiReportes.billar).mockResolvedValue(nuevo);
     await montar(<RendimientoMesas />);
     expect(screen.getByText(/ves las mesas de la principal \(Centro\)/)).toBeInTheDocument();
+  });
+
+  describe("con «Todas las sucursales» y 2+ locales con mesas (§9.6)", () => {
+    const fila = (id: number, nombre: string, esPrincipal: boolean, p: Partial<NonNullable<BillarReporteApi["porSucursal"]>["total"]> = {}) => ({
+      sucursal: { id, nombre },
+      esPrincipal,
+      mesas: 6,
+      sesiones: 40,
+      horas: 60,
+      horasDisponibles: 150,
+      ocupacion: 0.4,
+      tiempoBs: 1200,
+      consumosBs: 800,
+      rapidas: { cantidad: 4, bs: 100 },
+      cuentas: { cantidad: 1, bs: 20 },
+      ...p,
+    });
+    const conComparativo: BillarReporteApi = {
+      ...nuevo,
+      sucursal: { id: 1, nombre: "Centro" },
+      porSucursal: {
+        filas: [fila(1, "Centro", true), fila(2, "Norte", false, { horas: 20, horasDisponibles: 100, ocupacion: 0.2, mesas: 4 })],
+        total: { mesas: 10, sesiones: 80, horas: 80, horasDisponibles: 250, ocupacion: 0.32, tiempoBs: 2400, consumosBs: 1600, rapidas: { cantidad: 8, bs: 200 }, cuentas: { cantidad: 2, bs: 40 } },
+      },
+    };
+
+    it("muestra cada local y el total, con la ocupación ponderada del total", async () => {
+      sucursales.elegir = true;
+      vi.mocked(apiReportes.billar).mockResolvedValue(conComparativo);
+      await montar(<RendimientoMesas />);
+      expect(screen.getByText("Por sucursal")).toBeInTheDocument();
+      // La tabla del comparativo (la otra tabla es la de mesas).
+      const tabla = screen.getAllByRole("table").find((t) => t.textContent?.includes("Norte"))!;
+      const filas = within(tabla).getAllByRole("row");
+      expect(filas.map((f) => f.textContent)).toEqual([
+        expect.stringContaining("Sucursal"),
+        expect.stringContaining("Centro"),
+        expect.stringContaining("Norte"),
+        expect.stringContaining("Total"),
+      ]);
+      // El total es 32 %, no el promedio de 40 y 20 (30 %).
+      expect(within(filas[3]).getByText("32 %")).toBeInTheDocument();
+      expect(within(filas[2]).getByText("20 %")).toBeInTheDocument();
+      // La venta sin mesa suma rápidas y cuentas: Bs 120 en Centro.
+      expect(within(filas[1]).getByText("Bs 120")).toBeInTheDocument();
+      // Y la nota dice que lo demás es de la principal y que el cuadro junta los locales.
+      expect(screen.getByText(/ves las mesas de la principal \(Centro\)/)).toBeInTheDocument();
+      expect(screen.getByText(/El cuadro «Por sucursal» junta los locales con mesas/)).toBeInTheDocument();
+    });
+
+    it("su Excel suma la hoja «Por sucursal»", async () => {
+      sucursales.elegir = true;
+      vi.mocked(apiReportes.billar).mockResolvedValue(conComparativo);
+      await montar(<RendimientoMesas />);
+      const exportacion = registrarExportacion.mock.calls.map((c) => c[0]).filter(Boolean).pop();
+      const hojas = exportacion.hojas();
+      expect(hojas.map((h: { nombre: string }) => h.nombre)).toContain("Por sucursal");
+      const h = hojas.find((x: { nombre: string }) => x.nombre === "Por sucursal");
+      expect(h.filas.map((f: unknown[]) => f[0])).toEqual(["Sucursal", "Centro", "Norte", "Total"]);
+    });
+
+    it("sin comparativo (un local o una sucursal elegida) no hay cuadro ni frase extra", async () => {
+      sucursales.elegir = true;
+      vi.mocked(apiReportes.billar).mockResolvedValue({ ...nuevo, porSucursal: null });
+      await montar(<RendimientoMesas />);
+      expect(screen.queryByText("Por sucursal")).toBeNull();
+      expect(screen.queryByText(/El cuadro «Por sucursal»/)).toBeNull();
+    });
   });
 
   it("sin mesas cobradas lo dice, no dibuja ceros", async () => {

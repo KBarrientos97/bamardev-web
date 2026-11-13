@@ -1,5 +1,8 @@
 import { horaCorta, ordenJornada } from "../../../billar/reportes/datosReporte";
-import type { BillarReporteApi } from "../../api";
+import { aCentavos } from "../../../../lib/dinero";
+import type { HojaNueva } from "../../../../lib/planilla";
+import type { BillarPorSucursalApi, BillarReporteApi, FilaBillarSucursal } from "../../api";
+import { hoja } from "../../contexto";
 import { variacion } from "../../formato";
 import type { PuntoLinea } from "../../graficos";
 
@@ -335,4 +338,32 @@ export function filasPromos(promos: Promo[], minutosSinPromo: number | undefined
 export function textoDescuento(pct: number): string {
   const redondo = Math.round(pct * 10) / 10;
   return `−${String(redondo).replace(".", ",")} %`;
+}
+
+// ── Billar con «Todas las sucursales» (PLAN-SUCURSAL-TOTAL §9.6) ──────────────
+
+/** Lo vendido sin mesa de un local: la venta rápida más las cuentas abiertas cobradas. */
+export function ventaSinMesa(f: { rapidas: { bs: number }; cuentas: { bs: number } }): number {
+  return aCentavos(f.rapidas.bs + f.cuentas.bs);
+}
+
+/** El Excel del comparativo de locales con mesas: una fila por local y el total (ocupación ponderada). */
+export function hojaPorSucursalBillar(p: BillarPorSucursalApi, rotulo = "Sucursal"): HojaNueva {
+  type Fila = { nombre: string } & Omit<FilaBillarSucursal, "sucursal" | "esPrincipal">;
+  const filas: Fila[] = [...p.filas.map((f) => ({ ...f, nombre: f.sucursal.nombre })), { ...p.total, nombre: "Total" }];
+  return hoja<Fila>(
+    "Por sucursal",
+    [
+      [rotulo, (f) => f.nombre],
+      ["Mesas", (f) => f.mesas],
+      ["Horas jugadas", (f) => Math.round(f.horas * 10) / 10],
+      ["Horas disponibles", (f) => Math.round(f.horasDisponibles * 10) / 10],
+      ["Ocupación (%)", (f) => Math.round(f.ocupacion * 100)],
+      ["Sesiones", (f) => f.sesiones],
+      ["Tiempo (Bs)", (f) => f.tiempoBs],
+      ["Consumos (Bs)", (f) => f.consumosBs],
+      ["Venta sin mesa (Bs)", (f) => ventaSinMesa(f)],
+    ],
+    filas,
+  );
 }

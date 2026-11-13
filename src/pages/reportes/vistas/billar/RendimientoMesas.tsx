@@ -4,8 +4,9 @@ import type { BillarReporteApi } from "../../api";
 import { hoja, useExportar, useReporte } from "../../contexto";
 import { bsEntero, horas, pct } from "../../formato";
 import { BarraFila, Cargador, Chip, Delta, KpiR, Nota, Puesto, Tarjeta } from "../../ui";
-import { deltaPuntos, filasMesas, hayDetallePorMesa, ocupacionAnterior, tarjetasTipo, type FilaMesa } from "./datosBillar";
+import { deltaPuntos, filasMesas, hayDetallePorMesa, hojaPorSucursalBillar, ocupacionAnterior, tarjetasTipo, type FilaMesa } from "./datosBillar";
 import { NotaSucursal } from "./NotaSucursal";
+import { PorSucursalBillar } from "./PorSucursalBillar";
 import { useReporteBillar } from "./useReporteBillar";
 
 /**
@@ -22,7 +23,7 @@ import { useReporteBillar } from "./useReporteBillar";
  */
 export default function RendimientoMesas() {
   const estado = useReporteBillar();
-  const { comparacion } = useReporte();
+  const { comparacion, sucursalArchivo } = useReporte();
   const r = estado.datos;
   const filas = useMemo(() => (r ? filasMesas(r) : []), [r]);
   const tipos = useMemo(() => (r ? tarjetasTipo(r) : []), [r]);
@@ -50,6 +51,8 @@ export default function RendimientoMesas() {
             ],
             filas,
           ),
+          // Con «Todas» y 2+ locales con mesas: cada local y el total.
+          ...(r.porSucursal ? [hojaPorSucursalBillar(r.porSucursal, sucursalArchivo?.rotulo)] : []),
           ...(tipos.length
             ? [
                 hoja<ReturnType<typeof tarjetasTipo>[number]>(
@@ -75,7 +78,9 @@ export default function RendimientoMesas() {
     <Cargador
       estado={estado}
       vacio={(d) =>
-        d.porMesa.length === 0
+        // Con «Todas» la principal puede no haber cobrado mesas y otro local sí: el
+        // comparativo de locales es justo lo que hay que mostrar.
+        d.porMesa.length === 0 && !d.porSucursal
           ? { titulo: "No se cobró ninguna mesa en este período", texto: "Probá con Semana o Mes.", icono: "bola" }
           : null
       }
@@ -89,7 +94,9 @@ function Contenido({ r, filas, tipos }: { r: BillarReporteApi; filas: FilaMesa[]
   const detalle = hayDetallePorMesa(filas);
   return (
     <>
-      <NotaSucursal />
+      <NotaSucursal conComparativo={r.porSucursal != null} />
+      {/* Con «Todas» y 2+ locales con mesas: lo único que se puede sumar. */}
+      {r.porSucursal && <PorSucursalBillar p={r.porSucursal} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tipos.length > 0 ? (
           tipos.map((t) => (
