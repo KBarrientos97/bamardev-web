@@ -19,6 +19,12 @@ const sesion = vi.hoisted(() => ({
   cupo: null as import("../types").CupoEstado | null,
   /** Permisos que se le sacan a la plantilla del rol. */
   sin: [] as string[],
+  /** Dónde trabaja el usuario y cuántas sucursales tiene el negocio (sesión del login). */
+  sede: { sucursalId: null, sucursal: null, activas: undefined } as {
+    sucursalId: number | null;
+    sucursal: string | null;
+    activas: number | undefined;
+  },
 }));
 
 // Lo del billar que corre de fondo sondea el tablero: acá no hace falta.
@@ -30,8 +36,17 @@ vi.mock("../store/AuthContext", async () => {
   const { permisosDe } = await import("../test/sesiones");
   return {
     useAuth: () => ({
-      usuario: { id: 7, nombre: "Regente", username: "admin", rol: sesion.rol, rolNombre: "Regente general" },
-      negocio: { id: 3, nombre: "Negocio de prueba" },
+      usuario: {
+        id: 7,
+        nombre: "Regente",
+        username: "admin",
+        rol: sesion.rol,
+        rolNombre: "Regente general",
+        sucursalId: sesion.sede.sucursalId,
+        sucursal: sesion.sede.sucursal,
+      },
+      // Sin features la regla 4 falla abierto: el negocio no se trata como de un solo local.
+      negocio: { id: 3, nombre: "Negocio de prueba", features: undefined, sucursalesActivas: sesion.sede.activas },
       licencia: null,
       cupo: sesion.cupo,
       logout: () => {},
@@ -84,6 +99,7 @@ beforeEach(() => {
   sesion.rol = "ADMIN";
   sesion.cupo = null;
   sesion.sin = [];
+  sesion.sede = { sucursalId: null, sucursal: null, activas: undefined };
   localStorage.clear();
 });
 
@@ -632,5 +648,32 @@ describe("el scroll de las pantallas", () => {
   it("al imprimir deja de ser ancla: el ticket arranca en el borde del papel", () => {
     render(arbol("/pos"));
     expect(screen.getByRole("main")).toHaveClass("print:static");
+  });
+});
+
+describe("la sede de quien trabaja en un local (PLAN-SUCURSAL-TOTAL §1)", () => {
+  // Escritorio (barra lateral) y celular (barra superior) dibujan la misma etiqueta.
+  it("con 2+ sucursales, el asignado ve el nombre de su sede", () => {
+    sesion.sede = { sucursalId: 2, sucursal: "sucursal la pampa", activas: 2 };
+    render(arbol("/pos"));
+    expect(screen.getAllByText("sucursal la pampa")).toHaveLength(2);
+  });
+
+  it("con un solo local no aparece nada, aunque tenga sucursal asignada", () => {
+    sesion.sede = { sucursalId: 1, sucursal: "Principal", activas: 1 };
+    render(arbol("/pos"));
+    expect(screen.queryByText("Principal")).not.toBeInTheDocument();
+  });
+
+  it("una sesión vieja sin el conteo no inventa que hay varias", () => {
+    sesion.sede = { sucursalId: 2, sucursal: "sucursal la pampa", activas: undefined };
+    render(arbol("/pos"));
+    expect(screen.queryByText("sucursal la pampa")).not.toBeInTheDocument();
+  });
+
+  it("el dueño (toda la organización) no ve etiqueta: elige sucursal en cada pantalla", () => {
+    sesion.sede = { sucursalId: null, sucursal: null, activas: 3 };
+    render(arbol("/pos"));
+    expect(screen.queryByTitle(/Tu sucursal/)).not.toBeInTheDocument();
   });
 });

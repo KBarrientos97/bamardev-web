@@ -17,6 +17,7 @@ import { useInstalarDisponible, useOfrecerInstalarUnaVez } from "../lib/pwa/guia
 import { usePwa } from "../lib/pwa/pwa";
 import { useMotorOffline } from "../lib/offline/motor";
 import { useCreditosDesdeUrl } from "../lib/useCreditosDesdeUrl";
+import { useSedeAsignada } from "../lib/useSucursales";
 import { AvisoVersionNueva, HojaInstalar } from "./InstalarApp";
 import MenuLateral from "./MenuLateral";
 
@@ -79,6 +80,10 @@ export default function Layout() {
     setAbierto(false);
     setAyudaAbierta(true);
   };
+  // La sede de quien está asignado a un local, y sólo con 2+ sucursales
+  // (PLAN-SUCURSAL-TOTAL §1): con un solo local no se ve nada nuevo. El dueño
+  // (toda la organización) tampoco: él elige sucursal en cada pantalla.
+  const sede = useSedeAsignada();
   const menu = useMenu();
   const vende = puede("pos") || puede("billar");
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
@@ -132,7 +137,11 @@ export default function Layout() {
           iniciales, el nombre y el usuario: dos cajas para decir lo mismo. */}
       <div
         className={compacta ? "flex justify-center" : "flex items-start gap-3"}
-        title={compacta ? `${negocio?.nombre ?? "BamarDev"} · ${usuario?.nombre ?? usuario?.username ?? ""}` : undefined}
+        title={
+          compacta
+            ? `${negocio?.nombre ?? "BamarDev"} · ${usuario?.nombre ?? usuario?.username ?? ""}${sede ? ` · ${sede}` : ""}`
+            : undefined
+        }
       >
         {/* Sobre la barra teñida, el degradado de marca se perdía: un
             recuadro claro lo despega del fondo. */}
@@ -150,6 +159,15 @@ export default function Layout() {
                   ("Recepción", "Barbero"); sin ella, la de siempre. */}
               {usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : ""}
             </p>
+            {sede && (
+              <p
+                className="mt-0.5 flex items-center gap-1 text-[11px] text-barra-texto-2 opacity-80"
+                title={`Tu sucursal: ${sede}`}
+              >
+                <Icon name="pin" size={11} className="shrink-0" />
+                <span className="truncate">{sede}</span>
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -230,9 +248,21 @@ export default function Layout() {
           >
             <Icon name="menu" size={22} />
           </button>
-          <span className="text-[15px] font-bold text-texto">
+          <span className="min-w-0 truncate text-[15px] font-bold text-texto">
             {tituloDe(menu.planos, menu.pathname)}
           </span>
+          {/* En el celular el menú está cerrado: la sede va acá, discreta y a
+              la derecha, para que quien trabaja en un local sepa dónde está
+              sin abrir el cajón. */}
+          {sede && (
+            <span
+              className="ml-auto flex min-w-0 shrink items-center gap-1 text-[12px] text-texto-2"
+              title={`Tu sucursal: ${sede}`}
+            >
+              <Icon name="pin" size={12} className="shrink-0" />
+              <span className="truncate">{sede}</span>
+            </span>
+          )}
         </header>
 
         {/* Fuera del <main> con scroll: el aviso de vencimiento tiene que
