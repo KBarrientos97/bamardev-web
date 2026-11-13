@@ -1013,7 +1013,12 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
           {e.urlPublica && (
             <Seccion titulo="Tu dirección">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="flex min-h-11 min-w-0 flex-[1_1_240px] items-center break-all rounded-xl border border-borde bg-muted px-3.5 text-[15px] font-semibold">
+                {/* En el celular la dirección va sola en su renglón (los botones
+                    abajo): al lado de «Copiar» no entraba y se partía a mitad
+                    de palabra, «link-qa.bamardev.com/elganad / ero» (13-nov).
+                    `break-all` queda sólo de resguardo para una dirección más
+                    larga que la pantalla. */}
+                <span className="flex min-h-11 min-w-0 flex-[1_1_240px] items-center break-all rounded-xl border border-borde bg-muted px-3.5 text-[15px] font-semibold max-sm:basis-full">
                   {e.urlPublica.replace(/^https?:\/\//, "")}
                 </span>
                 <Boton variante="soft" onClick={() => void copiar(e.urlPublica!, "Dirección copiada")}>

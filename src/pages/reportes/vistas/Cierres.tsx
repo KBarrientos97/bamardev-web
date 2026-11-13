@@ -71,6 +71,9 @@ export default function Cierres() {
                     }
                     chip={conLocal && c.sucursal ? <Chip>{c.sucursal.nombre}</Chip> : undefined}
                     linea={`${c.cajero} · esperado ${fmtMoney(c.esperado)} · contado ${fmtMoney(c.conteo)}`}
+                    // En el celular esa línea no entra y se cortaba justo en el
+                    // dato: «Admin QA · esperado Bs 117,…» (13-nov). Baja de renglón.
+                    ajustar
                     valor={<Pildora diferencia={diferenciaDe(c)} />}
                     valorPie={`vendió ${bsEntero(c.totalDia)}`}
                     onClick={() => setAbierto(c)}

@@ -32,6 +32,8 @@ import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia } from "../../lib/offline/copias";
 import { venderOEncolar } from "../../lib/offline/ventas";
+import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import { LATIDO_MS, latidoDeCaja } from "../../lib/offline/turno";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import type {
@@ -146,6 +148,7 @@ function PuntoDeVenta() {
   // caja carga se espera (la promesa queda pendiente y `useApi` la descarta
   // al volver a pedir): pedir antes sería traer el catálogo dos veces.
   const almacenCaja = caja.datos?.caja?.almacenId ?? null;
+  const idCaja = caja.datos?.caja?.id ?? null;
   const productos = useApi(
     () =>
       esFarmacia(rubro)
@@ -167,13 +170,16 @@ function PuntoDeVenta() {
         productos: productos.datos ?? [],
         formasPago: formasPago.datos ?? [],
         cajero: usuario?.nombre ?? usuario?.username ?? null,
+        // A qué caja va la venta en el manifiesto del turno (12-nov): la que
+        // el POS tiene abierta (o su copia, sin señal). Ver turno.ts.
+        cajaId: idCaja,
       });
       // El stock de la copia baja lo vendido: al recargar sin señal no vuelve
       // el de antes (Android: `descontarVendidos`).
       if (r.encolada) await descontarDeLaCopia(copiaCatalogo(almacenCaja), cuerpo.detalles);
       return r;
     },
-    [productos.datos, formasPago.datos, usuario, almacenCaja],
+    [productos.datos, formasPago.datos, usuario, almacenCaja, idCaja],
   );
   /**
    * Lo del salón y del reparto se pide sólo si el plan lo trae (QA M-11): un
@@ -284,6 +290,39 @@ function PuntoDeVenta() {
     }, SONDEO_SALON_MS);
     return () => window.clearInterval(id);
   }, [pantalla, veMesasPorCobrar, veEntregas, recargarPorCobrar, recargarEntregas]);
+
+  /**
+   * El latido del equipo (12-nov, como `LatidoCaja` de Android): mientras el
+   * POS está a la vista y hay caja abierta, cada minuto le cuenta al servidor
+   * cuántas ventas tiene sin subir y cuándo cobró la última, y otra vez apenas
+   * cambia la cola (una sincronización que subió algo). Sin esto Supervisión
+   * no decía nada de la caja de la web ("no se sabe") mientras la del APK
+   * decía «En línea · hace 20 s». Silencioso: un latido que falla no es un
+   * error del cajero. Si el servidor contesta que la caja ya está cerrada (la
+   * cerraron desde otro equipo), se relee la caja en vez de seguir vendiendo
+   * contra un turno que no existe.
+   */
+  const pendientesEnEquipo = porSubir(useColaOffline()).length;
+  const idCajaAbierta = caja.datos?.caja?.estado === "ABIERTA" ? caja.datos.caja.id : null;
+  const { recargar: recargarCaja } = caja;
+  useEffect(() => {
+    if (idCajaAbierta == null) return;
+    let vivo = true;
+    const latir = () => {
+      // Pestaña en segundo plano o sin red según el navegador: el servidor ya
+      // va a decir "sin señal" por falta de latidos, que es justo lo que pasa.
+      if (!vivo || document.hidden || navigator.onLine === false) return;
+      void latidoDeCaja(idCajaAbierta, pendientesEnEquipo).then((r) => {
+        if (vivo && r?.cerrada) recargarCaja();
+      });
+    };
+    latir();
+    const id = window.setInterval(latir, LATIDO_MS);
+    return () => {
+      vivo = false;
+      window.clearInterval(id);
+    };
+  }, [idCajaAbierta, pendientesEnEquipo, recargarCaja]);
 
   /**
    * La mesa que se está cobrando. Mientras hay una, la pantalla de cobro

@@ -18,6 +18,7 @@ import { api, type ApiError } from "../../lib/api";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import { declaracionDelEquipo, olvidarTurno } from "../../lib/offline/turno";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import { useLocalDelPapel } from "../../lib/useHayVariasSucursales";
@@ -78,7 +79,8 @@ export default function PantallaCierre({
    * no existe. Como Android (`CierreCajaViewModel`), no se cierra hasta
    * subirlas. Las rechazadas no traban: ya no van a llegar.
    */
-  const sinSubir = porSubir(useColaOffline()).length;
+  const cola = useColaOffline();
+  const sinSubir = porSubir(cola).length;
 
   const r = resumen.datos;
   /**
@@ -174,9 +176,17 @@ export default function PantallaCierre({
       // Se pasa la caja que devuelve el cierre: es la unica fuente con los
       // montos ya calculados por el backend. Releerla despues no sirve —
       // /caja/actual responde null en cuanto la caja queda cerrada.
+      // Lo que este equipo declara del turno (12-nov, como Android): cuántas
+      // ventas le quedan en la cola y la clave de cada venta que registró en
+      // esta caja. Si alguna no le llegó al servidor, el cierre se frena (409
+      // VENTAS_SIN_SUBIR / VENTAS_SIN_CONFIRMAR, con el motivo en pantalla) en
+      // vez de cerrar con esa plata fuera del arqueo. Sin nada que declarar,
+      // el servidor cierra como siempre.
+      const equipo = await declaracionDelEquipo(caja.id, cola);
       const cerrada = await api.cerrarCaja(caja.id, {
         montoCierre: contadoNum,
         ...(nota.trim() ? { notaCierre: nota.trim() } : {}),
+        ...equipo,
         // Billar (25-oct): el administrador puede registrar o anular algo en
         // esta caja desde Supervisión mientras la cajera cuenta. Sin esto se
         // guardaba otra diferencia de la que ella vio (anulaban una cena, ella
@@ -185,6 +195,8 @@ export default function PantallaCierre({
         // cambió. Los demás rubros cierran como siempre.
         ...(esBillar(rubro) ? { esperadoVisto: esperado } : {}),
       });
+      // Cerrada, el manifiesto de esta caja ya no sirve.
+      void olvidarTurno(caja.id);
       onCerrada(conLoVendido(cerrada, r?.productos));
     } catch (err) {
       if ((err as ApiError | null)?.codigo === "ESPERADO_CAMBIO") {

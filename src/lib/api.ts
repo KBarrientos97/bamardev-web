@@ -915,8 +915,34 @@ export const api = {
    * administrador movió la caja mientras se contaba, el backend contesta 409
    * ESPERADO_CAMBIO con el número nuevo en vez de guardar otra diferencia.
    */
-  cerrarCaja: (id: number, input: { montoCierre: number; notaCierre?: string; esperadoVisto?: number }) =>
-    request<Caja>(`/caja/${id}/cerrar`, { method: "POST", body: JSON.stringify(input) }),
+  cerrarCaja: (
+    id: number,
+    input: {
+      montoCierre: number;
+      notaCierre?: string;
+      esperadoVisto?: number;
+      /**
+       * Lo que este equipo declara del turno (12-nov, como Android): cuántas
+       * ventas le quedan sin subir y la clave de cada venta que registró en la
+       * caja. Con alguna sin llegar, el servidor frena el cierre (409
+       * VENTAS_SIN_SUBIR / VENTAS_SIN_CONFIRMAR). Un backend anterior los
+       * ignora y cierra como siempre. Ver `lib/offline/turno.ts`.
+       */
+      pendientesEnEquipo?: number;
+      ventasDelEquipo?: string[];
+    },
+  ) => request<Caja>(`/caja/${id}/cerrar`, { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * El latido del equipo que trabaja la caja (12-nov): cuántas ventas tiene
+   * sin subir y cuándo cobró la última, para que Supervisión diga «En línea» o
+   * «Sin señal» de la caja de la web igual que de la del APK. `cerrada: true`
+   * = la caja ya la cerraron desde otro lado. Ver `lib/offline/turno.ts`.
+   */
+  latidoCaja: (id: number, input: { pendientes: number; ultimaVentaEnEquipoEn?: string }) =>
+    request<{ ok: boolean; cerrada?: boolean; ahora?: number }>(`/caja/${id}/latido`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   getMovimientosCaja: (id: number) => request<MovimientoCaja[]>(`/caja/${id}/movimientos`),
   /** Sólo ADMIN y SUPERVISOR: el backend lo exige con RolesGuard. */
   crearMovimientoCaja: (
