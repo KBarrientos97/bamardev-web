@@ -83,6 +83,12 @@ interface AuthValue {
    * cambió sin esperar al próximo ingreso.
    */
   fijarUsaDespacho: (usa: boolean) => void;
+  /**
+   * Pisa `negocio.pedidosWeb` con lo que acaba de publicar Mi página («Recibir
+   * pedidos en el sistema»): «Pedidos web» sale (o se va) del menú sin esperar
+   * al próximo chequeo de la licencia.
+   */
+  fijarPedidosWeb: (recibe: boolean) => void;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -281,6 +287,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const fijarPedidosWeb = useCallback((recibe: boolean) => {
+    setNegocio((previo) => {
+      if (!previo || previo.pedidosWeb === recibe) return previo;
+      const actualizado = { ...previo, pedidosWeb: recibe };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   /**
    * Trae de `/auth/me` los permisos y el rol (PLAN-ROLES-NEGOCIO §8) y los
    * guarda en la sesión. El rol viaja junto con los permisos: si el dueño le
@@ -367,6 +382,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLicencia(estado);
           refrescarFeatures(estado.features);
           refrescarPerfil(estado);
+          // Un backend viejo no manda el campo: ahí se queda con lo que hay.
+          if (typeof estado.pedidosWeb === "boolean") fijarPedidosWeb(estado.pedidosWeb);
           refrescarPermisos(estado.permisosVersion);
           // El contador viaja en este mismo estado: cada 15 min y al volver a
           // la pestaña llega el del día, aunque nadie haya vendido acá.
@@ -392,7 +409,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos, pedirTurnoCupo, aplicarConsulta]);
+  }, [token, refrescarFeatures, refrescarPerfil, fijarPedidosWeb, refrescarPermisos, pedirTurnoCupo, aplicarConsulta]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
@@ -446,6 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             permisos: usuario.permisos,
             permisosPropios: usuario.permisosPropios,
             dictaClases,
+            pedidosWeb: negocio?.pedidosWeb === true,
           }
         : null,
     [usuario, negocio, dictaClases],
@@ -479,6 +497,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarCupo,
       refrescarCupo,
       fijarUsaDespacho,
+      fijarPedidosWeb,
     }),
     [
       token,
@@ -495,6 +514,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarCupo,
       refrescarCupo,
       fijarUsaDespacho,
+      fijarPedidosWeb,
     ],
   );
 

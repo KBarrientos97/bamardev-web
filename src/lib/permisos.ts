@@ -614,6 +614,12 @@ export interface ContextoPermisos {
    * `GET /academia/soy-docente`; sin la respuesta, no.
    */
   dictaClases?: boolean;
+  /**
+   * `negocio.pedidosWeb` del login: el negocio recibe pedidos de su página por
+   * el sistema. «Pedidos web» sólo se ve con `true` (CONTRATO-PEDIDOS-WEB §9):
+   * un negocio con delivery que nunca lo prendió, como Omar, ve el menú de siempre.
+   */
+  pedidosWeb?: boolean;
 }
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
@@ -733,6 +739,9 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   // Sin rubro tampoco se muestra: una sesión vieja que no sabe de qué negocio
   // es no puede aterrizar en una pantalla que sólo tiene sentido en uno.
   if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
+
+  // Los pedidos de la página los recibe sólo quien prendió el interruptor.
+  if (seccion === "pedidos_web" && ctx.pedidosWeb !== true) return false;
 
   const req = REQUISITOS[seccion];
   // D9: «Mis clases» pide el alcance PROPIO, que el dueño no tiene (tiene todo

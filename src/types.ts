@@ -172,6 +172,14 @@ export interface SesionNegocio {
    * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
    */
   usaDespacho?: boolean;
+  /**
+   * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
+   * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
+   * (CONTRATO-PEDIDOS-WEB §9). La entrada «Pedidos web», la franja del POS, el
+   * aviso global y el sondeo del contador salen sólo con `true`; un backend
+   * viejo que no lo manda se lee como `false`.
+   */
+  pedidosWeb?: boolean;
 }
 
 export interface LoginResponse {
@@ -1865,6 +1873,8 @@ export interface EstadoLicencia {
    * anterior no la manda.
    */
   permisosVersion?: string;
+  /** Lo mismo que `negocio.pedidosWeb` del login, para repintar el menú sin volver a entrar. */
+  pedidosWeb?: boolean;
   /**
    * Paleta y perfil del negocio, por lo mismo que `features`: si el panel le
    * cambia la paleta, la pestaña abierta se repinta sola. `perfilVersion`
