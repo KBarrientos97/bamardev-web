@@ -5,6 +5,7 @@
 import type { Tema } from "./lib/temas";
 import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
+import type { PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -171,6 +172,14 @@ export interface SesionNegocio {
    * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
    */
   usaDespacho?: boolean;
+  /**
+   * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
+   * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
+   * (CONTRATO-PEDIDOS-WEB §9). La entrada «Pedidos web», la franja del POS, el
+   * aviso global y el sondeo del contador salen sólo con `true`; un backend
+   * viejo que no lo manda se lee como `false`.
+   */
+  pedidosWeb?: boolean;
   /**
    * Cuántas sucursales activas tiene el negocio (sólo tipo SUCURSAL, no
    * depósitos). Lo manda el login y `/auth/me`; sirve para que un usuario
@@ -1333,6 +1342,11 @@ export interface Venta {
   notaPedido: string | null;
   entregadoEn: string | null;
   repartidor?: { id: number; nombre: string } | null;
+  /**
+   * Sólo si la venta vino de un pedido de la página (13-nov): su ubicación y
+   * cómo paga, para navegar y para «Ya salí del local». null en las demás.
+   */
+  pedidoWeb?: PedidoWebDeEntrega | null;
   /** Lo que se cobra al entregar (0 si ya se pagó en caja). */
   totalACobrar?: number;
   /** Lo que el repartidor entrega al negocio (sin su tarifa de envío). */
@@ -1676,6 +1690,8 @@ export interface Repartidor {
   nombre: string;
   zona: string | null;
   vehiculo: string | null;
+  /** Su sucursal (null: toda la organización). Un backend viejo no lo manda. */
+  sucursalId?: number | null;
 }
 
 /** Anular pide el PIN siempre; el cajero además manda el usuario que autoriza. */
@@ -1956,6 +1972,8 @@ export interface EstadoLicencia {
    * anterior no la manda.
    */
   permisosVersion?: string;
+  /** Lo mismo que `negocio.pedidosWeb` del login, para repintar el menú sin volver a entrar. */
+  pedidosWeb?: boolean;
   /**
    * Paleta y perfil del negocio, por lo mismo que `features`: si el panel le
    * cambia la paleta, la pestaña abierta se repinta sola. `perfilVersion`

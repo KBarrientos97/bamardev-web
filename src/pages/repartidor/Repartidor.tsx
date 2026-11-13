@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import InputMonto from "../../components/InputMonto";
 import { QrParaCobrar } from "../../components/QrCobro";
@@ -24,7 +24,9 @@ import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { useHayVariasSucursales, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
+import { usePosicionRepartidor } from "../../lib/pedidosWeb/usePosicionRepartidor";
 import { useAuth } from "../../store/AuthContext";
+import AccionesPedidoWeb from "./AccionesPedidoWeb";
 import type { FormaPago, Venta } from "../../types";
 import { cobradoPorQr, rendicionDelTurno } from "./rendicion";
 
@@ -87,6 +89,19 @@ export default function Repartidor() {
 
   const mostradas = vista === "pendientes" ? pendientes : entregadas;
 
+  // Pedidos web en camino (ya tocó «Ya salí del local»): mientras esta pantalla
+  // está abierta, el cliente ve la moto. Si la lista falla un momento, se
+  // sigue con las últimas entregas conocidas en vez de cortar el envío.
+  const enCaminoWeb = useRef<number[]>([]);
+  if (entregas.datos) {
+    enCaminoWeb.current = entregas.datos
+      // Sólo las SUYAS: quien también tiene `delivery.asignar` recibe todas las
+      // entregas, y mandar la posición de una ajena da 403 cada 15 s (PW-16).
+      .filter((v) => v.pedidoWeb?.salioEn && v.estadoEntrega === "PENDIENTE" && v.repartidor?.id === usuario?.id)
+      .map((v) => v.id);
+  }
+  const posicion = usePosicionRepartidor(enCaminoWeb.current);
+
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-5">
       <header className="flex items-start justify-between gap-3">
@@ -100,6 +115,13 @@ export default function Repartidor() {
           Rendición
         </Boton>
       </header>
+
+      {posicion.compartiendo && (
+        <p role="status" className="flex items-center gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-semibold text-primary-700">
+          <Icon name="pin" size={16} /> Compartiendo tu ubicación con el cliente
+        </p>
+      )}
+      <ErrorMsg>{posicion.falla}</ErrorMsg>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Kpi etiqueta="Por entregar" valor={String(pendientes.length)} icono="truck" tono="amarillo" />
@@ -139,47 +161,51 @@ export default function Repartidor() {
             <li key={p.id}>
               <button
                 onClick={() => setDetalle(p)}
-                className="card flex w-full items-center gap-3 p-4 text-left transition-shadow hover:shadow-md"
+                className="card flex w-full flex-col gap-2 p-4 text-left transition-shadow hover:shadow-md"
               >
-                <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                    p.estadoEntrega === "ENTREGADO"
-                      ? "bg-primary-50 text-primary-700"
-                      : "bg-warning-bg text-warning-text"
-                  }`}
-                >
-                  <Icon name={p.estadoEntrega === "ENTREGADO" ? "check" : "truck"} size={20} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-texto">
-                    {p.clienteNombre ?? "Sin nombre"}
-                  </p>
-                  <p className="truncate text-xs text-texto-3">{p.clienteDireccion}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    {/* Entregado ya no debe nada: seguía en ámbar "Cobra al
-                        entregar" al lado de "Cobrado Bs 35,00" (QA 29-oct). */}
-                    <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"}>
-                      {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
-                    </Badge>
-                    <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
+                {/* Arriba el cliente y lo que se cobra; la insignia va en su propio renglón:
+                    en 360 px «COBRA AL ENTREGAR» (sin partirse) se metía debajo del monto. */}
+                <div className="flex w-full items-center gap-3">
+                  <span
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                      p.estadoEntrega === "ENTREGADO"
+                        ? "bg-primary-50 text-primary-700"
+                        : "bg-warning-bg text-warning-text"
+                    }`}
+                  >
+                    <Icon name={p.estadoEntrega === "ENTREGADO" ? "check" : "truck"} size={20} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-texto">
+                      {p.clienteNombre ?? "Sin nombre"}
+                    </p>
+                    <p className="truncate text-xs text-texto-3">{p.clienteDireccion}</p>
+                  </div>
+                  {/* `totalACobrar` YA trae el envío (y en un prepagado es sólo
+                      el envío): debajo decía "+Bs 8,00 envío" y un pedido de Bs 58
+                      se leía como 58 + 8, y uno pagado en caja como 8 + 8
+                      (BUG-pedidos-10). Ahora dice qué es el número. */}
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs text-texto-3">
+                      {p.estadoEntrega === "ENTREGADO" ? "Cobrado" : "A cobrar"}
+                    </p>
+                    <p className="text-sm font-bold text-texto">
+                      {fmtMoney(p.totalACobrar ?? 0)}
+                    </p>
+                    {esPositivo(p.tarifaEnvio ?? 0) && (
+                      <p className="text-xs text-texto-3">
+                        {p.prepagado ? "es tu envío" : `incluye ${fmtMoney(p.tarifaEnvio)} de envío`}
+                      </p>
+                    )}
                   </div>
                 </div>
-                {/* `totalACobrar` YA trae el envío (y en un prepagado es sólo
-                    el envío): debajo decía "+Bs 8,00 envío" y un pedido de Bs 58
-                    se leía como 58 + 8, y uno pagado en caja como 8 + 8
-                    (BUG-pedidos-10). Ahora dice qué es el número. */}
-                <div className="shrink-0 text-right">
-                  <p className="text-xs text-texto-3">
-                    {p.estadoEntrega === "ENTREGADO" ? "Cobrado" : "A cobrar"}
-                  </p>
-                  <p className="text-sm font-bold text-texto">
-                    {fmtMoney(p.totalACobrar ?? 0)}
-                  </p>
-                  {esPositivo(p.tarifaEnvio ?? 0) && (
-                    <p className="text-xs text-texto-3">
-                      {p.prepagado ? "es tu envío" : `incluye ${fmtMoney(p.tarifaEnvio)} de envío`}
-                    </p>
-                  )}
+                <div className="flex flex-wrap items-center gap-1.5 pl-14">
+                  {/* Entregado ya no debe nada: seguía en ámbar "Cobra al
+                      entregar" al lado de "Cobrado Bs 35,00" (QA 29-oct). */}
+                  <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"} className="whitespace-nowrap">
+                    {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
+                  </Badge>
+                  <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
                 </div>
               </button>
             </li>
@@ -196,6 +222,7 @@ export default function Repartidor() {
             setDetalle(null);
             entregas.recargar();
           }}
+          onSalio={entregas.recargar}
         />
       )}
 
@@ -299,11 +326,14 @@ function DetalleEntrega({
   formasPago,
   onClose,
   onCambio,
+  onSalio,
 }: {
   pedido: Venta;
   formasPago: FormaPago[];
   onClose: () => void;
   onCambio: () => void;
+  /** Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la posición. */
+  onSalio: () => void;
 }) {
   const completo = useApi(() => api.getVenta(pedido.id), [pedido.id]);
   const { negocio } = useAuth();
@@ -424,6 +454,15 @@ function DetalleEntrega({
                 </div>
               )}
             </div>
+
+            {(p.pedidoWeb ?? pedido.pedidoWeb) && pendiente && (
+              <AccionesPedidoWeb
+                ventaId={p.id}
+                direccion={p.clienteDireccion}
+                web={(p.pedidoWeb ?? pedido.pedidoWeb)!}
+                onSalio={onSalio}
+              />
+            )}
 
             <ul className="divide-y divide-borde-soft">
               {(p.detalles ?? []).map((d, i) => (

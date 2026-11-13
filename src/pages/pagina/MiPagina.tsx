@@ -45,6 +45,7 @@ import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
 import type { CursoPublico } from "../../lib/academia/tipos";
 import { numeroParaEditar } from "../../lib/pagina/whatsapp";
 import { useApi } from "../../lib/useApi";
+import { api } from "../../lib/api";
 import CartelQR from "./CartelQR";
 import CatalogoEditor from "./CatalogoEditor";
 import CatalogoProductosEditor, { SelectorModoCatalogo } from "./CatalogoProductosEditor";
@@ -804,6 +805,19 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
       await encolar();
       const nuevo = await apiPagina.publicarCambios(publicarPagina);
       carga.setDatos(conCatalogo(nuevo, ultimo.current));
+      // «Pedidos web» del menú sigue al interruptor recién publicado, sin esperar
+      // al chequeo de la licencia (CONTRATO-PEDIDOS-WEB §9): sólo si el plan trae delivery.
+      // Prendido: se prende ya. Apagado: la bandeja NO se va si quedan pedidos
+      // vivos (R2-14); se le pregunta al backend, que es quien lo sabe.
+      if (sesion?.negocio?.features?.includes("delivery")) {
+        if (nuevo.pagina.pedidosSistema) sesion.fijarPedidosWeb(true);
+        else {
+          api
+            .licencia()
+            .then((estado) => sesion.fijarPedidosWeb(typeof estado.pedidosWeb === "boolean" ? estado.pedidosWeb : false))
+            .catch(() => sesion.fijarPedidosWeb(false));
+        }
+      }
       setAvisoEstilo(null);
       setAviso(
         publicarPagina ? "¡Tu página está publicada!" : e.pagina.publicada ? "Cambios publicados" : "Cambios guardados",
@@ -1298,6 +1312,9 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
           <EditorPedidosRegalos
             guardado={e.pagina.regalos}
             pedidosGuardado={e.pagina.pedidosWhatsapp}
+            sistemaGuardado={e.pagina.pedidosSistema}
+            conDelivery={tieneFeature(negocioSesion?.features, "delivery")}
+            conProductos={modoCatalogo === "PRODUCTOS"}
             borrador={borrador}
             cambiar={cambiar}
             negocio={nombreVisible}

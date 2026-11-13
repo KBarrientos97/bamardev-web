@@ -239,6 +239,12 @@ export interface PaginaPublica {
   rubroClave?: string;
   /** "Pedí por WhatsApp" (IDEAS/6 #1): el catálogo arma el pedido. */
   pedidos?: boolean;
+  /**
+   * Pedidos directo al sistema (13-nov): ya resuelto por el backend con las
+   * cuatro condiciones del contrato (licencia y `delivery`, «Mis productos»,
+   * el interruptor y WhatsApp apagado). Opcional: un backend anterior no lo manda.
+   */
+  pedidosSistema?: boolean;
   /** Gift cards que se piden desde la página (IDEAS/6 #6), o null. */
   regalos?: RegalosPublicos | null;
   /**
@@ -488,6 +494,8 @@ export interface AjustesPagina {
   catalogoModo?: ModoCatalogo;
   /** "Pedí por WhatsApp" (IDEAS/6 #1). Opcional: un backend anterior no lo manda. */
   pedidosWhatsapp?: boolean;
+  /** «Recibir pedidos en el sistema» (13-nov). Opcional por lo mismo. */
+  pedidosSistema?: boolean;
   /** Gift cards desde la página (IDEAS/6 #6). Opcional por lo mismo. */
   regalos?: ConfigRegalos;
   /** La sección Cursos de un instituto (P1). Opcional por lo mismo. */
@@ -641,6 +649,7 @@ export type CambiosPagina = Partial<
     | "catalogoTitulo"
     | "catalogoModo"
     | "pedidosWhatsapp"
+    | "pedidosSistema"
     | "mostrarCursos"
     | "mostrarMapa"
     | "mostrarHorario"

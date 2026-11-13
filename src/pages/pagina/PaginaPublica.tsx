@@ -6,6 +6,9 @@ import { catalogoEnSucursal, enlaceWhatsapp } from "../../lib/pagina/catalogo";
 import { contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import type { EnlacePublico } from "../../lib/pagina/tipos";
 import PedidoPagina from "./PedidoPagina";
+import FranjasPedido from "./FranjasPedido";
+import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
+import { useInfoPedidos } from "../../lib/pedidosWeb/useInfoPedidos";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
 import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
@@ -186,6 +189,14 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   const whatsapp = pagina ? enlaceWhatsapp(pagina) : null;
   const contactos = pagina ? contactosWhatsapp(pagina) : [];
   const conPedidos = !!pagina?.pedidos && contactos.length > 0;
+  // Pedidos directo al sistema (13-nov). Si los dos están prendidos, gana
+  // WhatsApp (decisión del dueño): el carrito de WhatsApp manda sobre `pedidosSistema`.
+  // Pero un WhatsApp prendido SIN ningún número cargado no tiene a quién escribir
+  // (`conPedidos` es falso): cuenta como apagado y sale el del sistema.
+  const conSistema = !!pagina?.pedidosSistema && !conPedidos;
+  const carrito = conPedidos || conSistema;
+  const infoPedidos = useInfoPedidos(subdominio, conSistema);
+  const sinPedidos = conSistema ? avisoSinPedidos(infoPedidos.info) : null;
   const conRegalos = !!pagina?.regalos && contactos.length > 0;
   // El pedido de «Mis productos» con sucursal elegida va al WhatsApp de esa
   // sucursal o, si no tiene, al general. Sin selector, a cualquiera de los
@@ -210,6 +221,9 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   if (tienda && !pagina.sitio) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
   return (
     <>
+      {conSistema && (
+        <FranjasPedido subdominio={pagina.subdominio} fuerte={paleta(pagina.color.hex).oscuro} aviso={sinPedidos} />
+      )}
       <VistaPagina
         pagina={vista}
         urlReservar={urlReservaDe(pagina.subdominio)}
@@ -217,24 +231,37 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
         urlInscribirme={(grupoId) => urlInscribirmeDe(pagina.subdominio, grupoId)}
         urlMiCuenta={urlMiCuentaDe(pagina.subdominio)}
         alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
-        alAgregarAlPedido={conPedidos ? pedido.agregar : undefined}
-        lineasPedido={conPedidos ? pedido.lineas : undefined}
-        alCambiarPedido={conPedidos ? pedido.cambiar : undefined}
+        alAgregarAlPedido={carrito ? pedido.agregar : undefined}
+        lineasPedido={carrito ? pedido.lineas : undefined}
+        alCambiarPedido={carrito ? pedido.cambiar : undefined}
         urlTienda={urlTiendaDe(pagina.subdominio)}
         tienda={tienda ? { urlInicio: urlPaginaDe(pagina.subdominio), categoria: busqueda.get("categoria") } : undefined}
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
       />
-      {conPedidos && (
+      {carrito && (
         <PedidoPagina
           negocio={pagina.nombre}
           color={pagina.color.hex}
-          destinos={destinosPedido}
+          destinos={conPedidos ? destinosPedido : []}
           pedido={pedido}
           sucursal={nombreSucursal}
           rubro={pagina.rubroClave}
           subdominio={pagina.subdominio}
           asistente={!!pagina.asistente}
+          sistema={
+            conSistema
+              ? {
+                  info: infoPedidos.info,
+                  errorInfo: infoPedidos.error,
+                  onReintentarInfo: infoPedidos.recargar,
+                  sucursalCatalogo: sucursal,
+                  onSucursal: elegirSucursal,
+                  muchasSucursales: sucursales.length > 1,
+                  whatsappUrl: whatsapp?.url ?? null,
+                }
+              : undefined
+          }
         />
       )}
       {conRegalos && pagina.regalos && (

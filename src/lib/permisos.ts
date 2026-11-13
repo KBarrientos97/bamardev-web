@@ -49,6 +49,8 @@ export type Seccion =
   | "reportes"
   | "usuarios"
   | "reparto"
+  /** La bandeja de pedidos que los clientes hacen desde la página (13-nov). */
+  | "pedidos_web"
   /** El panel del mesero: el salón, lo que hay por servir y su turno. */
   | "salon"
   /** ABM de mesas y zonas: es del admin, no del mesero. */
@@ -303,6 +305,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // "Mis entregas" es la pantalla de quien reparte lo que le asignan; quien
   // gestiona todos los pedidos (`delivery.asignar`) lo hace desde el POS.
   reparto: { permiso: "entregas.realizar", sinGeneral: "delivery.asignar", feature: "delivery" },
+  // Los pedidos que llegan de la página (13-nov): los acepta quien asigna los
+  // deliveries (cajero, encargado, administrador), con la feature `delivery`.
+  pedidos_web: { permiso: "delivery.asignar", feature: "delivery" },
   // El panel del salón: el mesero (sus mesas) y quien supervisa el salón.
   salon: { permiso: "salon.atender", feature: "salon" },
   // El ABM de mesas y zonas, parte de la misma sección vendida.
@@ -609,6 +614,12 @@ export interface ContextoPermisos {
    * `GET /academia/soy-docente`; sin la respuesta, no.
    */
   dictaClases?: boolean;
+  /**
+   * `negocio.pedidosWeb` del login: el negocio recibe pedidos de su página por
+   * el sistema. «Pedidos web» sólo se ve con `true` (CONTRATO-PEDIDOS-WEB §9):
+   * un negocio con delivery que nunca lo prendió, como Omar, ve el menú de siempre.
+   */
+  pedidosWeb?: boolean;
 }
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
@@ -728,6 +739,9 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   // Sin rubro tampoco se muestra: una sesión vieja que no sabe de qué negocio
   // es no puede aterrizar en una pantalla que sólo tiene sentido en uno.
   if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
+
+  // Los pedidos de la página los recibe sólo quien prendió el interruptor.
+  if (seccion === "pedidos_web" && ctx.pedidosWeb !== true) return false;
 
   const req = REQUISITOS[seccion];
   // D9: «Mis clases» pide el alcance PROPIO, que el dueño no tiene (tiene todo

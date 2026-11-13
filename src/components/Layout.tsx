@@ -5,6 +5,7 @@ import { tituloDe, useMenu } from "../lib/menu";
 import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
+import AvisoPedidosWeb from "./AvisoPedidosWeb";
 import FranjaIntentosPin from "./seguridad/FranjaIntentosPin";
 import CajonMovil from "./CajonMovil";
 import CambiarMiPassword from "./CambiarMiPassword";
@@ -271,6 +272,8 @@ export default function Layout() {
         {/* Los PIN mal escritos, para quien administra los PIN (18-oct). La
             TV del salón va fuera del Layout: ahí no sale. */}
         <FranjaIntentosPin />
+        {/* Pedidos de la página que esperan respuesta (13-nov), con sonido. */}
+        <AvisoPedidosWeb />
         {/* Plan Emprendedor: el chip de ventas y los avisos del cupo, en
             todas las pantallas. Sin cupo (Básico, Profesional) no dibuja
             nada. Quien atiende el billar también vende: abrir una mesa y la

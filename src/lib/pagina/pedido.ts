@@ -106,6 +106,19 @@ export function ajustarASucursal(lineas: LineaPedido[], items: ItemCatalogoPubli
 }
 
 /**
+ * Lo que dice el aviso cuando, al cambiar de local, salen productos del pedido:
+ * los nombra (antes decía «Sacamos 1 producto» y el cliente no sabía cuál). Sin
+ * nada que decir, null.
+ */
+export function avisoDeQuitados(antes: LineaPedido[], ahora: LineaPedido[]): string | null {
+  const quedan = new Set(ahora.map((l) => l.id));
+  const fuera = antes.filter((l) => !quedan.has(l.id)).map((l) => l.titulo);
+  if (!fuera.length) return null;
+  const lista = fuera.length === 1 ? `«${fuera[0]}»` : `${fuera.slice(0, -1).map((t) => `«${t}»`).join(", ")} y «${fuera[fuera.length - 1]}»`;
+  return fuera.length === 1 ? `Sacamos ${lista} porque ese local no lo ofrece.` : `Sacamos ${lista} porque ese local no los ofrece.`;
+}
+
+/**
  * El mensaje de WhatsApp, prolijo y fácil de leer para quien atiende. Con la
  * sucursal elegida en el catálogo, la dice: los precios son los de ella.
  * `etiqueta` es como la llama el rubro: «Sede» en el instituto (Lista 2 #9).

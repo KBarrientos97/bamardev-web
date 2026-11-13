@@ -243,22 +243,46 @@ describe("responder", () => {
 });
 
 describe("cabeceras", () => {
-  it("son las mismas que public/_headers", () => {
+  /** Los bloques de `public/_headers`: ruta → cabeceras, y las que esa ruta despega (`! Nombre`). */
+  function leerHeaders() {
     const archivo = readFileSync(join(process.cwd(), "public", "_headers"), "utf8");
-    // Cada bloque: una ruta y sus cabeceras indentadas.
     const bloques = new Map<string, Record<string, string>>();
+    const despega = new Map<string, string[]>();
     let actual: string | null = null;
     for (const linea of archivo.split(/\r?\n/)) {
       if (!linea.trim() || linea.trim().startsWith("#")) continue;
       if (!/^\s/.test(linea)) {
         actual = linea.trim();
         bloques.set(actual, {});
+        despega.set(actual, []);
+      } else if (actual && linea.trim().startsWith("!")) {
+        despega.get(actual)!.push(linea.trim().slice(1).trim());
       } else if (actual) {
         const i = linea.indexOf(":");
         bloques.get(actual)![linea.slice(0, i).trim()] = linea.slice(i + 1).trim();
       }
     }
+    return { bloques, despega };
+  }
+
+  it("son las mismas que public/_headers", () => {
+    const { bloques } = leerHeaders();
     expect(cabecerasSeguridad("/r/x/reservar")).toEqual(bloques.get("/r/*"));
     expect(cabecerasSeguridad("/p/x")).toEqual(bloques.get("/p/*"));
+  });
+
+  it("el seguimiento de un pedido (lleva su token en la URL) no se indexa y no manda referer (PW-14)", () => {
+    const { bloques, despega } = leerHeaders();
+    // Lo que Pages arma: /p/* más la regla del pedido, que despega el Referrer-Policy y pone el suyo.
+    const regla = "/p/:sub/pedido/*";
+    const efectivas = { ...bloques.get("/p/*") };
+    for (const nombre of despega.get(regla)!) delete efectivas[nombre];
+    Object.assign(efectivas, bloques.get(regla));
+    expect(cabecerasSeguridad("/p/elganadero/pedido/Ab3_x-9QkLm2")).toEqual(efectivas);
+    expect(efectivas["X-Robots-Tag"]).toBe("noindex, nofollow");
+    expect(efectivas["Referrer-Policy"]).toBe("no-referrer");
+    // Las demás rutas de /p/ siguen como estaban (la vitrina sí se indexa).
+    expect(cabecerasSeguridad("/p/elganadero")["X-Robots-Tag"]).toBeUndefined();
+    expect(cabecerasSeguridad("/p/elganadero/tienda")["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
   });
 });

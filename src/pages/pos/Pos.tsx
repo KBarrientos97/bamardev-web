@@ -28,6 +28,7 @@ import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { usePedidosNuevos } from "../../lib/pedidosWeb/contador";
 import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { claveCaja, claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia, leerCopia } from "../../lib/offline/copias";
@@ -126,6 +127,8 @@ function PuntoDeVenta() {
   // QA DIA-09: los buscadores de cliente del POS ofrecen el alta a quien
   // puede crear fichas, en un negocio que las tiene.
   const puedeCrearClientes = puede("clientes") && creaClientes(usuario);
+  // Pedidos de la página que esperan respuesta (13-nov): el aviso se refresca solo, cada 10 s.
+  const pedidosWeb = usePedidosNuevos(puede("pedidos_web"));
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
   //
@@ -1533,8 +1536,22 @@ function PuntoDeVenta() {
             />
           </div>
         )}
-        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0) && (
+        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0 || pedidosWeb.nuevos > 0) && (
           <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            {/* Lo primero: un cliente está esperando y a los 10 minutos el pedido vence. */}
+            {pedidosWeb.nuevos > 0 && (
+              <AvisoSalon
+                tono="ambar"
+                icono="bolsa"
+                titulo={
+                  pedidosWeb.nuevos === 1
+                    ? "1 pedido web nuevo"
+                    : `${pedidosWeb.nuevos} pedidos web nuevos`
+                }
+                detalle={pedidosWeb.nuevos === 1 ? "Un cliente espera respuesta · tocá para verlo" : "Hay clientes esperando respuesta · tocá para verlos"}
+                onClick={() => navigate("/pedidos-web")}
+              />
+            )}
             {citasEsperando.length > 0 && (
               <AvisoSalon
                 tono="ambar"
@@ -1676,7 +1693,7 @@ function AvisoSalon({
   onClick,
 }: {
   tono: "verde" | "ambar";
-  icono: "grid" | "users" | "calendar";
+  icono: "grid" | "users" | "calendar" | "bolsa";
   titulo: string;
   detalle: string;
   onClick: () => void;

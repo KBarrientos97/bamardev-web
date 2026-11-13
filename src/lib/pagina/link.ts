@@ -11,6 +11,7 @@
  *   link…/<sub>/regalo/<token>   una gift card    (= app…/p/<sub>/regalo/<token>)
  *   link…/<sub>/inscribirme/<id> preinscribirse a un grupo (= app…/p/<sub>/inscribirme/<id>)
  *   link…/<sub>/mi-cuenta        pagar con el carnet (= app…/p/<sub>/mi-cuenta)
+ *   link…/<sub>/pedido/<token>   seguir un pedido web (= app…/p/<sub>/pedido/<token>)
  *
  * Lo usan la SPA (qué rutas dibujar) y la Pages Function de la raíz (Open
  * Graph y redirecciones), así que no toca `import.meta.env` ni el DOM: corre
@@ -72,6 +73,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if ((segundo === "promo" || segundo === "c") && tercero !== undefined && RESTO.test(tercero)) {
     return segundo === "promo" ? `/p/${sub}/promo/${tercero}` : `/r/${sub}/c/${tercero}`;
   }
+  // El seguimiento de un pedido hecho desde la página (pedidos web, 13-nov).
+  if (segundo === "pedido" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/pedido/${tercero}`;
   // La gift card que se comparte (IDEAS/6 #6).
   if (segundo === "regalo" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/regalo/${tercero}`;
   // La preinscripción a un grupo de una academia (P2): el id es un número.
@@ -146,6 +149,7 @@ Disallow: /*/c/
 Disallow: /*/inscribirme/
 Disallow: /*/pagar/
 Disallow: /*/mi-cuenta
+Disallow: /*/pedido/
 Allow: /
 `;
 

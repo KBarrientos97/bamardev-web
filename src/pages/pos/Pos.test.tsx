@@ -222,11 +222,18 @@ vi.mock("./PantallaCredito", () => ({
 
 vi.mock("./PantallaRecibo", () => ({ default: () => <p>recibo</p> }));
 
+// El aviso de pedidos web (13-nov): el contador que consulta el POS cada 10 s.
+vi.mock("../../lib/pedidosWeb/apiPrivada", () => ({
+  apiPedidosWeb: { contador: vi.fn(async () => ({ nuevos: 0, masViejoEn: null })) },
+}));
+
 import { api } from "../../lib/api";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
 import type { Recurso } from "../../lib/agenda/tiposConfigAgenda";
 import { apiMonedero } from "../../lib/apiMonedero";
+import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
+import { reiniciarContador } from "../../lib/pedidosWeb/contador";
 import { fechaNegocio } from "../../lib/agenda/horaAgenda";
 import { HojaCupoHost } from "../../components/ComprarCreditos";
 import { CUPO_ILIMITADO, cupoEmprendedor } from "../../test/cupoFixtures";
@@ -1306,5 +1313,39 @@ describe("CAJA-3: «Ir al cierre de caja» del aviso de no cerrar sesión con la
     await montar();
     expect(screen.queryByText("cierre de caja")).not.toBeInTheDocument();
     expect(screen.getByText("ir a cobrar")).toBeInTheDocument();
+  });
+});
+
+describe("pedidos web: el aviso del POS (13-nov)", () => {
+  beforeEach(() => {
+    reiniciarContador();
+    vi.mocked(apiPedidosWeb.contador).mockResolvedValue({ nuevos: 0, masViejoEn: null });
+  });
+
+  it("con pedidos nuevos, la franja de arriba lo dice y lleva a la bandeja", async () => {
+    vi.mocked(apiPedidosWeb.contador).mockResolvedValue({ nuevos: 2, masViejoEn: "2026-11-13T20:00:00.000Z" });
+    await montar();
+    expect(await screen.findByRole("button", { name: /2 pedidos web nuevos/ })).toBeInTheDocument();
+    expect(screen.getByText(/Hay clientes esperando respuesta/)).toBeInTheDocument();
+  });
+
+  it("uno solo, en singular", async () => {
+    vi.mocked(apiPedidosWeb.contador).mockResolvedValue({ nuevos: 1, masViejoEn: null });
+    await montar();
+    expect(await screen.findByRole("button", { name: /1 pedido web nuevo/ })).toBeInTheDocument();
+    expect(screen.getByText(/Un cliente espera respuesta/)).toBeInTheDocument();
+  });
+
+  it("sin pedidos nuevos no hay franja ni un cero inventado", async () => {
+    await montar();
+    expect(screen.queryByText(/pedidos? web nuevos?/)).not.toBeInTheDocument();
+  });
+
+  it("quien no ve la bandeja (sin delivery o sin delivery.asignar) no consulta ni ve nada", async () => {
+    sesion.sinSecciones = ["pedidos_web"];
+    vi.mocked(apiPedidosWeb.contador).mockResolvedValue({ nuevos: 3, masViejoEn: null });
+    await montar();
+    expect(apiPedidosWeb.contador).not.toHaveBeenCalled();
+    expect(screen.queryByText(/pedidos? web nuevos?/)).not.toBeInTheDocument();
   });
 });
