@@ -164,6 +164,8 @@ export interface PedidoWeb {
   envio?: number;
   total?: number;
   repartidor?: { id: number; nombre: string } | null;
+  /** Dónde está el repartidor (la última posición que mandó). Sólo lo trae el detalle. */
+  posicion?: { latitud: number; longitud: number; en: string } | null;
   creadoEn: string;
   aceptadoEn: string | null;
   salioEn: string | null;

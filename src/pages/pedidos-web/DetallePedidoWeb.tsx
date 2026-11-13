@@ -79,7 +79,8 @@ export default function DetallePedidoWeb({
 
       {!esNuevo && (
         <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
-          {p.estado === "ACEPTADO" && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
+          {p.estado === "ACEPTADO" && !p.salioEn && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
+          {p.estado === "ACEPTADO" && p.salioEn && `En camino desde las ${horaDe(p.salioEn)}${p.repartidor ? ` con ${p.repartidor.nombre}` : ""}${aceptadoPorDe(p) ? ` · lo aceptó ${aceptadoPorDe(p)}` : ""}.`}
           {p.estado === "RECHAZADO" && `Rechazado${p.motivoRechazo ? `: ${p.motivoRechazo}` : ""}.`}
           {p.estado === "VENCIDO" && "Venció: nadie lo respondió a tiempo."}
           {p.estado === "CANCELADO" && "Lo canceló el cliente."}
@@ -167,8 +168,13 @@ export default function DetallePedidoWeb({
           {pin ? (
             <>
               <Suspense fallback={<div className="h-56 rounded-2xl bg-muted" />}>
-                <MapaPedido destino={pin} local={null} moto={null} color="#047857" etiquetaDestino="El cliente" alto={220} />
+                <MapaPedido destino={pin} local={null} moto={p.salioEn ? p.posicion : null} color="#047857" etiquetaDestino="El cliente" alto={220} />
               </Suspense>
+              {p.salioEn && (
+                <p className="text-xs text-texto-3">
+                  {p.posicion ? `La última posición del repartidor es de ${haceCuanto(p.posicion.en)}.` : "Todavía no hay posición reciente del repartidor."}
+                </p>
+              )}
               <a
                 href={urlRuta({ lat: pin.latitud, lng: pin.longitud })}
                 target="_blank"
@@ -212,6 +218,11 @@ export default function DetallePedidoWeb({
 /** Si el cuerpo del error es un 409 o un «ya no está esperando», el pedido ya no es de esta caja. */
 function esConflicto(e: unknown): e is ApiError {
   return e instanceof ApiError && e.status === 409;
+}
+
+/** «02:35», la hora local en que salió el repartidor. */
+function horaDe(iso: string): string {
+  return new Date(iso).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 /**

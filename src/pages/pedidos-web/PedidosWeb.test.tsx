@@ -45,7 +45,11 @@ vi.mock("../../lib/pedidosWeb/apiPrivada", () => ({
 }));
 
 vi.mock("../pagina/MapaSeguimiento", () => ({
-  default: ({ destino }: { destino: { latitud: number; longitud: number } | null }) => <div data-testid="mapa-pin">{JSON.stringify(destino)}</div>,
+  default: ({ destino, moto }: { destino: { latitud: number; longitud: number } | null; moto?: unknown }) => (
+    <div data-testid="mapa-pin" data-moto={JSON.stringify(moto ?? null)}>
+      {JSON.stringify(destino)}
+    </div>
+  ),
 }));
 
 import { ApiError } from "../../lib/api";
@@ -195,6 +199,25 @@ describe("el detalle", () => {
     expect(screen.getByText(/Envío sugerido \(2,9 km\)/)).toBeInTheDocument();
     expect(screen.getByText(/trae Bs 200,00, cambio Bs 91,00/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Abrir el pin en Google Maps/ })).toHaveAttribute("href", expect.stringContaining("destination=-17.76,-63.18"));
+  });
+
+  it("en camino: dice desde cuándo y con quién, y marca dónde va el repartidor", async () => {
+    const enCamino = {
+      ...LUCIA,
+      estado: "ACEPTADO" as const,
+      ventaId: 900,
+      repartidor: { id: 22, nombre: "Pedro" },
+      salioEn: hace(8),
+      posicion: { latitud: -17.755, longitud: -63.178, en: hace(1) },
+    };
+    mock.bandeja.mockResolvedValue(bandeja({ nuevos: [], enCamino: [enCamino] }));
+    mock.detalle.mockResolvedValue(enCamino);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /En camino/ }));
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    expect(await screen.findByText(/En camino desde las \d\d:\d\d con Pedro/)).toBeInTheDocument();
+    expect(screen.getByText(/La última posición del repartidor es de hace 1 min/)).toBeInTheDocument();
+    expect(await screen.findByTestId("mapa-pin")).toHaveAttribute("data-moto", '{"latitud":-17.755,"longitud":-63.178,"en":"' + enCamino.posicion.en + '"}');
   });
 
   it("al abrir aceptar o rechazar, el formulario se trae a la vista (en el celular nace bajo el mapa)", async () => {
