@@ -7,13 +7,14 @@ import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { Producto } from "../../types";
-import { paraVender } from "../pos/useCarrito";
+import { controlaStock, paraVender } from "../pos/useCarrito";
 import CampoBusqueda from "./CampoBusqueda";
 import { FichaMostrador } from "./FichaMedicamento";
 import { FormEncargo } from "./FormEncargo";
 import { CONDICION, concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
+import { AvisoCorregido } from "./AvisoCorregido";
 import { sePuedeVender, useVentaFarmacia } from "./ventaFarmacia";
 
 /**
@@ -114,6 +115,13 @@ export default function BuscarMedicamento() {
         </div>
       ) : (
         <>
+          {busqueda.corregido && (
+            <AvisoCorregido
+              tecleado={busqueda.consulta ?? q}
+              corregido={busqueda.corregido}
+              onUsar={setQ}
+            />
+          )}
           <p className="text-[13px] text-texto-3">
             {busqueda.items.length < busqueda.total
               ? `${busqueda.items.length} de ${busqueda.total}`
@@ -140,7 +148,9 @@ export default function BuscarMedicamento() {
                 <Fila
                   key={p.id}
                   producto={p}
-                  q={q}
+                  // Se resalta lo que se encontró: con la búsqueda corregida,
+                  // lo tecleado ("ibprofen") no está en ninguna fila.
+                  q={busqueda.corregido ?? q}
                   columnas={columnas}
                   conVencimiento={conLotes}
                   onFicha={() => setFicha(p)}
@@ -252,12 +262,16 @@ function Fila({
   // hasta la baja pero no se cobran.
   const hay = paraVender(p);
   const vencidas = p.stockVencido ?? 0;
-  const agotado = hay <= 0;
-  const bajo = !agotado && hay <= p.stockMinimo;
+  // Un servicio (un inyectable aplicado, una toma de presión) no tiene stock
+  // que agotar: salía "Agotado" en rojo y ofrecía Encargar, aunque Agregar
+  // andaba (12-nov, con el tipo Servicio en el alta de farmacia).
+  const conStock = controlaStock(p);
+  const agotado = conStock && hay <= 0;
+  const bajo = conStock && !agotado && hay <= p.stockMinimo;
   const punto = puntoVencimiento(p);
   const concentracion = concentracionAparte(p);
   const condicion = CONDICION[p.condicionVenta];
-  const stock = conUnidad(hay, p.unidadMedida?.nombre);
+  const stock = p.tipoProducto === "SERVICIO" ? "Servicio" : conUnidad(hay, p.unidadMedida?.nombre);
   // B3: la columna de stock decía "Vencido", lo mismo que la de vencimiento,
   // y en el teléfono quedaban pegadas: "Vencido · Vencido". Esta columna
   // contesta cuánto se puede vender (nada) y entre paréntesis por qué.

@@ -14,6 +14,7 @@ import { concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento"
 import { ChipsCondicion } from "./piezas";
 import { pitidoDeError } from "./sonido";
 import { useBusquedaProductos } from "./useBusquedaProductos";
+import { AvisoCorregido } from "./AvisoCorregido";
 import { sePuedeVender, useVentaFarmacia } from "./ventaFarmacia";
 
 /** De a cuántos se traen: cuatro filas de la grilla en un monitor. */
@@ -105,7 +106,11 @@ export default function CatalogoVenta({
     const texto = q;
     const items =
       busqueda.consulta === texto && !busqueda.cargando
-        ? busqueda.items
+        ? // Corregida, lo tecleado no encontró nada: el Enter no agrega lo
+          // parecido por la persona (ver `buscarAhora`).
+          busqueda.corregido
+          ? []
+          : busqueda.items
         : await busqueda.buscarAhora(texto);
     if (!items) return;
     if (items.length === 1 && sePuedeVender(items[0])) {
@@ -178,6 +183,13 @@ export default function CatalogoVenta({
           />
         ) : (
           <>
+            {busqueda.corregido && (
+              <AvisoCorregido
+                tecleado={busqueda.consulta ?? q}
+                corregido={busqueda.corregido}
+                onUsar={setQ}
+              />
+            )}
             <ul className="grid grid-cols-2 gap-3 md:grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
               {busqueda.items.map((p) => (
                 <TarjetaVenta
@@ -306,12 +318,18 @@ function TarjetaVenta({
   const punto = puntoVencimiento(p);
   const concentracion = concentracionAparte(p);
   const detalle = [p.laboratorio, p.formaFarmaceutica].filter(Boolean).join(" · ");
+  const droga = p.principioActivo?.trim();
+  // Con la droga a la vista, "Sin ficha cargada" ya no es cierto.
+  const debajo = detalle || p.categoria?.nombre || (droga ? "" : "Sin ficha cargada");
 
   return (
     <li className="flex flex-col">
       <button
         onClick={onAgregar}
         disabled={!vendible}
+        // "Para qué sirve", al pasar el mouse: la auxiliar lo confirma sin
+        // abrir nada antes de dárselo al cliente (12-nov, pedido de Kevin).
+        title={p.descripcion?.trim() || undefined}
         className={`flex w-full flex-1 flex-col gap-1.5 rounded-2xl border bg-white p-3 text-left transition sm:p-3.5 ${
           cantidad > 0
             ? "border-primary ring-1 ring-primary"
@@ -331,9 +349,16 @@ function TarjetaVenta({
             />
           )}
         </span>
-        <span className="truncate text-xs text-texto-3">
-          {detalle || p.principioActivo || p.categoria?.nombre || "Sin ficha cargada"}
-        </span>
+        {/* La droga en su propia línea (12-nov, Kevin): el nombre de marca no
+            dice nada en el mostrador; "Diclofenaco, Paracetamol" sí, y es lo
+            que el cliente pregunta. Antes sólo salía cuando faltaban
+            laboratorio y forma. */}
+        {droga && (
+          <span className="line-clamp-2 text-xs font-semibold leading-snug text-primary-700">
+            {droga}
+          </span>
+        )}
+        {debajo && <span className="truncate text-xs text-texto-3">{debajo}</span>}
         {/* Sólo si el dueño la cargó: es opcional. */}
         {p.ubicacion && (
           <span className="flex min-w-0 items-center gap-1 text-xs font-semibold text-texto-2">
@@ -371,7 +396,10 @@ function TarjetaVenta({
                   : "Agotado"
                 : p.disponible === false
                   ? "No se vende acá"
-                  : conUnidad(hay, p.unidadMedida?.nombre)}
+                  : // Un servicio no se cuenta: "0 u." se leía como agotado.
+                    p.tipoProducto === "SERVICIO"
+                    ? "Servicio"
+                    : conUnidad(hay, p.unidadMedida?.nombre)}
           </span>
         </span>
       </button>

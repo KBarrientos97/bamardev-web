@@ -53,6 +53,7 @@ import type {
   ProveedorDetalle,
   ProveedorInput,
   PaginaProductos,
+  SugerenciasFicha,
   Producto,
   ProductoInput,
   RangoReporte,
@@ -538,6 +539,12 @@ export const api = {
      * de su caja; quien pertenece a una sucursal ve siempre la suya.
      */
     sucursalId?: number | null;
+    /**
+     * Si lo tecleado no encuentra nada, que el servidor pruebe con lo más
+     * parecido del catálogo ("ibprofen" → "ibuprofeno") y lo diga en
+     * `corregido`. Sólo lo piden las pantallas de la farmacia.
+     */
+    aproximado?: boolean;
   }) =>
     request<PaginaProductos>(
       `/productos/buscar${qs({
@@ -547,8 +554,15 @@ export const api = {
         soloHabilitados: params.soloHabilitados ? "true" : undefined,
         categoriaId: params.categoriaId ?? undefined,
         sucursalId: params.sucursalId ?? undefined,
+        aproximado: params.aproximado ? "true" : undefined,
       })}`,
     ),
+  /**
+   * Las drogas, laboratorios y formas que ya están en las fichas del negocio,
+   * para sugerirlas al cargar un medicamento (farmacia). El catálogo de una
+   * farmacia viene paginado, así que la lista en memoria no alcanza.
+   */
+  sugerenciasFicha: () => request<SugerenciasFicha>("/productos/sugerencias-ficha"),
   /**
    * De qué lotes sale cada artículo del carrito en esa sucursal, en el orden
    * en que la venta los descuenta. Sin costos: lo lee quien cobra. Sólo

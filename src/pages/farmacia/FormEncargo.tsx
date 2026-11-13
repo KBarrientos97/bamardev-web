@@ -6,6 +6,7 @@ import type { Almacen, Producto } from "../../types";
 import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
+import { AvisoCorregido } from "./AvisoCorregido";
 import { paraVender } from "../pos/useCarrito";
 
 /**
@@ -266,6 +267,10 @@ export function ElegirArticulo({
             {`No hay nada con "${q.trim()}" en el catálogo: dejalo vacío y anotá lo que pidieron.`}
           </p>
         ) : (
+          <>
+          {busqueda.corregido && (
+            <AvisoCorregido tecleado={busqueda.consulta ?? q.trim()} corregido={busqueda.corregido} />
+          )}
           <ul className="max-h-56 divide-y divide-borde-soft overflow-y-auto rounded-xl border border-borde">
             {busqueda.items.map((p) => {
               const concentracion = concentracionAparte(p);
@@ -296,6 +301,7 @@ export function ElegirArticulo({
               );
             })}
           </ul>
+          </>
         ))}
     </div>
   );

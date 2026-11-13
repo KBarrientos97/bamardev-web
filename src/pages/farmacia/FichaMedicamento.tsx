@@ -217,6 +217,17 @@ export function FichaMedicamento({
             </div>
           </Seccion>
 
+          {/* "Para qué sirve" (12-nov, Kevin): la auxiliar lo lee antes de
+              entregarlo, como en la web de las cadenas grandes. Sólo si alguien
+              lo cargó: un "—" en una sección entera no ayuda a nadie. */}
+          {p.descripcion?.trim() && (
+            <Seccion titulo="Para qué sirve">
+              <p className="whitespace-pre-line text-[13px] leading-relaxed text-texto-2">
+                {p.descripcion.trim()}
+              </p>
+            </Seccion>
+          )}
+
           <StockPorSucursal producto={p} />
 
           <LotesFefo producto={p} />
@@ -343,6 +354,17 @@ export function FichaMostrador({
             <Dato label="Categoría" valor={p.categoria?.nombre ?? "—"} />
           </div>
         </Seccion>
+
+        {/* "Para qué sirve" (12-nov, Kevin): la auxiliar lo lee antes de
+            entregarlo, como en la web de las cadenas grandes. Sólo si alguien
+            lo cargó: un "—" en una sección entera no ayuda a nadie. */}
+        {p.descripcion?.trim() && (
+          <Seccion titulo="Para qué sirve">
+            <p className="whitespace-pre-line text-[13px] leading-relaxed text-texto-2">
+              {p.descripcion.trim()}
+            </p>
+          </Seccion>
+        )}
 
         <StockPorSucursal producto={p} onCambio={onCambio} aca={sucursalActual} />
 

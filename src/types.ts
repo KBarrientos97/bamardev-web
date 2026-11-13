@@ -499,6 +499,23 @@ export interface PaginaProductos {
   total: number;
   limite: number;
   offset: number;
+  /**
+   * Sólo con `aproximado`: lo que se buscó en lugar de lo tecleado, porque lo
+   * tecleado no encontró nada ("ibprofen" → "ibuprofeno"). `items` y `total`
+   * son de esto. Null o ausente: se buscó lo que se escribió.
+   */
+  corregido?: string | null;
+}
+
+/**
+ * Lo que ya se cargó en las fichas del negocio, para sugerirlo al dar de alta
+ * un medicamento: las drogas (una por una, aunque un artículo lleve dos), los
+ * laboratorios y las formas. Lo más usado primero.
+ */
+export interface SugerenciasFicha {
+  principiosActivos: string[];
+  laboratorios: string[];
+  formas: string[];
 }
 
 export interface ProductoInput {
