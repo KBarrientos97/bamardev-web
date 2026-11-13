@@ -55,3 +55,29 @@ describe("el mes de gastos se corta en el reloj del negocio", () => {
     expect(q.get("hasta")).toBe("2026-10-08T00:00:00-04:00");
   });
 });
+
+describe("«General del negocio» viaja como sinSucursal=true (PLAN-SUCURSAL-TOTAL §9.1)", () => {
+  it("resumen y lista lo mandan sólo cuando es true; false u omitido no agregan nada", async () => {
+    const f = fetchQueDevuelve({});
+    await api.getResumenGastos({ desde: "2026-10-01", hasta: "2026-11-01", sinSucursal: true });
+    await api.getResumenGastos({ desde: "2026-10-01", hasta: "2026-11-01", sinSucursal: false, sucursalId: 3 });
+    await api.getGastos({ desde: "2026-10-01", hasta: "2026-11-01", sinSucursal: true });
+    await api.getGastos({ desde: "2026-10-01", hasta: "2026-11-01" });
+    expect(parametros(f, 0).get("sinSucursal")).toBe("true");
+    expect(parametros(f, 1).has("sinSucursal")).toBe(false);
+    expect(parametros(f, 1).get("sucursalId")).toBe("3");
+    expect(parametros(f, 2).get("sinSucursal")).toBe("true");
+    expect(parametros(f, 3).has("sinSucursal")).toBe(false);
+  });
+
+  it("las reglas automáticas también", async () => {
+    const f = fetchQueDevuelve([]);
+    await api.getPlantillasGasto(null, true);
+    await api.getPlantillasGasto(2);
+    await api.getPlantillasGasto();
+    expect(parametros(f, 0).get("sinSucursal")).toBe("true");
+    expect(parametros(f, 1).get("sucursalId")).toBe("2");
+    expect(parametros(f, 1).has("sinSucursal")).toBe(false);
+    expect(parametros(f, 2).has("sinSucursal")).toBe(false);
+  });
+});

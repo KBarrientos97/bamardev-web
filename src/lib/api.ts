@@ -970,11 +970,18 @@ export const api = {
   //  El mes se corta en la medianoche LOCAL (`periodoParaApi`): con el día
   //  pelado el backend tomaba la de UTC, y "Sobre las ventas" sumaba la noche
   //  del último día del mes anterior y dejaba afuera la del último de éste.
+  //  `sinSucursal: true` = sólo los gastos GENERALES del negocio (los que no son
+  //  de ningún local; PLAN-SUCURSAL-TOTAL §9.1). Gana sobre `sucursalId` y sólo
+  //  vale para la organización. `false`/omitido no viaja: la ruta queda como era.
   getResumenGastos: (params: {
     desde: string;
     hasta: string;
     sucursalId?: number | null;
-  }) => request<ResumenGastos>(`/gastos/resumen${qs(periodoParaApi(params))}`),
+    sinSucursal?: boolean;
+  }) =>
+    request<ResumenGastos>(
+      `/gastos/resumen${qs(periodoParaApi({ ...params, sinSucursal: params.sinSucursal || undefined }))}`,
+    ),
 
   getGastos: (
     params: {
@@ -984,8 +991,9 @@ export const api = {
       q?: string;
       categoria?: string;
       sucursalId?: number | null;
+      sinSucursal?: boolean;
     },
-  ) => request<Gasto[]>(`/gastos${qs(periodoParaApi(params))}`),
+  ) => request<Gasto[]>(`/gastos${qs(periodoParaApi({ ...params, sinSucursal: params.sinSucursal || undefined }))}`),
 
   crearGasto: (input: GastoInput) =>
     request<Gasto>("/gastos", { method: "POST", body: JSON.stringify(input) }),
@@ -1041,9 +1049,13 @@ export const api = {
     ),
 
   // Gastos automaticos (las plantillas): la regla que crea el gasto sola.
-  getPlantillasGasto: (sucursalId?: number | null) =>
+  //  `sinSucursal`: sólo las reglas generales del negocio (ver `getGastos`).
+  getPlantillasGasto: (sucursalId?: number | null, sinSucursal?: boolean) =>
     request<PlantillaGasto[]>(
-      `/gastos/plantillas${qs({ sucursalId: sucursalId ?? undefined })}`,
+      `/gastos/plantillas${qs({
+        sucursalId: sucursalId ?? undefined,
+        sinSucursal: sinSucursal || undefined,
+      })}`,
     ),
   crearPlantillaGasto: (input: PlantillaGastoInput) =>
     request<PlantillaGasto>("/gastos/plantillas", {

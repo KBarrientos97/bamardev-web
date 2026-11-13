@@ -2454,6 +2454,13 @@ export interface ResumenGastos {
    * 1-oct-2026 no lo manda.
    */
   atrasado?: GastosAtrasados;
+  /**
+   * Los gastos del período que NO son de ningún local (el alquiler de la
+   * oficina, el contador) y por eso no están en las cifras de arriba cuando se
+   * mira UNA sucursal. Viaja siempre; al usuario atado a un local le llega en
+   * cero. Opcional: un backend anterior a PLAN-SUCURSAL-TOTAL no lo manda.
+   */
+  generales?: { total: number; cantidad: number };
 }
 
 /** Gastos de meses anteriores que todavía tienen saldo. */
