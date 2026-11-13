@@ -18,6 +18,9 @@ const sesion = vi.hoisted(() => ({
   secciones: [] as string[],
   /** `lotes` es PRO: una farmacia BASICO no tiene Vencimientos. */
   lotes: true,
+  /** Sucursal del usuario (null = organización) y cuántas sucursales tiene el negocio. */
+  sucursalId: null as number | null,
+  locales: undefined as number | undefined,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
@@ -25,12 +28,16 @@ vi.mock("../../store/AuthContext", () => ({
     rubro: sesion.rubro,
     incluye: (c: string) => (c === "lotes" ? sesion.lotes : true),
     puede: (s: string) => sesion.secciones.includes(s),
+    usuario: { sucursalId: sesion.sucursalId, sucursal: sesion.sucursalId == null ? null : "Norte" },
+    negocio: { sucursalesActivas: sesion.locales },
   }),
 }));
 
 vi.mock("../../lib/api", () => ({
   api: {
     getProductos: vi.fn(),
+    getProducto: vi.fn(),
+    existenciasProducto: vi.fn(async () => []),
     getCategorias: vi.fn(async () => []),
     getUnidades: vi.fn(async () => []),
     getAlmacenes: vi.fn(async () => []),
@@ -97,6 +104,8 @@ beforeEach(() => {
   vi.mocked(api.getUnidades).mockResolvedValue([]);
   sesion.secciones = [];
   sesion.lotes = true;
+  sesion.sucursalId = null;
+  sesion.locales = undefined;
 });
 
 describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
@@ -464,6 +473,74 @@ describe("BUG-catalogo-2: el precio es obligatorio", () => {
     await guardar();
     expect(screen.getByText("Poné el precio de venta.")).toBeInTheDocument();
     expect(actualizarProducto).not.toHaveBeenCalled();
+  });
+});
+
+describe("el precio de un local no pisa el del catálogo (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  // La lista con un local elegido (o la de quien es de un local) trae `precio`
+  // resuelto para ese local, y el PATCH escribe el precio BASE. Mandarlo sin
+  // que nadie lo toque movía el precio de todas las sucursales.
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.getProducto).mockClear();
+  });
+
+  async function editarConLocales(p: Producto) {
+    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+    getProductos.mockResolvedValue([p]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByText(p.nombre));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    });
+  }
+
+  it("si el precio no se tocó, el PATCH no lo manda", async () => {
+    await editarConLocales(producto({ id: 7, precio: 70, unidadMedida: UNIDAD }));
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "Pollo entero grande" } });
+    await guardar();
+    expect(actualizarProducto).toHaveBeenCalledWith(7, expect.objectContaining({ nombre: "Pollo entero grande" }));
+    expect(actualizarProducto.mock.calls[0][1]).not.toHaveProperty("precio");
+  });
+
+  it("si se cambia, sí viaja", async () => {
+    await editarConLocales(producto({ id: 7, precio: 70, unidadMedida: UNIDAD }));
+    fireEvent.change(screen.getByLabelText(/^Precio de venta/), { target: { value: "75" } });
+    await guardar();
+    expect(actualizarProducto).toHaveBeenCalledWith(7, expect.objectContaining({ precio: 75 }));
+  });
+
+  it("con un local elegido, el formulario precarga el precio del catálogo y no el del local", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ] as never);
+    vi.mocked(api.getProducto).mockResolvedValue(producto({ id: 7, precio: 60 }));
+    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+    // En Norte el pollo vale 70 (precio propio); en el catálogo, 60.
+    getProductos.mockResolvedValue([producto({ id: 7, precio: 70, unidadMedida: UNIDAD })]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByRole("button", { name: "Norte" }));
+    fireEvent.click(await screen.findByText("Pollo entero"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    });
+    expect(api.getProducto).toHaveBeenCalledWith(7);
+    expect(await screen.findByLabelText(/^Precio de venta/)).toHaveDisplayValue("60");
+    vi.mocked(api.getSucursales).mockResolvedValue([]);
+  });
+
+  it("el usuario de un local: se le avisa de qué precio se trata", async () => {
+    sesion.sucursalId = 2;
+    sesion.locales = 2;
+    await editarConLocales(producto({ id: 7, precio: 70, unidadMedida: UNIDAD }));
+    expect(screen.getByText(/precio con el que se vende en tu sucursal/)).toBeInTheDocument();
+  });
+
+  it("con un solo local no hay aviso ni cambia nada", async () => {
+    await editarConLocales(producto({ id: 7, precio: 70, unidadMedida: UNIDAD }));
+    expect(screen.queryByText(/en tu sucursal/)).not.toBeInTheDocument();
+    expect(api.getProducto).not.toHaveBeenCalled();
   });
 });
 

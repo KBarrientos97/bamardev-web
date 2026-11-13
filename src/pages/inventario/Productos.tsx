@@ -34,6 +34,7 @@ import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import { actualizarConCombo } from "./edicionCombo";
+import { StockPorLocal } from "./StockPorLocal";
 import type {
   Categoria,
   CondicionVenta,
@@ -176,6 +177,25 @@ export default function Productos() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [detalle, setDetalle] = useState<Producto | null>(null);
   const [editando, setEditando] = useState<Producto | null>(null);
+  /**
+   * Abre la edición de un artículo. Con un local elegido en el filtro, la lista
+   * trae el precio de ESE local (`precio` resuelto por sucursal), y el formulario
+   * lo precargaba como si fuera el del catálogo: al guardar se escribía sobre el
+   * precio base de todos los locales (PLAN-SUCURSAL-TOTAL §3, etapa 3). Se pide
+   * el artículo sin sucursal (consolidado) y de él sale sólo el precio; el resto
+   * de la ficha —el stock del combo, por ejemplo— queda como estaba.
+   */
+  async function abrirEdicion(p: Producto) {
+    if (suc.sucursalId == null || p.precio == null) return setEditando(p);
+    try {
+      const base = await api.getProducto(p.id);
+      setEditando({ ...p, precio: base.precio ?? p.precio });
+    } catch {
+      // Sin el consolidado igual se puede editar: `guardar` no manda el precio
+      // si no se tocó, así que no pisa nada.
+      setEditando(p);
+    }
+  }
   const [creando, setCreando] = useState(false);
   const [aBorrar, setABorrar] = useState<Producto | null>(null);
   const [borrando, setBorrando] = useState(false);
@@ -530,7 +550,7 @@ export default function Productos() {
           onClose={() => setDetalle(null)}
           onEditar={(p) => {
             setDetalle(null);
-            setEditando(p);
+            void abrirEdicion(p);
           }}
           onEliminar={(p) => setABorrar(p)}
           onRestaurar={restaurar}
@@ -539,10 +559,11 @@ export default function Productos() {
         <DetalleProducto
           producto={detalle}
           enPapelera={enPapelera}
+          verPorLocal={suc.modo === "organizacion"}
           onClose={() => setDetalle(null)}
           onEditar={(p) => {
             setDetalle(null);
-            setEditando(p);
+            void abrirEdicion(p);
           }}
           onEliminar={(p) => setABorrar(p)}
           onRestaurar={restaurar}
@@ -682,6 +703,7 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
 function DetalleProducto({
   producto: p,
   enPapelera,
+  verPorLocal,
   onClose,
   onEditar,
   onEliminar,
@@ -690,6 +712,8 @@ function DetalleProducto({
   producto: Producto | null;
   /** En la papelera el artículo no se edita: se restaura o se deja. */
   enPapelera: boolean;
+  /** Organización con 2+ locales: el detalle abre el stock de cada uno. */
+  verPorLocal: boolean;
   onClose: () => void;
   onEditar: (p: Producto) => void;
   onEliminar: (p: Producto) => void;
@@ -786,6 +810,8 @@ function DetalleProducto({
           <Dato label="Unidad" valor={p.unidadMedida?.nombre ?? "—"} />
           <Dato label="Código de barras" valor={p.codBarra || "—"} />
         </dl>
+
+        {verPorLocal && muestraStock(p) && !enPapelera && <StockPorLocal producto={p} />}
 
         {esFarmacia(rubro) && (
           <div>
@@ -1064,6 +1090,9 @@ function FormProductoCuerpo({
 }) {
   const esEdicion = !!producto;
   const { incluye, rubro, vocabulario } = useAuth();
+  // El usuario de un local ve en la lista el precio de SU local: el campo lo
+  // dice, porque guardarlo cambiado mueve el precio del catálogo de todos.
+  const suc = useSucursales();
   const conFicha = esFarmacia(rubro);
   /**
    * Sin la feature `lotes` el plan no tiene Vencimientos, ni semáforo, ni
@@ -1085,6 +1114,10 @@ function FormProductoCuerpo({
    * no se muestra, no se exige y no viaja. Al crear siempre se pide.
    */
   const precioOculto = esEdicion && producto.precio == null;
+  const avisoPrecioDeLocal =
+    esEdicion && suc.modo === "asignado"
+      ? "Es el precio con el que se vende en tu sucursal. Si lo cambiás, cambia el del catálogo en todas."
+      : undefined;
   const [costo, setCosto] = useState(String(producto?.costo ?? ""));
   const [stockMinimo, setStockMinimo] = useState(String(producto?.stockMinimo ?? ""));
   const [stockInicial, setStockInicial] = useState(
@@ -1212,7 +1245,11 @@ function FormProductoCuerpo({
       const leido = parsearMonto(precio);
       if (leido == null || leido < 0)
         return setError("El precio tiene que ser un número válido.");
-      precioNum = leido;
+      // Sin tocar no viaja: el `PATCH` escribe el precio BASE del catálogo, y el
+      // que precargó el formulario puede ser el de un local (usuario de una
+      // sucursal) o estar viejo. Mandarlo igual pisaba lo que otro cambió, y
+      // el precio propio de un local se fija en `PUT /almacenes/:id/precios`.
+      if (!(esEdicion && leido === producto.precio)) precioNum = leido;
     }
     if (!unidadId) return setError("Elegí una unidad de medida.");
     // La cantidad del combo es obligatoria, al crear y al editar: es la única
@@ -1409,7 +1446,7 @@ function FormProductoCuerpo({
               {/* Sin precio a la vista no hay campo: lo que se escribiera ahí
                   el backend lo tira (ver `precioOculto`). */}
               {!precioOculto && (
-                <Campo label="Precio de venta *">
+                <Campo label="Precio de venta *" hint={avisoPrecioDeLocal}>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -1438,7 +1475,7 @@ function FormProductoCuerpo({
           <div className="grid gap-3 sm:grid-cols-2">
             {/* Ver `precioOculto`: sin precio a la vista no hay campo. */}
             {!precioOculto && (
-              <Campo label="Precio de venta *">
+              <Campo label="Precio de venta *" hint={avisoPrecioDeLocal}>
                 <Input
                   type="number"
                   inputMode="decimal"
