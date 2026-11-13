@@ -83,6 +83,14 @@ interface AuthValue {
    * cambió sin esperar al próximo ingreso.
    */
   fijarUsaDespacho: (usa: boolean) => void;
+  /**
+   * Vuelve a pedir a `/auth/me` cuántas sucursales activas tiene el negocio y lo
+   * guarda en la sesión. Para después de crear, desactivar o pasar a depósito un
+   * local: los papeles (recibo, comanda, cierre, WhatsApp) deciden con ese número
+   * si llevan el nombre del local, y esperar al próximo chequeo (hasta 15 min)
+   * los dejaría con el número viejo. Falla en silencio.
+   */
+  refrescarSucursalesActivas: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -283,9 +291,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * Cuántas sucursales activas tiene el negocio (`/auth/me` y el login). Lo
-   * necesita el usuario ASIGNADO a un local, que no puede listarlas: sin el
-   * número no sabe si hay más de una y no puede mostrar el nombre de su sede.
-   * Sólo se guarda un número: otra cosa (un backend viejo) no pisa lo que hay.
+   * necesitan el usuario ASIGNADO a un local, que no puede listarlas, y los
+   * papeles de todos (recibo, comanda, cierre), que deciden con él si llevan el
+   * nombre del local. Sólo se guarda un número: otra cosa (un backend viejo) no
+   * pisa lo que hay.
    */
   const fijarSucursalesActivas = useCallback((cantidad: number | undefined) => {
     if (typeof cantidad !== "number") return;
@@ -296,6 +305,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return actualizado;
     });
   }, []);
+
+  const refrescarSucursalesActivas = useCallback(async () => {
+    try {
+      const me = await api.me();
+      fijarSucursalesActivas(me?.sucursalesActivas);
+    } catch {
+      // Dato accesorio: falla cerrado, se queda el número que había.
+    }
+  }, [fijarSucursalesActivas]);
 
   /**
    * Trae de `/auth/me` los permisos y el rol (PLAN-ROLES-NEGOCIO §8) y los
@@ -370,24 +388,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * bloquea: es lo que mantiene fresca la barra de aviso en una pestaña que
    * quedó abierta desde ayer, y lo que echa a quien no toca nada en horas.
    */
-  // Un usuario asignado a un local no puede listar los locales: depende del
-  // número que viene en la sesión, que una sesión vieja no tiene y que puede
-  // quedar viejo si el dueño abre un local nuevo. Se refresca con el mismo
-  // chequeo (sólo para ellos: el de organización lista los locales y no lo usa).
-  const esAsignado = usuario?.sucursalId != null;
+  // El número de sucursales de la sesión lo usan el asignado (que no puede
+  // listarlas) y los papeles de todos. Una sesión anterior al deploy no lo tiene
+  // y puede quedar viejo si se abre o se cierra un local, así que se renueva con
+  // este mismo chequeo, para quien sea. (El único pedido de más a `/auth/me`.)
   useEffect(() => {
     if (!token) return;
     let vivo = true;
 
     const revisar = () => {
-      if (esAsignado) {
-        // `Promise.resolve().then` para que un `api.me` ausente o roto no
-        // reviente el chequeo: es un dato accesorio y falla cerrado.
-        Promise.resolve()
-          .then(() => api.me())
-          .then((me) => vivo && fijarSucursalesActivas(me.sucursalesActivas))
-          .catch(() => undefined);
-      }
+      // `Promise.resolve().then` para que un `api.me` ausente o roto no
+      // reviente el chequeo: es un dato accesorio y falla cerrado.
+      Promise.resolve()
+        .then(() => api.me())
+        .then((me) => vivo && fijarSucursalesActivas(me.sucursalesActivas))
+        .catch(() => undefined);
       const turno = pedirTurnoCupo();
       api
         .licencia()
@@ -424,7 +439,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [
     token,
-    esAsignado,
     fijarSucursalesActivas,
     refrescarFeatures,
     refrescarPerfil,
@@ -518,6 +532,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarCupo,
       refrescarCupo,
       fijarUsaDespacho,
+      refrescarSucursalesActivas,
     }),
     [
       token,
@@ -534,6 +549,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarCupo,
       refrescarCupo,
       fijarUsaDespacho,
+      refrescarSucursalesActivas,
     ],
   );
 

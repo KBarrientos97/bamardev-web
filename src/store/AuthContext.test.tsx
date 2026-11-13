@@ -116,10 +116,26 @@ describe("refresco de los permisos y del rol", () => {
     expect(guardado).toMatchObject({ rolId: 7, rolNombre: "Cajera de la tarde", esAdministrador: false, permisosVersion: "v2" });
   });
 
-  it("con la misma huella no pide nada", async () => {
+  it("con la misma huella no vuelve a pedir los permisos", async () => {
+    // `/auth/me` se llama una vez, por el conteo de sucursales del chequeo
+    // (PLAN-SUCURSAL-TOTAL); lo que devuelva ahí no toca el rol ni los permisos.
     vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, permisosVersion: "v1" });
+    vi.mocked(api.me).mockResolvedValue({
+      id: 1,
+      username: "admin",
+      rol: "CAJERO",
+      rolNombre: "Otro",
+      negocioId: 2,
+      esPlataforma: false,
+      permisos: ["ventas.vender"],
+      permisosVersion: "v9",
+    });
     await montar();
-    expect(api.me).not.toHaveBeenCalled();
+    expect(api.me).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem(USER_KEY) ?? "{}")).toMatchObject({
+      rolNombre: "Administrador",
+      permisosVersion: "v1",
+    });
   });
 });
 
@@ -389,11 +405,83 @@ describe("cantidad de sucursales del usuario asignado (PLAN-SUCURSAL-TOTAL etapa
     expect(screen.getByText("activas:?")).toBeInTheDocument();
   });
 
-  it("el usuario de organización no pide /auth/me por esto", async () => {
+  const ME_DE_ORGANIZACION = (sucursalesActivas?: number) => ({
+    id: 1,
+    username: "admin",
+    rol: "ADMIN",
+    negocioId: 2,
+    esPlataforma: false,
+    ...(sucursalesActivas === undefined ? {} : { sucursalesActivas }),
+  });
+
+  it("una sesión vieja de la organización (sin el conteo) también lo trae de /auth/me al abrir", async () => {
+    // Antes del deploy el login no lo traía: sin esto los papeles de un negocio
+    // de 2 locales no llevaban el local hasta cerrar sesión (hasta 7 días).
     vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION(2));
     await montarSucursales();
-    expect(api.me).not.toHaveBeenCalled();
+    expect(api.me).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("activas:2")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}")).toMatchObject({ sucursalesActivas: 2 });
+  });
+
+  it("la organización con un solo local sólo gasta el /auth/me del chequeo y queda en 1", async () => {
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION(1));
+    await montarSucursales();
+    expect(api.me).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("activas:1")).toBeInTheDocument();
+  });
+
+  it("un backend viejo sin el campo deja la sesión de la organización como estaba", async () => {
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION());
+    await montarSucursales();
     expect(screen.getByText("activas:?")).toBeInTheDocument();
+  });
+
+  it("el chequeo periódico lo baja otra vez a 1 si se cerró un local", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...BARBERIA, sucursalesActivas: 2 }));
+      vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+      vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION(2));
+      await montarSucursales();
+      expect(screen.getByText("activas:2")).toBeInTheDocument();
+
+      vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+      });
+      expect(screen.getByText("activas:1")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refrescarSucursalesActivas (después de crear un local) actualiza la sesión en el acto", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...BARBERIA, sucursalesActivas: 1 }));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION(1));
+    function Boton() {
+      const { refrescarSucursalesActivas } = useAuth();
+      return <button onClick={() => void refrescarSucursalesActivas()}>crear local</button>;
+    }
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaSucursales />
+          <Boton />
+        </AuthProvider>,
+      );
+    });
+    await act(async () => {});
+    expect(screen.getByText("activas:1")).toBeInTheDocument();
+
+    vi.mocked(api.me).mockResolvedValue(ME_DE_ORGANIZACION(2));
+    await act(async () => fireEvent.click(screen.getByText("crear local")));
+    expect(screen.getByText("activas:2")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}")).toMatchObject({ sucursalesActivas: 2 });
   });
 
   it("si /auth/me falla, no revienta ni cambia nada", async () => {

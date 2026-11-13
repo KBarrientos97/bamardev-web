@@ -61,7 +61,7 @@ function nombreDel(farmacia: boolean, tipo: TipoAlmacen = "SUCURSAL") {
 }
 
 export default function Almacenes() {
-  const { rubro, vocabulario, negocio, usuario } = useAuth();
+  const { rubro, vocabulario, negocio, usuario, refrescarSucursalesActivas } = useAuth();
   const farmacia = esFarmacia(rubro);
   const almacenes = useApi(() => api.getAlmacenes(), []);
   // La lista de locales que comparten los selectores de toda la sesión: si acá
@@ -77,6 +77,11 @@ export default function Almacenes() {
   const deUnLocal = usuario?.sucursalId != null;
   function recargarTodo() {
     fuente?.invalidar();
+    // También el conteo de la sesión: los papeles dicen el local según
+    // `negocio.sucursalesActivas`, y crear el 2º local (o bajar a 1) no puede
+    // esperar al próximo chequeo de licencia. `?.` por los tests que mockean
+    // la sesión con lo mínimo.
+    void refrescarSucursalesActivas?.();
     almacenes.recargar();
   }
 

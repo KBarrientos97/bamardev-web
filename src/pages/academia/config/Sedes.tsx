@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import CampoUbicacion from "../../../components/CampoUbicacion";
 import { Icon } from "../../../components/Icon";
@@ -17,6 +17,7 @@ import { mismoHorario } from "../../../lib/pagina/horario";
 import type { Tramo } from "../../../lib/pagina/tipos";
 import { tienePermiso } from "../../../lib/permisos";
 import { avisarPrimerosPasos } from "../../../lib/academia/primerosPasos";
+import { FuenteSucursalesCtx } from "../../../lib/sucursalesCompartidas";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonFila, Chip, EncabezadoPagina, PaginaAcademia, TABLA, Tarjeta } from "../piezas";
@@ -53,7 +54,10 @@ const ubicacionDe = (s: Sede | null): Ubicacion | null =>
 const verDeLaUrl = (v: string | null): Ver | null => (v === "franjas" || v === "aulas" || v === "editar" ? v : null);
 
 export default function Sedes() {
-  const { usuario } = useAuth();
+  const { usuario, refrescarSucursalesActivas } = useAuth();
+  // La lista de locales que comparten los selectores de la sesión: una sede
+  // nueva (o renombrada) tiene que verse en Reportes y demás sin esperar el TTL.
+  const fuente = useContext(FuenteSucursalesCtx);
   const p = usePalabras();
   const configura = tienePermiso(usuario, "academia.configurar");
   // Abrir una sede cuesta plata (ocupa un lugar del plan): sólo quien administra todas.
@@ -239,6 +243,10 @@ export default function Sedes() {
           onGuardada={(s, esNueva) => {
             setEdicion(null);
             setAviso(esNueva ? `${s.nombre} quedó creada. Cargale las franjas y las aulas.` : `${s.nombre} se guardó.`);
+            // Crear o renombrar una sede cambia la lista compartida de locales y,
+            // al crear, el conteo con el que los papeles dicen la sede.
+            fuente?.invalidar();
+            void refrescarSucursalesActivas?.();
             lista.recargar();
             if (esNueva) {
               setVer("franjas");

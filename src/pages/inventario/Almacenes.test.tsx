@@ -20,6 +20,8 @@ const sesion = vi.hoisted(() => ({
   configura: true,
   // Sucursal del usuario: null/undefined = organización.
   sucursalId: null as number | null | undefined,
+  // El conteo de sucursales de la sesión, que los papeles usan: se renueva al crear o editar un local.
+  refrescarConteo: vi.fn(async () => {}),
 }));
 
 vi.mock("../../store/AuthContext", () => ({
@@ -28,6 +30,7 @@ vi.mock("../../store/AuthContext", () => ({
     negocio: { features: sesion.features },
     usuario: { sucursalId: sesion.sucursalId },
     puede: () => sesion.configura,
+    refrescarSucursalesActivas: sesion.refrescarConteo,
   }),
 }));
 
@@ -433,5 +436,7 @@ describe("la lista compartida de locales", () => {
     await act(async () => {});
     expect(api.actualizarAlmacen).toHaveBeenCalled();
     expect(invalidar).toHaveBeenCalled();
+    // Y el número de locales de la sesión, del que dependen los papeles (recibo, comanda, cierre).
+    expect(sesion.refrescarConteo).toHaveBeenCalled();
   });
 });
