@@ -15,6 +15,7 @@ import {
 } from "../../lib/pedidosWeb/cliente";
 import { evaluarSucursales, motivoSinCobertura, type Evaluada } from "../../lib/pedidosWeb/sucursal";
 import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
+import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
 import type { CuerpoPedido, FormaPagoWeb, InfoPedidos, TipoPedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { siteKeyTurnstile } from "../../lib/turnstile";
 import Captcha from "../../publico/Captcha";
@@ -111,6 +112,14 @@ export default function PanelSistema({
   const [error, setError] = useState("");
   const [sacados, setSacados] = useState("");
   const requestId = useRef(nuevoRequestId());
+  /**
+   * Con qué contenido se pidió la última vez. El mismo `clienteRequestId` sólo
+   * sirve para reintentar EL MISMO pedido (si el primer envío entró pero no lo
+   * supimos, no se duplica). Si el cliente cambió algo en el medio, es otro
+   * pedido y sale con otra clave: con la vieja el backend devolvería el
+   * anterior y nunca vería lo que agregó (PW-10).
+   */
+  const huellaEnviada = useRef("");
   const cierre = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -210,7 +219,7 @@ export default function PanelSistema({
     setEnviando(true);
     const cuerpo: CuerpoPedido = {
       ...(siteKey && captcha ? { captcha } : {}),
-      clienteRequestId: requestId.current,
+      clienteRequestId: "",
       almacenId: sucursal.id,
       tipo: tipoReal,
       nombre: nombre.trim(),
@@ -229,17 +238,22 @@ export default function PanelSistema({
       ...(nota.trim() ? { nota: nota.trim() } : {}),
       lineas: lineas.map((l) => ({ itemId: l.id, cantidad: l.cantidad })),
     };
+    const huella = JSON.stringify({ ...cuerpo, captcha: undefined });
+    if (huella !== huellaEnviada.current) requestId.current = nuevoRequestId();
+    huellaEnviada.current = huella;
+    cuerpo.clienteRequestId = requestId.current;
     try {
       const r = await apiPedidoPublico.crear(subdominio, cuerpo);
       guardarDatosCliente(subdominio, { nombre: nombre.trim(), telefono: tel, direccion: direccion.trim(), referencia: referencia.trim(), tipo: tipoReal });
       guardarPedidoEnCurso(subdominio, { token: r.token, numero: r.numero });
       requestId.current = nuevoRequestId();
+      huellaEnviada.current = "";
       pedido.vaciar();
       navegar(urlPedidoDe(subdominio, r.token));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos enviar tu pedido. Probá de nuevo.");
       // El token del captcha es de un solo uso: se pide otro. El mismo
-      // `clienteRequestId` se mantiene: si el pedido sí había entrado, no se duplica.
+      // `clienteRequestId` se mantiene mientras el pedido no cambie: si sí había entrado, no se duplica.
       if (siteKey) {
         setCaptcha(null);
         setVueltaCaptcha((v) => v + 1);
@@ -321,6 +335,7 @@ export default function PanelSistema({
       aria-modal="true"
       aria-label="Tu pedido"
       onClick={(e) => e.target === e.currentTarget && onCerrar()}
+      onKeyDown={(e) => teclasDeDialogo(e, onCerrar)}
       style={{
         position: "fixed",
         inset: 0,
@@ -332,6 +347,8 @@ export default function PanelSistema({
         padding: ancho ? 24 : 0,
       }}
     >
+      {/* Las opciones son radios escondidos: sin esto, con el teclado no se ve cuál tiene el foco. */}
+      <style>{`.seg-pedido:has(input:focus-visible){outline:3px solid ${fuerte};outline-offset:1px}`}</style>
       <section
         style={{
           background: "#ffffff",
@@ -412,7 +429,7 @@ export default function PanelSistema({
                   {(["DELIVERY", "RECOGER"] as const).map((t) => {
                     const disponible = t === "DELIVERY" ? aceptaDelivery : aceptaRecoger;
                     return (
-                      <label key={t} style={segmento(tipoReal === t, disponible)}>
+                      <label key={t} className="seg-pedido" style={segmento(tipoReal === t, disponible)}>
                         <input
                           type="radio"
                           name="tipo-pedido"
@@ -526,7 +543,7 @@ export default function PanelSistema({
                 <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>¿Cómo pagás? Al recibir</legend>
                 <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
                   {(["EFECTIVO", "QR"] as const).map((f) => (
-                    <label key={f} style={segmento(formaPago === f)}>
+                    <label key={f} className="seg-pedido" style={segmento(formaPago === f)}>
                       <input type="radio" name="forma-pago" checked={formaPago === f} onChange={() => setFormaPago(f)} style={oculto} />
                       {f === "EFECTIVO" ? "Efectivo" : "QR"}
                     </label>

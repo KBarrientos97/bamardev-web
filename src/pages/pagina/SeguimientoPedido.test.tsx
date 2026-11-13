@@ -240,6 +240,62 @@ describe("el seguimiento del pedido", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Cancelar pedido" })).not.toBeInTheDocument());
   });
 
+  it("una respuesta lenta anterior a la cancelación no la pisa (PW-09)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const s = servidor({});
+    let soltarLenta: (r: Response) => void = () => {};
+    let vuelta = 0;
+    s.f.mockImplementation(async (url: string) => {
+      if (url === "/api/publico/pagina/elganadero") return new Response(JSON.stringify(PAGINA), { status: 200 });
+      if (url.endsWith("/cancelar")) return new Response(JSON.stringify({ ...BASE, estado: "CANCELADO" }), { status: 200 });
+      vuelta++;
+      // La primera carga responde enseguida; el sondeo siguiente se queda colgado.
+      if (vuelta === 2) return new Promise<Response>((r) => (soltarLenta = r));
+      return new Response(JSON.stringify({ ...BASE, estado: "RECIBIDO" }), { status: 200 });
+    });
+    await montar();
+    await screen.findByRole("heading", { name: "Pedido N° 07" });
+    await act(async () => {
+      vi.advanceTimersByTime(REFRESCO_SEGUIMIENTO_MS);
+    });
+    // Con el sondeo en vuelo, el cliente cancela.
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar pedido" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, cancelar el pedido" }));
+    expect(await screen.findByRole("heading", { name: "Pedido cancelado" })).toBeInTheDocument();
+    // Llega tarde la respuesta vieja, todavía en «Recibido»: no vuelve el pedido atrás.
+    await act(async () => {
+      soltarLenta(new Response(JSON.stringify({ ...BASE, estado: "RECIBIDO" }), { status: 200 }));
+    });
+    expect(screen.getByRole("heading", { name: "Pedido cancelado" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar pedido" })).not.toBeInTheDocument();
+  });
+
+  it("si el billete ya no alcanza porque subió el envío, dice cuánto falta (PW-12)", async () => {
+    servidor({ estado: "ACEPTADO", total: 115, pagaCon: 110, cambio: 0, faltan: 5 });
+    await montar();
+    const texto = await screen.findByText(/Pagás en efectivo al recibir/);
+    expect(texto).toHaveTextContent("faltan Bs 5");
+    expect(texto).not.toHaveTextContent("de cambio");
+  });
+
+  it("el estado se anuncia solo a un lector de pantalla y Escape cierra el diálogo de cancelar (PW-24)", async () => {
+    servidor({});
+    await montar();
+    const estado = await screen.findByText(/el local lo está revisando/);
+    expect(estado).toHaveAttribute("aria-live", "polite");
+    expect(estado).toHaveAttribute("role", "status");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar pedido" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cancelar el pedido" });
+    // El foco entra al diálogo, en la opción que no destruye nada.
+    expect(screen.getByRole("button", { name: "No, seguir esperando" })).toHaveFocus();
+    // Tab desde el último botón vuelve al primero: no se escapa hacia la página.
+    screen.getByRole("button", { name: "No, seguir esperando" }).focus();
+    fireEvent.keyDown(dialogo, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Sí, cancelar el pedido" })).toHaveFocus();
+    fireEvent.keyDown(dialogo, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Cancelar el pedido" })).not.toBeInTheDocument();
+  });
+
   it("se refresca cada 10 s y la moto se mueve", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const s = servidor({

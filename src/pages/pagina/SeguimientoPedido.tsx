@@ -7,6 +7,7 @@ import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { alDescansar, precargarMapa } from "../../lib/mapa";
 import { ErrorPedido, apiPedidoPublico } from "../../lib/pedidosWeb/apiPublica";
 import { olvidarPedidoEnCurso } from "../../lib/pedidosWeb/cliente";
+import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
 import { esFinal, fraseDe, pasoActual, pasosDe } from "../../lib/pedidosWeb/estado";
 import type { Seguimiento } from "../../lib/pedidosWeb/tipos";
 import { FAMILIA, Trazo } from "./PedidoPagina";
@@ -40,6 +41,12 @@ export default function SeguimientoPedido() {
   const [cancelando, setCancelando] = useState(false);
   const [errorCancelar, setErrorCancelar] = useState("");
   const final = useRef(false);
+  /**
+   * El número de la última vuelta pedida: una respuesta lenta (hasta 20 s) que
+   * llega después de otra más nueva, o después de cancelar, no pisa lo que ya
+   * se ve (PW-09).
+   */
+  const vuelta = useRef(0);
 
   const hex = pagina?.color.hex ?? "#047857";
   const fuerte = paleta(hex).oscuro;
@@ -47,15 +54,19 @@ export default function SeguimientoPedido() {
   const nombre = pagina?.nombre ?? subdominio;
 
   const cargar = useCallback(async () => {
+    const n = ++vuelta.current;
     try {
       const s = await apiPedidoPublico.seguimiento(subdominio, token);
+      if (n !== vuelta.current) return;
       setSeg(s);
       setError(null);
       setSinConexion(false);
-      final.current = esFinal(s.estado);
+      // Un pedido que terminó no vuelve a estar en curso: una vez final, final.
+      if (esFinal(s.estado)) final.current = true;
       // Un pedido que terminó ya no es «en curso» en la página del local.
       if (final.current) olvidarPedidoEnCurso(subdominio);
     } catch (e) {
+      if (n !== vuelta.current) return;
       const status = e instanceof ErrorPedido ? e.status : 0;
       // Sin respuesta (señal o servidor): queda lo último que se vio.
       if (status === 0 || status >= 500) setSinConexion(true);
@@ -105,7 +116,10 @@ export default function SeguimientoPedido() {
     setCancelando(true);
     setErrorCancelar("");
     try {
-      setSeg(await apiPedidoPublico.cancelar(subdominio, token));
+      const cancelado = await apiPedidoPublico.cancelar(subdominio, token);
+      // Lo que estaba en vuelo es anterior a la cancelación: se descarta.
+      vuelta.current++;
+      setSeg(cancelado);
       final.current = true;
       olvidarPedidoEnCurso(subdominio);
       setConfirmando(false);
@@ -171,7 +185,10 @@ export default function SeguimientoPedido() {
             ← {nombre}
           </Link>
           <h1 style={{ margin: "6px 0 0", fontSize: 24, fontWeight: 800 }}>Pedido N° {numero}</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 15, opacity: 0.95 }}>{fraseDe(seg)}</p>
+          {/* Cambia sola cuando el local acepta o el pedido sale: se anuncia (PW-24). */}
+          <p role="status" aria-live="polite" style={{ margin: "4px 0 0", fontSize: 15, opacity: 0.95 }}>
+            {fraseDe(seg)}
+          </p>
         </div>
       </header>
 
@@ -278,10 +295,17 @@ export default function SeguimientoPedido() {
                   <>
                     {" "}
                     Con {formatoPrecio(seg.pagaCon)}
-                    {seg.cambio != null && seg.cambio > 0 && (
+                    {seg.faltan != null && seg.faltan > 0 ? (
                       <>
-                        : te llevan <strong>{formatoPrecio(seg.cambio)}</strong> de cambio.
+                        : <strong>faltan {formatoPrecio(seg.faltan)}</strong>, llevá un poco más.
                       </>
+                    ) : (
+                      seg.cambio != null &&
+                      seg.cambio > 0 && (
+                        <>
+                          : te llevan <strong>{formatoPrecio(seg.cambio)}</strong> de cambio.
+                        </>
+                      )
                     )}
                   </>
                 )}
@@ -354,6 +378,7 @@ export default function SeguimientoPedido() {
           aria-modal="true"
           aria-label="Cancelar el pedido"
           onClick={(e) => e.target === e.currentTarget && setConfirmando(false)}
+          onKeyDown={(e) => teclasDeDialogo(e, () => setConfirmando(false))}
           style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(17,24,39,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
         >
           <section style={{ background: "#ffffff", width: "min(520px, 100%)", borderRadius: "20px 20px 0 0", padding: "20px 18px calc(18px + env(safe-area-inset-bottom, 0px))", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -369,6 +394,7 @@ export default function SeguimientoPedido() {
             </button>
             <button
               type="button"
+              autoFocus
               onClick={() => setConfirmando(false)}
               style={{ border: "1.5px solid #D1D5DB", borderRadius: 14, background: "#ffffff", color: "#374151", fontWeight: 700, fontSize: 16, minHeight: 48, cursor: "pointer", fontFamily: "inherit" }}
             >
