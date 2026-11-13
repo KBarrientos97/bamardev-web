@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -23,12 +23,18 @@ import type {
  * `dobleControl` es el extra `aprobacion_inventario`, que no trae ningún plan:
  * la farmacia de QA no lo tiene, y sin él guardar aprobaba solo.
  */
-const plan = vi.hoisted(() => ({ lotes: true, dobleControl: false }));
+const plan = vi.hoisted(() => ({
+  lotes: true,
+  dobleControl: false,
+  /** Quien carga: de organización (null) o atado a un local. */
+  sucursalId: null as number | null,
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     incluye: (c: string) =>
       c === "lotes" ? plan.lotes : c === "aprobacion_inventario" ? plan.dobleControl : true,
+    usuario: { sucursalId: plan.sucursalId },
   }),
 }));
 
@@ -179,6 +185,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   plan.lotes = true;
   plan.dobleControl = false;
+  plan.sucursalId = null;
   buscador.real = false;
   vi.mocked(api.getAlmacenes).mockResolvedValue([
     almacen(DEPOSITO, "Depósito"),
@@ -1130,3 +1137,21 @@ function EspiaDelState() {
   const { state } = useLocation();
   return <span data-testid="state">{state ? "con state" : "sin state"}</span>;
 }
+
+describe("La sucursal de quien carga", () => {
+  const opciones = () =>
+    within(screen.getByRole("combobox", { name: /^Sucursal/ }))
+      .getAllByRole("option")
+      .map((o) => o.textContent);
+
+  it("la organización elige entre todos los locales", async () => {
+    await abrirEdicion();
+    expect(opciones()).toEqual(["Elegí una", "Depósito", "Mostrador · depósito"]);
+  });
+
+  it("el atado a un local sólo se ofrece el suyo", async () => {
+    plan.sucursalId = MOSTRADOR;
+    await abrirEdicion();
+    expect(opciones()).toEqual(["Elegí una", "Mostrador · depósito"]);
+  });
+});

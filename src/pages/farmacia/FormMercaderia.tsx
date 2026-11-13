@@ -726,7 +726,14 @@ export default function FormMercaderia({
               className="border-warning bg-warning-bg/40"
             >
               <option value="">Elegí una</option>
-              {ordenarSucursales(almacenes.datos ?? []).map((a) => (
+              {/* Quien es de un local carga en el suyo: el servidor no le deja
+                  otro (como en la transferencia), así que el desplegable no
+                  le ofrece los demás. */}
+              {ordenarSucursales(
+                (almacenes.datos ?? []).filter(
+                  (a) => usuario?.sucursalId == null || a.id === usuario.sucursalId,
+                ),
+              ).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.tipo === "DEPOSITO" && !contiene(a.nombre, "deposito")
                     ? `${a.nombre} · depósito`
