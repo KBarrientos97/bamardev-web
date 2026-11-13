@@ -240,6 +240,33 @@ describe("el seguimiento del pedido", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Cancelar pedido" })).not.toBeInTheDocument());
   });
 
+  it("el «No pudimos conectar» de un cancelar fallido se va cuando vuelve la señal (sesion 2)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const s = servidor({});
+    let estado: "RECIBIDO" | "ACEPTADO" = "RECIBIDO";
+    let conSenal = true;
+    s.f.mockImplementation(async (url: string) => {
+      if (url === "/api/publico/pagina/elganadero") return new Response(JSON.stringify(PAGINA), { status: 200 });
+      if (!conSenal) throw new TypeError("Failed to fetch");
+      return new Response(JSON.stringify({ ...BASE, estado }), { status: 200 });
+    });
+    await montar();
+    await screen.findByRole("heading", { name: "Pedido N° 07" });
+    // Se corta la señal justo cuando toca «Cancelar»; mientras tanto el local lo acepta.
+    conSenal = false;
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar pedido" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, cancelar el pedido" }));
+    expect(await screen.findByText(/No pudimos conectar/)).toBeInTheDocument();
+    // Vuelve la señal: el sondeo trae «Aceptado» y el cartel de «sin internet» ya no tiene sentido.
+    conSenal = true;
+    estado = "ACEPTADO";
+    await act(async () => {
+      vi.advanceTimersByTime(REFRESCO_SEGUIMIENTO_MS);
+    });
+    await waitFor(() => expect(screen.getByText(/¡Aceptado!/)).toBeInTheDocument());
+    expect(screen.queryByText(/No pudimos conectar/)).not.toBeInTheDocument();
+  });
+
   it("una respuesta lenta anterior a la cancelación no la pisa (PW-09)", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const s = servidor({});

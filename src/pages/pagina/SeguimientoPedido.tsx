@@ -42,6 +42,12 @@ export default function SeguimientoPedido() {
   const [errorCancelar, setErrorCancelar] = useState("");
   const final = useRef(false);
   /**
+   * El error de cancelar vino de la señal (sin respuesta o 5xx) y no del local:
+   * en cuanto la conexión vuelve y el seguimiento responde, deja de valer. El del
+   * local («ya lo aceptó») sí se queda, aunque el estado cambie.
+   */
+  const errorCancelarDeRed = useRef(false);
+  /**
    * El número de la última vuelta pedida: una respuesta lenta (hasta 20 s) que
    * llega después de otra más nueva, o después de cancelar, no pisa lo que ya
    * se ve (PW-09).
@@ -61,6 +67,10 @@ export default function SeguimientoPedido() {
       setSeg(s);
       setError(null);
       setSinConexion(false);
+      if (errorCancelarDeRed.current) {
+        errorCancelarDeRed.current = false;
+        setErrorCancelar("");
+      }
       // Un pedido que terminó no vuelve a estar en curso: una vez final, final.
       if (esFinal(s.estado)) final.current = true;
       // Un pedido que terminó ya no es «en curso» en la página del local.
@@ -125,6 +135,8 @@ export default function SeguimientoPedido() {
       setConfirmando(false);
     } catch (e) {
       // 409: el local ya lo aceptó. Se muestra el motivo y se refresca el estado.
+      const status = e instanceof ErrorPedido ? e.status : 0;
+      errorCancelarDeRed.current = status === 0 || status >= 500;
       setErrorCancelar(e instanceof Error ? e.message : "No pudimos cancelar tu pedido.");
       setConfirmando(false);
       void cargar();
