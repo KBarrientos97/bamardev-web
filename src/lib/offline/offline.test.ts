@@ -244,6 +244,17 @@ describe("cobrar: con señal, sin señal y en la web normal", () => {
     expect(await cargarCola()).toHaveLength(0);
   });
 
+  it("PLAN-SUCURSAL-TOTAL: cobrar una cita en la caja de otro local (409 OTRA_SUCURSAL) no se encola: el cajero lo ve", async () => {
+    // Un "no" del servidor, con el nombre de los dos locales: encolarlo sería
+    // guardar un cobro que nunca va a subir y esconderle el mensaje al cajero.
+    fijarVentaSinInternet(true);
+    const e = new ApiError("Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.", 409, { codigo: "OTRA_SUCURSAL" });
+    const enviar = vi.fn().mockRejectedValue(e);
+    await expect(venderOEncolar(venta({ citaId: 13 }), enviar, datos)).rejects.toBe(e);
+    expect(enviar).toHaveBeenCalledTimes(1);
+    expect(await cargarCola()).toHaveLength(0);
+  });
+
   it("reintentar el mismo cobro sin señal no lo encola dos veces", async () => {
     fijarVentaSinInternet(true);
     const v = venta();
@@ -299,6 +310,18 @@ describe("sincronizar la cola", () => {
     expect(cola).toHaveLength(1);
     expect(cola[0]).toMatchObject({ id: "a", estado: "RECHAZADA", ultimoError: "El producto 1 no existe" });
     // Una rechazada no se vuelve a mandar.
+    const otra = vi.fn();
+    await sincronizar(otra);
+    expect(otra).not.toHaveBeenCalled();
+  });
+
+  it("un cobro de cita encolado que sube y recibe 409 OTRA_SUCURSAL queda RECHAZADO, con el mensaje, y no se reintenta", async () => {
+    await encolar(encolada("a", "2026-10-13T15:00:00.000Z", { citaId: 13 }), recibo);
+    const mensaje = "Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.";
+    const r = await sincronizar(vi.fn().mockRejectedValue(new ApiError("Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.", 409, { codigo: "OTRA_SUCURSAL" })));
+    expect(r).toEqual({ subidas: 0, rechazadas: 1, quedan: 0 });
+    expect((await cargarCola())[0]).toMatchObject({ estado: "RECHAZADA", ultimoError: mensaje });
+    // Otra vuelta no la vuelve a mandar: no hay bucle.
     const otra = vi.fn();
     await sincronizar(otra);
     expect(otra).not.toHaveBeenCalled();
