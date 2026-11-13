@@ -211,6 +211,7 @@ export default function CatalogoVenta({
       {encargando && (
         <FormEncargo
           productoInicial={encargando}
+          sucursalId={sucursalId}
           onClose={() => setEncargando(null)}
           onGuardado={() => {
             venta?.avisar?.(`Encargo anotado: ${encargando.nombre}`);

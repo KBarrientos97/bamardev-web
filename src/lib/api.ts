@@ -595,11 +595,15 @@ export const api = {
     }),
   // ── Encargos (rubro farmacia) ───────────────────────────────────────────
   /** Sin filtro trae sólo lo que sigue abierto. */
-  getEncargos: (params: { estado?: string; incluirCerrados?: boolean } = {}) =>
+  getEncargos: (
+    params: { estado?: string; incluirCerrados?: boolean; sucursalId?: number | null } = {},
+  ) =>
     request<ListaEncargos>(
       `/encargos${qs({
         estado: params.estado,
         incluirCerrados: params.incluirCerrados ? "true" : undefined,
+        // Sin esto, el consolidado; quien es de un local ve siempre el suyo.
+        sucursalId: params.sucursalId ?? undefined,
       })}`,
     ),
   crearEncargo: (input: EncargoInput) =>

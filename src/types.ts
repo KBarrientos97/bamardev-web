@@ -960,6 +960,8 @@ export interface EncargoInput {
   clienteNombre?: string;
   clienteTelefono?: string;
   nota?: string;
+  /** Dónde lo pidieron. Sin esto, el servidor usa la caja abierta o la principal. */
+  almacenId?: number;
 }
 
 export interface ContadorTramo {

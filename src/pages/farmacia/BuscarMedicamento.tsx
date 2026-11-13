@@ -196,6 +196,7 @@ export default function BuscarMedicamento() {
       {encargando && (
         <FormEncargo
           productoInicial={encargando}
+          sucursalId={cajaAbierta?.almacenId ?? null}
           onClose={() => setEncargando(null)}
           onGuardado={() => {
             setEncargando(null);

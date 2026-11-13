@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
+import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
 import { api } from "../../lib/api";
-import type { Producto } from "../../types";
+import type { Almacen, Producto } from "../../types";
 import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
@@ -29,6 +29,8 @@ function nombreCompleto(p: Producto): string {
  */
 export function FormEncargo({
   productoInicial = null,
+  sucursales,
+  sucursalId = null,
   onClose,
   onGuardado,
 }: {
@@ -37,6 +39,18 @@ export function FormEncargo({
    * tarjeta agotada): así anotar lo que faltó es un toque y no siete.
    */
   productoInicial?: Producto | null;
+  /**
+   * Los locales entre los que elegir: sólo los manda quien puede (el dueño con
+   * 2+ locales). Sin esto no hay selector y el encargo queda donde está quien
+   * lo anota, que es lo que el servidor resuelve solo.
+   */
+  sucursales?: Almacen[];
+  /**
+   * Dónde se anota: el local elegido (con selector) o el de la caja que ya
+   * conoce quien abre el formulario. Sin esto, el servidor decide (su caja
+   * abierta, su sucursal o la principal).
+   */
+  sucursalId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -48,6 +62,7 @@ export function FormEncargo({
   const [clienteNombre, setClienteNombre] = useState("");
   const [clienteTelefono, setClienteTelefono] = useState("");
   const [nota, setNota] = useState("");
+  const [almacenId, setAlmacenId] = useState<number | null>(sucursalId);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   /** Corta el doble clic: dos en el mismo tick anotaban el encargo dos veces. */
@@ -68,6 +83,7 @@ export function FormEncargo({
         clienteNombre: clienteNombre.trim(),
         clienteTelefono: clienteTelefono.trim(),
         nota: nota.trim(),
+        ...(almacenId != null ? { almacenId } : {}),
       });
       onGuardado();
     } catch (err) {
@@ -113,7 +129,7 @@ export function FormEncargo({
           <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">
             Artículo del catálogo
           </span>
-          <ElegirArticulo elegido={producto} onElegir={setProducto} />
+          <ElegirArticulo elegido={producto} onElegir={setProducto} sucursalId={almacenId} />
           <span className="mt-1 block text-xs text-texto-4">
             Opcional: si todavía no lo vendés, dejalo vacío
           </span>
@@ -153,6 +169,22 @@ export function FormEncargo({
           />
         </Campo>
 
+        {sucursales && sucursales.length > 1 && (
+          <Campo label="Sucursal" hint="Dónde lo pidieron: ahí se avisa cuando llegue">
+            <Select
+              value={almacenId ?? ""}
+              onChange={(e) => setAlmacenId(e.target.value ? Number(e.target.value) : null)}
+              aria-label="Sucursal del encargo"
+            >
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        )}
+
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>
@@ -172,14 +204,17 @@ export function FormEncargo({
 export function ElegirArticulo({
   elegido,
   onElegir,
+  sucursalId = null,
 }: {
   elegido: Producto | null;
   onElegir: (p: Producto | null) => void;
+  /** El stock que se muestra es el de este local; null = el que decida el servidor. */
+  sucursalId?: number | null;
 }) {
   const [q, setQ] = useState("");
   const buscando = q.trim() !== "";
   // Sin texto no se trae nada: el catálogo entero no sirve para elegir.
-  const busqueda = useBusquedaProductos({ q, limite: 8, activo: buscando });
+  const busqueda = useBusquedaProductos({ q, limite: 8, activo: buscando, sucursalId });
 
   if (elegido) {
     const concentracion = concentracionAparte(elegido);
