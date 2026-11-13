@@ -279,6 +279,7 @@ export function FichaMostrador({
   onEncargar,
   onCambio,
   sucursalActual,
+  rotuloStock,
 }: {
   producto: Producto;
   onClose: () => void;
@@ -301,6 +302,11 @@ export function FichaMostrador({
   onCambio?: () => void;
   /** Dónde se está vendiendo (la sucursal de la caja): es el "acá". */
   sucursalActual?: number | null;
+  /**
+   * De qué local es el stock de los equivalentes ("Equipetrol", "todo el
+   * negocio"). Sólo con 2+ locales; sin esto no se rotula.
+   */
+  rotuloStock?: string | null;
 }) {
   return (
     <Modal
@@ -344,7 +350,12 @@ export function FichaMostrador({
             la misma conversación. Con el stock y el precio de la sucursal de
             la caja, como la tabla de atrás. */}
         <Seccion titulo="Equivalentes">
-          <Equivalentes producto={p} sucursalId={sucursalActual} onAgregar={onAgregarEquivalente} />
+          <Equivalentes
+            producto={p}
+            sucursalId={sucursalActual}
+            rotuloStock={rotuloStock}
+            onAgregar={onAgregarEquivalente}
+          />
         </Seccion>
 
         {/* Los lotes de la sucursal de la caja: es de ahí de donde la venta los

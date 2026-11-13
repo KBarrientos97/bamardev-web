@@ -4,6 +4,7 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../compo
 import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { Producto } from "../../types";
 import { paraVender } from "../pos/useCarrito";
@@ -55,6 +56,11 @@ export default function BuscarMedicamento() {
   });
   const venta = useVentaFarmacia();
   const { puede, incluye } = useAuth();
+  // De qué local es el stock que se ve, dicho sólo cuando hay 2+ locales: con la
+  // caja abierta, el de la caja; el usuario de un local ve el suyo; el dueño sin
+  // caja ve la suma del negocio y hay que decirlo, o parece el de su estante.
+  const suc = useSucursales();
+  const dondeStock = cajaAbierta?.almacen ?? (suc.hayVarias ? (suc.miSede ?? "todo el negocio") : null);
   // Sin `lotes` el plan no tiene Vencimientos: la columna ("Vence hoy", "Sin
   // fecha") no tiene de dónde salir y se saca entera.
   const conLotes = incluye("lotes");
@@ -116,7 +122,7 @@ export default function BuscarMedicamento() {
                 }`}
             {/* Con varias sucursales, de cuál es el stock que se ve. Un
                 negocio de un local no recibe el nombre y no ve nada. */}
-            {cajaAbierta?.almacen && ` · stock de ${cajaAbierta.almacen}`}
+            {dondeStock && ` · stock de ${dondeStock}`}
           </p>
 
           <div className="overflow-hidden rounded-2xl border border-borde bg-white">
@@ -162,6 +168,7 @@ export default function BuscarMedicamento() {
           // Cambiar una ubicación desde la ficha se tiene que ver en la fila.
           onCambio={busqueda.recargar}
           sucursalActual={cajaAbierta?.almacenId ?? null}
+          rotuloStock={suc.hayVarias ? dondeStock : null}
           onAgregar={
             agregar && sePuedeVender(ficha)
               ? () => {

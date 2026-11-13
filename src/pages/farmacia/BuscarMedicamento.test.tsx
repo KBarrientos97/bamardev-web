@@ -15,6 +15,9 @@ const sesion = vi.hoisted(() => ({
   encargos: true,
   rol: "ADMIN" as string,
   sucursalId: null as number | null,
+  /** Nombre de la sede del atado y cuántos locales activos hay (para el rótulo del stock). */
+  sucursal: null as string | null,
+  activas: 1,
   /** `lotes` es PRO: una farmacia BASICO no tiene Vencimientos. */
   lotes: true,
 }));
@@ -27,9 +30,12 @@ vi.mock("../../store/AuthContext", async () => {
       puede: (s: string) =>
         s === "pos" ? sesion.pos : s === "encargos" ? sesion.encargos : true,
       incluye: (c: string) => (c === "lotes" ? sesion.lotes : true),
+      negocio: { id: 1, tipoNegocio: "FARMACIA", sucursalesActivas: sesion.activas },
       usuario: {
+        id: 1,
         rol: sesion.rol,
         sucursalId: sesion.sucursalId,
+        sucursal: sesion.sucursal,
         ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
       },
     }),
@@ -38,6 +44,7 @@ vi.mock("../../store/AuthContext", async () => {
 
 vi.mock("../../lib/api", () => ({
   api: {
+    getSucursales: vi.fn(),
     buscarProductos: vi.fn(),
     cajaActual: vi.fn(),
     crearEncargo: vi.fn(),
@@ -148,7 +155,12 @@ beforeEach(() => {
   sesion.encargos = true;
   sesion.rol = "ADMIN";
   sesion.sucursalId = null;
+  sesion.sucursal = null;
+  sesion.activas = 1;
   sesion.lotes = true;
+  vi.mocked(api.getSucursales).mockResolvedValue([
+    { id: 917, nombre: "Sucursal Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+  ] as never);
   vi.mocked(api.cajaActual).mockResolvedValue({ caja: null });
   vi.mocked(api.crearEncargo).mockResolvedValue({} as never);
   vi.mocked(api.buscarProductos).mockResolvedValue({
@@ -380,6 +392,36 @@ describe("la ficha del mostrador", () => {
     expect(api.crearEncargo).toHaveBeenCalledWith(
       expect.objectContaining({ productoId: 2, almacenId: 1141 }),
     );
+  });
+
+  it("con 2+ locales y sin caja, dice que el stock es el de todo el negocio, también en los equivalentes", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 917, nombre: "Sucursal Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 1141, nombre: "Sucursal Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ] as never);
+    vi.mocked(pedirEquivalentes).mockResolvedValue([med({ id: 9, nombre: "Ranitidina INTI", laboratorio: "INTI" })]);
+    await montar();
+    expect(await screen.findByText(/stock de todo el negocio/)).toBeInTheDocument();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    expect(await within(ficha).findByText("Stock y precio de todo el negocio")).toBeInTheDocument();
+  });
+
+  it("el usuario de un local con 2+ locales lee el nombre de su sede, sin pedir la lista", async () => {
+    sesion.activas = 2;
+    sesion.sucursalId = 917;
+    sesion.sucursal = "Sucursal Centro";
+    await montar();
+    expect(await screen.findByText(/stock de Sucursal Centro/)).toBeInTheDocument();
+    expect(api.getSucursales).not.toHaveBeenCalled();
+  });
+
+  it("con un solo local y sin caja no se rotula nada: ni en la lista ni en los equivalentes", async () => {
+    vi.mocked(pedirEquivalentes).mockResolvedValue([med({ id: 9, nombre: "Ranitidina INTI", laboratorio: "INTI" })]);
+    await montar();
+    expect(screen.queryByText(/stock de/)).toBeNull();
+    const ficha = await abrirFicha("Ranitidina 150 mg");
+    await within(ficha).findByText("Ranitidina INTI");
+    expect(within(ficha).queryByText(/Stock y precio de/)).toBeNull();
   });
 
   it("sin caja abierta los lotes no se acotan a un local", async () => {
