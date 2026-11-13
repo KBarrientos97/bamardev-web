@@ -52,7 +52,7 @@ vi.mock("../pagina/MapaSeguimiento", () => ({
   ),
 }));
 
-import { ApiError } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import PedidosWeb, { REFRESCO_BANDEJA_MS } from "./PedidosWeb";
 
@@ -253,6 +253,43 @@ describe("el detalle", () => {
     // Vuelve a la bandeja y la recarga.
     expect(screen.getByRole("heading", { name: "Pedidos web" })).toBeInTheDocument();
     expect(mock.bandeja.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("aceptar sólo ofrece los repartidores de la sucursal del pedido (o de toda la organización)", async () => {
+    // El pedido es de la sucursal 3. Mario es de la 5: no puede ni salir ni entregarlo.
+    vi.mocked(api.getRepartidores).mockResolvedValue([
+      { id: 21, nombre: "Pedro", zona: null, vehiculo: null, sucursalId: 3 },
+      { id: 22, nombre: "Mario", zona: null, vehiculo: null, sucursalId: 5 },
+      { id: 23, nombre: "Lola", zona: null, vehiculo: null, sucursalId: null },
+    ]);
+    try {
+      await abrirLucia();
+      fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+      const form = screen.getByRole("region", { name: "Aceptar el pedido" });
+      await within(form).findByRole("option", { name: "Pedro" });
+      expect(within(form).getByRole("option", { name: "Lola" })).toBeInTheDocument();
+      expect(within(form).queryByRole("option", { name: "Mario" })).not.toBeInTheDocument();
+    } finally {
+      vi.mocked(api.getRepartidores).mockResolvedValue([
+        { id: 21, nombre: "Pedro", zona: null, vehiculo: null },
+        { id: 22, nombre: "Mario", zona: null, vehiculo: null },
+      ]);
+    }
+  });
+
+  it("si ningún repartidor es de esa sucursal, lo dice (no «no hay repartidores cargados»)", async () => {
+    vi.mocked(api.getRepartidores).mockResolvedValue([{ id: 22, nombre: "Mario", zona: null, vehiculo: null, sucursalId: 5 }]);
+    try {
+      await abrirLucia();
+      fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+      const form = screen.getByRole("region", { name: "Aceptar el pedido" });
+      expect(await within(form).findByText(/No hay repartidores de Las Brisas/)).toBeInTheDocument();
+    } finally {
+      vi.mocked(api.getRepartidores).mockResolvedValue([
+        { id: 21, nombre: "Pedro", zona: null, vehiculo: null },
+        { id: 22, nombre: "Mario", zona: null, vehiculo: null },
+      ]);
+    }
   });
 
   it("si cambia el envío, pide un motivo corto y lo manda", async () => {

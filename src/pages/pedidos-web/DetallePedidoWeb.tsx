@@ -305,7 +305,14 @@ function FormAceptar({
 
   const tarifa = delivery ? leerMonto(envio) : 0;
   const cambio = delivery && tarifa != null && Math.abs(tarifa - pedido.envioSugerido) > 0.004;
-  const lista = useMemo(() => repartidores.datos ?? [], [repartidores.datos]);
+  // Sólo los de la sucursal del pedido (o de toda la organización): uno de otro local no
+  // puede ni salir ni entregarlo —el cerco de sucursal le dice que no— y el pedido quedaba
+  // aceptado sin nadie que lo lleve. Un backend viejo no manda `sucursalId`: sirven todos.
+  const todos = repartidores.datos;
+  const lista = useMemo(
+    () => (todos ?? []).filter((r) => r.sucursalId == null || r.sucursalId === pedido.almacenId),
+    [todos, pedido.almacenId],
+  );
   // Un solo repartidor: ya viene elegido.
   useEffect(() => {
     if (!repartidorId && lista.length === 1) setRepartidorId(String(lista[0].id));
@@ -356,7 +363,11 @@ function FormAceptar({
               ))}
             </Select>
             {!repartidores.cargando && lista.length === 0 && (
-              <span className="mt-1 block text-xs text-danger-text">No hay repartidores cargados: creá un usuario con el rol Repartidor.</span>
+              <span className="mt-1 block text-xs text-danger-text">
+                {(todos?.length ?? 0) > 0
+                  ? `No hay repartidores de ${pedido.sucursal ?? "esta sucursal"}: creá un usuario con el rol Repartidor en ese local.`
+                  : "No hay repartidores cargados: creá un usuario con el rol Repartidor."}
+              </span>
             )}
           </label>
           <label className="block">

@@ -1605,6 +1605,8 @@ export interface Repartidor {
   nombre: string;
   zona: string | null;
   vehiculo: string | null;
+  /** Su sucursal (null: toda la organización). Un backend viejo no lo manda. */
+  sucursalId?: number | null;
 }
 
 /** Anular pide el PIN siempre; el cajero además manda el usuario que autoriza. */
