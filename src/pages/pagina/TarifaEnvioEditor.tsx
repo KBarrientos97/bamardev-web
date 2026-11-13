@@ -77,19 +77,31 @@ export default function TarifaEnvioEditor() {
         {filas.map((f, i) => {
           const primero = i === 0;
           const ultimo = i === filas.length - 1;
+          // Un solo tramo = un precio fijo para toda la zona (el backend lo acepta).
+          const unico = primero && ultimo;
           return (
             <li key={i} className="flex flex-wrap items-center gap-2 text-sm text-texto-2">
-              <span className="w-24 shrink-0">{primero ? "Hasta" : ultimo ? "Más de" : `De ${filas[i - 1].hasta || "…"} a`}</span>
-              {ultimo ? (
+              <span className="w-24 shrink-0">{unico ? "Toda la zona" : primero ? "Hasta" : ultimo ? "Más de" : `De ${filas[i - 1].hasta || "…"} a`}</span>
+              {unico ? null : ultimo ? (
                 <span className="w-20 text-center text-texto-3">{filas[i - 1].hasta || "…"}</span>
               ) : (
                 <Input aria-label={`Hasta cuántos km, tramo ${i + 1}`} inputMode="decimal" className="!w-20" value={f.hasta} onChange={(e) => cambiar(i, { hasta: e.target.value.replace(/[^\d.,]/g, "") })} />
               )}
-              <span>km:</span>
+              {!unico && <span>km:</span>}
               <Input aria-label={primero ? "Precio fijo del primer tramo" : `Precio por km, tramo ${i + 1}`} inputMode="decimal" className="!w-24" value={f.valor} onChange={(e) => cambiar(i, { valor: e.target.value.replace(/[^\d.,]/g, "") })} />
               <span>{primero ? "Bs en total" : "Bs por km"}</span>
-              {!primero && !ultimo && filas.length > 2 && (
-                <button type="button" aria-label={`Quitar el tramo ${i + 1}`} onClick={() => setFilas((fs) => fs.filter((_, j) => j !== i))} className="text-texto-3 hover:text-danger-text">
+              {!primero && (
+                // 44 px de área de toque: el glifo solo era un blanco de 10 px.
+                <button
+                  type="button"
+                  aria-label={`Quitar el tramo ${i + 1}`}
+                  onClick={() => {
+                    setGuardado(false);
+                    // Si se quita el último, el de antes pasa a ser el que no tiene fin.
+                    setFilas((fs) => fs.filter((_, j) => j !== i).map((x, j, resto) => (ultimo && j === resto.length - 1 ? { ...x, hasta: "" } : x)));
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-lg text-xl leading-none text-texto-3 hover:bg-muted hover:text-danger-text"
+                >
                   ×
                 </button>
               )}
@@ -101,9 +113,14 @@ export default function TarifaEnvioEditor() {
         type="button"
         onClick={() => {
           setGuardado(false);
-          setFilas((fs) => [...fs.slice(0, -1), { hasta: "", valor: fs[fs.length - 2]?.valor ?? "1" }, fs[fs.length - 1]]);
+          setFilas((fs) =>
+            fs.length === 1
+              ? // De un precio fijo a dos tramos: el fijo llega hasta 2 km y después se cobra por km.
+                [{ hasta: "2", valor: fs[0].valor }, { hasta: "", valor: "1" }]
+              : [...fs.slice(0, -1), { hasta: "", valor: fs[fs.length - 2]?.valor ?? "1" }, fs[fs.length - 1]],
+          );
         }}
-        className="rounded-lg border border-borde px-3 py-1.5 text-sm font-semibold"
+        className="min-h-11 rounded-lg border border-borde px-3 py-1.5 text-sm font-semibold"
       >
         Agregar un tramo
       </button>

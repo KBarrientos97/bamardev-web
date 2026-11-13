@@ -87,6 +87,7 @@ export default function EditorPedidosRegalos({
   };
   const pedidos = borrador.pedidosWhatsapp ?? pedidosGuardado ?? false;
   const sistema = borrador.pedidosSistema ?? sistemaGuardado ?? false;
+  const sistemaPrendido = sistema && conDelivery && conProductos;
   // Vacío = todos (así lo guarda el backend).
   const ofrecidos: DisenoRegalo[] = r.disenos.filter(esDiseno).length ? r.disenos.filter(esDiseno) : [...DISENOS_REGALO];
   const porDefecto: DisenoRegalo = esDiseno(r.diseno) && ofrecidos.includes(r.diseno) ? r.diseno : ofrecidos[0];
@@ -121,7 +122,9 @@ export default function EditorPedidosRegalos({
 
   return (
     <Seccion titulo="Pedidos y gift cards">
-      {!conWhatsapp && (
+      {/* El WhatsApp hace falta para el carrito de WhatsApp y las gift cards. Con los pedidos
+          en el sistema y nada de eso prendido, no le sirve a nadie: no se avisa. */}
+      {!conWhatsapp && (!sistemaPrendido || (conPedidos && pedidos) || (conGiftCards && r.activo)) && (
         <p className="-mt-2 rounded-xl bg-warning-bg px-3 py-2 text-[13px] text-warning-text">
           Agregá tu WhatsApp en «Redes y botones»: ahí te llegan los pedidos y las gift cards.
         </p>
@@ -178,8 +181,9 @@ export default function EditorPedidosRegalos({
           )}
           {sistema && conProductos && pedidos && (
             <p className="rounded-xl bg-warning-bg px-3 py-2 text-[13px] text-warning-text">
-              Tenés prendidos los dos: gana WhatsApp. El carrito de tu página seguirá abriendo WhatsApp hasta que apagues «Recibir pedidos por
-              WhatsApp».
+              {conWhatsapp
+                ? "Tenés prendidos los dos: gana WhatsApp. El carrito de tu página seguirá abriendo WhatsApp hasta que apagues «Recibir pedidos por WhatsApp»."
+                : "Tenés prendidos los dos, pero sin un WhatsApp cargado el carrito de WhatsApp no tiene a quién escribir: tu página usa el del sistema."}
             </p>
           )}
           {sistema && conProductos && <TarifaEnvioEditor />}

@@ -190,8 +190,10 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   const contactos = pagina ? contactosWhatsapp(pagina) : [];
   const conPedidos = !!pagina?.pedidos && contactos.length > 0;
   // Pedidos directo al sistema (13-nov). Si los dos están prendidos, gana
-  // WhatsApp (decisión del dueño): `pedidos` manda sobre `pedidosSistema`.
-  const conSistema = !!pagina?.pedidosSistema && !pagina?.pedidos;
+  // WhatsApp (decisión del dueño): el carrito de WhatsApp manda sobre `pedidosSistema`.
+  // Pero un WhatsApp prendido SIN ningún número cargado no tiene a quién escribir
+  // (`conPedidos` es falso): cuenta como apagado y sale el del sistema.
+  const conSistema = !!pagina?.pedidosSistema && !conPedidos;
   const carrito = conPedidos || conSistema;
   const infoPedidos = useInfoPedidos(subdominio, conSistema);
   const sinPedidos = conSistema ? avisoSinPedidos(infoPedidos.info) : null;

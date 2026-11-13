@@ -24,7 +24,8 @@ export function filasDe(t: TarifaEnvio): Fila[] {
 
 /** La tarifa que quedaría con lo escrito, o el motivo por el que no vale. */
 export function tarifaDeFilas(filas: Fila[], maxKm: string): { tarifa: TarifaEnvio } | { error: string } {
-  if (filas.length < 2) return { error: "Hacen falta al menos dos tramos." };
+  // Un solo tramo es un precio fijo para toda la zona: el backend lo acepta (PW-18).
+  if (filas.length < 1) return { error: "Hace falta al menos un tramo." };
   const tramos: TramoTarifa[] = [];
   let anterior = 0;
   for (let i = 0; i < filas.length; i++) {

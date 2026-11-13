@@ -123,6 +123,40 @@ describe("Pedidos y gift cards (editor)", () => {
       expect(screen.getByText(/gana WhatsApp/)).toBeInTheDocument();
     });
 
+    it("con los pedidos del sistema prendidos y nada más que use WhatsApp, no avisa que falta el WhatsApp", async () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true, conWhatsapp: false, conGiftCards: false });
+      await screen.findByLabelText("Precio fijo del primer tramo");
+      expect(screen.queryByText(/Agregá tu WhatsApp/)).not.toBeInTheDocument();
+    });
+
+    it("pero si también usa el carrito de WhatsApp o las gift cards, sí avisa", () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true, conWhatsapp: false, conGiftCards: false, pedidosGuardado: true });
+      expect(screen.getByText(/Agregá tu WhatsApp/)).toBeInTheDocument();
+    });
+
+    it("con los dos prendidos y sin WhatsApp cargado dice que se usa el del sistema", () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true, pedidosGuardado: true, conWhatsapp: false });
+      expect(screen.getByText(/sin un WhatsApp cargado el carrito de WhatsApp no tiene a quién escribir/)).toBeInTheDocument();
+      expect(screen.queryByText(/gana WhatsApp/)).not.toBeInTheDocument();
+    });
+
+    it("las × de la tarifa tienen un área de toque de 44 px, y se puede dejar un solo precio fijo (PW-18)", async () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true });
+      const quitar = await screen.findByRole("button", { name: "Quitar el tramo 4" });
+      expect(quitar.className).toMatch(/h-11/);
+      expect(quitar.className).toMatch(/w-11/);
+      // Se quitan los tramos de a uno, también el último, hasta dejar uno solo.
+      fireEvent.click(screen.getByRole("button", { name: "Quitar el tramo 4" }));
+      fireEvent.click(screen.getByRole("button", { name: "Quitar el tramo 3" }));
+      fireEvent.click(screen.getByRole("button", { name: "Quitar el tramo 2" }));
+      expect(screen.queryByRole("button", { name: /Quitar el tramo/ })).not.toBeInTheDocument();
+      expect(screen.getByText("Toda la zona")).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Guardar tarifa" }));
+      });
+      expect(apiPedidosWeb.guardarTarifa).toHaveBeenCalledWith({ tramos: [{ hastaKm: null, base: 7 }], maxKm: 12 });
+    });
+
     it("prendido, muestra la tarifa de envío; se edita y se guarda al toque", async () => {
       montar({ conDelivery: true, conProductos: true, sistemaGuardado: true });
       expect(await screen.findByLabelText("Precio fijo del primer tramo")).toHaveValue("7");

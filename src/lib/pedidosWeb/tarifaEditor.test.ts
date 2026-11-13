@@ -13,8 +13,14 @@ describe("la tarifa que edita el dueño", () => {
     expect(r).toEqual({ tarifa: { tramos: [{ hastaKm: 1.5, base: 6.5 }, { hastaKm: null, porKm: 2.5 }], maxKm: 8 } });
   });
 
+  it("un solo tramo es un precio fijo para toda la zona (PW-18)", () => {
+    expect(tarifaDeFilas([{ hasta: "", valor: "8" }], "12")).toEqual({ tarifa: { tramos: [{ hastaKm: null, base: 8 }], maxKm: 12 } });
+    // Y lo que el backend guarda vuelve a la pantalla como una fila.
+    expect(filasDe({ tramos: [{ hastaKm: null, base: 8 }], maxKm: 12 })).toEqual([{ hasta: "", valor: "8" }]);
+  });
+
   it.each([
-    [[{ hasta: "2", valor: "7" }], "12", /al menos dos tramos/],
+    [[], "12", /al menos un tramo/],
     [[{ hasta: "5", valor: "7" }, { hasta: "5", valor: "2" }, { hasta: "", valor: "1" }], "12", /creciendo/],
     [[{ hasta: "5", valor: "7" }, { hasta: "3", valor: "2" }, { hasta: "", valor: "1" }], "12", /creciendo/],
     [[{ hasta: "2", valor: "" }, { hasta: "", valor: "1" }], "12", /precio del tramo 1/],

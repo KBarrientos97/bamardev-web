@@ -134,6 +134,15 @@ describe("el carrito con pedidos en el sistema", () => {
     expect(screen.queryByRole("button", { name: "Hacer pedido" })).not.toBeInTheDocument();
   });
 
+  it("WhatsApp prendido pero sin ningún número cargado cuenta como apagado: sale el carrito del sistema", async () => {
+    // Sin el WhatsApp general ni el de ninguna sucursal: no hay a quién mandarle el pedido.
+    servidor({ pagina: { ...PAGINA, destacado: null, pedidos: true, pedidosSistema: true } });
+    await montar();
+    await abrirPedido();
+    expect(screen.getByRole("button", { name: "Hacer pedido" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Enviar pedido por WhatsApp" })).not.toBeInTheDocument();
+  });
+
   it("un negocio sin pedidosSistema no pide la info de pedidos", async () => {
     const s = servidor({ pagina: { ...PAGINA, pedidos: true } });
     await montar();
@@ -274,6 +283,28 @@ describe("el carrito con pedidos en el sistema", () => {
     servidor({ info: { ...INFO, sucursales: [{ ...BRISAS, abierta: false }] } });
     await montar();
     expect(await screen.findByText(/el local está cerrado/)).toBeInTheDocument();
+  });
+
+  it("reintentar el MISMO pedido conserva la clave; si cambió el carrito, sale con otra (PW-10)", async () => {
+    const s = servidor({ respuestaCrear: { status: 400, cuerpo: { message: "se cayó" } } });
+    await montar();
+    await abrirPedido();
+    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    escribir("Dirección", "Calle Los Tajibos 23");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    await screen.findByText("se cayó");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    await waitFor(() => expect(s.posteos()).toHaveLength(2));
+    const clave = (i: number) => JSON.parse(String(s.posteos()[i].init?.body)).clienteRequestId;
+    // Idéntico: la misma clave, para que un envío que sí entró no se duplique.
+    expect(clave(1)).toBe(clave(0));
+    // Edita el pedido y reintenta: es otro pedido, con otra clave.
+    escribir("Nota para el negocio", "Le agrego una bebida");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    await waitFor(() => expect(s.posteos()).toHaveLength(3));
+    expect(clave(2)).not.toBe(clave(0));
   });
 
   it("muestra en lenguaje humano lo que contesta el backend y no pierde lo escrito", async () => {
