@@ -35,7 +35,7 @@ const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
 export const apiComisiones = {
   resumen: (p: { desde: string; hasta: string; sucursalId?: number | null }) =>
     request<ResumenComisiones>(`/comisiones/resumen${qs(p)}`),
-  detalle: (recursoId: number, p: { desde: string; hasta: string }) =>
+  detalle: (recursoId: number, p: { desde: string; hasta: string; sucursalId?: number | null }) =>
     request<DetalleComisiones>(`/comisiones/recursos/${recursoId}/detalle${qs(p)}`),
 
   previa: (p: { recursoId: number; desde: string; hasta: string }) =>

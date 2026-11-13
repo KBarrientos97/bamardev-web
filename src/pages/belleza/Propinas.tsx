@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Kpi, Modal, useAviso, Vacio } from "../../components/ui";
 import { apiExtras, type FilaPropinas } from "../../lib/belleza/apiExtras";
 import { pagaPropinas } from "../../lib/belleza/capacidades";
 import { useExtras } from "../../lib/belleza/useExtras";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 
 const mensaje = (e: unknown) => (e instanceof Error ? e.message : "No se pudo completar");
 
@@ -28,15 +29,22 @@ function aEntregar(f: FilaPropinas, porFuera: boolean, conOtras: boolean): numbe
  *
  * El profesional entra a la misma pantalla y ve sólo las suyas (lo filtra el
  * backend, alcance PROPIO): sin el botón de entregar.
+ *
+ * Con 2+ locales (PLAN-SUCURSAL-TOTAL §1) la organización elige «Todas» o uno
+ * (lo cobrado y lo que se entrega salen de ese local: el efectivo está en el
+ * cajón de la sede donde se cobró) y cada propina del detalle dice su local.
+ * Quien está atado a uno ve y entrega sólo lo suyo, con su nombre arriba.
  */
 export default function Propinas() {
   const ctx = useExtras();
+  const suc = useSucursales();
+  const sucursalId = suc.sucursalId;
   const puedePagar = !!ctx && pagaPropinas(ctx);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
   const rep = useApi(
-    () => apiExtras.propinas({ desde: desde || undefined, hasta: hasta || undefined }),
-    [desde, hasta],
+    () => apiExtras.propinas({ desde: desde || undefined, hasta: hasta || undefined, sucursalId }),
+    [desde, hasta, sucursalId],
   );
   const [aPagar, setAPagar] = useState<FilaPropinas | null>(null);
   const [desdeCaja, setDesdeCaja] = useState(true);
@@ -50,7 +58,11 @@ export default function Propinas() {
     setError("");
     setPagando(true);
     try {
-      const r = await apiExtras.pagarPropinas(aPagar.recursoId, desdeCaja, !desdeCaja || conOtras);
+      // Se entrega lo del local que se está mirando: nunca más que lo que se ve en pantalla.
+      const r =
+        sucursalId != null
+          ? await apiExtras.pagarPropinas(aPagar.recursoId, desdeCaja, !desdeCaja || conOtras, sucursalId)
+          : await apiExtras.pagarPropinas(aPagar.recursoId, desdeCaja, !desdeCaja || conOtras);
       // Lo de QR sin caja abierta queda entregado por fuera (QA DIA-13): se
       // dice cuánto, para que nadie lo busque en el arqueo.
       const porFuera = r.desdeCaja && (r.fueraDeCaja ?? 0) > 0 ? r.fueraDeCaja! : 0;
@@ -72,12 +84,16 @@ export default function Propinas() {
   };
 
   const d = rep.datos;
+  const verLocal = suc.mostrarColumna(d?.detalle, (x) => x.sucursalId);
+  // De qué local se entrega, dicho con todas las letras (sólo con 2+ locales).
+  const localDeLaEntrega = suc.hayVarias ? suc.sedeVista || "todos los locales" : "";
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Propinas"
-        subtitulo="Lo que los clientes dejaron para cada profesional. No suma a las ventas del negocio."
+        subtitulo={`Lo que los clientes dejaron para cada profesional. No suma a las ventas del negocio.${suc.miSede ? ` · ${suc.miSede}` : ""}`}
       />
+      {suc.elegir && <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
       <div className="flex flex-wrap gap-3">
         <div className="w-40">
           <Campo label="Desde">
@@ -148,6 +164,7 @@ export default function Propinas() {
                         caja (y la fecha abajo) cada venta se distingue. */}
                     {x.recurso} · {x.comprobante ?? `venta ${x.ventaId}`}
                     {x.cajaId != null ? ` (caja #${x.cajaId})` : ""} · {x.formaPago}
+                    {verLocal && x.sucursal ? ` · ${x.sucursal}` : ""}
                     <span className="block text-[11px] text-texto-4">{fmtFechaHora(x.fecha)}</span>
                   </span>
                   <span className="text-right">
@@ -164,6 +181,7 @@ export default function Propinas() {
       <Modal
         abierto={!!aPagar}
         titulo={aPagar ? `Entregar a ${aPagar.nombre}` : "Entregar"}
+        subtitulo={aPagar && localDeLaEntrega ? `Las propinas cobradas en ${localDeLaEntrega}` : undefined}
         onClose={() => setAPagar(null)}
         ancho="max-w-sm"
         acciones={
