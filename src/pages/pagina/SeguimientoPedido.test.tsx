@@ -165,11 +165,12 @@ describe("el seguimiento del pedido", () => {
     expect(s.seguimientos()).toHaveLength(antes);
   });
 
-  it("para recoger no hay «En camino» y el paso se llama «Listo para retirar»", async () => {
+  it("para recoger no hay «En camino», y el paso y la frase dicen lo mismo: aceptado, se retira en un rato (QA R1 N16)", async () => {
     servidor({ tipo: "RECOGER", estado: "ACEPTADO", envio: 0, total: 100, destino: null, direccion: null, referencia: null });
     await montar();
-    expect(await screen.findByText(/Pasá a retirarlo cuando esté listo/)).toBeInTheDocument();
-    expect(screen.getByText("Listo para retirar", { selector: "span" }).closest("li")).toHaveAttribute("aria-current", "step");
+    expect(await screen.findByText(/pasá a retirarlo en un rato/)).toBeInTheDocument();
+    expect(screen.getByText("Aceptado", { selector: "span" }).closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.queryByText("Listo para retirar")).not.toBeInTheDocument();
     expect(screen.queryByText("En camino", { selector: "span" })).not.toBeInTheDocument();
     expect(screen.getByText(/Retirás en/)).toHaveTextContent("Las Brisas");
   });
@@ -384,5 +385,47 @@ describe("el seguimiento del pedido", () => {
     await montar();
     expect(await screen.findByRole("heading", { name: "No encontramos este pedido" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Ir a la página de/ })).toBeInTheDocument();
+  });
+
+  it("un enlace roto no deja el nombre interno del producto en la pestaña: «Tu pedido · El Ganadero» (QA R1 S3)", async () => {
+    servidor(() => new Response(JSON.stringify({ message: "Pedido no encontrado" }), { status: 404 }));
+    await montar();
+    await screen.findByRole("heading", { name: "No encontramos este pedido" });
+    await waitFor(() => expect(document.title).toBe("Tu pedido · El Ganadero"));
+  });
+
+  it("Cancelado por el local: lo dice, sin culpar al cliente, y muestra el motivo si lo hay (QA R1 N9)", async () => {
+    servidor({ estado: "CANCELADO", canceladoPor: "LOCAL", motivoCancelacion: "Se cayó la moto" });
+    await montar();
+    expect(await screen.findByRole("heading", { name: "El local canceló tu pedido" })).toBeInTheDocument();
+    expect(screen.getByText("Motivo: Se cayó la moto.")).toBeInTheDocument();
+    expect(screen.getByText("El local canceló tu pedido.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Pedido cancelado" })).not.toBeInTheDocument();
+  });
+
+  it("Cancelado por el local sin motivo: dice que no se cobró nada", async () => {
+    servidor({ estado: "CANCELADO", canceladoPor: "LOCAL", motivoCancelacion: null });
+    await montar();
+    expect(await screen.findByRole("heading", { name: "El local canceló tu pedido" })).toBeInTheDocument();
+    expect(screen.getByText("No se cobró nada.")).toBeInTheDocument();
+  });
+
+  it("Cancelado por el cliente (o por un backend viejo que no dice quién) sigue diciendo «Pedido cancelado»", async () => {
+    servidor({ estado: "CANCELADO", canceladoPor: "CLIENTE" });
+    await montar();
+    expect(await screen.findByRole("heading", { name: "Pedido cancelado" })).toBeInTheDocument();
+  });
+
+  it("si la caja cambió el envío, el cliente ve de cuánto a cuánto y por qué (QA R1 N10)", async () => {
+    servidor({ estado: "ACEPTADO", envio: 9, total: 109, envioPedido: 7, motivoEnvio: "queda más lejos" });
+    await montar();
+    expect(await screen.findByText(/El local cambió el envío de Bs 7 a Bs 9: queda más lejos\./)).toBeInTheDocument();
+  });
+
+  it("sin cambio de envío no hay aviso (ni con un backend viejo que no manda envioPedido)", async () => {
+    servidor({ estado: "ACEPTADO", envio: 9, envioPedido: 9 });
+    await montar();
+    await screen.findByText(/¡Aceptado!/);
+    expect(screen.queryByText(/cambió el envío/)).not.toBeInTheDocument();
   });
 });

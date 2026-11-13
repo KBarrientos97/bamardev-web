@@ -115,6 +115,8 @@ export default function SeguimientoPedido() {
   }, []);
   useEffect(() => {
     if (seg) document.title = `Pedido N° ${String(seg.numero).padStart(2, "0")} · ${nombre}`;
+    // Sin pedido (enlace roto o todavía cargando) la pestaña no puede decir el nombre interno del producto (QA R1, S3).
+    else document.title = `Tu pedido · ${nombre}`;
   }, [seg, nombre]);
 
   // El mapa se adelanta cuando el pedido ya fue aceptado, para que al salir la moto esté listo.
@@ -214,8 +216,20 @@ export default function SeguimientoPedido() {
         {malo ? (
           <section style={{ background: "#ffffff", border: "1px solid #E5E7EB", borderRadius: 16, padding: 16 }}>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: ROJO }}>
-              {seg.estado === "RECHAZADO" ? "Pedido rechazado" : seg.estado === "VENCIDO" ? "El local no respondió" : "Pedido cancelado"}
+              {seg.estado === "RECHAZADO"
+                ? "Pedido rechazado"
+                : seg.estado === "VENCIDO"
+                  ? "El local no respondió"
+                  : seg.canceladoPor === "LOCAL"
+                    ? "El local canceló tu pedido"
+                    : "Pedido cancelado"}
             </h2>
+            {/* Cancelado por el local: el cliente no lo hizo él, y si hay motivo, se lo decimos (QA R1, N9). */}
+            {seg.estado === "CANCELADO" && seg.canceladoPor === "LOCAL" && (
+              <p style={{ margin: "8px 0 0", fontSize: 15 }}>
+                {seg.motivoCancelacion ? `Motivo: ${seg.motivoCancelacion}.` : "No se cobró nada."}
+              </p>
+            )}
             {seg.estado === "RECHAZADO" && seg.motivoRechazo && <p style={{ margin: "8px 0 0", fontSize: 15 }}>{seg.motivoRechazo}</p>}
             {seg.estado === "VENCIDO" && (
               <p style={{ margin: "8px 0 0", fontSize: 15 }}>Pasaron unos minutos y nadie del local pudo tomarlo. No se cobró nada.</p>
@@ -287,6 +301,13 @@ export default function SeguimientoPedido() {
                 <dt>Envío</dt>
                 <dd style={{ margin: 0 }}>{formatoPrecio(seg.envio)}</dd>
               </div>
+            )}
+            {/* El total subía en silencio cuando la caja cambiaba el envío al aceptar (QA R1, N10). */}
+            {seg.tipo === "DELIVERY" && !sinCobro && seg.envioPedido != null && Math.abs(seg.envio - seg.envioPedido) > 0.004 && (
+              <p style={{ margin: "2px 0 0", fontSize: 13, color: "#92400E", background: "#FFFBEB", borderRadius: 10, padding: "6px 10px" }}>
+                El local cambió el envío de {formatoPrecio(seg.envioPedido)} a {formatoPrecio(seg.envio)}
+                {seg.motivoEnvio ? `: ${seg.motivoEnvio}` : ""}.
+              </p>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
               <dt>{sinCobro ? "Total del pedido" : "Total a pagar"}</dt>
