@@ -378,7 +378,7 @@ export default function Creditos() {
       {detalleId !== null && (
         <DetalleCredito
           id={detalleId}
-          verSucursal={!!suc.hayVarias}
+          verSucursal={suc.modo === "organizacion"}
           onClose={() => setDetalleId(null)}
           onAbonar={(c) => {
             setDetalleId(null);

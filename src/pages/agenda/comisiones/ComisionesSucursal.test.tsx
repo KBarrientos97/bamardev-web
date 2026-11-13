@@ -12,7 +12,7 @@ import type {
  * local, o con una liquidación vieja (`porSucursal: []`), no se ve nada nuevo.
  */
 
-const sesion = vi.hoisted(() => ({ hayVarias: true }));
+const sesion = vi.hoisted(() => ({ hayVarias: true, asignado: false }));
 
 vi.mock("../../../store/AuthContext", () => ({
   useAuth: () => ({
@@ -24,7 +24,10 @@ vi.mock("../../../store/AuthContext", () => ({
 }));
 
 vi.mock("../../../lib/useSucursales", () => ({
-  useSucursales: () => ({ hayVarias: sesion.hayVarias }),
+  useSucursales: () => ({
+    hayVarias: sesion.hayVarias,
+    modo: !sesion.hayVarias ? "una" : sesion.asignado ? "asignado" : "organizacion",
+  }),
 }));
 
 vi.mock("../../../lib/agenda/apiComisiones", () => ({
@@ -75,6 +78,7 @@ async function montarLiquidar(previa: PreviaLiquidacion) {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.hayVarias = true;
+  sesion.asignado = false;
   vi.mocked(apiComisiones.config).mockResolvedValue([
     { recursoId: 7, nombre: "Beto", activo: true, comisionPct: 50, comisionProductoPct: 10, servicios: [] },
   ]);
@@ -123,6 +127,16 @@ describe("liquidar: la previa por sucursal", () => {
     sesion.hayVarias = false;
     await montarLiquidar(PREVIA);
     expect(screen.queryByRole("columnheader", { name: "Sucursal" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Registrar el pago como gasto/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar liquidación" }));
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("gasto de sueldos por");
+  });
+
+  it("el asignado a una sede no ve la tabla ni la frase: la previa trae los montos de los otros locales", async () => {
+    sesion.asignado = true;
+    await montarLiquidar(PREVIA);
+    expect(screen.queryByRole("columnheader", { name: "Sucursal" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Norte")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: /Registrar el pago como gasto/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar liquidación" }));
     expect(screen.getByRole("dialog")).not.toHaveTextContent("gasto de sueldos por");
@@ -194,5 +208,12 @@ describe("liquidaciones cerradas: el detalle por sucursal", () => {
     sesion.hayVarias = false;
     const dialogo = await abrir(CERRADA);
     expect(within(dialogo).queryByText("Cómo cayó en cada sucursal")).not.toBeInTheDocument();
+  });
+
+  it("el asignado a una sede tampoco: el detalle trae los montos de los otros locales", async () => {
+    sesion.asignado = true;
+    const dialogo = await abrir(CERRADA);
+    expect(within(dialogo).queryByText("Cómo cayó en cada sucursal")).not.toBeInTheDocument();
+    expect(within(dialogo).queryByText("Norte")).not.toBeInTheDocument();
   });
 });

@@ -4,15 +4,17 @@ import { useSucursales } from "../../../lib/useSucursales";
 import type { FilaComisionSucursal } from "../../../lib/agenda/tiposComisiones";
 
 /**
- * ¿Hay algo que desglosar? Sólo con 2+ sucursales en el negocio y 2+ filas en el
- * desglose (PLAN-SUCURSAL-TOTAL §1 y §8.1). Con un local, o con una liquidación
- * vieja (`porSucursal: []`), la pantalla queda como siempre. Se decide acá para
- * que la previa, el detalle y la confirmación digan lo mismo.
+ * ¿Hay algo que desglosar? Sólo la organización, con 2+ sucursales en el negocio
+ * y 2+ filas en el desglose (PLAN-SUCURSAL-TOTAL §1 y §8.1). Con un local, o con
+ * una liquidación vieja (`porSucursal: []`), la pantalla queda como siempre. El
+ * usuario asignado a una sede NO lo ve: la previa no se filtra por su sede, así
+ * que la tabla le mostraría los montos de otros locales. Se decide acá para que
+ * la previa, el detalle y la confirmación digan lo mismo.
  */
 export function useDesgloseSucursal(filas: readonly FilaComisionSucursal[] | undefined) {
   const suc = useSucursales();
   const lista = filas ?? [];
-  return { ver: suc.hayVarias && lista.length >= 2, filas: lista };
+  return { ver: suc.modo === "organizacion" && lista.length >= 2, filas: lista };
 }
 
 /**

@@ -209,6 +209,37 @@ describe("Gift cards por local", () => {
     expect(screen.getByText(/vendidos en Norte/)).toBeInTheDocument();
   });
 
+  it("el detalle dice dónde se vendió el vale a la organización, no al asignado a un local", async () => {
+    const detalle = {
+      ...LISTA.vales[1],
+      movimientos: [],
+      emitidaEn: { id: 2, nombre: "Norte" },
+    };
+    vi.mocked(apiExtras.vale).mockResolvedValue(detalle as never);
+    await montar(<GiftCards />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("BBBB-2222"));
+    });
+    expect(screen.getByText(/Vendido en Norte\./)).toBeInTheDocument();
+  });
+
+  it("el asignado a un local no ve «Vendido en» en el detalle", async () => {
+    sesion.sucursalId = 1;
+    sesion.sucursal = "Central";
+    const detalle = {
+      ...LISTA.vales[1],
+      movimientos: [],
+      emitidaEn: { id: 2, nombre: "Norte" },
+    };
+    vi.mocked(apiExtras.vale).mockResolvedValue(detalle as never);
+    await montar(<GiftCards />);
+    await act(async () => {
+      fireEvent.click(screen.getByText("BBBB-2222"));
+    });
+    expect(screen.getByRole("list", { name: "Historial del vale" })).toBeInTheDocument();
+    expect(screen.queryByText(/Vendido en/)).not.toBeInTheDocument();
+  });
+
   it("con un solo local no aparece nada nuevo", async () => {
     sesion.locales = 1;
     await montar(<GiftCards />);

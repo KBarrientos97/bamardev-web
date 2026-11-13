@@ -230,12 +230,21 @@ describe("el conteo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     expect(screen.queryByRole("button", { name: "Contar un local" })).not.toBeInTheDocument();
   });
 
-  it("el usuario de un local cuenta el suyo: ni selector ni otros locales", async () => {
+  it("con el control prendido, el usuario de un local no ve la tarjeta «Contar otro local»", async () => {
     sede = { sucursalId: 4, locales: 2 };
     prendido();
     vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL, NORTE]);
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Contar un local" }));
+    expect(screen.queryByRole("button", { name: "Contar un local" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Contar otro local")).not.toBeInTheDocument();
+  });
+
+  it("el usuario de un local cuenta el suyo: ni selector ni otros locales", async () => {
+    sede = { sucursalId: 4, locales: 2 };
+    vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: false, sePuedeApagar: true });
+    vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL, NORTE]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Contar y empezar a controlar" }));
     await act(async () => {});
     expect(screen.queryByRole("radiogroup", { name: "Local que se cuenta" })).not.toBeInTheDocument();
     expect(api.getProductos).toHaveBeenLastCalledWith(false, NORTE.id);

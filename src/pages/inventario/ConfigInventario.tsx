@@ -130,8 +130,9 @@ export default function ConfigInventario() {
           </Tarjeta>
 
           {/* El control ya prendido no cuenta los demás locales solo: cada
-              uno se carga con su conteo. Sólo con 2+ locales. */}
-          {datos.sePuedeApagar && datos.controlaStock && suc.hayVarias && (
+              uno se carga con su conteo. Sólo la organización con 2+ locales: el
+              usuario de una sede sólo cuenta la suya y no tiene otro que contar. */}
+          {datos.sePuedeApagar && datos.controlaStock && suc.modo === "organizacion" && (
             <Tarjeta titulo="Contar otro local">
               <p className="text-[13px] text-texto-2">
                 El control de stock ya está prendido. Si todavía no cargaste lo que hay en alguno de tus locales,

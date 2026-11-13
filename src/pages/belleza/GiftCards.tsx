@@ -616,7 +616,10 @@ function DetalleVale({
   onClose: () => void;
   onCambio: () => void;
 }) {
-  const { hayVarias } = useSucursales();
+  // «Vendido en {local}» es del dueño con 2+ locales; al asignado no se le
+  // suma un local que no es el suyo (PLAN-SUCURSAL-TOTAL §1).
+  const { modo } = useSucursales();
+  const verLocalVenta = modo === "organizacion";
   const detalle = useApi<ValeDetalle | null>(
     () => (id ? apiExtras.vale(id) : Promise.resolve(null)),
     [id],
@@ -667,7 +670,7 @@ function DetalleVale({
           <p className="text-[13px] text-texto-2">
             {v.beneficiario ? `Para ${v.beneficiario}. ` : ""}
             {v.comprador ? `Lo compró ${v.comprador}. ` : ""}
-            {hayVarias && v.emitidaEn?.nombre ? `Vendido en ${v.emitidaEn.nombre}. ` : ""}
+            {verLocalVenta && v.emitidaEn?.nombre ? `Vendido en ${v.emitidaEn.nombre}. ` : ""}
             {v.venceEn ? `Vence el ${dia(v.venceEn)}.` : "No vence."}
           </p>
           <div>

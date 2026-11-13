@@ -36,10 +36,12 @@ export function TabTarifas({
   mostrarErrores: boolean;
   onCambiar: (b: BorradorTarifas) => void;
 }) {
-  const { hayVarias } = useSucursales();
+  // La nota es de quien administra el negocio entero: el asignado a un local no
+  // ve más que el suyo (PLAN-SUCURSAL-TOTAL §1).
+  const { modo } = useSucursales();
   return (
     <div className="space-y-4">
-      {hayVarias && <Nota icono="pin">Las tarifas, los avisos y el PIN valen para todos los locales.</Nota>}
+      {modo === "organizacion" && <Nota icono="pin">Las tarifas, los avisos y el PIN valen para todos los locales.</Nota>}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {b.tipos.map((t) => (
           <TarjetaTipo

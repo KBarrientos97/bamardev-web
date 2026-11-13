@@ -484,6 +484,16 @@ describe("la sucursal de cada cuenta (PLAN-SUCURSAL-TOTAL §3 etapa 4)", () => {
     expect(valorDe(detalle, "Sucursal")).toBe("Norte");
   });
 
+  it("el detalle del asignado a un local no agrega la fila Sucursal", async () => {
+    sesionSuc.modo = "asignado";
+    vi.mocked(api.getCredito).mockResolvedValue({ ...DETALLE_ROSA, sucursal: NORTE });
+    await montar();
+    fireEvent.click(within(tarjeta("Rosa Mamani")).getByText("Rosa Mamani"));
+    await act(async () => {});
+    const detalle = screen.getByRole("dialog", { name: "Detalle del crédito" });
+    expect(within(detalle).queryByText("Sucursal")).not.toBeInTheDocument();
+  });
+
   it("el detalle con un solo local no agrega la fila", async () => {
     vi.mocked(api.getCredito).mockResolvedValue({ ...DETALLE_ROSA, sucursal: NORTE });
     await montar();
