@@ -70,3 +70,24 @@ describe("el recibo por WhatsApp", () => {
     expect(whatsappDelRecibo(base, "X")).toMatch(/^https:\/\/wa\.me\/\?text=/);
   });
 });
+
+describe("el recibo por WhatsApp con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  it("dice de qué sucursal es, debajo del recibo", () => {
+    const texto = mensajeRecibo(base, "Pollos Don Omar", "Sucursal Sur");
+    expect(texto.split("\n").slice(0, 3)).toEqual([
+      "Hola, gracias por tu pago en Pollos Don Omar.",
+      expect.stringContaining("Recibo B-000071"),
+      "Sucursal: Sucursal Sur",
+    ]);
+  });
+
+  it("con un solo local, el mensaje es exactamente el de siempre", () => {
+    expect(mensajeRecibo(base, "Pollos Don Omar", null)).toBe(mensajeRecibo(base, "Pollos Don Omar"));
+    expect(mensajeRecibo(base, "Pollos Don Omar", undefined)).not.toContain("Sucursal");
+  });
+
+  it("el wa.me lleva la misma línea", () => {
+    const url = whatsappDelRecibo(base, "Pollos Don Omar", "Sucursal Sur");
+    expect(decodeURIComponent(url)).toContain("Sucursal: Sucursal Sur");
+  });
+});

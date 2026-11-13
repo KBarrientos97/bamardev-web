@@ -1246,6 +1246,12 @@ export interface Venta {
   fechaAprobacion?: string | null;
   cajaId?: number;
   almacenId?: number;
+  /**
+   * El local donde se hizo la venta, con su dirección y teléfono (de su ficha).
+   * El recibo y la comanda lo muestran SÓLO con 2+ sucursales. Opcional: un
+   * backend anterior no lo manda, y una venta sin internet todavía no lo tiene.
+   */
+  almacen?: { id: number; nombre: string; direccion?: string | null; telefono?: string | null } | null;
   cajero?: string | null;
   total: number;
   cambio?: number;

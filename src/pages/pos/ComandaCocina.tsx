@@ -23,12 +23,18 @@ export default function ComandaCocina({
   venta,
   numero,
   negocio,
+  sede,
   minutos = 0,
   tamano,
 }: {
   venta: Venta;
   numero: number;
   negocio: string;
+  /**
+   * El local, sólo con 2+ sucursales: la cocina de un local no arma lo del
+   * otro, y el papel que anda de mano en mano tiene que decir de cuál es.
+   */
+  sede?: string | null;
   /** El tiempo estimado de Configuración del recibo: la cocina sabe para cuándo. 0, no sale. */
   minutos?: number;
   /**
@@ -53,6 +59,7 @@ export default function ComandaCocina({
       <header className="text-center">
         <p className="text-[10px] font-bold tracking-[0.3em] text-texto-3">COMANDA · COCINA</p>
         {negocio && <p className="text-sm font-bold text-texto">{negocio}</p>}
+        {sede && <p className="text-[12px] font-bold text-texto-2">{sede}</p>}
         <p className="mt-3 text-[10px] font-bold tracking-[0.3em] text-texto-3">TICKET N°</p>
         <p className="font-mono text-[64px] font-black leading-none tracking-tight text-texto">{numeroTicket(numero)}</p>
       </header>
