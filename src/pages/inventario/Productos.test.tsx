@@ -130,6 +130,22 @@ describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
     vi.mocked(api.getSucursales).mockResolvedValue([]);
   });
 
+  it("un supervisor atado a una sede ve que el catálogo es de todo el negocio (sólo con 2+ locales)", async () => {
+    // Decisión del dueño (13-nov): puede editar el catálogo, pero hay que dejar claro que no es de su sede.
+    getProductos.mockResolvedValue([producto()]);
+    sesion.sucursalId = 2;
+    sesion.locales = 2;
+    const { unmount } = render(<Productos />);
+    expect(await screen.findByText(/son de todo el negocio, no sólo de Norte/)).toBeInTheDocument();
+    unmount();
+
+    // Un solo local: nada nuevo a la vista.
+    sesion.locales = 1;
+    render(<Productos />);
+    await screen.findByText("Pollo entero");
+    expect(screen.queryByText(/son de todo el negocio/)).not.toBeInTheDocument();
+  });
+
   it("vendiendo sin stock: ni «Sin stock» en rojo ni el negativo, y el aviso de por qué", async () => {
     // Configuración › Inventario y stock (09-nov). La venta sigue descontando,
     // así que el número queda en negativo: "−4" y "Sin stock" sobre cada

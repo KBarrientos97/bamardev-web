@@ -975,7 +975,7 @@ function FormUsuarioCuerpo({
         {mostrarSucursal && puedeAsignarSucursal && (
           <Campo
             label={pal.Sede}
-            hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí"
+            hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí. El catálogo de productos y precios de lista sigue siendo de todo el negocio."
           >
             <Select
               value={sucursalId ?? ""}

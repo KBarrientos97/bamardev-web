@@ -22,6 +22,7 @@ import {
   useAviso,
 } from "../../components/ui";
 import { api } from "../../lib/api";
+import { Nota } from "../reportes/ui";
 import { esPositivo, parsearMonto } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney, fmtPct } from "../../lib/format";
 import { iconoPorLlave } from "../../lib/iconosArticulo";
@@ -436,6 +437,14 @@ export default function Productos() {
           )
         }
       />
+
+      {/* Un supervisor atado a una sede puede editar el catálogo (decisión del dueño, 13-nov), pero
+          el catálogo no es de su sede: se lo decimos para que no crea que lo que cambia queda en su local. */}
+      {suc.modo === "asignado" && !enPapelera && (
+        <Nota>
+          Los productos, las categorías y los precios de lista son de todo el negocio, no sólo de {suc.miSede ?? "tu sucursal"}: lo que cambies acá se ve en todas las sucursales.
+        </Nota>
+      )}
 
       <div className="space-y-3">
         <div className="flex gap-2">
