@@ -96,18 +96,21 @@ function Diferencia({ esperado, conteo }: { esperado: number; conteo: number }) 
  * también el reporte nuevo de Cierres de caja (`vistas/Cierres.tsx`): es el
  * mismo arqueo, no una copia que se desincronice.
  */
-export function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onCerrar: () => void }) {
+export function ArqueoDetalle({ cierre: c, sede, onCerrar }: { cierre: CierreFila; sede?: string | null; onCerrar: () => void }) {
   const [viendoProductos, setViendoProductos] = useState(false);
   const { rubro } = useAuth();
   // Como la app: cuánto duró y si pasó de un día al otro. El listado fecha el
   // turno por una sola punta, y mirándolo una semana después no se sabía de
   // qué jornada era el que abrió al mediodía y cerró a las 3.
   const enRestaurante = rubro === "RESTAURANTE";
+  // «Centro» sólo para la organización con cierres de 2+ locales (lo decide quien lo abre):
+  // un PDF suelto tiene que decir de qué local es la caja.
+  const subtitulo = [c.fecha, c.cajero, sede].filter(Boolean).join(" · ");
   return (
     <Modal
       abierto
       titulo="Arqueo del turno"
-      subtitulo={`${c.fecha} · ${c.cajero}`}
+      subtitulo={subtitulo}
       onClose={onCerrar}
       ancho="max-w-md"
       acciones={
@@ -156,7 +159,7 @@ export function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onC
       {viendoProductos && (
         <ProductosDelArqueo
           cajaId={c.id}
-          subtitulo={`${c.fecha} · ${c.cajero}`}
+          subtitulo={subtitulo}
           onClose={() => setViendoProductos(false)}
         />
       )}

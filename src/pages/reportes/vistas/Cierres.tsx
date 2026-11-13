@@ -87,7 +87,7 @@ export default function Cierres() {
           );
         }}
       </Cargador>
-      {abierto && <ArqueoDetalle cierre={abierto} onCerrar={() => setAbierto(null)} />}
+      {abierto && <ArqueoDetalle cierre={abierto} sede={conLocal ? abierto.sucursal?.nombre : null} onCerrar={() => setAbierto(null)} />}
     </>
   );
 }
