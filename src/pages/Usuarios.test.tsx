@@ -764,6 +764,16 @@ describe("la sede de cada cuenta (PLAN-SUCURSAL-TOTAL §1)", () => {
     expect(screen.getByRole("button", { name: /@rosa\b/ })).toBeInTheDocument();
   });
 
+  it("al filtrar por una sede siguen las cuentas de toda la organización (sin sede), no sólo las de esa sede", async () => {
+    sesion.locales = 2;
+    await montar([OMAR, EN_CENTRAL, EN_NORTE]);
+    fireEvent.click(screen.getByRole("button", { name: "Norte" }));
+    expect(screen.getByRole("button", { name: /@saul\b/ })).toBeInTheDocument();
+    // El dueño no es de Norte ni de Central: es de todas, y no desaparece.
+    expect(screen.getByRole("button", { name: /@omar\b/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /@rosa\b/ })).not.toBeInTheDocument();
+  });
+
   it("si todas las cuentas con sede son de la misma, no se repite la sede en cada tarjeta", async () => {
     sesion.locales = 2;
     await montar([OMAR, EN_CENTRAL]);

@@ -150,7 +150,10 @@ export default function Usuarios() {
     const texto = q.trim().toLowerCase();
     return lista.filter((u) => {
       if (texto && !contiene(u.nombre, texto) && !contiene(u.usuario, texto)) return false;
-      if (suc.sucursalId != null && u.sucursalId !== suc.sucursalId) return false;
+      // Las cuentas sin sede (el Administrador, un rol con «todas las sucursales»)
+      // son de toda la organización: aparecen con cualquier sede elegida, como en
+      // Personal. Sólo se descartan las atadas a OTRA sede.
+      if (suc.sucursalId != null && u.sucursalId != null && u.sucursalId !== suc.sucursalId) return false;
       if (filtroRol === "todos") return true;
       if (filtroRol === "inactivos") return !u.activo;
       return `rol:${u.rolId}` === filtroRol;
