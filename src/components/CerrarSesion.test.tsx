@@ -21,6 +21,9 @@ const sesion = vi.hoisted(() => ({
   sinSenal: false,
   esAdministrador: false,
   features: [] as string[],
+  /** El admin de una organización con varias sedes (13-nov): `null` = de toda la organización. */
+  sucursalId: undefined as number | null | undefined,
+  sucursalesActivas: undefined as number | undefined,
 }));
 
 vi.mock("../store/AuthContext", async () => {
@@ -36,8 +39,9 @@ vi.mock("../store/AuthContext", async () => {
         rolNombre: "Cajera",
         permisos: sesion.permisos,
         esAdministrador: sesion.esAdministrador,
+        sucursalId: sesion.sucursalId,
       },
-      negocio: { id: 3, nombre: "Pollería", features: sesion.features },
+      negocio: { id: 3, nombre: "Pollería", features: sesion.features, sucursalesActivas: sesion.sucursalesActivas },
       licencia: null,
       cupo: null,
       logout: sesion.logout,
@@ -51,7 +55,7 @@ vi.mock("../store/AuthContext", async () => {
 
 vi.mock("../lib/api", async (original) => {
   const real = await original<typeof import("../lib/api")>();
-  return { ...real, api: { ...real.api, cajaActual: vi.fn() } };
+  return { ...real, api: { ...real.api, cajaActual: vi.fn(), cajasAbiertas: vi.fn() } };
 });
 
 // La cola de ventas cobradas sin internet (la app del iPhone).
@@ -136,7 +140,11 @@ beforeEach(() => {
   sesion.sinSenal = false;
   sesion.esAdministrador = false;
   sesion.features = [];
+  sesion.sucursalId = undefined;
+  sesion.sucursalesActivas = undefined;
+  localStorage.clear();
   vi.mocked(api.cajaActual).mockResolvedValue({ caja: null });
+  vi.mocked(api.cajasAbiertas).mockResolvedValue({ cajas: [] });
   vi.mocked(apiTickets.tablero).mockResolvedValue(tablero());
 });
 
@@ -401,5 +409,75 @@ describe("en la app: el «Cerrar sesión» del menú pasa por el aviso", () => {
     });
     expect(api.cajaActual).not.toHaveBeenCalled();
     expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("organización con varias sedes: una caja abierta en CUALQUIERA frena la salida (13-nov)", () => {
+  const caja = (id: number, almacenId: number) => ({
+    id,
+    almacenId,
+    almacen: { id: almacenId, nombre: `Sede ${almacenId}` },
+    fechaApertura: "2026-11-13T12:00:00.000Z",
+  });
+
+  beforeEach(() => {
+    sesion.esAdministrador = true;
+    sesion.sucursalId = null;
+    sesion.sucursalesActivas = 3;
+    sesion.features = ["multi_almacen"];
+  });
+
+  it("la caja abierta es de OTRA sede (la actual no tiene): igual avisa, y «Ir al cierre» pasa a esa sede", async () => {
+    // La sede en la que está parado no tiene caja (cajaActual daría null)...
+    localStorage.setItem("bamardev.caja.sede:3:7", "38");
+    // ...pero el admin dejó una abierta en la 39.
+    vi.mocked(api.cajasAbiertas).mockResolvedValue({ cajas: [caja(102, 39)] });
+    montar(undefined, "/pos/venta");
+    await salir();
+    expect(api.cajaActual).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Caja abierta" })).toBeInTheDocument();
+    expect(sesion.logout).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ir al cierre de caja" }));
+    });
+    // El POS tiene que parar en la sede de esa caja para poder cerrarla.
+    expect(localStorage.getItem("bamardev.caja.sede:3:7")).toBe("39");
+    expect(screen.getByText(/POS .*"pantalla":"cierre"/)).toBeInTheDocument();
+  });
+
+  it("la caja abierta es la de la sede actual: no cambia de sede al ir al cierre", async () => {
+    localStorage.setItem("bamardev.caja.sede:3:7", "38");
+    vi.mocked(api.cajasAbiertas).mockResolvedValue({ cajas: [caja(101, 38), caja(102, 39)] });
+    montar(undefined, "/pos/venta");
+    await salir();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ir al cierre de caja" }));
+    });
+    expect(localStorage.getItem("bamardev.caja.sede:3:7")).toBe("38");
+  });
+
+  it("sin ninguna caja abierta en ninguna sede sale normal", async () => {
+    vi.mocked(api.cajasAbiertas).mockResolvedValue({ cajas: [] });
+    montar(undefined, "/pos/venta");
+    await salir();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("si no se pudo saber (error), se deja salir como siempre", async () => {
+    vi.mocked(api.cajasAbiertas).mockRejectedValue(new Error("caído"));
+    montar(undefined, "/pos/venta");
+    await salir();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("el cajero atado a una sede sigue con cajaActual (nada nuevo)", async () => {
+    sesion.esAdministrador = false;
+    sesion.sucursalId = 38;
+    vi.mocked(api.cajaActual).mockResolvedValue(CAJA_ABIERTA);
+    montar();
+    await salir();
+    expect(api.cajasAbiertas).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Caja abierta" })).toBeInTheDocument();
   });
 });

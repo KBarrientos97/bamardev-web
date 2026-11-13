@@ -30,8 +30,9 @@ import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
-import { claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia } from "../../lib/offline/copias";
+import { claveCaja, claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia, leerCopia } from "../../lib/offline/copias";
 import { venderOEncolar } from "../../lib/offline/ventas";
+import { useSedeDeCaja } from "../../lib/useSedeDeCaja";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
 import { LATIDO_MS, latidoDeCaja } from "../../lib/offline/turno";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
@@ -46,6 +47,7 @@ import type {
   Venta,
 } from "../../types";
 import AperturaCaja from "./AperturaCaja";
+import { SelectorSedeCaja } from "./SelectorSedeCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
@@ -132,7 +134,24 @@ function PuntoDeVenta() {
   // último que vio, como
   // Android (`CacheLectura`). En el navegador común `conCopia` es el pedido
   // de siempre.
-  const caja = useApi(() => conCopia("caja", () => api.cajaActual()), []);
+  //
+  // El admin de una organización con 2+ sucursales puede tener una caja abierta
+  // en cada una (13-nov): `sede` es en la que está parado y `api` la manda sola
+  // en la cabecera. La clave descarta la caja de la sede anterior mientras llega
+  // la nueva (si no, por un momento se vería la caja de A bajo el nombre de B),
+  // y la copia sin señal es por sede. Para el resto (`usa` = false) la sede es
+  // siempre null: el mismo pedido y la misma copia de siempre.
+  const { usa: variasSedes, sede: sedeActiva, fijar: fijarSede } = useSedeDeCaja();
+  const caja = useApi(() => conCopia(claveCaja(sedeActiva), () => api.cajaActual()), [sedeActiva], {
+    clave: sedeActiva,
+  });
+  // Sin sede elegida el backend devuelve la caja abierta más reciente: esa pasa
+  // a ser la sede activa, para que el resto de las pantallas (Créditos, Billar,
+  // el cierre) sigan la misma.
+  const sedeDeLaCaja = caja.datos?.caja?.almacenId ?? null;
+  useEffect(() => {
+    if (variasSedes && sedeActiva == null && sedeDeLaCaja != null) fijarSede(sedeDeLaCaja);
+  }, [variasSedes, sedeActiva, sedeDeLaCaja, fijarSede]);
   /**
    * El catálogo de la grilla.
    *
@@ -166,6 +185,10 @@ function PuntoDeVenta() {
    */
   const vender = useCallback(
     async (cuerpo: Parameters<typeof api.crearVenta>[0] & { clienteRequestId: string }) => {
+      // Con varias cajas abiertas la venta dice a cuál va: la cola sin conexión
+      // la sube tiempo después y la sede activa de ese momento puede ser otra.
+      // Sin varias sedes el cuerpo es el de siempre.
+      if (variasSedes && almacenCaja != null && cuerpo.almacenId == null) cuerpo = { ...cuerpo, almacenId: almacenCaja };
       const r = await venderOEncolar(cuerpo, api.crearVenta, {
         productos: productos.datos ?? [],
         formasPago: formasPago.datos ?? [],
@@ -179,7 +202,7 @@ function PuntoDeVenta() {
       if (r.encolada) await descontarDeLaCopia(copiaCatalogo(almacenCaja), cuerpo.detalles);
       return r;
     },
-    [productos.datos, formasPago.datos, usuario, almacenCaja, idCaja],
+    [productos.datos, formasPago.datos, usuario, almacenCaja, idCaja, variasSedes],
   );
   /**
    * Lo del salón y del reparto se pide sólo si el plan lo trae (QA M-11): un
@@ -665,6 +688,39 @@ function PuntoDeVenta() {
     setPropinasCredito([]);
   }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
 
+  // ── Cambiar de sede con caja (organización con 2+ sucursales) ──────────────
+  /** La sede a la que quiere ir, esperando que confirme (hay una venta a medias). */
+  const [sedePendiente, setSedePendiente] = useState<{ id: number; nombre: string } | null>(null);
+  /** Por qué no se pudo cambiar (sin conexión y sin copia de esa sede). */
+  const [avisoSede, setAvisoSede] = useState("");
+  const ventaEnCurso = carrito.lineas.length > 0 || !!citaCobrando || !!mesaCobrando;
+
+  const irASede = useCallback(
+    async (id: number) => {
+      setSedePendiente(null);
+      setAvisoSede("");
+      // Sin señal sólo se salta a una sede de la que hay copia: sin ella la
+      // pantalla quedaría sin caja ni catálogo y sin forma de volver.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        const copia = await leerCopia(claveCaja(id));
+        if (copia === undefined) {
+          setAvisoSede("Sin conexión: todavía no hay datos guardados de esa sucursal. Conectate para cambiar.");
+          return;
+        }
+      }
+      // Lo que se armó era con el stock y los precios de la sede anterior.
+      limpiar();
+      fijarSede(id);
+    },
+    [limpiar, fijarSede],
+  );
+  /** Elegir otra sede: si hay una venta a medias, primero se confirma. */
+  const elegirSede = (id: number, nombre: string) => {
+    if (id === (sedeActiva ?? sedeDeLaCaja)) return;
+    if (ventaEnCurso) setSedePendiente({ id, nombre });
+    else void irASede(id);
+  };
+
   const cobrar = useCallback(
     async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[]; propinaMesa?: number }) => {
       setError("");
@@ -907,7 +963,10 @@ function PuntoDeVenta() {
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
   if (caja.error)
     return (
-      <div className="p-5">
+      <div className="space-y-3 p-5">
+        {/* Si la sede elegida no responde (o no tiene copia sin señal), se puede
+            volver a otra sin quedar trabado en el error. */}
+        {variasSedes && <SelectorSedeCaja valor={sedeActiva} onElegir={(id) => void irASede(id)} />}
         <ErrorMsg onReintentar={caja.recargar}>{caja.error}</ErrorMsg>
       </div>
     );
@@ -926,7 +985,27 @@ function PuntoDeVenta() {
       />
     );
 
-  if (!abierta) return <AperturaCaja onAbierta={() => caja.recargar()} />;
+  if (!abierta)
+    return (
+      <>
+        {/* Con caja abierta en otra sede, se puede saltar a ella en vez de abrir
+            ésta; sin ninguna la pantalla es la de siempre. */}
+        {variasSedes && (
+          <div className="flex justify-center px-5 pt-5">
+            <SelectorSedeCaja valor={sedeActiva} onElegir={(id) => void irASede(id)} soloConCajas />
+          </div>
+        )}
+        <AperturaCaja
+          sucursalInicial={variasSedes ? sedeActiva : null}
+          onAbierta={(c) => {
+            // Abrir en una sede la deja como la activa: de ahí en adelante todo
+            // (ventas, Créditos, el cierre) es de esa caja.
+            if (variasSedes && c.almacenId != null) fijarSede(c.almacenId);
+            caja.recargar();
+          }}
+        />
+      </>
+    );
 
   if (pantalla === "cierre")
     return (
@@ -1257,10 +1336,14 @@ function PuntoDeVenta() {
                   que quien cobra tiene que poder verlo sin buscarlo. Sólo
                   aparece si el backend la manda — un negocio de un local no ve
                   nada, que es lo correcto. */}
-              {abierta.almacen && (
-                <span className="truncate rounded-lg bg-primary-50 px-2 py-0.5 text-[12px] font-semibold text-primary-700">
-                  {abierta.almacen}
-                </span>
+              {variasSedes ? (
+                <SelectorSedeCaja valor={abierta.almacenId} onElegir={elegirSede} />
+              ) : (
+                abierta.almacen && (
+                  <span className="truncate rounded-lg bg-primary-50 px-2 py-0.5 text-[12px] font-semibold text-primary-700">
+                    {abierta.almacen}
+                  </span>
+                )
               )}
             </h1>
             <p className="flex items-center gap-1.5 truncate text-xs text-texto-3">
@@ -1268,6 +1351,11 @@ function PuntoDeVenta() {
               Caja abierta {abiertaDesde(abierta.fechaApertura)} ·{" "}
               {fmtMoney(abierta.montoApertura)}
             </p>
+            {avisoSede && (
+              <p role="alert" className="mt-1 text-xs font-medium text-red-600">
+                {avisoSede}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {conSitio && (
@@ -1358,6 +1446,26 @@ function PuntoDeVenta() {
         <div className="px-4 pt-3 empty:hidden">
           <AvisoSinSubir />
         </div>
+
+        {/* Cambiar de sede con una venta a medias: el carrito era con el stock y
+            los precios de la otra, así que se vacía; antes se avisa. */}
+        <Confirmar
+          abierto={!!sedePendiente}
+          titulo={`Pasar a ${sedePendiente?.nombre ?? "otra sucursal"}`}
+          texto={`${
+            carrito.lineas.length === 0
+              ? "Tenés una cuenta por cobrar a medias"
+              : carrito.lineas.length === 1
+                ? "Tenés 1 producto en el carrito"
+                : `Tenés ${carrito.lineas.length} productos en el carrito`
+          }. Se vacía al cambiar de sucursal: cada una tiene su propia caja, su stock y sus precios.`}
+          etiquetaOk="Vaciar y cambiar"
+          peligroso
+          onCancel={() => setSedePendiente(null)}
+          onOk={() => {
+            if (sedePendiente) void irASede(sedePendiente.id);
+          }}
+        />
 
         {/* Los mismos dos avisos que el POS de la app. Van arriba del catálogo
             y no sólo como ícono: el mesero llega con la cuenta o con la plata
