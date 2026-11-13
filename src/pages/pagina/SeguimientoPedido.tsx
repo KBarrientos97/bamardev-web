@@ -203,7 +203,7 @@ export default function SeguimientoPedido() {
                     {i > 0 && <span aria-hidden="true" style={{ position: "absolute", top: 13, right: "50%", width: "100%", height: 3, background: hecho ? fuerte : "#E5E7EB" }} />}
                     <span
                       aria-hidden="true"
-                      style={{ position: "relative", width: 28, height: 28, borderRadius: 999, background: hecho ? fuerte : "#E5E7EB", color: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: i === actual ? `0 0 0 5px ${tinte}` : "none" }}
+                      style={{ position: "relative", zIndex: 1, width: 28, height: 28, borderRadius: 999, background: hecho ? fuerte : "#E5E7EB", color: "#ffffff", display: "inline-flex", alignItems: "center", justifyContent: "center", boxShadow: i === actual ? `0 0 0 5px ${tinte}` : "none" }}
                     >
                       {hecho && <Trazo d="M5 12l4.5 4.5L19 7" color="#ffffff" size={16} grosor={3} />}
                     </span>
@@ -263,8 +263,14 @@ export default function SeguimientoPedido() {
             </div>
           </dl>
           <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-            {seg.formaPago === "QR" ? "Pagás con QR al recibir." : "Pagás en efectivo al recibir."}
-            {seg.formaPago === "EFECTIVO" && seg.pagaCon != null && (
+            {seg.estado === "ENTREGADO"
+              ? seg.formaPago === "QR"
+                ? "Pagaste con QR."
+                : "Pagaste en efectivo."
+              : seg.formaPago === "QR"
+                ? "Pagás con QR al recibir."
+                : "Pagás en efectivo al recibir."}
+            {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && (
               <>
                 {" "}
                 Con {formatoPrecio(seg.pagaCon)}
@@ -296,6 +302,7 @@ export default function SeguimientoPedido() {
       </div>
 
       {/* La barra fija de abajo, como el panel de meseros: una acción principal. */}
+      {(whatsapp || fin || puedeCancelar) && (
       <footer
         style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 40, background: "rgba(255,255,255,.96)", borderTop: "1px solid #E5E7EB", padding: "10px 16px calc(10px + env(safe-area-inset-bottom, 0px))", backdropFilter: "blur(6px)" }}
       >
@@ -333,6 +340,7 @@ export default function SeguimientoPedido() {
           )}
         </div>
       </footer>
+      )}
 
       {confirmando && (
         <div

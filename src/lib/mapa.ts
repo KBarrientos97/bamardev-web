@@ -47,6 +47,22 @@ export function cargarMaplibre(): Promise<MapLibre> {
 }
 
 /**
+ * Deja la atribución («OpenFreeMap © OpenMapTiles…») plegada detrás del botón
+ * «i». MapLibre la abre sola en los mapas chicos y en el celular tapa un tercio
+ * del mapa y los pines de abajo; sigue a un toque, así que no se esconde. Va al
+ * crear el control y otra vez al cargar, porque MapLibre la reabre al medirse.
+ */
+export function plegarAtribucion(m: { getContainer(): HTMLElement; once(ev: "load", fn: () => void): unknown }) {
+  const plegar = () => {
+    const el = m.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    el?.classList.remove("maplibregl-compact-show");
+    el?.removeAttribute("open");
+  };
+  plegar();
+  m.once("load", plegar);
+}
+
+/**
  * Corre `fn` cuando el navegador está libre, después de pintar lo primero de
  * la pantalla (Safari no tiene requestIdleCallback: ahí, un rato después).
  * Devuelve cómo cancelarlo.

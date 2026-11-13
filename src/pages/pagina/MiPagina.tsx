@@ -804,6 +804,9 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
       await encolar();
       const nuevo = await apiPagina.publicarCambios(publicarPagina);
       carga.setDatos(conCatalogo(nuevo, ultimo.current));
+      // «Pedidos web» del menú sigue al interruptor recién publicado, sin esperar
+      // al chequeo de la licencia (CONTRATO-PEDIDOS-WEB §9): sólo si el plan trae delivery.
+      if (sesion?.negocio?.features?.includes("delivery")) sesion.fijarPedidosWeb(!!nuevo.pagina.pedidosSistema);
       setAvisoEstilo(null);
       setAviso(
         publicarPagina ? "¡Tu página está publicada!" : e.pagina.publicada ? "Cambios publicados" : "Cambios guardados",

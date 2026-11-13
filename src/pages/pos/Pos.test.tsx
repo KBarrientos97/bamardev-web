@@ -1301,13 +1301,14 @@ describe("pedidos web: el aviso del POS (13-nov)", () => {
     vi.mocked(apiPedidosWeb.contador).mockResolvedValue({ nuevos: 2, masViejoEn: "2026-11-13T20:00:00.000Z" });
     await montar();
     expect(await screen.findByRole("button", { name: /2 pedidos web nuevos/ })).toBeInTheDocument();
-    expect(screen.getByText(/Un cliente espera respuesta/)).toBeInTheDocument();
+    expect(screen.getByText(/Hay clientes esperando respuesta/)).toBeInTheDocument();
   });
 
   it("uno solo, en singular", async () => {
     vi.mocked(apiPedidosWeb.contador).mockResolvedValue({ nuevos: 1, masViejoEn: null });
     await montar();
     expect(await screen.findByRole("button", { name: /1 pedido web nuevo/ })).toBeInTheDocument();
+    expect(screen.getByText(/Un cliente espera respuesta/)).toBeInTheDocument();
   });
 
   it("sin pedidos nuevos no hay franja ni un cero inventado", async () => {

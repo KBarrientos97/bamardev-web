@@ -335,6 +335,19 @@ describe("el carrito con pedidos en el sistema", () => {
     expect(JSON.parse(String(s.posteos()[0].init?.body))).not.toHaveProperty("precisionM");
   });
 
+  it("si el GPS falla y después marca el pin a mano, el error de la ubicación se va", async () => {
+    servidor();
+    const rechazar = vi.fn((_ok: PositionCallback, mal: PositionErrorCallback) => mal({ code: 1, message: "negado" } as GeolocationPositionError));
+    Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition: rechazar }, configurable: true });
+    await montar();
+    await abrirPedido();
+    await screen.findByRole("button", { name: "Marcar mi casa" });
+    fireEvent.click(screen.getByRole("button", { name: /Usar mi ubicación/ }));
+    expect(await screen.findByText(/No pudimos leer tu ubicación/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Marcar mi casa" }));
+    await waitFor(() => expect(screen.queryByText(/No pudimos leer tu ubicación/)).not.toBeInTheDocument());
+  });
+
   it("recuerda el nombre y el WhatsApp para la próxima vez", async () => {
     localStorage.setItem("pedido-datos:elganadero", JSON.stringify({ nombre: "Lucía", telefono: "71234567", direccion: "Calle 5", entrega: "DELIVERY" }));
     servidor();

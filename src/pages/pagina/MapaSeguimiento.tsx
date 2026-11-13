@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL, Marker } from "maplibre-gl";
 import { estiloMapa } from "../../lib/estiloMapa";
-import { cargarMaplibre } from "../../lib/mapa";
+import { cargarMaplibre, plegarAtribucion } from "../../lib/mapa";
 
 /**
  * El mapa del seguimiento (pedidos web, 13-nov): la moto, la casa y el local.
@@ -78,6 +78,7 @@ export default function MapaSeguimiento({
           return;
         }
         m.addControl(new ml.AttributionControl({ compact: true }));
+        plegarAtribucion(m);
         m.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
         if (d) new ml.Marker({ element: ficha("C", c, ed) }).setLngLat([d.longitud, d.latitud]).addTo(m);
         if (l) new ml.Marker({ element: ficha("L", "#374151", el) }).setLngLat([l.longitud, l.latitud]).addTo(m);
@@ -120,6 +121,14 @@ export default function MapaSeguimiento({
         aria-label="Mapa con tu pedido"
         style={{ height: alto, width: "100%", borderRadius: 16, overflow: "hidden", border: "1px solid #E5E7EB", background: "#EEF0F3" }}
       />
+      {/* Las letras del mapa no se explican solas: una línea las nombra. */}
+      {!falla && (destino || local || moto) && (
+        <ul aria-hidden="true" style={{ listStyle: "none", margin: "8px 0 0", padding: 0, display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 12, color: "#4B5563" }}>
+          {destino && <li><b style={{ color }}>C</b> {etiquetaDestino}</li>}
+          {local && <li><b style={{ color: "#374151" }}>L</b> {etiquetaLocal}</li>}
+          {moto && <li><b style={{ color: "#DC2626" }}>M</b> El repartidor</li>}
+        </ul>
+      )}
       {falla && (
         <p role="alert" style={{ margin: "6px 0 0", fontSize: 13, color: "#B91C1C" }}>
           {falla}

@@ -280,7 +280,8 @@ export default function PanelSistema({
     setPin(u);
     setPinSinAjustar(false);
     setPrecisionM(null);
-    setGps((g) => ({ ...g, aviso: "" }));
+    // Ya marcó el pin a mano: el «No pudimos leer tu ubicación» de antes deja de valer.
+    setGps((g) => ({ ...g, aviso: "", falla: "" }));
   };
 
   const campo: CSSProperties = {

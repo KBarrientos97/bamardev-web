@@ -1395,7 +1395,7 @@ function PuntoDeVenta() {
                     ? "1 pedido web nuevo"
                     : `${pedidosWeb.nuevos} pedidos web nuevos`
                 }
-                detalle="Un cliente espera respuesta · tocá para verlos"
+                detalle={pedidosWeb.nuevos === 1 ? "Un cliente espera respuesta · tocá para verlo" : "Hay clientes esperando respuesta · tocá para verlos"}
                 onClick={() => navigate("/pedidos-web")}
               />
             )}

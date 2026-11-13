@@ -118,6 +118,13 @@ describe("el seguimiento del pedido", () => {
     expect(screen.getByText("Aceptado", { selector: "span" }).closest("li")).toHaveAttribute("aria-current", "step");
   });
 
+  it("Aceptado en un local sin WhatsApp: no queda una barra de abajo vacía", async () => {
+    servidor({ estado: "ACEPTADO", whatsappLocal: null });
+    await montar();
+    await screen.findByText(/¡Aceptado! Lo estamos preparando/);
+    expect(document.querySelector("footer")).toBeNull();
+  });
+
   it("En camino: mapa con la casa, el local y la moto, y el nombre del repartidor", async () => {
     servidor({
       estado: "EN_CAMINO",
@@ -148,6 +155,9 @@ describe("el seguimiento del pedido", () => {
     await montar();
     expect(await screen.findByText(/Entregado\. ¡Que lo disfrutes!/)).toBeInTheDocument();
     expect(localStorage.getItem("pedido-curso:elganadero")).toBeNull();
+    // Ya no se «paga al recibir»: se pagó.
+    expect(screen.getByText("Pagaste en efectivo.")).toBeInTheDocument();
+    expect(screen.queryByText(/te llevan/)).not.toBeInTheDocument();
     const antes = s.seguimientos().length;
     await act(async () => {
       vi.advanceTimersByTime(REFRESCO_SEGUIMIENTO_MS * 3);

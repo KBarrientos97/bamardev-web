@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL, Marker } from "maplibre-gl";
 import { estiloMapa } from "../../lib/estiloMapa";
-import { cargarMaplibre, redondear, SANTA_CRUZ, type Ubicacion } from "../../lib/mapa";
+import { cargarMaplibre, plegarAtribucion, redondear, SANTA_CRUZ, type Ubicacion } from "../../lib/mapa";
 
 /**
  * El pin de la casa del cliente (pedidos web, 13-nov): se toca el mapa o se
@@ -55,6 +55,7 @@ export default function ElegirPin({
         }
         m.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
         m.addControl(new ml.AttributionControl({ compact: true }));
+        plegarAtribucion(m);
         let pin: Marker | null = null;
         const colocar = (u: Ubicacion, volar: boolean) => {
           ultimo.current = u;

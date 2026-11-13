@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useRef } from "react";
 import { Icon } from "../../components/Icon";
 import InputMonto from "../../components/InputMonto";
 import { Badge, Boton, Cargando, ErrorMsg, Input, Select } from "../../components/ui";
@@ -66,7 +66,7 @@ export default function DetallePedidoWeb({
           <Icon name="arrowLeft" size={20} />
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-bold text-texto">
+          <h1 className="break-words text-lg font-bold leading-tight text-texto">
             Pedido N° {String(p.numero).padStart(2, "0")} · {p.nombre}
           </h1>
           <p className="text-[13px] text-texto-3">
@@ -89,7 +89,7 @@ export default function DetallePedidoWeb({
       <section className="card space-y-3 p-4" aria-label="Cliente">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-texto">{p.nombre}</p>
+            <p className="break-words text-sm font-bold text-texto">{p.nombre}</p>
             <p className="text-[13px] text-texto-3">{Telefono.paraMostrar(p.telefono)}</p>
           </div>
           {tel && wa && (
@@ -214,6 +214,19 @@ function esConflicto(e: unknown): e is ApiError {
   return e instanceof ApiError && e.status === 409;
 }
 
+/**
+ * Al abrir un formulario de la bandeja, lo trae a la vista: en el celular los
+ * botones de abajo desaparecen y el formulario nace bajo la tarjeta del mapa,
+ * así que sin esto parece que el toque no hizo nada.
+ */
+function useVerseAlAbrir() {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "end", behavior: "smooth" });
+  }, []);
+  return ref;
+}
+
 function avisarCambio() {
   window.dispatchEvent(new Event(EVENTO_PEDIDOS_WEB));
 }
@@ -230,6 +243,7 @@ function FormAceptar({
   onConflicto: (m: string) => void;
 }) {
   const delivery = pedido.tipo === "DELIVERY";
+  const caja = useVerseAlAbrir();
   const repartidores = useApi(() => (delivery ? api.getRepartidores() : Promise.resolve([])), [delivery]);
   const [repartidorId, setRepartidorId] = useState("");
   const [envio, setEnvio] = useState(montoParaEditar(pedido.envioSugerido));
@@ -273,7 +287,7 @@ function FormAceptar({
   }
 
   return (
-    <section className="card space-y-3 p-4" aria-label="Aceptar el pedido">
+    <section ref={caja} className="card space-y-3 p-4" aria-label="Aceptar el pedido">
       <h2 className="text-sm font-bold text-texto">Aceptar el pedido</h2>
       {delivery && (
         <>
@@ -329,6 +343,7 @@ function FormRechazar({
   onHecho: (m: string) => void;
   onConflicto: (m: string) => void;
 }) {
+  const caja = useVerseAlAbrir();
   const [codigo, setCodigo] = useState<CodigoRechazo | null>(null);
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState("");
@@ -354,7 +369,7 @@ function FormRechazar({
   }
 
   return (
-    <section className="card space-y-3 p-4" aria-label="Rechazar el pedido">
+    <section ref={caja} className="card space-y-3 p-4" aria-label="Rechazar el pedido">
       <h2 className="text-sm font-bold text-texto">¿Por qué lo rechazás?</h2>
       <p className="text-[13px] text-texto-3">El cliente ve el motivo en su pantalla.</p>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Atajos de motivo">

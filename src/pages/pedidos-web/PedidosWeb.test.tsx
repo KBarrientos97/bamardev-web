@@ -197,6 +197,24 @@ describe("el detalle", () => {
     expect(screen.getByRole("link", { name: /Abrir el pin en Google Maps/ })).toHaveAttribute("href", expect.stringContaining("destination=-17.76,-63.18"));
   });
 
+  it("al abrir aceptar o rechazar, el formulario se trae a la vista (en el celular nace bajo el mapa)", async () => {
+    const ver = vi.fn();
+    Element.prototype.scrollIntoView = ver;
+    try {
+      await abrirLucia();
+      fireEvent.click(screen.getByRole("button", { name: "Aceptar pedido" }));
+      expect(ver).toHaveBeenCalledTimes(1);
+      expect(ver.mock.contexts[0]).toBe(screen.getByRole("region", { name: "Aceptar el pedido" }));
+      fireEvent.click(within(screen.getByRole("region", { name: "Aceptar el pedido" })).getByRole("button", { name: "Volver" }));
+      fireEvent.click(screen.getByRole("button", { name: "Rechazar" }));
+      expect(ver).toHaveBeenCalledTimes(2);
+      expect(ver.mock.contexts[1]).toBe(screen.getByRole("region", { name: "Rechazar el pedido" }));
+    } finally {
+      // jsdom no lo trae: se deja como estaba.
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
+  });
+
   it("aceptar: elige repartidor, el envío viene precargado y manda el cuerpo del contrato", async () => {
     mock.aceptar.mockResolvedValue({ ...LUCIA, estado: "ACEPTADO", ventaId: 900 });
     await abrirLucia();
