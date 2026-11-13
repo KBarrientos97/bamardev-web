@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
-import { totalPedido } from "../../lib/pagina/pedido";
+import { avisoDeQuitados, totalPedido } from "../../lib/pagina/pedido";
 import { urlPedidoDe } from "../../lib/pagina/rutas";
 import type { Pedido } from "../../lib/pagina/usePedido";
 import { alDescansar, precargarMapa, type Ubicacion } from "../../lib/mapa";
@@ -180,20 +180,33 @@ export default function PanelSistema({
 
   // Con otro local elegido, las líneas toman SUS precios (y se van las que ahí no se ofrecen).
   const antes = useRef(lineas.length);
+  const lineasAntes = useRef(lineas);
+  /**
+   * El próximo cambio de las líneas viene de cambiar de local (no de que el cliente
+   * quitara una): sólo ahí se avisa «sacamos…». Antes avisaba también al quitar a mano
+   * un producto, diciendo que «ese local no lo ofrece».
+   */
+  const porCambioDeLocal = useRef(false);
   useEffect(() => {
     if (elegida == null || elegida === sucursalCatalogo || !muchasSucursales) return;
     antes.current = lineas.length;
+    lineasAntes.current = lineas;
+    porCambioDeLocal.current = true;
     onSucursal(elegida);
     // Sólo cuando cambia el local elegido: onSucursal y lineas cambian solos al reaccionar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elegida, sucursalCatalogo, muchasSucursales]);
   useEffect(() => {
-    if (lineas.length < antes.current) {
+    if (lineas.length < antes.current && porCambioDeLocal.current) {
       const n = antes.current - lineas.length;
-      setSacados(`Sacamos ${n} ${n === 1 ? "producto" : "productos"} que ese local no ofrece.`);
+      setSacados(avisoDeQuitados(lineasAntes.current, lineas) ?? `Sacamos ${n} ${n === 1 ? "producto" : "productos"} que ese local no ofrece.`);
+    } else if (lineas.length < antes.current) {
+      setSacados("");
     }
+    porCambioDeLocal.current = false;
     antes.current = lineas.length;
-  }, [lineas.length]);
+    lineasAntes.current = lineas;
+  }, [lineas]);
 
   const { total: subtotal } = totalPedido(lineas);
   const envio = tipoReal === "DELIVERY" ? (ev?.envio ?? null) : 0;

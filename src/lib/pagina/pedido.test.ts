@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agregarLinea, ajustarASucursal, cambiarCantidad, cantidadTotal, mensajePedido, totalPedido } from "./pedido";
+import { agregarLinea, ajustarASucursal, avisoDeQuitados, cambiarCantidad, cantidadTotal, mensajePedido, totalPedido } from "./pedido";
 import { catalogoEnSucursal } from "./catalogo";
 import type { ItemCatalogoPublico } from "./tipos";
 
@@ -113,5 +113,18 @@ describe("servicios en el pedido", () => {
     expect(l[0]).toMatchObject({ cantidad: 1, servicio: true });
     expect(cambiarCantidad(l, 9, 1)[0].cantidad).toBe(1);
     expect(cambiarCantidad(l, 9, -1)).toEqual([]);
+  });
+});
+
+describe("avisoDeQuitados", () => {
+  const l = (id: number, titulo: string) => ({ id, titulo, precio: 10, desde: false, cantidad: 1 });
+  it("nombra el producto que sale al cambiar de local (sesion 2)", () => {
+    expect(avisoDeQuitados([l(1, "Mocochinchi"), l(2, "Api")], [l(2, "Api")])).toBe("Sacamos «Mocochinchi» porque ese local no lo ofrece.");
+  });
+  it("con varios, los junta", () => {
+    expect(avisoDeQuitados([l(1, "A"), l(2, "B"), l(3, "C")], [l(3, "C")])).toBe("Sacamos «A» y «B» porque ese local no los ofrece.");
+  });
+  it("sin nada que sacar, no dice nada", () => {
+    expect(avisoDeQuitados([l(1, "A")], [l(1, "A")])).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InfoPedidos, SucursalPedido } from "../../lib/pedidosWeb/tipos";
@@ -423,5 +423,24 @@ describe("el carrito con pedidos en el sistema", () => {
     const css = Array.from(document.querySelectorAll("style")).map((e) => e.textContent).join(" ");
     expect(css).toMatch(/@media \(max-height:520px\)\{\.hoja-pedido\{overflow-y:auto!important/);
     expect(css).toMatch(/\.cuerpo-pedido\{overflow:visible!important/);
+  });
+
+  it("quitar a mano un producto del pedido no dice «sacamos… porque ese local no lo ofrece» (sesion 2)", async () => {
+    const dos = { ...PAGINA, pedidosSistema: true, catalogo: { titulo: "Menú", items: [...PAGINA.catalogo!.items, { id: 42, titulo: "Mocochinchi", descripcion: null, precio: 8, precioDesde: false, fotoUrl: null, icono: null, categoria: null }] } };
+    // El pedido ya armado (vive en sessionStorage, como si el cliente lo hubiera sumado).
+    sessionStorage.setItem(
+      "pedido:elganadero",
+      JSON.stringify([
+        { id: 41, titulo: "Arroz con leche grande", precio: 50, desde: false, cantidad: 1 },
+        { id: 42, titulo: "Mocochinchi", precio: 8, desde: false, cantidad: 1 },
+      ]),
+    );
+    servidor({ pagina: dos });
+    await montar();
+    fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido/ }));
+    const hoja = await screen.findByRole("dialog", { name: "Tu pedido" });
+    fireEvent.click(screen.getByRole("button", { name: /^Quitar uno de Mocochinchi/ }));
+    await waitFor(() => expect(within(hoja).queryByText("Mocochinchi")).not.toBeInTheDocument());
+    expect(screen.queryByText(/Sacamos/)).not.toBeInTheDocument();
   });
 });
