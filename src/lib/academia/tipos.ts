@@ -1226,6 +1226,16 @@ export interface HistorialPagosDocente {
   pagos: PagoHistorialDocente[];
 }
 
+/**
+ * Lo que el pago del mes carga a una sede (PLAN-SUCURSAL-TOTAL §8.6): `pagar`
+ * paga el mes entero del docente y crea un gasto SUELDOS por sede, en
+ * proporción a lo que aportó cada una.
+ */
+export interface PagoDeSede {
+  sede: Ref;
+  liquido: number;
+}
+
 export interface FilaPlanillaMes {
   personalId: number;
   nombre: string;
@@ -1234,8 +1244,20 @@ export interface FilaPlanillaMes {
   total: number;
   bruto: number;
   retencion: number | null;
+  /**
+   * El subtotal de la sede que se mira (con `?sede=` o un usuario de una sede);
+   * sin filtro es todo el mes. NO es lo que paga el botón: ese es `aPagar`.
+   */
   liquido: number;
   estado: EstadoPlanilla;
+  /**
+   * Lo que realmente se le paga al docente en el mes: el líquido de TODAS sus
+   * sedes (o lo cerrado, si ya se cerró). Un backend anterior no lo manda: sin
+   * él, `liquido`.
+   */
+  aPagar?: number;
+  /** Lo que el pago carga a las sedes que este usuario no mira; vacío sin filtro de sede. */
+  otrasSedes?: PagoDeSede[];
   /** Cambio #18. */
   atrasados?: number;
   postergados?: number;
@@ -1328,6 +1350,12 @@ export interface PlanillaDocente {
   clases?: ResumenClasesDocente;
   /** Ítem 4: los grupos que dio en el mes (por las clases, también los que reemplazó). */
   gruposDelMes?: GrupoDelMesDocente[];
+  /** Lo que se le paga de verdad: el mes de todas sus sedes. Un backend anterior no lo manda: `resumen.liquido`. */
+  aPagar?: number;
+  /** Cómo cae ese pago en cada sede (suma `aPagar`): los gastos de sueldos que se crean. */
+  porSede?: PagoDeSede[];
+  /** Lo del pago que va a sedes que este usuario no mira. */
+  otrasSedes?: PagoDeSede[];
   resumen: {
     cuentan: number;
     postergados: number;

@@ -6,6 +6,7 @@ import { textoPagado } from "../../../lib/academia/pagosDocente";
 import type { HistorialPagosDocente } from "../../../lib/academia/tipos";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
+import { useSedeAsignada } from "../../../lib/useSucursales";
 import { BotonFila, Chip, LISTA, Tarjeta } from "../piezas";
 import ComprobantePago from "./ComprobantePago";
 
@@ -18,6 +19,10 @@ import ComprobantePago from "./ComprobantePago";
  *
  * `version` sube cuando se paga algo en la pantalla: el historial se vuelve a
  * pedir para que el mes recién pagado aparezca.
+ *
+ * Con 2+ sedes (PLAN-SUCURSAL-TOTAL §8.6) el monto de cada mes es el del pago
+ * COMPLETO del docente (todas sus sedes), no el de la sede de quien mira: a
+ * quien está atado a una sede se le dice, para que no lo cuente como lo suyo.
  */
 export default function HistorialPagos({
   personalId,
@@ -36,12 +41,17 @@ export default function HistorialPagos({
   }, [personalId, version]);
   const h = carga.datos;
   const [comprobante, setComprobante] = useState<string | null>(null);
+  const miSede = useSedeAsignada();
   const pagado = h ? h.pagos.filter((x) => x.estado === "PAGADA").reduce((s, x) => s + x.liquido, 0) : 0;
 
   return (
     <Tarjeta
       titulo="Historial de pagos"
-      bajada={h && h.pagos.length ? `Pagado en total: ${fmtMoney(pagado)}` : undefined}
+      bajada={
+        h && h.pagos.length
+          ? `Pagado en total: ${fmtMoney(pagado)}${miSede ? " · son los pagos completos de cada mes (todas sus sedes), no sólo lo de la tuya" : ""}`
+          : undefined
+      }
       sinRelleno
     >
       {carga.error && !h ? (

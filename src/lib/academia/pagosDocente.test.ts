@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  aPagarDe,
   archivoComprobante,
+  avisoOtrasSedes,
   datosClases,
   hayAtrasosSinJustificar,
   mensajeComprobanteDocente,
+  puedeCerrarYPagar,
   textoAtrasos,
   textoGrupoDelMes,
   textoGrupoPlanilla,
   textoMetodoPago,
   textoPagado,
+  textoRepartoPorSede,
   whatsappComprobante,
 } from "./pagosDocente";
 import type { ResumenClasesDocente } from "./tipos";
@@ -135,5 +139,48 @@ describe("el comprobante por WhatsApp (ítem 17)", () => {
   it("el archivo de la imagen, sin tildes ni espacios", () => {
     expect(archivoComprobante("Lucía Fernández", "2026-10")).toBe("comprobante-lucia-fernandez-2026-10");
     expect(archivoComprobante("", "2026-10")).toBe("comprobante-docente-2026-10");
+  });
+});
+
+/** PLAN-SUCURSAL-TOTAL §8.6: el pago del mes es de todas las sedes del docente. */
+describe("el pago del mes con 2+ sedes", () => {
+  const CENTRAL = { id: 1, nombre: "Central" };
+  const NORTE = { id: 2, nombre: "Norte" };
+  const SUR = { id: 3, nombre: "Sur" };
+
+  it("lo que se paga es aPagar, no el subtotal de la sede; sin aPagar, el líquido de siempre", () => {
+    expect(aPagarDe({ liquido: 600, aPagar: 900 })).toBe(900);
+    expect(aPagarDe({ liquido: 600 })).toBe(600);
+    // Un mes sin nada que pagar no se confunde con «sin dato».
+    expect(aPagarDe({ liquido: 600, aPagar: 0 })).toBe(0);
+  });
+
+  it("avisa en qué otras sedes dicta y cuánto es, antes de pagar", () => {
+    expect(avisoOtrasSedes([{ sede: NORTE, liquido: 300 }])).toBe("Además dicta en Norte (Bs 300,00): el pago es de todo el mes, no sólo de esta sede.");
+    expect(
+      avisoOtrasSedes([
+        { sede: NORTE, liquido: 300 },
+        { sede: SUR, liquido: 100 },
+      ]),
+    ).toContain("Además dicta en Norte y Sur (Bs 400,00)");
+    expect(avisoOtrasSedes([])).toBe("");
+    expect(avisoOtrasSedes(undefined)).toBe("");
+  });
+
+  it("el reparto en Gastos por sede sólo se dice con 2 o más sedes", () => {
+    expect(
+      textoRepartoPorSede([
+        { sede: CENTRAL, liquido: 600 },
+        { sede: NORTE, liquido: 300 },
+      ]),
+    ).toBe("Central Bs 600,00 · Norte Bs 300,00");
+    expect(textoRepartoPorSede([{ sede: CENTRAL, liquido: 900 }])).toBe("");
+    expect(textoRepartoPorSede(undefined)).toBe("");
+  });
+
+  it("quien está atado a una sede no cierra ni paga si el docente dicta también en otra (403 OTRA_SEDE)", () => {
+    expect(puedeCerrarYPagar(true, [{ sede: NORTE, liquido: 300 }])).toBe(false);
+    expect(puedeCerrarYPagar(true, [])).toBe(true);
+    expect(puedeCerrarYPagar(false, [{ sede: NORTE, liquido: 300 }])).toBe(true);
   });
 });
