@@ -432,3 +432,63 @@ describe("Belleza y los demás rubros: igual que antes", () => {
     expect(within(form).queryByText(/descartables/i)).not.toBeInTheDocument();
   });
 });
+
+describe("Insumos con varios almacenes (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  it("el formulario ya no tiene el campo «Almacén» que el backend ignoraba, ni lo manda", async () => {
+    sesion.rubro = "PELUQUERIA";
+    montar();
+    const detalle = await abrirDetalle("Pollo crudo");
+    fireEvent.click(within(detalle).getByRole("button", { name: "Editar" }));
+    const form = screen.getByRole("dialog", { name: "Editar insumo" });
+    expect(within(form).queryByRole("combobox", { name: "Almacén" })).not.toBeInTheDocument();
+    fireEvent.click(within(form).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(api.actualizarInsumo).toHaveBeenCalled());
+    expect(vi.mocked(api.actualizarInsumo).mock.calls[0][1]).not.toHaveProperty("almacenId");
+    // Y no pide la lista de almacenes sólo para llenar un desplegable.
+    expect(api.getAlmacenes).not.toHaveBeenCalled();
+  });
+
+  it("con stock en 2+ almacenes el detalle abre el desglose y no dice que vive en uno solo", async () => {
+    sesion.rubro = "PELUQUERIA";
+    vi.mocked(api.getInsumos).mockResolvedValue([
+      insumo(1, "Pollo crudo", {
+        almacen: { id: 1, nombre: "Centro" },
+        stockPorAlmacen: [
+          { almacenId: 1, nombre: "Centro", tipo: "SUCURSAL", cantidad: 100 },
+          { almacenId: 9, nombre: "Galpón", tipo: "DEPOSITO", cantidad: 200 },
+        ],
+      }),
+    ]);
+    montar();
+    const detalle = await abrirDetalle("Pollo crudo");
+    expect(within(detalle).getByText("Stock por almacén")).toBeInTheDocument();
+    expect(within(detalle).getByText("Galpón")).toBeInTheDocument();
+    expect(within(detalle).getByText("Depósito")).toBeInTheDocument();
+    expect(within(detalle).getByText(/^200 kg/)).toBeInTheDocument();
+    expect(within(detalle).queryByText("Almacén")).not.toBeInTheDocument();
+  });
+
+  it("con un solo almacén el detalle queda como siempre", async () => {
+    sesion.rubro = "PELUQUERIA";
+    vi.mocked(api.getInsumos).mockResolvedValue([
+      insumo(1, "Pollo crudo", {
+        almacen: { id: 1, nombre: "Centro" },
+        stockPorAlmacen: [{ almacenId: 1, nombre: "Centro", tipo: "SUCURSAL", cantidad: 300 }],
+      }),
+    ]);
+    montar();
+    const detalle = await abrirDetalle("Pollo crudo");
+    expect(within(detalle).queryByText("Stock por almacén")).not.toBeInTheDocument();
+    expect(within(detalle).getByText("Almacén")).toBeInTheDocument();
+  });
+
+  it("la organización ve los depósitos en el selector, como Inventario", async () => {
+    sesion.sucursalId = null;
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      sucursal(1, "Centro"),
+      { ...sucursal(7, "Galpón"), tipo: "DEPOSITO", esPrincipal: false },
+    ]);
+    montar();
+    expect(await screen.findByRole("button", { name: "Galpón" })).toBeInTheDocument();
+  });
+});

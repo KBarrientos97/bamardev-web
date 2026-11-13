@@ -589,7 +589,14 @@ export interface Insumo {
   proveedor: string | null;
   /** ISO yyyy-MM-dd. */
   vencimiento: string | null;
+  /** Sólo una pista: el primer almacén con stock. El desglose real es `stockPorAlmacen`. */
   almacen: Pick<Almacen, "id" | "nombre"> | null;
+  /**
+   * Dónde está el stock: una fila por almacén (depósitos incluidos). Opcional: un
+   * backend anterior no lo manda y el detalle sigue con `almacen`. Quien es de un
+   * local recibe sólo el suyo.
+   */
+  stockPorAlmacen?: { almacenId: number; nombre: string; tipo: TipoAlmacen; cantidad: number }[];
   habilitado: boolean;
 }
 
@@ -601,6 +608,7 @@ export interface InsumoInput {
   puntoReorden?: number;
   proveedor?: string;
   vencimiento?: string;
+  /** El backend lo ignora (el insumo nace sin stock): la web ya no lo manda. */
   almacenId?: number;
 }
 
@@ -2263,6 +2271,8 @@ export interface ReporteMovimientosCaja {
     monto: number;
     /** Billar (25-oct): el motivo, si se registró con uno. Un backend anterior no lo manda. */
     origen?: string | null;
+    /** El local de la caja del movimiento (§9.3). Un backend anterior no lo manda. */
+    sucursal?: { id: number; nombre: string } | null;
   }[];
   pagina: PaginaMeta;
   /**
