@@ -127,7 +127,7 @@ beforeEach(() => {
   sesion.features = SIN_EXTRA;
   vi.mocked(api.getMovimientos).mockResolvedValue([movimiento(1)]);
   vi.mocked(api.getMovimiento).mockResolvedValue(RECIEN_CREADO);
-  vi.mocked(api.getAlmacenes).mockResolvedValue([PRINCIPAL]);
+  vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL]);
   vi.mocked(api.getArticulosMovimiento).mockResolvedValue(ARTICULOS);
   vi.mocked(api.crearMovimiento).mockResolvedValue(RECIEN_CREADO);
   vi.mocked(api.aprobarMovimiento).mockResolvedValue({ ...RECIEN_CREADO, estado: "APROBADO" });
