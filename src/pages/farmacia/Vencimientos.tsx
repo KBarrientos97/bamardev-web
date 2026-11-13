@@ -103,7 +103,7 @@ export default function Vencimientos() {
         }
       />
 
-      {suc.elegir && (
+      {suc.elegirSucursal && (
         <Chips
           valor={localElegido == null ? "" : String(localElegido)}
           opciones={suc.opciones}

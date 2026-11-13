@@ -293,6 +293,17 @@ describe("La sucursal", () => {
     expect(api.vencimientos).toHaveBeenLastCalledWith({ almacenId: undefined });
   });
 
+  it("con un local y un depósito tampoco hay selector: el depósito no es una sucursal", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      dosLocales[0],
+      { id: 5, nombre: "Galpón", activo: true, tipo: "DEPOSITO", esPrincipal: false },
+    ] as never);
+    abrirCon();
+    await screen.findByText("Paracetamol 500 mg");
+    expect(screen.queryByRole("button", { name: "Galpón" })).not.toBeInTheDocument();
+    expect(api.vencimientos).toHaveBeenLastCalledWith({ almacenId: undefined });
+  });
+
   it("la organización con 2 locales elige cuál mira y se vuelve a pedir", async () => {
     sesion.activas = 2;
     vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);

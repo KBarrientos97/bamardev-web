@@ -202,6 +202,17 @@ describe("La sucursal", () => {
     expect(api.getMovimientos).toHaveBeenLastCalledWith(null);
   });
 
+  it("con un local y un depósito tampoco hay selector: el depósito no es una sucursal", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 5, nombre: "Galpón", activo: true, tipo: "DEPOSITO", esPrincipal: false },
+    ] as never);
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    expect(screen.queryByRole("button", { name: "Galpón" })).not.toBeInTheDocument();
+    expect(api.getMovimientos).toHaveBeenLastCalledWith(null);
+  });
+
   it("la organización con 2 locales elige cuál mira y se vuelve a pedir", async () => {
     vi.mocked(api.getSucursales).mockResolvedValue([
       { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },

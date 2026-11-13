@@ -205,7 +205,7 @@ export default function MovimientosFarmacia() {
           />
         </div>
         <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
-        {suc.elegir && (
+        {suc.elegirSucursal && (
           <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
         )}
       </div>

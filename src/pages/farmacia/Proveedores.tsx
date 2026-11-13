@@ -73,7 +73,7 @@ export default function Proveedores() {
 
       <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
         <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
-        {suc.elegir && (
+        {suc.elegirSucursal && (
           <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
         )}
         <div className="flex flex-wrap items-center gap-3">

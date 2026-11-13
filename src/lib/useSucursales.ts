@@ -191,6 +191,14 @@ export function useSucursales({ incluirDepositos = false } = {}) {
     setSucursalId,
     /** ¿Se muestra el filtro? Falso con un local, o si el usuario no es de organización. */
     elegir,
+    /**
+     * `elegir`, pero sólo con 2+ SUCURSALES reales (no cuentan los depósitos).
+     * Con `incluirDepositos`, `elegir` es `true` con una sucursal y un depósito
+     * (inventario filtra por ahí desde siempre); una pantalla que NO tenía
+     * filtro antes y lo agrega usa ésta: un negocio de un local con su depósito
+     * no debe ver selectores nuevos (PLAN-SUCURSAL-TOTAL §1).
+     */
+    elegirSucursal: elegir && modo === "organizacion",
     /** `una` | `asignado` | `organizacion`: qué ve esta pantalla (ver `ModoSucursal`). */
     modo,
     /**

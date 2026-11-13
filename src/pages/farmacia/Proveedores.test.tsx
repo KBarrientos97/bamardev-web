@@ -195,6 +195,16 @@ describe("la sucursal", () => {
     );
   });
 
+  it("con un local y un depósito tampoco hay selector: el depósito no es una sucursal", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      dosLocales[0],
+      { id: 5, nombre: "Galpón", activo: true, tipo: "DEPOSITO", esPrincipal: false },
+    ] as never);
+    await montar();
+    expect(screen.queryByRole("button", { name: "Galpón" })).toBeNull();
+    expect(api.proveedores).toHaveBeenLastCalledWith(expect.objectContaining({ sucursalId: null }));
+  });
+
   it("la organización con 2 locales elige de cuál ver las compras, y la ficha usa el mismo", async () => {
     vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
     await montar();

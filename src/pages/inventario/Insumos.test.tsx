@@ -482,13 +482,25 @@ describe("Insumos con varios almacenes (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     expect(within(detalle).getByText("Almacén")).toBeInTheDocument();
   });
 
-  it("la organización ve los depósitos en el selector, como Inventario", async () => {
+  it("la organización con 2+ sucursales ve los depósitos en el selector, como Inventario", async () => {
+    sesion.sucursalId = null;
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      sucursal(1, "Centro"),
+      sucursal(2, "Norte"),
+      { ...sucursal(7, "Galpón"), tipo: "DEPOSITO", esPrincipal: false },
+    ]);
+    montar();
+    expect(await screen.findByRole("button", { name: "Galpón" })).toBeInTheDocument();
+  });
+
+  it("con una sucursal y un depósito no hay selector nuevo: el depósito no es una sucursal", async () => {
     sesion.sucursalId = null;
     vi.mocked(api.getSucursales).mockResolvedValue([
       sucursal(1, "Centro"),
       { ...sucursal(7, "Galpón"), tipo: "DEPOSITO", esPrincipal: false },
     ]);
     montar();
-    expect(await screen.findByRole("button", { name: "Galpón" })).toBeInTheDocument();
+    await screen.findByText("Pollo crudo");
+    expect(screen.queryByRole("button", { name: "Galpón" })).not.toBeInTheDocument();
   });
 });

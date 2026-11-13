@@ -150,6 +150,21 @@ describe("modo de la sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
     expect(result.current.elegir).toBe(true);
     expect(result.current.modo).toBe("una");
     expect(result.current.hayVarias).toBe(false);
+    // Las pantallas que no tenían filtro y lo agregan no lo muestran por un depósito.
+    expect(result.current.elegirSucursal).toBe(false);
+  });
+
+  it("elegirSucursal: con 2+ sucursales (más un depósito) sí, y el depósito sigue en las opciones", async () => {
+    sesion.features = CON_VARIOS;
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      local(1, "Principal"),
+      local(2, "Central"),
+      { ...local(3, "Galpón"), tipo: "DEPOSITO" },
+    ]);
+    const { result } = renderHook(() => useSucursales({ incluirDepositos: true }));
+    await waitFor(() => expect(result.current.sucursales).toHaveLength(3));
+    expect(result.current.elegirSucursal).toBe(true);
+    expect(result.current.opciones.map(([, n]) => n)).toContain("Galpón");
   });
 
   it("asignado con 2+ locales: modo asignado, su sede, sin selector ni columna ni pedir la lista", () => {
