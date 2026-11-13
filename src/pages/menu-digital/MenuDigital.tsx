@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import TelevisoresDelLocal from "../tickets/TelevisoresDelLocal";
+import { SelectorLocalTickets, useLocalDeTickets } from "../tickets/useLocalDeTickets";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Boton, Confirmar, ErrorMsg } from "../../components/ui";
@@ -382,6 +383,10 @@ function EditorPantalla({
   onEliminar: () => void;
 }) {
   const { negocio } = useAuth();
+  // La TV pública muestra el local que dice el enlace (`?sucursal=`); sin él, el
+  // principal. Con 2+ locales, quien es de organización elige de cuál es el
+  // enlace que arma (el editor sigue siendo el del negocio).
+  const local = useLocalDeTickets();
   const vis = useMemo(() => platosDeLaPantalla(p, datos.platos, datos.categorias), [p, datos]);
   const paginas = useMemo(() => paginar(p, vis.platos, vis.categorias), [p, vis]);
   const [pagina, setPagina] = useState<number | "auto">("auto");
@@ -424,7 +429,8 @@ function EditorPantalla({
     onLlave(r.llave);
     return r.llave;
   };
-  const enlace = (l: string) => `${window.location.origin}/tv/menu/${l}/${p.numero}`;
+  const enlace = (l: string) =>
+    `${window.location.origin}/tv/menu/${l}/${p.numero}${local.sucursalId != null ? `?sucursal=${local.sucursalId}` : ""}`;
   const abrir = async () => {
     try {
       window.open(enlace(await asegurarLlave()), "_blank", "noopener");
@@ -455,6 +461,9 @@ function EditorPantalla({
           accion={
             <div className="flex flex-wrap items-center gap-2">
               <EstadoGuardado estado={guardado} />
+              {local.elegir && (
+                <SelectorLocalTickets locales={local.locales} valor={local.sucursalId} onChange={local.setLocal} />
+              )}
               <Boton icono="arrowUpRight" className="px-3 py-2" onClick={() => void abrir()}>
                 Abrir en TV
               </Boton>

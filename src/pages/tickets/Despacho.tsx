@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { apiTickets } from "../../lib/apiTickets";
 import { fmtCantidad } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
+import { SelectorLocalTickets, useLocalDeTickets } from "./useLocalDeTickets";
 import { useAlDia, useMantenerEncendida } from "../../publico/tv/pantalla";
 import type { ItemTicket, TicketPedido } from "../../types/tickets";
 import {
@@ -39,7 +40,10 @@ export default function Despacho({
   onSalir?: () => void;
 } = {}) {
   const [confirmandoSalir, setConfirmandoSalir] = useState(false);
-  const { datos, error, desfase, aplicar, recargar } = useTableroTickets();
+  // El local del despacho: sólo la organización con 2+ locales elige; el de un
+  // local ve el suyo (y su nombre, discreto).
+  const local = useLocalDeTickets();
+  const { datos, error, desfase, aplicar, recargar } = useTableroTickets(local.sucursalId);
   // Queda todo el día prendida al lado de la cocina, como las TVs: que la
   // tablet no se apague sola ni se quede con la versión del día que se abrió.
   useMantenerEncendida();
@@ -98,7 +102,7 @@ export default function Despacho({
     );
   const llamarNumero = (n: number) =>
     correr(
-      () => apiTickets.llamarNumero(n),
+      () => (local.sucursalId != null ? apiTickets.llamarNumero(n, local.sucursalId) : apiTickets.llamarNumero(n)),
       (r) => ({ texto: `${numeroTicket(r.numero)} llamado en la pantalla`, tono: "ok" }),
     );
 
@@ -141,6 +145,8 @@ export default function Despacho({
             Despacho · pedidos
           </h1>
           <p className="mt-0.5 text-[13px] text-white/60">
+            {/* La sede del usuario asignado a un local, sólo con 2+ locales. */}
+            {local.miSede && <>{local.miSede} · </>}
             {error && !datos ? (
               "Sin conexión con el servidor"
             ) : (
@@ -152,6 +158,9 @@ export default function Despacho({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {local.elegir && (
+            <SelectorLocalTickets oscuro locales={local.locales} valor={local.sucursalId} onChange={local.setLocal} />
+          )}
           <div className="flex rounded-xl bg-white/5 p-1 text-[13px] font-semibold">
             {(
               [

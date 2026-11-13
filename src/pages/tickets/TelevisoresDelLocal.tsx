@@ -9,6 +9,7 @@ import {
 } from "../../lib/apiTelevisores";
 import { codigoEscrito, codigoParaVer } from "../../lib/tickets/codigoTv";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { Tarjeta } from "./piezas";
 
 /**
@@ -28,6 +29,7 @@ import { Tarjeta } from "./piezas";
  */
 export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boolean }) {
   const lista = useApi(() => apiTelevisores.listar(), []);
+  const suc = useSucursales();
   const [conectando, setConectando] = useState(false);
   const [cambiando, setCambiando] = useState<TelevisorLocal | null>(null);
   const [desconectar, setDesconectar] = useState<TelevisorLocal | null>(null);
@@ -38,6 +40,10 @@ export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boole
   const tvs = lista.datos?.televisores ?? [];
   const opciones = lista.datos?.opciones ?? [];
   const direccion = `${window.location.host}/tv`;
+  // A quien es de organización con TVs de 2+ locales, cada una le dice de cuál
+  // es: el backend conecta la TV al local de quien la conecta (o al principal).
+  const verLocal = suc.mostrarColumna(tvs, (t) => t.sucursalId);
+  const localDe = (tv: TelevisorLocal) => suc.sucursales.find((a) => a.id === tv.sucursalId)?.nombre;
 
   async function quitar(tv: TelevisorLocal) {
     setError("");
@@ -94,6 +100,7 @@ export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boole
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-texto">{tv.nombre}</p>
               <p className="truncate text-[12px] text-texto-3">
+                {verLocal && localDe(tv) ? `${localDe(tv)} · ` : ""}
                 {queMuestra(tv)} · {tv.prendida ? "prendida" : "apagada o sin internet"}
               </p>
             </div>
