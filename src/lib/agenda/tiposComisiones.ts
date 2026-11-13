@@ -56,6 +56,8 @@ export interface LineaComision {
   /** false = se cobró sin % y se calcula con el vigente. */
   congelada: boolean;
   liquidacionId: number | null;
+  /** El local de la venta (PLAN-SUCURSAL-TOTAL §8.1); null en datos viejos. */
+  almacenId?: number | null;
 }
 
 export interface DetalleComisiones {
@@ -94,6 +96,33 @@ export interface PreviaLiquidacion {
   atrasadas: number;
   /** Cobros sin liquidar de días anteriores que no entran en este período. */
   sinLiquidarAntes?: number;
+  /**
+   * Cómo cae la liquidación en cada local (§8.1). Vacío con una sola sucursal
+   * activa o con un backend viejo: no hay nada que desglosar.
+   */
+  porSucursal?: FilaComisionSucursal[];
+  /**
+   * true = al cerrar con «registrar el pago como gasto» se carga un gasto de
+   * sueldos por cada fila de `porSucursal`; false = uno solo, general.
+   */
+  gastoPorSucursal?: boolean;
+}
+
+/**
+ * Una fila del desglose por sucursal de una liquidación. `almacenId` y
+ * `sucursal` son null en la fila de lo que no es de ningún local. En la previa,
+ * `neto` es lo que se cargará como gasto a ese local (null si se cargará un
+ * solo gasto general); en el detalle, lo que realmente se cargó (null si no
+ * hubo gasto).
+ */
+export interface FilaComisionSucursal {
+  almacenId: number | null;
+  sucursal: string | null;
+  produccion: number;
+  comision: number;
+  /** Negativo o 0: comisiones pagadas de ventas anuladas de ese local. */
+  ajustes: number;
+  neto: number | null;
 }
 
 export interface Liquidacion {
@@ -111,6 +140,8 @@ export interface Liquidacion {
   neto: number;
   nota: string | null;
   gastoId: number | null;
+  /** Todos los gastos que generó el cierre (uno por sucursal); `gastoId` es el primero. */
+  gastoIds?: number[];
   cerradaEn: string;
   cerradaPor: string | null;
 }
@@ -120,6 +151,13 @@ export interface LiquidacionDetalle extends Liquidacion {
     tipo: "COMISION" | "AJUSTE";
   })[];
   adelantosDescontados: AdelantoPendiente[];
+  /**
+   * El desglose por local. Vacío en una liquidación anterior a la etapa o con
+   * un solo local: no se inventa un reparto que no se guardó.
+   */
+  porSucursal?: FilaComisionSucursal[];
+  /** Los gastos de sueldos que generó el cierre, uno por local. */
+  gastos?: { id: number; almacenId: number | null; sucursal: string | null; monto: number }[];
 }
 
 export interface LiquidarInput {
