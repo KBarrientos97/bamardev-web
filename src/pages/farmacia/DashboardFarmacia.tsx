@@ -71,6 +71,9 @@ export default function DashboardFarmacia() {
   );
 
   const datos = resumen.datos;
+  // Al saltar a Vencimientos, el mismo local que se está mirando: abrir el
+  // consolidado desde "Equipetrol" mostraba otros números a un toque de distancia.
+  const localMirado = suc.sucursalId != null ? { sucursalId: suc.sucursalId } : {};
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:space-y-5 sm:p-5">
@@ -98,7 +101,7 @@ export default function DashboardFarmacia() {
               lotes={venc.datos.vencidos.lotes}
               valor={venc.datos.vencidos.valor}
               onVer={() => {
-                const filtro: FiltroVencimientos = { tramo: "VENCIDO" };
+                const filtro: FiltroVencimientos = { tramo: "VENCIDO", ...localMirado };
                 navigate("/vencimientos", { state: filtro });
               }}
             />
@@ -123,14 +126,18 @@ export default function DashboardFarmacia() {
               error={venc.error}
               datos={venc.datos}
               onTramo={(tramo) => {
-                const filtro: FiltroVencimientos = { tramo };
+                const filtro: FiltroVencimientos = { tramo, ...localMirado };
                 navigate("/vencimientos", { state: filtro });
               }}
             />
           )}
 
           <div className={`grid gap-4 sm:gap-5 ${conVentas ? "lg:grid-cols-2" : ""}`}>
-            <StockCritico lista={datos.stockCritico} />
+            <StockCritico
+              lista={datos.stockCritico}
+              // Sólo la organización con 2+ locales: el consolidado dice en cuáles falta.
+              conLocales={suc.modo === "organizacion" && suc.sucursalId == null}
+            />
             {conVentas && (
               <MasVendidosHoy
                 cargando={vendidos.cargando}
@@ -398,7 +405,14 @@ function Semaforo({
 
 // ── Stock crítico ───────────────────────────────────────────────────────────
 
-function StockCritico({ lista }: { lista: Dashboard["stockCritico"] }) {
+function StockCritico({
+  lista,
+  conLocales,
+}: {
+  lista: Dashboard["stockCritico"];
+  /** Mostrar en qué locales está bajo el mínimo ("Equipetrol 0 · Centro 3"). */
+  conLocales: boolean;
+}) {
   // Lo más urgente arriba: primero lo que ya no hay, después lo que está más
   // lejos de su mínimo. El backend los devuelve en el orden del catálogo.
   const ordenada = useMemo(
@@ -434,6 +448,11 @@ function StockCritico({ lista }: { lista: Dashboard["stockCritico"] }) {
                     Mínimo: {fmtCantidad(a.stockMinimo)}
                     {a.laboratorio ? ` · ${a.laboratorio}` : ""}
                   </p>
+                  {conLocales && a.sucursales && a.sucursales.length > 0 && (
+                    <p className="mt-0.5 truncate text-xs font-semibold text-texto-2">
+                      {a.sucursales.map((s) => `${s.nombre} ${fmtCantidad(s.stock)}`).join(" · ")}
+                    </p>
+                  )}
                 </div>
                 <Badge tono={a.stock <= 0 ? "rojo" : "amarillo"} className="shrink-0">
                   {a.stock <= 0 ? "Sin stock" : `${fmtCantidad(a.stock)} restantes`}

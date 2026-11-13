@@ -26,7 +26,7 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("../../lib/api", () => ({
-  api: { vencimientos: vi.fn() },
+  api: { vencimientos: vi.fn(), getSucursales: vi.fn() },
 }));
 
 const sesion = vi.hoisted(() => ({
@@ -34,12 +34,18 @@ const sesion = vi.hoisted(() => ({
   conAprobacion: false,
   /** `inventario.mover`: dar de baja es una salida de stock. */
   mueveStock: true,
+  /** Quién mira: de organización (null) o atado a un local; y cuántos locales hay. */
+  sucursalId: null as number | null,
+  sucursal: null as string | null,
+  activas: 1,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     incluye: (c: string) => c === "aprobacion_inventario" && sesion.conAprobacion,
     puede: (s: string) => s === "salida_mercaderia" && sesion.mueveStock,
+    usuario: { id: 1, sucursalId: sesion.sucursalId, sucursal: sesion.sucursal },
+    negocio: { id: 1, tipoNegocio: "FARMACIA", sucursalesActivas: sesion.activas },
   }),
 }));
 
@@ -89,7 +95,14 @@ beforeEach(() => {
   navegado.con = null;
   sesion.conAprobacion = false;
   sesion.mueveStock = true;
+  sesion.sucursalId = null;
+  sesion.sucursal = null;
+  sesion.activas = 1;
   vi.mocked(api.vencimientos).mockResolvedValue(datos);
+  // Un solo local por defecto: la pantalla queda como siempre.
+  vi.mocked(api.getSucursales).mockResolvedValue([
+    { id: 2, nombre: "Mostrador", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+  ] as never);
 });
 
 async function abrirLote(nombre: string) {
@@ -256,5 +269,59 @@ describe("Llegar desde el semáforo del Dashboard", () => {
     abrirCon({ tramo: "CUALQUIERA" });
     expect(await screen.findByText("Azitromicina 500 mg")).toBeInTheDocument();
     expect(screen.getByText("Paracetamol 500 mg")).toBeInTheDocument();
+  });
+});
+
+describe("La sucursal", () => {
+  const dosLocales = [
+    { id: 2, nombre: "Mostrador", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 3, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+
+  function abrirCon(state?: unknown) {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/vencimientos", state }]}>
+        <Vencimientos />
+      </MemoryRouter>,
+    );
+  }
+
+  it("con un solo local no hay selector y se pide el consolidado", async () => {
+    abrirCon();
+    await screen.findByText("Paracetamol 500 mg");
+    expect(screen.queryByRole("button", { name: "Equipetrol" })).not.toBeInTheDocument();
+    expect(api.vencimientos).toHaveBeenLastCalledWith({ almacenId: undefined });
+  });
+
+  it("la organización con 2 locales elige cuál mira y se vuelve a pedir", async () => {
+    sesion.activas = 2;
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    abrirCon();
+    await screen.findByText("Paracetamol 500 mg");
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    });
+    expect(api.vencimientos).toHaveBeenLastCalledWith({ almacenId: 3 });
+  });
+
+  it("llega con el local que se miraba en el Dashboard: abre en ese y no en el consolidado", async () => {
+    sesion.activas = 2;
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    abrirCon({ tramo: "HASTA_30", sucursalId: 3 });
+    await screen.findByText("Azitromicina 500 mg");
+    expect(api.vencimientos).toHaveBeenCalledTimes(1);
+    expect(api.vencimientos).toHaveBeenCalledWith({ almacenId: 3 });
+    expect(await screen.findByRole("button", { name: "Equipetrol", pressed: true })).toBeInTheDocument();
+  });
+
+  it("el atado a un local no ve selector: sólo el nombre de su sede", async () => {
+    sesion.activas = 2;
+    sesion.sucursalId = 3;
+    sesion.sucursal = "Equipetrol";
+    abrirCon();
+    await screen.findByText("Paracetamol 500 mg");
+    expect(screen.getByText(/ordenados por lo que vence primero · Equipetrol/)).toBeInTheDocument();
+    expect(api.getSucursales).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Mostrador" })).not.toBeInTheDocument();
   });
 });

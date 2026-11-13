@@ -1807,6 +1807,12 @@ export interface Dashboard {
     stockMinimo: number;
     /** A quién se le vuelve a pedir. Sólo lo carga la ficha de farmacia. */
     laboratorio?: string | null;
+    /**
+     * Sólo en el consolidado ("Todas las sucursales"): los locales donde está
+     * bajo el mínimo, con su stock. `stock` de arriba es el del más
+     * comprometido. Ausente con un local elegido o en un backend anterior.
+     */
+    sucursales?: { almacenId: number; nombre: string; stock: number; stockMinimo: number }[];
   }[];
   movimientos: {
     id: number;

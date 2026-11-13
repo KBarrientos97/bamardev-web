@@ -217,6 +217,67 @@ describe("el usuario asignado a una sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
   });
 });
 
+describe("la organización con 2+ sucursales", () => {
+  const dosLocales = [
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+
+  it("el consolidado dice en qué locales falta cada medicamento", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    vi.mocked(api.getDashboard).mockResolvedValue({
+      ...resumen,
+      stockCritico: [
+        {
+          id: 2,
+          nombre: "Ranitidina 150 mg",
+          stock: 0,
+          stockMinimo: 30,
+          laboratorio: "IFA",
+          sucursales: [
+            { almacenId: 2, nombre: "Equipetrol", stock: 0, stockMinimo: 30 },
+            { almacenId: 1, nombre: "Centro", stock: 3, stockMinimo: 30 },
+          ],
+        },
+      ],
+    });
+    await abrir();
+    expect(await screen.findByText("Equipetrol 0 · Centro 3")).toBeInTheDocument();
+  });
+
+  it("con un solo local no se agrega la línea de locales", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([dosLocales[0]] as never);
+    vi.mocked(api.getDashboard).mockResolvedValue({
+      ...resumen,
+      stockCritico: [
+        {
+          id: 2,
+          nombre: "Ranitidina 150 mg",
+          stock: 0,
+          stockMinimo: 30,
+          laboratorio: "IFA",
+          sucursales: [{ almacenId: 1, nombre: "Centro", stock: 0, stockMinimo: 30 }],
+        },
+      ],
+    });
+    await abrir();
+    await screen.findByText("Ranitidina 150 mg");
+    expect(screen.queryByText("Centro 0")).not.toBeInTheDocument();
+  });
+
+  it("con un local elegido, Vencimientos abre en ese mismo local", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    await abrir();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText("≤ 30 días"));
+    });
+    expect(navegado.con).toEqual({ tramo: "HASTA_30", sucursalId: 2 });
+  });
+});
+
 describe("sin reportes", () => {
   it("no pide lo más vendido y el stock crítico ocupa el ancho", async () => {
     plan.reportes = false;
