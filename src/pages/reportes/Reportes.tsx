@@ -126,7 +126,10 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
             <div className="min-w-0">
               <h1 className="text-[22px] font-extrabold text-texto">Reportes</h1>
               <p className="text-[13px] text-texto-3">
-                Análisis del negocio{suc.elegir ? ` · ${suc.nombre || suc.todas}` : ""}
+                {/* El de organización ve la sucursal elegida (o "Todas"); el
+                    asignado a un local, el nombre de la suya (2+ sucursales). */}
+                Análisis del negocio
+                {suc.elegir ? ` · ${suc.nombre || suc.todas}` : suc.miSede ? ` · ${suc.miSede}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

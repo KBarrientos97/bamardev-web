@@ -13,7 +13,12 @@ import type { Dashboard, Vencimientos } from "../../types";
  * Vencimientos filtrado en ese tramo.
  */
 
-const plan = vi.hoisted(() => ({ lotes: true, reportes: true }));
+const plan = vi.hoisted(() => ({
+  lotes: true,
+  reportes: true,
+  /** Quién mira: de organización (null) o asignado a un local, y cuántos hay. */
+  sede: { sucursalId: null as number | null, sucursal: null as string | null, activas: undefined as number | undefined },
+}));
 const navegado = vi.hoisted(() => ({ a: "", con: null as unknown }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -21,7 +26,13 @@ vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
   return {
     useAuth: () => ({
-      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null },
+      usuario: {
+        rol: "ADMIN",
+        ...permisosDe("ADMIN"),
+        sucursalId: plan.sede.sucursalId,
+        sucursal: plan.sede.sucursal,
+      },
+      negocio: { id: 1, tipoNegocio: "FARMACIA", sucursalesActivas: plan.sede.activas },
       puede: (s: string) => (s === "reportes" ? plan.reportes : true),
       incluye: (c: string) => (c === "lotes" ? plan.lotes : true),
     }),
@@ -79,6 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   plan.lotes = true;
   plan.reportes = true;
+  plan.sede = { sucursalId: null, sucursal: null, activas: undefined };
   navegado.a = "";
   navegado.con = null;
   vi.mocked(api.getDashboard).mockResolvedValue(resumen);
@@ -184,6 +196,24 @@ describe("una farmacia sin `lotes` (plan BASICO)", () => {
     expect(screen.queryByText("Semáforo de vencimientos")).not.toBeInTheDocument();
     expect(screen.queryByText("Por vencer")).not.toBeInTheDocument();
     expect(screen.getByText("Bajo stock")).toBeInTheDocument();
+  });
+});
+
+describe("el usuario asignado a una sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
+  it("con 2+ sucursales el subtítulo dice la suya, y nada más (sin selector)", async () => {
+    plan.sede = { sucursalId: 4, sucursal: "Farmacia Norte", activas: 2 };
+    await abrir();
+    expect(screen.getByText(/Farmacia Norte · hoy,/)).toBeInTheDocument();
+    expect(screen.queryByText(/Vista general de la farmacia/)).not.toBeInTheDocument();
+    // La tarjeta de ubicaciones también la nombra, no "En el negocio".
+    expect(screen.queryByText("En el negocio")).not.toBeInTheDocument();
+  });
+
+  it("con una sola sucursal queda como siempre", async () => {
+    plan.sede = { sucursalId: 4, sucursal: "Farmacia Norte", activas: 1 };
+    await abrir();
+    expect(screen.getByText(/Vista general de la farmacia · hoy,/)).toBeInTheDocument();
+    expect(screen.queryByText(/Farmacia Norte/)).not.toBeInTheDocument();
   });
 });
 

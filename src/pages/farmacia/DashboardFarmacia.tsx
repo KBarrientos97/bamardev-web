@@ -77,7 +77,8 @@ export default function DashboardFarmacia() {
       <header>
         <h1 className="text-xl font-bold text-texto">Dashboard</h1>
         <p className="mt-0.5 text-[13px] text-texto-3">
-          {suc.nombre ? `${suc.nombre} · ` : "Vista general de la farmacia · "}
+          {/* `sedeVista`: la elegida (organización) o la propia (asignado, 2+ sucursales). */}
+          {suc.sedeVista ? `${suc.sedeVista} · ` : "Vista general de la farmacia · "}
           hoy, {fmtFecha(new Date())}
         </p>
       </header>
@@ -107,7 +108,7 @@ export default function DashboardFarmacia() {
             datos={datos}
             ubicaciones={
               // "Ubicaciones" no: en farmacia la ubicación es el estante.
-              suc.nombre || nombresDe(suc.sucursales.map((s) => s.nombre)) || "En el negocio"
+              suc.sedeVista || nombresDe(suc.sucursales.map((s) => s.nombre)) || "En el negocio"
             }
             porVencer={
               conLotes && venc.datos

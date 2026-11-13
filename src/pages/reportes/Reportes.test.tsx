@@ -8,7 +8,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * el tope de ventas.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string, soloAgenda: false }));
+const sesion = vi.hoisted(() => ({
+  rubro: "FARMACIA" as string,
+  soloAgenda: false,
+  /** Sucursales activas que trae la sesión (el login); sin dato = sesión vieja. */
+  activas: undefined as number | undefined,
+}));
 
 vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
@@ -28,8 +33,8 @@ vi.mock("../../store/AuthContext", async () => {
             rubro: sesion.rubro,
             incluye: () => true,
             puede: (s: string) => !["reportes_billar", "reportes_agenda"].includes(s),
-            usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
-            negocio: { id: 1, nombre: "Prueba", features: [] },
+            usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917, sucursal: "Sucursal Norte" },
+            negocio: { id: 1, nombre: "Prueba", features: [], sucursalesActivas: sesion.activas },
           },
   };
 });
@@ -74,6 +79,7 @@ const enMenu = (titulo: string) =>
 beforeEach(() => {
   sesion.rubro = "FARMACIA";
   sesion.soloAgenda = false;
+  sesion.activas = undefined;
   sessionStorage.clear();
   vi.mocked(api.reporte).mockImplementation(() => new Promise(() => {}));
 });
@@ -99,6 +105,21 @@ describe("cada rubro ve sus reportes en el menú", () => {
     sesion.rubro = "RESTAURANTE";
     await montar("/reportes/mermas");
     expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
+  });
+});
+
+describe("el usuario asignado a una sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
+  it("con 2+ sucursales el subtítulo lleva el nombre de su sede, sin selector", async () => {
+    sesion.activas = 2;
+    await montar();
+    expect(screen.getByText(/Análisis del negocio · Sucursal Norte/)).toBeInTheDocument();
+    expect(screen.queryByText("Todas")).not.toBeInTheDocument();
+  });
+
+  it("con una sola sucursal (o una sesión vieja) no dice nada", async () => {
+    sesion.activas = 1;
+    await montar();
+    expect(screen.queryByText(/Sucursal Norte/)).not.toBeInTheDocument();
   });
 });
 
