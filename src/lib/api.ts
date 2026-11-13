@@ -777,18 +777,30 @@ export const api = {
 
   // ── Proveedores (farmacia) ──
   /** Los proveedores con lo que se les compró en el período (días AAAA-MM-DD). */
-  proveedores: (params: { desde?: string; hasta?: string; inactivos?: boolean } = {}) =>
+  proveedores: (
+    params: { desde?: string; hasta?: string; inactivos?: boolean; sucursalId?: number | null } = {},
+  ) =>
     request<ProveedorConCompras[]>(
-      `/proveedores${qs(
-        rangoParaApi({
+      `/proveedores${qs({
+        ...rangoParaApi({
           desde: params.desde,
           hasta: params.hasta,
           inactivos: params.inactivos ? "true" : undefined,
         }),
-      )}`,
+        // El proveedor es del negocio; la sucursal sólo acota las COMPRAS que se suman.
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
     ),
-  proveedor: (id: number, params: { desde?: string; hasta?: string } = {}) =>
-    request<ProveedorDetalle>(`/proveedores/${id}${qs(rangoParaApi(params))}`),
+  proveedor: (
+    id: number,
+    params: { desde?: string; hasta?: string; sucursalId?: number | null } = {},
+  ) =>
+    request<ProveedorDetalle>(
+      `/proveedores/${id}${qs({
+        ...rangoParaApi({ desde: params.desde, hasta: params.hasta }),
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
+    ),
   /** Si el nombre ya existe (sin importar mayúsculas ni tildes), el servidor lo rechaza. */
   crearProveedor: (input: ProveedorInput) =>
     request<Proveedor>("/proveedores", { method: "POST", body: JSON.stringify(input) }),

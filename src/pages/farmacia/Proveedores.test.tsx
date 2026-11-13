@@ -7,8 +7,23 @@ import type { ProveedorConCompras } from "../../types";
  * y se dan de baja sin borrar sus compras.
  */
 
+// Quién mira: de organización (sucursalId null) o atado a un local, y cuántos
+// locales activos tiene el negocio.
+const sesion = vi.hoisted(() => ({
+  sucursalId: null as number | null,
+  sucursal: null as string | null,
+  activas: 1,
+}));
+vi.mock("../../store/AuthContext", () => ({
+  useAuth: () => ({
+    usuario: { id: 1, sucursalId: sesion.sucursalId, sucursal: sesion.sucursal },
+    negocio: { id: 1, tipoNegocio: "FARMACIA", sucursalesActivas: sesion.activas },
+  }),
+}));
+
 vi.mock("../../lib/api", () => ({
   api: {
+    getSucursales: vi.fn(),
     proveedores: vi.fn(),
     proveedor: vi.fn(),
     crearProveedor: vi.fn(async () => ({})),
@@ -44,6 +59,12 @@ const tarjetas = () => screen.getAllByRole("listitem").map((li) => li.textConten
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.sucursalId = null;
+  sesion.sucursal = null;
+  sesion.activas = 1;
+  vi.mocked(api.getSucursales).mockResolvedValue([
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+  ] as never);
   vi.mocked(api.proveedores).mockResolvedValue([
     proveedor({ id: 2, nombre: "Bagó", nit: null, compras: { total: 90, ingresos: 1 } }),
     proveedor({}),
@@ -157,5 +178,50 @@ describe("la ficha", () => {
       fireEvent.click(crear);
     });
     expect(api.crearProveedor).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("la sucursal", () => {
+  const dosLocales = [
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+
+  it("con un solo local no hay selector y se piden las compras del negocio", async () => {
+    await montar();
+    expect(screen.queryByRole("button", { name: "Equipetrol" })).toBeNull();
+    expect(api.proveedores).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sucursalId: null }),
+    );
+  });
+
+  it("la organización con 2 locales elige de cuál ver las compras, y la ficha usa el mismo", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    await montar();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    });
+    expect(api.proveedores).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sucursalId: 2 }),
+    );
+    expect(screen.getByText(/Comprado .* en Equipetrol:/)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Droguería INTI"));
+    });
+    expect(api.proveedor).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ sucursalId: 2 }),
+    );
+  });
+
+  it("el atado a un local no ve selector: sólo dice que son las compras de su sede", async () => {
+    sesion.activas = 2;
+    sesion.sucursalId = 2;
+    sesion.sucursal = "Equipetrol";
+    await montar();
+    expect(screen.getByText(/Compras de Equipetrol/)).toBeInTheDocument();
+    expect(api.getSucursales).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Centro" })).toBeNull();
   });
 });
