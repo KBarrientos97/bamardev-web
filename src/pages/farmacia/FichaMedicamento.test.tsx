@@ -108,6 +108,40 @@ describe("lo que ve el dueño", () => {
   });
 });
 
+describe("PLAN-SUCURSAL-TOTAL: el stock mínimo por local", () => {
+  const local = (id: number, nombre: string, cantidad: number, stockMinimo?: number | null) => ({
+    almacenId: id,
+    nombre,
+    tipo: "SUCURSAL" as const,
+    esPrincipal: id === 1,
+    direccion: null,
+    telefono: null,
+    cantidad,
+    ubicacion: null,
+    ...(stockMinimo !== undefined ? { stockMinimo } : {}),
+  });
+
+  it("con 2+ locales, cada uno contra su mínimo: el propio se rotula y el que está debajo avisa", async () => {
+    vi.mocked(api.existenciasProducto).mockResolvedValue([
+      local(1, "Central", 50, 20), // propio 20: bien
+      local(2, "Norte", 8, null), // global 10: bajo
+      local(3, "Sur", 30, 40), // propio 40: bajo
+    ]);
+    const { ficha } = await abrir();
+    expect(within(ficha).getByText("Mínimo propio: 20")).toBeInTheDocument();
+    expect(within(ficha).getByText("Mínimo propio: 40")).toBeInTheDocument();
+    // Norte (global) y Sur (propio) están bajo su mínimo; Central no.
+    expect(within(ficha).getAllByText("Bajo el mínimo")).toHaveLength(2);
+  });
+
+  it("con un backend viejo (sin stockMinimo en las filas) no aparece nada nuevo", async () => {
+    vi.mocked(api.existenciasProducto).mockResolvedValue([local(1, "Central", 50), local(2, "Norte", 500)]);
+    const { ficha } = await abrir();
+    expect(within(ficha).queryByText(/Mínimo propio/)).toBeNull();
+    expect(within(ficha).queryByText("Bajo el mínimo")).toBeNull();
+  });
+});
+
 describe("B6: lo que no le corresponde no se dibuja", () => {
   it("sin `costos.ver` no hay Costo, Margen ni Historial de costos", async () => {
     sesion.permisos = [];

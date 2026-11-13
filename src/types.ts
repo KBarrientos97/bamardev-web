@@ -472,6 +472,12 @@ export interface Existencia {
   telefono: string | null;
   cantidad: number;
   ubicacion: string | null;
+  /**
+   * El punto de reorden propio de ese local (PLAN-SUCURSAL-TOTAL §10.1). `null`
+   * = no tiene excepción y vale el mínimo del artículo; ausente = backend viejo.
+   * Para "bajo stock en este local": `cantidad <= (stockMinimo ?? producto.stockMinimo)`.
+   */
+  stockMinimo?: number | null;
 }
 
 /**

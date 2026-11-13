@@ -40,6 +40,35 @@ describe("stock por local en el detalle del artículo", () => {
     expect(api.existenciasProducto).toHaveBeenCalledWith(7);
   });
 
+  it("bajo stock por local: cada uno contra su mínimo (el propio o el del artículo)", async () => {
+    vi.mocked(api.existenciasProducto).mockResolvedValue([
+      existencia({ cantidad: 8, stockMinimo: 5 }), // Central: 8 > 5, bien
+      existencia({ almacenId: 2, nombre: "Norte", cantidad: 3, stockMinimo: null }), // global 4: bajo
+      existencia({ almacenId: 4, nombre: "Sur", cantidad: 6, stockMinimo: 10 }), // propio 10: bajo
+      existencia({ almacenId: 3, nombre: "Galpón", tipo: "DEPOSITO", cantidad: 1 }), // depósito sin propio: no cuenta
+    ]);
+    render(<StockPorLocal producto={{ ...producto, stockMinimo: 4 }} />);
+    const aviso = await screen.findByRole("note");
+    expect(aviso).toHaveTextContent("Bajo su mínimo en Norte (3 de 4) · Sur (6 de 10)");
+    expect(aviso).not.toHaveTextContent("Central");
+    expect(aviso).not.toHaveTextContent("Galpón");
+    // El mínimo propio se rotula en su fila; el global no se repite.
+    expect(screen.getByText("mínimo 5")).toBeInTheDocument();
+    expect(screen.getByText("mínimo 10")).toBeInTheDocument();
+    expect(screen.queryByText("mínimo 4")).not.toBeInTheDocument();
+  });
+
+  it("si todos están por encima de su mínimo no hay aviso, y un backend viejo (sin el campo) tampoco", async () => {
+    vi.mocked(api.existenciasProducto).mockResolvedValue([
+      existencia({ cantidad: 8 }),
+      existencia({ almacenId: 2, nombre: "Norte", cantidad: 9 }),
+    ]);
+    render(<StockPorLocal producto={{ ...producto, stockMinimo: 4 }} />);
+    await screen.findByText("Stock por sucursal");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^mínimo/)).not.toBeInTheDocument();
+  });
+
   it("con un solo lugar no dice nada que el stock actual no diga", async () => {
     vi.mocked(api.existenciasProducto).mockResolvedValue([existencia({})]);
     render(<StockPorLocal producto={producto} />);

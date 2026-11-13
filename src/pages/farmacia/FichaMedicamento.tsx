@@ -476,6 +476,7 @@ function StockPorSucursal({
             unidad={unidad}
             productoId={p.id}
             mia
+            minimoGlobal={p.stockMinimo}
             puedeUbicar={puedeUbicar(deAca)}
             onGuardado={alGuardar}
           />
@@ -495,6 +496,7 @@ function StockPorSucursal({
               unidad={unidad}
               productoId={p.id}
               mia={false}
+              minimoGlobal={p.stockMinimo}
               puedeUbicar={puedeUbicar(e)}
               onGuardado={alGuardar}
             />
@@ -523,6 +525,7 @@ function CajaSucursal({
   unidad,
   productoId,
   mia,
+  minimoGlobal,
   puedeUbicar,
   onGuardado,
 }: {
@@ -531,10 +534,18 @@ function CajaSucursal({
   productoId: number;
   /** La sucursal de quien mira: se marca, y no se ofrece llamarse a sí misma. */
   mia: boolean;
+  /** El mínimo del artículo: vale en el local que no tiene uno propio. */
+  minimoGlobal: number;
   puedeUbicar: boolean;
   onGuardado: () => void;
 }) {
   const noHay = e.cantidad <= 0;
+  // El mínimo propio del local (PLAN-SUCURSAL-TOTAL §10.1) o, sin él, el del
+  // artículo. Sólo se avisa "bajo el mínimo" en un local que vende, o en uno al
+  // que se le puso un mínimo a propósito: un depósito con el global sería ruido.
+  const minimo = e.stockMinimo ?? minimoGlobal;
+  const bajo =
+    !noHay && minimo > 0 && e.cantidad <= minimo && (e.tipo !== "DEPOSITO" || e.stockMinimo != null);
   return (
     <div
       className={`min-w-0 rounded-xl p-3 ${
@@ -564,6 +575,11 @@ function CajaSucursal({
       >
         {noHay ? "No hay" : conUnidad(e.cantidad, unidad)}
       </p>
+      {/* El mínimo propio del local, sólo si lo tiene: con el global no se repite. */}
+      {e.stockMinimo != null && (
+        <p className="text-xs text-texto-3">Mínimo propio: {fmtCantidad(e.stockMinimo)}</p>
+      )}
+      {bajo && <p className="text-xs font-semibold text-warning-text">Bajo el mínimo</p>}
       <Ubicacion
         productoId={productoId}
         existencia={e}
