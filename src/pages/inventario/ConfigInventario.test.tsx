@@ -11,12 +11,14 @@ import type { Almacen, Producto } from "../../types";
 
 /** Los permisos del dueño de la prueba: con "reportes.ver" ve el reporte de lo vendido sin stock. */
 let permisos: string[] = ["reportes.ver"];
+/** El local del usuario (null = organización) y cuántas sucursales tiene el negocio. */
+let sede: { sucursalId: number | null; locales: number | undefined } = { sucursalId: null, locales: undefined };
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: "RESTAURANTE",
-    negocio: { id: 7, features: [] },
-    usuario: { sucursalId: null, permisos },
+    negocio: { id: 7, features: [], sucursalesActivas: sede.locales },
+    usuario: { id: 1, sucursalId: sede.sucursalId, permisos },
     puede: (s: string) => s === "reportes" || s === "config_inventario",
     incluye: () => true,
   }),
@@ -73,6 +75,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   permisos = ["reportes.ver"];
+  sede = { sucursalId: null, locales: undefined };
   vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL]);
   vi.mocked(api.getProductos).mockResolvedValue([
     producto({ id: 1, nombre: "Fanta 2L" }),
@@ -188,5 +191,53 @@ describe("Configuración › Inventario y stock", () => {
     fireEvent.click(interruptor());
     await act(async () => {});
     expect(screen.getByRole("textbox", { name: "Cuántos hay de Fanta 2L" })).toHaveValue("5");
+  });
+});
+
+describe("el conteo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  const NORTE = { id: 4, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false } as Almacen;
+  const prendido = () => vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
+
+  it("con el control ya prendido y 2+ locales, se puede contar otro local", async () => {
+    prendido();
+    vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL, NORTE]);
+    vi.mocked(api.controlarStock).mockResolvedValue({
+      controlaStock: true,
+      sePuedeApagar: true,
+      contados: 1,
+      puestosEnCero: 0,
+    });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Contar un local" }));
+    await act(async () => {});
+    // Los dos locales se ofrecen y el botón no promete "prender" lo que ya está.
+    fireEvent.click(screen.getByRole("radio", { name: "Norte" }));
+    await act(async () => {});
+    expect(api.getProductos).toHaveBeenLastCalledWith(false, NORTE.id);
+    fireEvent.change(screen.getByRole("textbox", { name: "Cuántos hay de Fanta 2L" }), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar el conteo" }));
+    const dialogo = screen.getByRole("dialog", { name: "¿Guardar el conteo?" });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(api.controlarStock).toHaveBeenCalledWith(NORTE.id, expect.arrayContaining([{ productoId: 1, cantidad: 8 }]));
+    expect(screen.getByText(/se guardó el conteo con 1 artículo contado/)).toBeInTheDocument();
+  });
+
+  it("con un solo local no aparece nada nuevo", async () => {
+    prendido();
+    await montar();
+    expect(screen.queryByRole("button", { name: "Contar un local" })).not.toBeInTheDocument();
+  });
+
+  it("el usuario de un local cuenta el suyo: ni selector ni otros locales", async () => {
+    sede = { sucursalId: 4, locales: 2 };
+    prendido();
+    vi.mocked(api.getSucursales).mockResolvedValue([PRINCIPAL, NORTE]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Contar un local" }));
+    await act(async () => {});
+    expect(screen.queryByRole("radiogroup", { name: "Local que se cuenta" })).not.toBeInTheDocument();
+    expect(api.getProductos).toHaveBeenLastCalledWith(false, NORTE.id);
   });
 });
