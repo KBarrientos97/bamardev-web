@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BillarReporteApi, CreditosApi, ResumenApi, SugerenciaApi } from "../../api";
-import { consejos, detalleFecha, filasResumen, numeroWhatsapp, esMensual, horasDeJornada, partesVenta, pedidosPorCobrar, serie, textoResumen, tramoFlojo, tramoHoras } from "./datos";
+import { billarConsolidado, consejos, detalleFecha, filasResumen, numeroWhatsapp, esMensual, horasDeJornada, partesVenta, pedidosPorCobrar, serie, textoResumen, tramoFlojo, tramoHoras } from "./datos";
 
 const billar = (p: Partial<BillarReporteApi> = {}): BillarReporteApi => ({
   desde: 0,
@@ -279,5 +279,54 @@ describe("los pedidos por cobrar (C2)", () => {
     });
     expect(t).toContain("Fiado por cobrar: Bs 50");
     expect(t).toContain("1 pedido por cobrar: Bs 40 (no suma en Ventas)");
+  });
+});
+
+describe("billar con «Todas las sucursales» (PLAN-SUCURSAL-TOTAL §9.6)", () => {
+  const conComparativo = billar({
+    // La principal sola: no es el total del negocio.
+    tiempoBs: 1000,
+    consumosBs: 500,
+    horas: 40,
+    ocupacion: 0.5,
+    porMesa: [{ mesaId: 1, horas: 40, pct: 1 }],
+    anterior: { ocupacion: 0.4, horas: 30, tiempoBs: 900, consumosBs: 400, rapidasBs: 0, sesiones: 5, porHora: [], porMesa: [] },
+    porSucursal: {
+      filas: [],
+      total: {
+        mesas: 10,
+        sesiones: 90,
+        horas: 100,
+        horasDisponibles: 250,
+        ocupacion: 0.4,
+        tiempoBs: 3000,
+        consumosBs: 1800,
+        rapidas: { cantidad: 12, bs: 300 },
+        cuentas: { cantidad: 2, bs: 50 },
+      },
+    },
+  });
+
+  it("sin comparativo (un local o una sucursal elegida) devuelve el reporte tal cual", () => {
+    const b = billar();
+    expect(billarConsolidado(b)).toBe(b);
+    expect(billarConsolidado(null)).toBeNull();
+    expect(billarConsolidado(undefined)).toBeNull();
+  });
+
+  it("con comparativo, las cifras de arriba son las del negocio entero y la ocupación es la ponderada", () => {
+    const b = billarConsolidado(conComparativo)!;
+    expect(b).toMatchObject({ tiempoBs: 3000, consumosBs: 1800, horas: 100, ocupacion: 0.4, sesiones: 90 });
+    expect(b.rapidas).toEqual({ cantidad: 12, bs: 300 });
+    expect(partesVenta("BILLAR", { billar: b }).map((p) => p.valor)).toEqual([3000, 1800, 350]);
+  });
+
+  it("lo que sólo es de la principal (mesa por mesa, calor, el período anterior) no se hace pasar por el total", () => {
+    const b = billarConsolidado(conComparativo)!;
+    expect(b.porMesa).toEqual([]);
+    expect(b.calor).toBeUndefined();
+    expect(b.anterior).toBeNull();
+    // Sin mesas ni calor, no hay consejo de «mesa floja» ni de «tramo flojo» que lo contradiga.
+    expect(consejos({ rubro: "BILLAR", ve: todoVisible, ventasDelta: null, contra: "x", billar: b }).map((c) => c.id)).not.toContain("mesa-floja");
   });
 });

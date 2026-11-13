@@ -178,3 +178,57 @@ describe("E18 · Reportes del instituto (L5)", () => {
     expect(screen.getByRole("dialog", { name: "Cómo se calcula" })).toHaveTextContent(/venció hace más de 7 días/);
   });
 });
+
+/** PLAN-SUCURSAL-TOTAL §9.5: las sedes lado a lado, sólo lo académico (sin plata de resultado). */
+describe("E18 · comparativo por sede", () => {
+  const SEDES: NonNullable<ReportesAcademia["porSede"]> = [
+    { sede: { id: 1, nombre: "Norte" }, ingresaron: 12, activos: 61, alDia: 50, enEspera: 4, enMora: 7, pctMora: 11, vencido: 1960 },
+    { sede: { id: 2, nombre: "Sur" }, ingresaron: 5, activos: 22, alDia: 20, enEspera: 1, enMora: 1, pctMora: 5, vencido: 340 },
+  ];
+
+  it("con 2 sedes una tabla lado a lado, rotulada con su criterio, sin cobrado ni sueldos", async () => {
+    vi.mocked(apiAcademia.reportes).mockResolvedValue({ ...REPORTES, porSede: SEDES });
+    mostrar();
+    await act(async () => {});
+    const tarjeta = screen.getByRole("region", { name: "Por sede" });
+    expect(tarjeta).toHaveTextContent("Ingresaron, al día y mora: según la sede del grupo.");
+    expect(tarjeta).not.toHaveTextContent(/caja de cada sede/);
+    const filas = within(tarjeta).getAllByRole("row");
+    expect(filas).toHaveLength(3);
+    expect(filas[1]).toHaveTextContent(/Norte.*12.*61.*50.*4.*7 · 11 %.*1\.960,00/);
+    expect(filas[2]).toHaveTextContent(/Sur.*5.*22/);
+    // El resultado en plata vive sólo en el Estado de resultado: ni columnas ni fila de sueldos.
+    expect(within(tarjeta).queryByRole("columnheader", { name: "Cobrado" })).not.toBeInTheDocument();
+    expect(within(tarjeta).queryByRole("columnheader", { name: "Sueldos" })).not.toBeInTheDocument();
+    expect(tarjeta).not.toHaveTextContent(/Sueldos sin sede/);
+    fireEvent.click(screen.getByRole("button", { name: /Cómo se calcula: Por sede/ }));
+    const ayuda = screen.getByRole("dialog", { name: "Cómo se calcula" });
+    expect(ayuda).toHaveTextContent(/sede del GRUPO/);
+    expect(ayuda).not.toHaveTextContent(/CAJA de cada sede/);
+  });
+
+  it("con una sola fila (una sede pedida o un usuario atado) no hay nada que comparar", async () => {
+    vi.mocked(apiAcademia.reportes).mockResolvedValue({ ...REPORTES, porSede: [SEDES[0]] });
+    mostrar();
+    await act(async () => {});
+    expect(document.getElementById("t-sedes")).toBeNull();
+  });
+
+  it("un backend anterior sin porSede deja la pantalla como siempre", async () => {
+    mostrar();
+    await act(async () => {});
+    expect(document.getElementById("t-sedes")).toBeNull();
+  });
+
+  it("sin montos no hay columna de vencido ni Bs", async () => {
+    vi.mocked(apiAcademia.reportes).mockResolvedValue({
+      ...REPORTES,
+      porSede: SEDES.map((f) => ({ ...f, vencido: null })),
+    });
+    mostrar();
+    await act(async () => {});
+    const tarjeta = screen.getByRole("region", { name: "Por sede" });
+    expect(within(tarjeta).queryByRole("columnheader", { name: "Vencido" })).not.toBeInTheDocument();
+    expect(tarjeta).not.toHaveTextContent(/Bs/);
+  });
+});

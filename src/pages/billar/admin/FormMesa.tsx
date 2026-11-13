@@ -17,15 +17,20 @@ import { ErrorCampo, Etiqueta } from "./piezas";
  * el estado esperan a que se cierre.
  *
  * La sucursal no se elige acá: la mesa se crea en el local en que se está,
- * como en Mesas del salón.
+ * como en Mesas del salón. Con 2 o más locales se avisa en cuál
+ * (`sucursal`, PLAN-SUCURSAL-TOTAL §1): sin eso el dueño que mira «Todas»
+ * crea la mesa en la principal sin enterarse.
  */
 export function FormMesa({
   mesaId,
+  sucursal,
   onCerrar,
   onListo,
 }: {
   /** null = nueva. */
   mesaId: number | null;
+  /** El local donde se crea la mesa nueva; sólo se pasa con 2+ locales (con uno no se dice nada). */
+  sucursal?: string;
   onCerrar: () => void;
   /** El mensaje para el aviso de la pantalla ("Mesa 9 creada."). */
   onListo: (mensaje: string) => void;
@@ -84,6 +89,8 @@ export function FormMesa({
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
+        {mesa === null && sucursal && <Nota icono="pin">Se creará en {sucursal}.</Nota>}
+
         {enJuego && (
           <Nota tono="ambar" icono="bola">
             La Mesa {mesa.id} está en juego: el número, el tipo y el estado se cambian cuando se cierre. Si cambiás la

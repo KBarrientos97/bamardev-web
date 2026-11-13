@@ -133,7 +133,8 @@ describe("menú: Supervisión del billar", () => {
       const nodos = aplanar(menu(rol, rubro).flatMap((b) => b.nodos));
       expect(nodos.map((n) => n.item.a)).not.toContain("/supervision-billar");
       // La farmacia tiene la suya desde el 11-nov (otra ruta, abajo); en los
-      // demás rubros sin billar no hay ninguna "Supervisión".
+      // demás rubros sin billar (belleza) no hay ninguna "Supervisión": la del
+      // local (12-nov) tampoco existe ahí.
       if (rubro !== "FARMACIA") expect(nodos.map((n) => n.item.label)).not.toContain("Supervisión");
     }
   });
@@ -152,6 +153,46 @@ describe("menú: Supervisión del billar", () => {
 
   it("el encargado (billar.admin) también la ve, sin pedir caja", () => {
     expect(vender(menu("SUPERVISOR", "BILLAR"))).toContain("Supervisión");
+  });
+});
+
+/**
+ * Supervisión del local (12-nov): la del restaurante y los negocios de
+ * mostrador. Va en Vender, pegada al Punto de venta, para el dueño y el
+ * encargado (`caja.ver_todas`); el cajero no la ve. Donde ya hay otra
+ * Supervisión (farmacia, billar) o no se pidió (belleza), no existe.
+ */
+describe("menú: Supervisión del local", () => {
+  const vender = (m: BloqueMenu[]) => m.find((b) => b.bloque === "vender")?.nodos.map((n) => n.item.label) ?? [];
+  const rutasDeVender = (m: BloqueMenu[]) => m.find((b) => b.bloque === "vender")?.nodos.map((n) => n.item.a) ?? [];
+  const CON_LA_DEL_LOCAL = ["MINIMARKET", "RESTAURANTE", "FERRETERIA", "REPUESTOS", "RUBRO_NUEVO"];
+  const SIN_LA_DEL_LOCAL = ["FARMACIA", "BILLAR", "PELUQUERIA", "BARBERIA", "SPA", "UNAS"];
+
+  it.each(CON_LA_DEL_LOCAL)("%s: el dueño y el encargado la ven justo debajo del Punto de venta", (rubro) => {
+    for (const rol of ["ADMIN", "SUPERVISOR"] as Plantilla[]) {
+      const r = rutasDeVender(menu(rol, rubro));
+      expect(r, rol).toContain("/supervision-local");
+      expect(r[r.indexOf("/pos") + 1], rol).toBe("/supervision-local");
+      const item = menu(rol, rubro)
+        .find((b) => b.bloque === "vender")
+        ?.nodos.find((n) => n.item.a === "/supervision-local")?.item;
+      expect(item?.label).toBe("Supervisión");
+    }
+  });
+
+  it.each(CON_LA_DEL_LOCAL)("%s: el cajero no la ve", (rubro) => {
+    expect(aplanar(menu("CAJERO", rubro).flatMap((b) => b.nodos)).map((n) => n.item.a)).not.toContain("/supervision-local");
+  });
+
+  it.each(SIN_LA_DEL_LOCAL)("%s: no existe, ni para el dueño", (rubro) => {
+    for (const rol of ["ADMIN", "SUPERVISOR", "CAJERO"] as Plantilla[]) {
+      expect(aplanar(menu(rol, rubro).flatMap((b) => b.nodos)).map((n) => n.item.a), rol).not.toContain("/supervision-local");
+    }
+  });
+
+  it("FARMACIA y BILLAR siguen con la suya, una sola «Supervisión»", () => {
+    expect(vender(menu("ADMIN", "FARMACIA")).filter((l) => l === "Supervisión")).toHaveLength(1);
+    expect(vender(menu("ADMIN", "BILLAR")).filter((l) => l === "Supervisión")).toHaveLength(1);
   });
 });
 

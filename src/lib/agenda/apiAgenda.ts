@@ -93,9 +93,13 @@ export const apiAgenda = {
   /** Lo que el POS precarga para cobrar la cita, al precio vigente. */
   carrito: (citaId: number) => request<CarritoCita>(`/agenda/citas/${citaId}/carrito`),
 
-  /** Lo que pasó en la agenda desde `desde` (ISO), para la campana. */
-  avisos: (desde?: string) =>
-    request<{ ahora: string; avisos: AvisoAgenda[] }>(`/agenda/avisos${qs({ desde })}`),
+  /**
+   * Lo que pasó en la agenda desde `desde` (ISO), para la campana. Con
+   * `sucursalId` (la organización con 2+ locales) sólo lo de ese local; sin
+   * él, lo de todos. A quien está atado a un local el backend le fuerza el suyo.
+   */
+  avisos: (desde?: string, sucursalId?: number | null) =>
+    request<{ ahora: string; avisos: AvisoAgenda[] }>(`/agenda/avisos${qs({ desde, sucursalId })}`),
 };
 
 /** Los `codigo` de error de la agenda que las pantallas manejan aparte. */

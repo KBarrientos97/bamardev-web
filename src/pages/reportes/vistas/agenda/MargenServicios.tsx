@@ -25,11 +25,19 @@ const TH = "px-3 py-3 text-[11px] font-bold uppercase leading-tight tracking-wid
 const TD = "px-3 py-3 tabular-nums";
 
 export default function MargenServicios() {
-  const { periodo } = useReporte();
-  // El backend lee días (`AAAA-MM-DD`, los dos extremos incluidos).
+  const { periodo, rango } = useReporte();
+  // El backend lee días (`AAAA-MM-DD`, los dos extremos incluidos). Con una
+  // sucursal elegida arriba, sólo lo vendido en ese local: antes este reporte
+  // ignoraba el filtro y mostraba el negocio entero bajo un local.
   const estado = useApi(
-    () => apiExtras.rentabilidadServicios({ desde: periodo.desde, hasta: periodo.hasta }),
-    [periodo.desde, periodo.hasta],
+    () =>
+      apiExtras.rentabilidadServicios({
+        desde: periodo.desde,
+        hasta: periodo.hasta,
+        // Sin sucursal elegida el pedido es el de siempre, sin el campo.
+        ...(rango.sucursalId != null ? { sucursalId: rango.sucursalId } : {}),
+      }),
+    [periodo.desde, periodo.hasta, rango.sucursalId],
   );
   const filas = estado.datos?.servicios ?? [];
 

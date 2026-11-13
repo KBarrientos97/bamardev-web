@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import { Desplegable } from "../../../components/Desplegable";
 import { Icon, type NombreIcono } from "../../../components/Icon";
 import { AvisoOk, Cargando, ErrorMsg, Modal, useAviso, Vacio } from "../../../components/ui";
 import { fmtMoney } from "../../../lib/format";
@@ -605,33 +606,23 @@ function SelectorDeTurno({
           <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Turno que estás viendo</p>
           {datos.semana && <p className="text-[11px] font-semibold text-texto-3">Semana del {rangoDeSemana(datos.semana)}</p>}
         </div>
-        {/* El selector de verdad va transparente encima de lo que se ve: así el
-            texto (quién, desde cuándo) se parte en renglones en el celular en
-            vez de cortarse con "…". */}
-        <div className="relative rounded-xl border border-borde bg-white focus-within:ring-2 focus-within:ring-primary-100 hover:bg-muted">
-          <div aria-hidden className="flex min-h-11 items-center gap-2 py-2 pl-3.5 pr-3 text-[14px] font-semibold leading-snug text-texto">
-            <span className="min-w-0 flex-1">{opciones.find((o) => o.id === caja.id)?.etiqueta}</span>
-            <span className="shrink-0 text-slate-500">
-              <Icon name="chevronDown" size={16} />
-            </span>
-          </div>
-          <select
-            aria-label="Turno que estás viendo"
-            value={caja.id}
-            onChange={(ev) => {
-              const id = Number(ev.target.value);
-              // Elegir el que corresponde ahora es volver a seguirlo solo.
-              onElegir(id === defectoId ? null : id);
-            }}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          >
-            {opciones.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.etiqueta}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* La lista es la de la app (`Desplegable`, 13-nov), no un `<select>`
+            nativo: en el celular abría el diálogo del sistema. El texto (quién,
+            desde cuándo) se parte en renglones en el celular en vez de cortarse
+            con "…", en el botón y en la lista. */}
+        <Desplegable
+          etiqueta="Turno que estás viendo"
+          valor={caja.id}
+          opciones={opciones}
+          onElegir={(id) => {
+            // Elegir el que corresponde ahora es volver a seguirlo solo.
+            onElegir(id === defectoId ? null : id);
+          }}
+          ancho="boton"
+          className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-borde bg-white py-2 pl-3.5 pr-3 text-left text-[14px] font-semibold leading-snug text-texto outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary-100"
+        >
+          <span className="min-w-0 flex-1">{opciones.find((o) => o.id === caja.id)?.etiqueta}</span>
+        </Desplegable>
         {datos.semana && (
           <p className="mt-1.5 text-[12px] text-texto-3">
             Los turnos de la semana, de lunes a domingo. La semana nueva empieza el {reinicioDeSemana(datos.semana)}.

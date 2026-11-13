@@ -176,6 +176,15 @@ describe("avisar al cliente (§9.2)", () => {
     );
   });
 
+  it("dice el local de la cita y no el que se está mirando (PLAN-SUCURSAL-TOTAL)", () => {
+    const deNorte = cita({ sucursalId: 2, sucursal: "Norte" });
+    expect(textoRecordatorio(deNorte, { negocio: "Bella", sucursal: "Central" })).toContain("en Bella · Norte");
+    // Sin el local de la cita (un backend anterior), queda el que mira la pantalla.
+    expect(textoRecordatorio(cita(), { negocio: "Bella", sucursal: "Central" })).toContain("en Bella · Central");
+    // Con un solo local la pantalla no pasa ninguno: no se agrega nada.
+    expect(textoRecordatorio(deNorte, { negocio: "Bella" })).not.toContain("Norte");
+  });
+
   it("sin teléfono (el profesional que no lo ve) no hay enlace: sólo copiar", () => {
     expect(enlaceWhatsApp(null, "hola")).toBeNull();
     expect(enlaceWhatsApp("", "hola")).toBeNull();

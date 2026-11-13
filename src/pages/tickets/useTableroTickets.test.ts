@@ -85,3 +85,39 @@ describe("useTableroTickets: una vuelta vieja no deshace un toque", () => {
     expect(api.tablero).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("useTableroTickets: el local del tablero (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    api.tablero.mockReset();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("pide el tablero del local elegido y, al cambiar de local, no deja ver el del anterior", async () => {
+    api.tablero.mockResolvedValueOnce(tablero("PREPARANDO"));
+    const { result, rerender } = renderHook(({ s }) => useTableroTickets(s), { initialProps: { s: 1 as number | null } });
+    await act(async () => {});
+    expect(api.tablero).toHaveBeenLastCalledWith(1);
+    expect(result.current.datos).not.toBeNull();
+
+    const delOtro = enVuelo();
+    api.tablero.mockReturnValueOnce(delOtro.promesa);
+    await act(async () => {
+      rerender({ s: 2 });
+    });
+    // Mientras llega el del otro local no queda el tablero del primero a la vista.
+    expect(api.tablero).toHaveBeenLastCalledWith(2);
+    expect(result.current.datos).toBeNull();
+    await act(async () => {
+      delOtro.soltar(tablero("LISTO"));
+    });
+    expect(result.current.datos?.tickets[0].estado).toBe("LISTO");
+  });
+
+  it("sin local no manda nada: el backend da el principal, como siempre", async () => {
+    api.tablero.mockResolvedValue(tablero("PREPARANDO"));
+    renderHook(() => useTableroTickets());
+    await act(async () => {});
+    expect(api.tablero).toHaveBeenCalledWith(undefined);
+  });
+});

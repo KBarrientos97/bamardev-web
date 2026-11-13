@@ -73,6 +73,12 @@ export interface Cita {
   estado: EstadoCita;
   origen: OrigenCita;
   sucursalId: number;
+  /**
+   * El nombre del local de la cita (campo nuevo del backend, aditivo: un
+   * backend anterior no lo manda). Es el de la cita, no el que se está mirando:
+   * una cita que se abre desde la campana puede ser de otro local.
+   */
+  sucursal?: string | null;
   /** null en la cola: un walk-in no tiene hora hasta que lo atienden. */
   inicio: string | null;
   fin: string | null;
@@ -251,6 +257,8 @@ export interface AvisoAgenda {
   codigo: string;
   cliente: string;
   sucursalId: number;
+  /** El nombre del local (campo nuevo, aditivo); con 2+ locales la campana lo muestra. */
+  sucursal?: string | null;
   inicio: string | null;
   recursos: string[];
   usuario: string | null;
@@ -334,6 +342,8 @@ export interface ContadoresHoy {
 }
 
 export interface AgendaHoy {
+  /** El local que se está mirando (el backend siempre lo manda; opcional por un backend anterior). */
+  sucursalId?: number;
   citas: Cita[];
   cola: Cita[];
   contadores: ContadoresHoy;

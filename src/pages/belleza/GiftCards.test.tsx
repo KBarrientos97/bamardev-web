@@ -20,7 +20,8 @@ vi.mock("../../store/AuthContext", () => {
 });
 
 vi.mock("../../lib/api", () => ({
-  api: { getFormasPago: vi.fn() },
+  // `getSucursales`: lo pide `useSucursales` (el selector de local con 2+ sucursales).
+  api: { getFormasPago: vi.fn(), getSucursales: vi.fn(async () => []) },
 }));
 
 vi.mock("../../lib/belleza/apiExtras", () => ({

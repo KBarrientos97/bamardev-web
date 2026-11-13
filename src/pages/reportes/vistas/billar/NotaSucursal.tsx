@@ -10,7 +10,7 @@ import { useReporte } from "../../contexto";
  *
  * Un negocio de un solo local no lo ve nunca: ahí no hay nada que aclarar.
  */
-export function NotaSucursal() {
+export function NotaSucursal({ conComparativo = false }: { conComparativo?: boolean }) {
   const { rango } = useReporte();
   const suc = useSucursales();
   if (!suc.elegir || rango.sucursalId != null) return null;
@@ -23,6 +23,7 @@ export function NotaSucursal() {
       <span>
         El billar se mira de a un local: con “Todas las sucursales” ves las mesas de la principal
         {principal ? ` (${principal.nombre})` : ""}. Elegí otra sucursal arriba para ver las suyas.
+        {conComparativo ? " El cuadro «Por sucursal» junta los locales con mesas." : ""}
       </span>
     </p>
   );

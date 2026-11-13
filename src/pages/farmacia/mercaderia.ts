@@ -137,6 +137,26 @@ export function mesAIso(texto: string): string | null {
 }
 
 /**
+ * El código con que entra una partida que no trae número de lote, a partir de
+ * su vencimiento ya convertido (`mesAIso`): "2030-05-31" → "S/L 05/2030".
+ *
+ * En Bolivia parte de lo que se vende entra sin lote impreso (contrabando,
+ * blísteres sueltos) y Kevin pidió el 12-nov que el lote deje de ser
+ * obligatorio. Lo que NO se puede perder es el vencimiento: sin partida, la
+ * caja no aparece en Vencimientos y el mostrador no frena lo vencido. Así que
+ * con fecha y sin número entra como una partida "S/L" de ese mes.
+ *
+ * El mes va en el código porque el backend junta las partidas por
+ * (artículo, código) y conserva el vencimiento de la primera: dos compras sin
+ * lote con fechas distintas bajo un mismo "S/L" quedarían con la fecha de la
+ * primera, y la segunda vencería en silencio.
+ */
+export function codigoSinLote(vencimientoIso: string): string {
+  const [anio, mes] = vencimientoIso.split("-");
+  return `S/L ${mes}/${anio}`;
+}
+
+/**
  * La barra se escribe sola: se teclean los números y listo.
  *
  * Quien carga una recepción tiene la caja en una mano y el teclado numérico en

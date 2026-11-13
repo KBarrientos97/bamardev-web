@@ -69,6 +69,8 @@ const ibuprofeno = med({});
 const ranitidina = med({
   id: 2,
   nombre: "Ranitidina 150 mg",
+  // Su droga y no la del ibuprofeno: desde el 12-nov la tarjeta la muestra.
+  principioActivo: "Ranitidina",
   concentracion: "150 mg",
   stockTotal: 0,
   proximoVencimiento: null,
@@ -428,6 +430,71 @@ describe("el lector de código de barras", () => {
 
     expect(agregar).not.toHaveBeenCalled();
     expect(campo).toHaveValue("ibupro");
+  });
+});
+
+describe("lo escrito con un error (12-nov)", () => {
+  // "ibprofen": la búsqueda exacta no encuentra nada y el servidor prueba con
+  // lo más parecido. La grilla lo muestra con su aviso, pero el Enter del
+  // lector no lo agrega: sería elegir el remedio por la persona.
+  beforeEach(() => {
+    vi.mocked(api.buscarProductos).mockImplementation(async ({ q }) =>
+      q === "ibprofen"
+        ? { items: [ibuprofeno], total: 1, limite: 24, offset: 0, corregido: "ibuprofeno" }
+        : { items: [ibuprofeno, ranitidina], total: 2, limite: 24, offset: 0, corregido: null },
+    );
+  });
+
+  it("pide la búsqueda aproximada y dice qué se está mostrando", async () => {
+    montar();
+    const campo = await screen.findByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "ibprofen" } });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "No hay nada con «ibprofen». Mostrando «ibuprofeno».",
+    );
+    expect(api.buscarProductos).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: "ibprofen", aproximado: true }),
+    );
+    expect(screen.getByRole("button", { name: /Ibuprofeno 400 mg/ })).toBeInTheDocument();
+  });
+
+  it("el Enter no agrega lo corregido: avisa con el pitido como cuando no hay nada", async () => {
+    montar();
+    const campo = await screen.findByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "ibprofen" } });
+    await screen.findByRole("status");
+    await act(async () => {
+      fireEvent.keyDown(campo, { key: "Enter" });
+    });
+    expect(agregar).not.toHaveBeenCalled();
+    expect(pitidoDeError).toHaveBeenCalled();
+  });
+
+  it("«Buscar ibuprofeno» pasa lo corregido al buscador", async () => {
+    montar();
+    const campo = await screen.findByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "ibprofen" } });
+    await screen.findByRole("status");
+    fireEvent.click(screen.getByRole("button", { name: "Buscar «ibuprofeno»" }));
+    expect(campo).toHaveValue("ibuprofeno");
+  });
+});
+
+describe("la tarjeta", () => {
+  it("muestra la droga aparte, aunque tenga laboratorio y forma", async () => {
+    // Antes la droga sólo salía si faltaban los dos: con la ficha completa la
+    // auxiliar veía "INTI · Comprimido" y no qué remedio era.
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [med({ principioActivo: "Diclofenaco, Paracetamol", descripcion: "Dolor con inflamación" })],
+      total: 1,
+      limite: 24,
+      offset: 0,
+    });
+    montar();
+    const tarjeta = await screen.findByRole("button", { name: /Ibuprofeno 400 mg/ });
+    expect(within(tarjeta).getByText("Diclofenaco, Paracetamol")).toBeInTheDocument();
+    expect(within(tarjeta).getByText("INTI · Comprimido")).toBeInTheDocument();
+    expect(tarjeta).toHaveAttribute("title", "Dolor con inflamación");
   });
 });
 

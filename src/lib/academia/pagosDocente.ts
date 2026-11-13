@@ -2,7 +2,7 @@ import { enlaceWhatsApp } from "../agenda/recordatorio";
 import { fmtMoney } from "../format";
 import { tituloMes } from "./calendario";
 import { fechaCorta, horarioGrupo, nombreDe } from "./formato";
-import type { GrupoDelMesDocente, MetodoPagoPlanilla, PagoPlanilla, Ref, ResumenClasesDocente } from "./tipos";
+import type { GrupoDelMesDocente, MetodoPagoPlanilla, PagoDeSede, PagoPlanilla, Ref, ResumenClasesDocente } from "./tipos";
 
 /**
  * Pagos a docentes, tanda 2 de la revisión del 08-nov: cómo se cuentan en
@@ -32,6 +32,52 @@ export function textoPagado(pago: PagoPlanilla | null | undefined, pagadaEn?: st
 }
 
 const plural = (n: number, una: string, varias: string) => `${n} ${n === 1 ? una : varias}`;
+
+// ── Pago del mes completo (PLAN-SUCURSAL-TOTAL §8.6) ─────────────────────────
+
+/**
+ * Lo que realmente sale al pagar: el mes entero del docente, todas sus sedes.
+ * `liquido` es sólo el subtotal de la sede que se mira, así que el botón y las
+ * confirmaciones usan esto. Sin `aPagar` (un backend anterior), `liquido`.
+ */
+export function aPagarDe(x: { liquido: number; aPagar?: number | null }): number {
+  return x.aPagar ?? x.liquido;
+}
+
+/** «Norte», «Norte y Sur», «Norte, Sur y Este». */
+function listaDeSedes(nombres: string[]): string {
+  if (nombres.length <= 1) return nombres[0] ?? "";
+  return `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+}
+
+/**
+ * El aviso de antes de pagar cuando el docente dicta también donde quien mira
+ * no está: «Además dicta en Norte (Bs 300): el pago es de todo el mes». Vacío
+ * si no hay otras sedes.
+ */
+export function avisoOtrasSedes(otras: PagoDeSede[] | null | undefined): string {
+  if (!otras?.length) return "";
+  const monto = otras.reduce((s, x) => s + x.liquido, 0);
+  return `Además dicta en ${listaDeSedes(otras.map((x) => x.sede.nombre))} (${fmtMoney(monto)}): el pago es de todo el mes, no sólo de esta sede.`;
+}
+
+/**
+ * Cómo se reparte el pago en los gastos de sueldos: «Central Bs 600 · Norte
+ * Bs 300». Con una sola sede (o ninguna) no hay nada que repartir: vacío.
+ */
+export function textoRepartoPorSede(porSede: PagoDeSede[] | null | undefined): string {
+  if (!porSede || porSede.length < 2) return "";
+  return porSede.map((x) => `${x.sede.nombre} ${fmtMoney(x.liquido)}`).join(" · ");
+}
+
+/**
+ * ¿Quien mira puede cerrar y pagar esta planilla? Un usuario atado a una sede
+ * no puede si el docente dicta también en otra (el backend responde 403
+ * `OTRA_SEDE`): lo paga la organización.
+ */
+export function puedeCerrarYPagar(usuarioAtadoASede: boolean, otras: PagoDeSede[] | null | undefined): boolean {
+  return !(usuarioAtadoASede && (otras?.length ?? 0) > 0);
+}
 
 /** El tono de un dato de las clases: lo que pide mirarlo, en ámbar. */
 export type TonoDatoClases = "normal" | "aviso";

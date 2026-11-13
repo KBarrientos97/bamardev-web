@@ -5,6 +5,7 @@ import {
   diasHasta,
   isoAMes,
   juntarMotivo,
+  codigoSinLote,
   mesAIso,
   partirMotivo,
   resumenArticulos,
@@ -12,6 +13,20 @@ import {
   tecleoMes,
   vencidasQueSalen,
 } from "./mercaderia";
+
+describe("partida sin número de lote", () => {
+  it("entra como S/L con el mes y el año de su vencimiento", () => {
+    expect(codigoSinLote("2030-05-31")).toBe("S/L 05/2030");
+    expect(codigoSinLote(mesAIso("2/28")!)).toBe("S/L 02/2028");
+  });
+
+  it("dos vencimientos distintos dan dos partidas distintas", () => {
+    // El backend junta por (artículo, código) y se queda con la fecha de la
+    // primera: con un "S/L" pelado la segunda compra heredaría el vencimiento
+    // de la primera.
+    expect(codigoSinLote("2027-01-31")).not.toBe(codigoSinLote("2028-01-31"));
+  });
+});
 
 describe("vencimiento en MM/AAAA", () => {
   it("guarda el último día del mes", () => {

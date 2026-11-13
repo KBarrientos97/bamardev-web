@@ -1,4 +1,5 @@
 import { NEGOCIO_KEY, USER_KEY } from "../api";
+import { sedeDeCajaGuardada, usaSedeDeCaja } from "../sedeDeCaja";
 
 /**
  * De quién es lo guardado en el celular: negocio y usuario de la sesión.
@@ -18,6 +19,21 @@ export function ambitoSesion(): string | null {
     const n = JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "null") as { id?: number } | null;
     if (u?.id == null || n?.id == null) return null;
     return `${n.id}:${u.id}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * La sede de caja activa de la sesión (ver `sedeDeCaja.ts`), leída del
+ * almacenamiento como `ambitoSesion`: el motor offline corre fuera de React.
+ * `null` si no rige (cajero atado, un local) o si no eligió ninguna.
+ */
+export function sedeDeCajaActual(): number | null {
+  try {
+    const usuario = JSON.parse(localStorage.getItem(USER_KEY) ?? "null");
+    const negocio = JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "null");
+    return usaSedeDeCaja({ usuario, negocio }) ? sedeDeCajaGuardada({ usuario, negocio }) : null;
   } catch {
     return null;
   }

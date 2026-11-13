@@ -4,7 +4,7 @@ import { fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { apiReportes, type CreditosApi } from "../api";
-import { useExportar, useReporte } from "../contexto";
+import { useColumnaSucursal, useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsEntero, pct, plural } from "../formato";
 import { textoRango } from "../periodo";
 import { Cargador, Chip, Destacado, FilaLista, Tarjeta } from "../ui";
@@ -38,7 +38,11 @@ export default function CreditosReporte() {
   const { puede } = useAuth();
   const datos = useApi(() => apiReportes.creditos(rango), [rango.desde, rango.hasta, rango.sucursalId]);
   const d = datos.datos;
-  useExportar("creditos", d && !sinNadaDeCreditos(d) ? () => hojasCreditos(d) : null);
+  // El local donde se debe y donde entró cada cobro: sólo la organización y sólo
+  // si aparecen 2+ locales (entre los deudores o entre los cobros).
+  const locales = [...(d?.deudores.flatMap((p) => p.sucursales ?? []) ?? []), ...(d?.cobros.flatMap((c) => (c.sucursal ? [c.sucursal] : [])) ?? [])];
+  const { conLocal, rotulo } = useColumnaSucursal(locales, (s) => s.id);
+  useExportar("creditos", d && !sinNadaDeCreditos(d) ? () => hojasCreditos(d, conLocal, rotulo) : null);
   // Cada deudor lleva a Cuentas por cobrar, que es donde se le cobra. Sin esa
   // sección el link lo devolvería al inicio sin explicación: no se dibuja.
   const aCobrar = puede("creditos") ? "/creditos" : undefined;
@@ -91,8 +95,8 @@ export default function CreditosReporte() {
                 <Antiguedad d={x} />
               </div>
               <div className="space-y-4">
-                <QuienDebe deudores={x.deudores} aCobrar={aCobrar} />
-                {x.cobros.length > 0 && <Cobros cobros={x.cobros} total={r.cobradoEnPeriodo} />}
+                <QuienDebe deudores={x.deudores} aCobrar={aCobrar} conLocal={conLocal} />
+                {x.cobros.length > 0 && <Cobros cobros={x.cobros} total={r.cobradoEnPeriodo} conLocal={conLocal} />}
               </div>
             </div>
           </>
@@ -162,7 +166,7 @@ function Antiguedad({ d }: { d: CreditosApi }) {
   );
 }
 
-function QuienDebe({ deudores, aCobrar }: { deudores: CreditosApi["deudores"]; aCobrar?: string }) {
+function QuienDebe({ deudores, aCobrar, conLocal }: { deudores: CreditosApi["deudores"]; aCobrar?: string; conLocal: boolean }) {
   const [todos, setTodos] = useState(false);
   const lista = todos ? deudores : deudores.slice(0, VISIBLES);
   return (
@@ -187,7 +191,7 @@ function QuienDebe({ deudores, aCobrar }: { deudores: CreditosApi["deudores"]; a
                   titulo={p.cliente}
                   chip={vencido ? <Chip tono="rojo">Vencido</Chip> : undefined}
                   linea={lineaDeudor(p)}
-                  linea2={p.telefono || undefined}
+                  linea2={[p.telefono, conLocal && p.sucursales?.length ? p.sucursales.map((s) => s.nombre).join(", ") : null].filter(Boolean).join(" · ") || undefined}
                   valor={fmtMoney(p.saldoTotal)}
                   valorPie={enParte ? `${fmtMoney(p.montoVencido)} vencido` : undefined}
                   a={aCobrar}
@@ -202,7 +206,7 @@ function QuienDebe({ deudores, aCobrar }: { deudores: CreditosApi["deudores"]; a
   );
 }
 
-function Cobros({ cobros, total }: { cobros: CreditosApi["cobros"]; total: number }) {
+function Cobros({ cobros, total, conLocal }: { cobros: CreditosApi["cobros"]; total: number; conLocal: boolean }) {
   const [todos, setTodos] = useState(false);
   const lista = todos ? cobros : cobros.slice(0, VISIBLES);
   return (
@@ -215,7 +219,7 @@ function Cobros({ cobros, total }: { cobros: CreditosApi["cobros"]; total: numbe
             tono="verde"
             titulo={c.cliente}
             linea={[fmtFechaHora(c.fecha), c.formaPago, c.codigo].filter(Boolean).join(" · ")}
-            linea2={c.usuario ? `Cobró ${c.usuario}` : undefined}
+            linea2={[c.usuario ? `Cobró ${c.usuario}` : null, conLocal ? c.sucursal?.nombre : null].filter(Boolean).join(" · ") || undefined}
             valor={bsConSigno(c.monto)}
             tonoValor="marca"
           />

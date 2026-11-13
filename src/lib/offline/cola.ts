@@ -4,6 +4,7 @@ import { fechaNegocio } from "../agenda/horaAgenda";
 import type { Venta, VentaInput } from "../../types";
 import { almacenEnMemoria, almacenIndexedDb, type Almacen } from "./almacen";
 import { ambitoSesion } from "./sesionLocal";
+import { quitarVentaDelTurno } from "./turno";
 
 /**
  * La cola de ventas cobradas sin internet (PLAN-IOS F3). Port de la cola de
@@ -238,8 +239,12 @@ export function sincronizar(
             intentos: v.intentos + 1,
             ultimoError: mensaje,
           });
-          if (d === "rechazada") r.rechazadas++;
-          else if (e instanceof ApiError && e.status !== 0) hayRespuesta();
+          if (d === "rechazada") {
+            r.rechazadas++;
+            // Ya no va a existir en el servidor: declararla al cerrar trabaría
+            // la caja con VENTAS_SIN_CONFIRMAR (ver turno.ts).
+            await quitarVentaDelTurno(v.id);
+          } else if (e instanceof ApiError && e.status !== 0) hayRespuesta();
           if (d === "reintentarYParar") {
             if (e instanceof ApiError && e.status === 0) marcarSinSenal();
             break;

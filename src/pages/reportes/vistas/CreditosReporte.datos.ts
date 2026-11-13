@@ -2,7 +2,7 @@ import { esCero, esPositivo } from "../../../lib/dinero";
 import { fmtFechaHora } from "../../../lib/format";
 import type { HojaNueva } from "../../../lib/planilla";
 import type { CreditosApi } from "../api";
-import { hoja } from "../contexto";
+import { columnaSucursal, hoja } from "../contexto";
 import { plural } from "../formato";
 
 /**
@@ -93,13 +93,15 @@ export function sinNadaDeCreditos(d: Pick<CreditosApi, "resumen" | "deudores" | 
   );
 }
 
-export function hojasCreditos(d: CreditosApi): HojaNueva[] {
+export function hojasCreditos(d: CreditosApi, conLocal = false, rotulo = "Sucursal"): HojaNueva[] {
   const hojas: HojaNueva[] = [
     hoja<Deudor>(
       "Quién debe",
       [
         ["Cliente", (x) => x.cliente],
         ["Teléfono", (x) => x.telefono],
+        // Dónde debe: uno o varios locales, por nombre. Sólo con filas de 2+ locales.
+        ...columnaSucursal<Deudor>(conLocal, (x) => (x.sucursales?.length ? x.sucursales.map((s) => s.nombre).join(", ") : null), rotulo),
         ["Créditos", (x) => x.creditos],
         ["Saldo (Bs)", (x) => x.saldoTotal],
         ["Vencido (Bs)", (x) => x.montoVencido],
@@ -126,6 +128,7 @@ export function hojasCreditos(d: CreditosApi): HojaNueva[] {
           ["Fecha", (c) => fmtFechaHora(c.fecha)],
           ["Cliente", (c) => c.cliente],
           ["Crédito", (c) => c.codigo],
+          ...columnaSucursal<CreditosApi["cobros"][number]>(conLocal, (c) => c.sucursal?.nombre, rotulo),
           ["Forma de pago", (c) => c.formaPago],
           ["Cobró", (c) => c.usuario],
           ["Monto (Bs)", (c) => c.monto],

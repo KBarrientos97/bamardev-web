@@ -63,6 +63,21 @@ export function resumenPorMedicamento(filas: AsientoControlado[]): ResumenMedica
   return [...porNombre.values()].sort((x, y) => x.medicamento.localeCompare(y.medicamento, "es"));
 }
 
+/**
+ * El N° de cada asiento DENTRO del libro de su sucursal: cada local lleva el
+ * suyo y empieza en 1, aunque la lista mezcle varios (el consolidado en pantalla
+ * o en la planilla). Con un solo local es el 1, 2, 3… de siempre, así que el
+ * libro de un negocio de un local no cambia. El orden de `filas` es el del libro.
+ */
+export function numerarPorSucursal(filas: AsientoControlado[]): number[] {
+  const corrido = new Map<number, number>();
+  return filas.map((a) => {
+    const n = (corrido.get(a.almacen.id) ?? 0) + 1;
+    corrido.set(a.almacen.id, n);
+    return n;
+  });
+}
+
 /** Las unidades de todo el resumen, para el renglón de total. */
 export function totalUnidades(resumen: ResumenMedicamento[]): number {
   return resumen.reduce((total, r) => total + r.unidades, 0);

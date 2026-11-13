@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { ProximosAutomaticos } from "../../components/ProximosAutomaticos";
+import { NotaGastosGenerales, SelectFiltroSucursal } from "../../components/SucursalGasto";
 import {
   AvisoOk,
   Badge,
@@ -34,7 +35,7 @@ import {
   textoVencimiento,
 } from "../../lib/gastos";
 import { useApi } from "../../lib/useApi";
-import { useSucursales } from "../../lib/useSucursales";
+import { useFiltroSucursalGasto } from "../../lib/useSucursalGasto";
 import type { CategoriaGasto, FiltroGasto, Gasto, TipoCostoGasto } from "../../types";
 import { FormGasto, PanelPago } from "../Gastos";
 
@@ -123,7 +124,9 @@ export default function GastosFarmacia() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const suc = useSucursales();
+  // «Todas», cada local y «General del negocio» (los gastos de ningún local).
+  const filtroSuc = useFiltroSucursalGasto();
+  const { suc, sucursalId, sinSucursal } = filtroSuc;
 
   const [elegido, setElegido] = useState<Gasto | null>(null);
   const [editando, setEditando] = useState<Gasto | null | undefined>(undefined);
@@ -136,8 +139,8 @@ export default function GastosFarmacia() {
   const esteMes = mes === hoyIso().slice(0, 7);
 
   const resumen = useApi(
-    () => api.getResumenGastos({ desde, hasta, sucursalId: suc.sucursalId }),
-    [desde, hasta, suc.sucursalId],
+    () => api.getResumenGastos({ desde, hasta, sucursalId, sinSucursal }),
+    [desde, hasta, sucursalId, sinSucursal],
   );
   // La categoría se filtra acá y no en el servidor: los chips salen de esta
   // misma lista, y si el servidor la recortara quedaría un solo chip.
@@ -148,9 +151,10 @@ export default function GastosFarmacia() {
         hasta,
         filtro: filtro === "TODOS" ? undefined : filtro,
         q: qBuscado || undefined,
-        sucursalId: suc.sucursalId,
+        sucursalId,
+        sinSucursal,
       }),
-    [desde, hasta, filtro, qBuscado, suc.sucursalId],
+    [desde, hasta, filtro, qBuscado, sucursalId, sinSucursal],
   );
   const categorias = useApi(() => api.getCategoriasGasto(), []);
 
@@ -160,6 +164,9 @@ export default function GastosFarmacia() {
   };
 
   const gastos = useMemo(() => lista.datos ?? [], [lista.datos]);
+  // El local en cada fila sólo si los gastos de la lista son de más de uno
+  // (PLAN-SUCURSAL-TOTAL §1): con un local, o filtrando por uno, es ruido.
+  const verSucursal = suc.mostrarColumna(gastos, (g) => g.sucursalId);
   const chipsCategoria = useMemo(() => {
     const vistas = new Map<string, string>();
     for (const g of gastos) vistas.set(g.categoria, g.categoriaNombre ?? g.categoria);
@@ -235,13 +242,16 @@ export default function GastosFarmacia() {
                 ? "Sin ventas en el mes"
                 : superaVentas
                   ? `Más que lo vendido (${fmtMoney(r.ventasPeriodo)})`
-                  : `Ventas ${fmtMoney(r.ventasPeriodo)}`
+                  : `${sinSucursal ? "Ventas de todo el negocio" : "Ventas"} ${fmtMoney(r.ventasPeriodo)}`
             }
             tono={superaVentas ? "text-danger-text" : undefined}
             alerta={superaVentas}
           />
         </div>
       )}
+
+      {/* Con UN local elegido, lo general del negocio no está en las cifras. */}
+      <NotaGastosGenerales generales={r?.generales} unLocalElegido={sucursalId != null} />
 
       {/* Mes, sucursal y búsqueda. En el teléfono cada cosa ocupa su renglón. */}
       <div className="flex flex-wrap items-center gap-3">
@@ -266,19 +276,7 @@ export default function GastosFarmacia() {
           </button>
         </div>
         {suc.elegir && (
-          <Select
-            value={suc.valorSelect}
-            onChange={(e) => suc.alElegirSelect(e.target.value)}
-            className="w-auto"
-            aria-label="Sucursal"
-          >
-            <option value="">Todas las sucursales</option>
-            {suc.sucursales.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </Select>
+          <SelectFiltroSucursal filtro={filtroSuc} className="w-auto" aria-label="Sucursal" />
         )}
         <div className="min-w-[220px] flex-1">
           <Buscador valor={q} onChange={setQ} placeholder="Buscar concepto o proveedor…" />
@@ -335,7 +333,7 @@ export default function GastosFarmacia() {
         </button>
       </div>
 
-      <ProximosAutomaticos mes={mes} sucursalId={suc.sucursalId} />
+      <ProximosAutomaticos mes={mes} sucursalId={sucursalId} sinSucursal={sinSucursal} />
 
       {lista.cargando ? (
         <Cargando />
@@ -357,7 +355,7 @@ export default function GastosFarmacia() {
         <ul className="space-y-2">
           {visibles.map((g) => (
             <li key={g.id}>
-              <FilaGasto gasto={g} onClick={() => setElegido(g)} />
+              <FilaGasto gasto={g} verSucursal={verSucursal} onClick={() => setElegido(g)} />
             </li>
           ))}
         </ul>
@@ -381,7 +379,8 @@ export default function GastosFarmacia() {
         <FormGasto
           gasto={editando}
           categorias={categorias.datos ?? []}
-          sucursalSugerida={suc.sucursalId}
+          sucursalSugerida={sucursalId}
+          sugerirGeneral={sinSucursal}
           onCerrar={() => setEditando(undefined)}
           onGuardado={(texto) => {
             setEditando(undefined);
@@ -468,7 +467,16 @@ function Inicial({ gasto: g, grande }: { gasto: Pick<Gasto, "categoria" | "categ
   );
 }
 
-function FilaGasto({ gasto: g, onClick }: { gasto: Gasto; onClick: () => void }) {
+function FilaGasto({
+  gasto: g,
+  verSucursal,
+  onClick,
+}: {
+  gasto: Gasto;
+  /** Hay gastos de más de un local en la lista: cada fila dice el suyo. */
+  verSucursal: boolean;
+  onClick: () => void;
+}) {
   const vence = textoVencimiento(g);
   const b = badgeEstado(g);
   const parcial = !saldado(g) && esPositivo(g.pagado);
@@ -484,6 +492,7 @@ function FilaGasto({ gasto: g, onClick }: { gasto: Gasto; onClick: () => void })
           {g.categoriaNombre ?? g.categoria} · {fmtFecha(g.fecha)}
           {g.metodoPago && saldado(g) ? ` · ${NOMBRE_METODO[g.metodoPago] ?? g.metodoPago}` : ""}
           {g.recurrente ? " · automático" : ""}
+          {verSucursal && g.sucursal ? ` · ${g.sucursal}` : ""}
         </p>
         {(vence || parcial) && (
           <p

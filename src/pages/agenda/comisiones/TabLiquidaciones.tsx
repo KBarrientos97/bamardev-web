@@ -5,6 +5,7 @@ import { textoPeriodo } from "../../../lib/agenda/periodos";
 import type { Liquidacion } from "../../../lib/agenda/tiposComisiones";
 import { fmtFecha, fmtFechaHora, fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
+import { DesglosePorSucursal, useDesgloseSucursal } from "./DesglosePorSucursal";
 import { TablaLineas } from "./TabProduccion";
 
 const NOMBRE_PERIODO: Record<string, string> = {
@@ -61,6 +62,8 @@ export default function TabLiquidaciones() {
 function DetalleLiquidacion({ id, onClose }: { id: number; onClose: () => void }) {
   const l = useApi(() => apiComisiones.liquidacion(id), [id]);
   const d = l.datos;
+  // Una liquidación anterior a la etapa trae `porSucursal: []`: no se muestra nada nuevo.
+  const desglose = useDesgloseSucursal(d?.porSucursal);
   return (
     <Modal
       abierto
@@ -85,6 +88,17 @@ function DetalleLiquidacion({ id, onClose }: { id: number; onClose: () => void }
             <Par etiqueta="Pagado" valor={d.neto} fuerte />
           </dl>
           {d.nota && <p className="text-[13px] text-texto-2">“{d.nota}”</p>}
+          {desglose.ver && (
+            <DesglosePorSucursal
+              filas={desglose.filas}
+              titulo="Cómo cayó en cada sucursal"
+              nota={
+                (d.gastos?.length ?? 0) >= 2
+                  ? "El neto de cada sucursal es el gasto de sueldos que se le cargó."
+                  : undefined
+              }
+            />
+          )}
           <TablaLineas
             lineas={d.lineas.map((x) => ({ ...x, cantidad: 1, congelada: true, liquidacionId: d.id }))}
             vacio="Sin ventas: sólo adelantos o ajustes."

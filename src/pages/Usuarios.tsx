@@ -26,6 +26,7 @@ import { tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from "../lib/roles";
 import { usePalabras } from "../lib/academia/usePalabras";
 import { useApi } from "../lib/useApi";
+import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, CupoUsuarios, RolNegocio, Usuario } from "../types";
 import { paraQueSirveElPin, queDejaDeAutorizar } from "./Usuarios.datos";
@@ -77,6 +78,12 @@ type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
   const { usuario: actor, negocio } = useAuth();
+  // PLAN-SUCURSAL-TOTAL §1: con 2+ sucursales la organización filtra por sede y
+  // ve de cuál es cada cuenta; quien está atado a una ve sólo su gente (el
+  // backend se la recorta) y su sede en el subtítulo. Con una sola, nada.
+  const suc = useSucursales();
+  // «Sucursal», o «Sede» en un instituto.
+  const pal = usePalabras();
   const usuarios = useApi(() => api.getUsuarios(), []);
   const roles = useApi(() => apiRoles.listar(), []);
   // El límite del plan, para avisar al apretar "Nuevo" y no después de llenar el
@@ -143,11 +150,17 @@ export default function Usuarios() {
     const texto = q.trim().toLowerCase();
     return lista.filter((u) => {
       if (texto && !contiene(u.nombre, texto) && !contiene(u.usuario, texto)) return false;
+      // Las cuentas sin sede (el Administrador, un rol con «todas las sucursales»)
+      // son de toda la organización: aparecen con cualquier sede elegida, como en
+      // Personal. Sólo se descartan las atadas a OTRA sede.
+      if (suc.sucursalId != null && u.sucursalId != null && u.sucursalId !== suc.sucursalId) return false;
       if (filtroRol === "todos") return true;
       if (filtroRol === "inactivos") return !u.activo;
       return `rol:${u.rolId}` === filtroRol;
     });
-  }, [lista, q, filtroRol]);
+  }, [lista, q, filtroRol, suc.sucursalId]);
+  // La sede en cada tarjeta, sólo si las cuentas son de 2+ sedes (a la organización).
+  const verSede = suc.mostrarColumna(lista, (u) => u.sucursalId);
 
   const inactivos = lista.filter((u) => !u.activo).length;
   // Con cinco tarjetas van en una fila en pantallas anchas; si no, de a tres.
@@ -239,7 +252,7 @@ export default function Usuarios() {
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Usuarios"
-        subtitulo={`${lista.length} ${lista.length === 1 ? "cuenta" : "cuentas"} en el negocio`}
+        subtitulo={`${lista.length} ${lista.length === 1 ? "cuenta" : "cuentas"} en ${suc.miSede ?? "el negocio"}`}
         accion={
           <div className="flex flex-wrap gap-2">
             {tienePermiso(actor, "usuarios.asignar_pin") && (
@@ -276,6 +289,7 @@ export default function Usuarios() {
           <Buscador valor={q} onChange={setQ} placeholder="Buscar por nombre o usuario" />
         </div>
         <Chips valor={filtroRol} opciones={opcionesRol} onChange={setFiltroRol} />
+        {suc.elegir && <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
       </div>
 
       <ErrorMsg>{errorAccion || usuarios.error || roles.error}</ErrorMsg>
@@ -309,6 +323,7 @@ export default function Usuarios() {
               key={u.id}
               usuario={u}
               roles={listaRoles}
+              verSede={verSede}
               onClick={() => setDetalle(u)}
             />
           ))}
@@ -468,10 +483,13 @@ function LimiteDeUsuarios({
 function TarjetaUsuario({
   usuario: u,
   roles,
+  verSede,
   onClick,
 }: {
   usuario: Usuario;
   roles: RolNegocio[];
+  /** Mostrar de qué sede es la cuenta (hay cuentas de 2+ sedes). */
+  verSede: boolean;
   onClick: () => void;
 }) {
   const rol = rolDe(u, roles);
@@ -491,6 +509,7 @@ function TarjetaUsuario({
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
+            {verSede && u.sucursal && <Badge tono="gris">{u.sucursal}</Badge>}
             {u.tienePin && llevaPin(rol) && <Badge tono="marca">PIN</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
@@ -956,7 +975,7 @@ function FormUsuarioCuerpo({
         {mostrarSucursal && puedeAsignarSucursal && (
           <Campo
             label={pal.Sede}
-            hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí"
+            hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí. El catálogo de productos y precios de lista sigue siendo de todo el negocio."
           >
             <Select
               value={sucursalId ?? ""}

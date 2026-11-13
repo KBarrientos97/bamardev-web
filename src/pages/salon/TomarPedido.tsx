@@ -3,6 +3,8 @@ import { Icon } from "../../components/Icon";
 import { Confirmar, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { esUnLocal, modoDeSucursal } from "../../lib/useSucursales";
+import { useAuthOpcional } from "../../store/AuthContext";
 import { contiene } from "../../lib/texto";
 import type { Mesa } from "../../types/salon";
 import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
@@ -34,10 +36,16 @@ import {
  */
 export default function TomarPedido({
   mesa,
+  sucursalId,
   onAtras,
   onEnviado,
 }: {
   mesa: Mesa;
+  /**
+   * El local de la mesa, si el panel lo sabe: la mesa que devuelve el backend al
+   * abrirla no lo trae, y se lo busca en el salón (ver `PanelMesero`).
+   */
+  sucursalId?: number | null;
   onAtras: () => void;
   onEnviado: (mensaje: string) => void;
 }) {
@@ -47,18 +55,31 @@ export default function TomarPedido({
   //
   // Arranca con la que el panel ya adelantó (`cartaGuardada`) y abre al
   // instante; mientras, pide la fresca, porque el stock cambia con cada mesa.
-  const [carta, setCarta] = useState(cartaGuardada);
+  //
+  // Con un solo local, o siendo de un local, se pide la de siempre: el backend le
+  // fuerza la suya, es la que el panel adelantó (`precargarCarta`, clave 0) y
+  // no se agrega `?sucursalId` ni se pierde la carta adelantada. Sólo la
+  // organización con 2+ locales pide la del local de la mesa: sus precios y su
+  // stock no son los del consolidado. El modo sale de la sesión (sin red).
+  const auth = useAuthOpcional();
+  const modo = modoDeSucursal({
+    asignado: auth?.usuario?.sucursalId != null,
+    unLocal: esUnLocal(auth?.negocio),
+    locales: auth?.negocio?.sucursalesActivas,
+  });
+  const sucursalCarta = modo === "organizacion" ? (sucursalId ?? mesa.sucursalId ?? undefined) : undefined;
+  const [carta, setCarta] = useState(() => cartaGuardada(sucursalCarta));
   const [errorCarta, setErrorCarta] = useState("");
   useEffect(() => {
     let viva = true;
-    bajarCarta()
+    bajarCarta(sucursalCarta)
       .then((c) => {
         if (viva) setCarta(c);
       })
       .catch((e: unknown) => {
         // Con la copia en pantalla se sigue pidiendo con ella: el backend
         // controla el stock igual al mandar la comanda.
-        if (viva && !cartaGuardada())
+        if (viva && !cartaGuardada(sucursalCarta))
           setErrorCarta(e instanceof Error ? e.message : "No se pudo cargar la carta");
       });
     // Mientras se toma el pedido, el stock se refresca cada 15 s (como el
@@ -67,7 +88,7 @@ export default function TomarPedido({
     // vista, y sólo acá, donde el stock importa.
     const refrescar = () => {
       if (document.visibilityState !== "visible") return;
-      bajarCarta()
+      bajarCarta(sucursalCarta)
         .then((c) => {
           if (viva) setCarta(c);
         })
@@ -80,7 +101,7 @@ export default function TomarPedido({
       window.clearInterval(cada);
       document.removeEventListener("visibilitychange", refrescar);
     };
-  }, []);
+  }, [sucursalCarta]);
 
   const [lineas, setLineas] = useState<LineaPedido[]>([]);
   const [confirmarSalida, setConfirmarSalida] = useState(false);

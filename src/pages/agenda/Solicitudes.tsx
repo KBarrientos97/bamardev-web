@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Badge, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
 import { apiReservaOnline, type BandejaSolicitudes, type CitaSolicitud } from "../../lib/agenda/apiReservaOnline";
@@ -19,6 +19,7 @@ import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { abrirHojaCupo } from "../../lib/hojaCupo";
 import { Telefono } from "../../lib/telefono";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "./PedirMotivo";
 
@@ -38,9 +39,16 @@ const MOTIVOS_RECHAZO = [
  *
  * Abajo, las que entraron solas (modo automático) y nadie miró: se marcan
  * como vistas. Se refresca sola cada 45 s, como la agenda.
+ *
+ * Con 2+ locales (PLAN-SUCURSAL-TOTAL §1) la organización elige «Todas» o uno y
+ * cada tarjeta dice de qué local es si la bandeja trae de más de uno; quien está
+ * atado a un local ve sólo el suyo, con su nombre en el subtítulo.
  */
 export default function Solicitudes() {
   const { usuario, negocio } = useAuth();
+  const suc = useSucursales();
+  // El atado va con su sede (el backend se la fuerza igual); la organización, con la que eligió o todas.
+  const sucursalPedida = usuario?.sucursalId ?? suc.sucursalId;
   const [aviso, setAviso] = useAviso(5000);
   const [rechazando, setRechazando] = useState<CitaSolicitud | null>(null);
   const [ocupada, setOcupada] = useState<number | null>(null);
@@ -57,9 +65,11 @@ export default function Solicitudes() {
     registrar: registrarConsumo,
   } = useBloqueoCupo("CITA", { abrirHoja: false });
   const bandeja = useConsultaPeriodica<BandejaSolicitudes>(
-    () => apiReservaOnline.bandeja(usuario?.sucursalId ?? null),
-    [usuario?.sucursalId],
-    { pausado: rechazando !== null },
+    () => apiReservaOnline.bandeja(sucursalPedida ?? null),
+    [sucursalPedida],
+    // `clave`: al cambiar de local, las solicitudes del anterior no quedan a la
+    // vista (con sus botones de aprobar y rechazar) hasta que llegue la bandeja nueva.
+    { pausado: rechazando !== null, clave: sucursalPedida ?? null },
   );
 
   /** Saca la cita de las dos listas (ya se resolvió). */
@@ -108,12 +118,14 @@ export default function Solicitudes() {
 
   const solicitudes = bandeja.datos?.solicitudes ?? [];
   const nuevas = bandeja.datos?.nuevas ?? [];
+  // El local en la tarjeta sólo si la bandeja mezcla 2+ (a la organización).
+  const verLocal = suc.mostrarColumna([...solicitudes, ...nuevas], (c) => c.sucursalId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Solicitudes online"
-        subtitulo="Las reservas de tu página que esperan respuesta."
+        subtitulo={`Las reservas de tu página que esperan respuesta.${suc.sedeVista ? ` · ${suc.sedeVista}` : ""}`}
         accion={
           <Link
             to="/configuracion/agenda?pestana=online"
@@ -124,6 +136,8 @@ export default function Solicitudes() {
           </Link>
         }
       />
+
+      {suc.elegir && <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />}
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
@@ -164,6 +178,7 @@ export default function Solicitudes() {
                   key={c.id}
                   cita={c}
                   negocio={negocio?.nombre ?? ""}
+                  sucursal={verLocal ? c.sucursal : null}
                   ocupada={ocupada === c.id}
                   acciones={
                     <>
@@ -200,6 +215,7 @@ export default function Solicitudes() {
                   key={c.id}
                   cita={c}
                   negocio={negocio?.nombre ?? ""}
+                  sucursal={verLocal ? c.sucursal : null}
                   ocupada={ocupada === c.id}
                   acciones={
                     <Boton
@@ -240,11 +256,14 @@ export default function Solicitudes() {
 function TarjetaSolicitud({
   cita,
   negocio,
+  sucursal,
   acciones,
   ocupada,
 }: {
   cita: CitaSolicitud;
   negocio: string;
+  /** El local de la solicitud; sólo se pasa cuando la bandeja mezcla varios. */
+  sucursal?: string | null;
   acciones: React.ReactNode;
   ocupada: boolean;
 }) {
@@ -274,6 +293,11 @@ function TarjetaSolicitud({
         </div>
         <span className="text-xs text-texto-4">Código {cita.codigo}</span>
       </div>
+      {sucursal && (
+        <p>
+          <Badge tono="gris">{sucursal}</Badge>
+        </p>
+      )}
       <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
         <span className="font-semibold">{cita.cliente.nombre}</span>
         {cita.cliente.nuevo ? <Badge tono="marca">Nuevo</Badge> : <Badge tono="verde">Ya vino</Badge>}

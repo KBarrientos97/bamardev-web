@@ -1,6 +1,17 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
-import { AvisoOk, Badge, Boton, Campo, Confirmar, ErrorMsg, Input, Modal, useAviso } from "../../components/ui";
+import {
+  AvisoOk,
+  Badge,
+  Boton,
+  Campo,
+  Confirmar,
+  ErrorMsg,
+  Input,
+  Modal,
+  Select,
+  useAviso,
+} from "../../components/ui";
 import {
   apiTelevisores,
   claveOpcion,
@@ -9,6 +20,7 @@ import {
 } from "../../lib/apiTelevisores";
 import { codigoEscrito, codigoParaVer } from "../../lib/tickets/codigoTv";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { Tarjeta } from "./piezas";
 
 /**
@@ -28,6 +40,7 @@ import { Tarjeta } from "./piezas";
  */
 export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boolean }) {
   const lista = useApi(() => apiTelevisores.listar(), []);
+  const suc = useSucursales();
   const [conectando, setConectando] = useState(false);
   const [cambiando, setCambiando] = useState<TelevisorLocal | null>(null);
   const [desconectar, setDesconectar] = useState<TelevisorLocal | null>(null);
@@ -38,6 +51,10 @@ export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boole
   const tvs = lista.datos?.televisores ?? [];
   const opciones = lista.datos?.opciones ?? [];
   const direccion = `${window.location.host}/tv`;
+  // A quien es de organización con TVs de 2+ locales, cada una le dice de cuál
+  // es: el backend conecta la TV al local de quien la conecta (o al principal).
+  const verLocal = suc.mostrarColumna(tvs, (t) => t.sucursalId);
+  const localDe = (tv: TelevisorLocal) => suc.sucursales.find((a) => a.id === tv.sucursalId)?.nombre;
 
   async function quitar(tv: TelevisorLocal) {
     setError("");
@@ -94,6 +111,7 @@ export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boole
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-texto">{tv.nombre}</p>
               <p className="truncate text-[12px] text-texto-3">
+                {verLocal && localDe(tv) ? `${localDe(tv)} · ` : ""}
                 {queMuestra(tv)} · {tv.prendida ? "prendida" : "apagada o sin internet"}
               </p>
             </div>
@@ -110,13 +128,18 @@ export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boole
         <FormTv
           titulo="Conectar una TV"
           opciones={opciones}
+          // Sólo la organización con 2+ locales elige dónde queda la TV: el
+          // encargado de un local la deja en el suyo y con un local no hay qué elegir.
+          locales={suc.modo === "organizacion" ? suc.sucursales : undefined}
+          localSugerido={suc.sugerida?.id}
           onClose={() => setConectando(false)}
-          onGuardar={async ({ codigo, opcion, nombre }) => {
+          onGuardar={async ({ codigo, opcion, nombre, sucursalId }) => {
             const tv = await apiTelevisores.conectar({
               codigo,
               muestra: opcion.muestra,
               ...(opcion.menu != null ? { menu: opcion.menu } : {}),
               ...(nombre ? { nombre } : {}),
+              ...(sucursalId != null ? { sucursalId } : {}),
             });
             setConectando(false);
             setAviso(`"${tv.nombre}" conectada: en unos segundos cambia sola.`);
@@ -173,6 +196,8 @@ function FormTv({
   titulo,
   tv,
   opciones,
+  locales,
+  localSugerido,
   onClose,
   onGuardar,
   onDesconectar,
@@ -181,11 +206,17 @@ function FormTv({
   /** La TV que se cambia; sin ella, se conecta una nueva con su código. */
   tv?: TelevisorLocal;
   opciones: OpcionTv[];
+  /** Los locales entre los que elegir, sólo al conectar y sólo para la organización con 2+. */
+  locales?: { id: number; nombre: string }[];
+  /** El que se propone: la sucursal sugerida (la principal, que es donde la dejaría el backend). */
+  localSugerido?: number;
   onClose: () => void;
-  onGuardar: (d: { codigo: string; opcion: OpcionTv; nombre: string }) => Promise<void>;
+  onGuardar: (d: { codigo: string; opcion: OpcionTv; nombre: string; sucursalId?: number }) => Promise<void>;
   onDesconectar?: () => void;
 }) {
   const [codigo, setCodigo] = useState("");
+  const elegirLocal = !tv && !!locales && locales.length > 1;
+  const [local, setLocal] = useState(localSugerido != null ? String(localSugerido) : "");
   const [elegida, setElegida] = useState(() =>
     tv ? claveOpcion(tv) : opciones.length === 1 ? claveOpcion(opciones[0]) : "",
   );
@@ -200,7 +231,12 @@ function FormTv({
     if (!opcion) return setError("Elegí qué va a mostrar la TV.");
     setGuardando(true);
     try {
-      await onGuardar({ codigo, opcion, nombre: nombre.trim() });
+      await onGuardar({
+        codigo,
+        opcion,
+        nombre: nombre.trim(),
+        ...(elegirLocal && local ? { sucursalId: Number(local) } : {}),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
@@ -272,6 +308,17 @@ function FormTv({
             </div>
           )}
         </div>
+        {elegirLocal && (
+          <Campo label="¿En qué local queda la TV?">
+            <Select value={local} onChange={(e) => setLocal(e.target.value)}>
+              {locales.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        )}
         <Campo label="Nombre (opcional)" hint="Para reconocerla en la lista">
           <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="TV de la entrada" maxLength={40} />
         </Campo>

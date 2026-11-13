@@ -8,6 +8,7 @@ import { parsearMonto } from "../../lib/dinero";
 import { fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { EstadoControlStock, Producto } from "../../types";
 import { veFicha } from "../reportes/catalogo";
@@ -33,6 +34,9 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
  */
 export default function ConfigInventario() {
   const estado = useApi(() => api.controlStock(), []);
+  // Con 2+ locales, el conteo de cada uno se carga por separado, también con el
+  // control ya prendido (PLAN-SUCURSAL-TOTAL, etapa 3).
+  const suc = useSucursales();
   const [contando, setContando] = useState(false);
   const [apagando, setApagando] = useState(false);
   const [procesando, setProcesando] = useState(false);
@@ -57,12 +61,14 @@ export default function ConfigInventario() {
   if (contando) {
     return (
       <Conteo
+        yaPrendido={estado.datos?.controlaStock === true}
         onCancelar={() => setContando(false)}
         onListo={(nuevo, contados, enCero) => {
+          const eraPrendido = estado.datos?.controlaStock === true;
           estado.setDatos(nuevo);
           setContando(false);
           setAviso(
-            `Listo: el control de stock está prendido con ${fmtNum(contados)} ${
+            `Listo: ${eraPrendido ? "se guardó el conteo con" : "el control de stock está prendido con"} ${fmtNum(contados)} ${
               contados === 1 ? "artículo contado" : "artículos contados"
             }.` +
               (enCero > 0
@@ -122,6 +128,21 @@ export default function ConfigInventario() {
               </div>
             )}
           </Tarjeta>
+
+          {/* El control ya prendido no cuenta los demás locales solo: cada
+              uno se carga con su conteo. Sólo la organización con 2+ locales: el
+              usuario de una sede sólo cuenta la suya y no tiene otro que contar. */}
+          {datos.sePuedeApagar && datos.controlaStock && suc.modo === "organizacion" && (
+            <Tarjeta titulo="Contar otro local">
+              <p className="text-[13px] text-texto-2">
+                El control de stock ya está prendido. Si todavía no cargaste lo que hay en alguno de tus locales,
+                contalo acá: el stock de ese local queda en lo que escribas.
+              </p>
+              <Boton className="mt-3" icono="archive" variante="ghost" onClick={() => setContando(true)}>
+                Contar un local
+              </Boton>
+            </Tarjeta>
+          )}
 
           <Tarjeta titulo="Cómo funciona">
             <ul className="space-y-2.5 text-[13px] text-texto-2">
@@ -218,16 +239,23 @@ function leerCantidad(texto: string | undefined): { vacio: boolean; valor: numbe
 }
 
 function Conteo({
+  yaPrendido,
   onCancelar,
   onListo,
 }: {
+  /** El control ya estaba prendido: esto sólo carga el stock de un local. */
+  yaPrendido: boolean;
   onCancelar: () => void;
   onListo: (estado: EstadoControlStock, contados: number, enCero: number) => void;
 }) {
   const { negocio, usuario } = useAuth();
   const locales = useApi(() => api.getSucursales(), []);
   // Se cuenta un local que vende: el depósito no se vacía vendiendo.
-  const opciones = (locales.datos ?? []).filter((a) => a.activo && a.tipo !== "DEPOSITO");
+  // Quien es de un local cuenta sólo el suyo: `getSucursales` trae todos, pero el
+  // backend responde 403 al conteo de otro y el selector sería ruido.
+  const opciones = (locales.datos ?? []).filter(
+    (a) => a.activo && a.tipo !== "DEPOSITO" && (usuario?.sucursalId == null || a.id === usuario.sucursalId),
+  );
   const [elegidoId, setElegidoId] = useState<number | null>(null);
   const almacenId =
     elegidoId ??
@@ -291,7 +319,11 @@ function Conteo({
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Contar la mercadería"
-        subtitulo="Escribí cuánto tenés hoy de cada producto. Con esto se prende el control de stock."
+        subtitulo={
+          yaPrendido
+            ? "Escribí cuánto tenés hoy de cada producto en este local. El control de stock ya está prendido."
+            : "Escribí cuánto tenés hoy de cada producto. Con esto se prende el control de stock."
+        }
         accion={
           <Boton variante="ghost" icono="chevronLeft" onClick={onCancelar} disabled={procesando}>
             Volver
@@ -392,21 +424,23 @@ function Conteo({
             )}
           </p>
           <Boton onClick={() => setConfirmando(true)} disabled={procesando || malos.length > 0}>
-            Prender el control de stock
+            {yaPrendido ? "Guardar el conteo" : "Prender el control de stock"}
           </Boton>
         </div>
       )}
 
       <Confirmar
         abierto={confirmando}
-        titulo="¿Prender el control de stock?"
+        titulo={yaPrendido ? "¿Guardar el conteo?" : "¿Prender el control de stock?"}
         texto={
           `${nombreLocal ? `${nombreLocal}: s` : "S"}e carga${contados === 1 ? "" : "n"} ${fmtNum(contados)} ` +
           `${contados === 1 ? "producto" : "productos"} con lo que contaste` +
           (vacios > 0 ? ` y ${fmtNum(vacios)} sin contar quedan en 0 (agotados)` : "") +
-          ". Desde ahí el punto de venta no deja vender lo que no hay."
+          (yaPrendido
+            ? ". El stock de ese local queda en lo que contaste."
+            : ". Desde ahí el punto de venta no deja vender lo que no hay.")
         }
-        etiquetaOk="Prender"
+        etiquetaOk={yaPrendido ? "Guardar" : "Prender"}
         procesando={procesando}
         onCancel={() => setConfirmando(false)}
         onOk={() => void guardar()}

@@ -13,6 +13,8 @@ import type {
   ActualizarUsuarioInput,
   CupoUsuarios,
   Caja,
+  CajaAbierta,
+  CajaDelLocal,
   Categoria,
   ClienteCredito,
   ComprasInsumos,
@@ -53,6 +55,7 @@ import type {
   ProveedorDetalle,
   ProveedorInput,
   PaginaProductos,
+  SugerenciasFicha,
   Producto,
   ProductoInput,
   RangoReporte,
@@ -94,6 +97,7 @@ import type {
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
+import { cabeceraDeSedeDeCaja } from "./sedeDeCaja";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -197,6 +201,24 @@ function cerrarSesionVencida(huboToken: boolean) {
 }
 
 /**
+ * La cabecera de la sede de caja (ver `sedeDeCaja.ts`): sólo para el usuario de
+ * una organización con 2+ sucursales que ya eligió una; a los demás, nada. Se
+ * lee de la sesión guardada y no del contexto de React, como `ambitoSesion`:
+ * el POS pide la caja en su primer render. En soporte (otra sesión, de otro
+ * negocio) nunca se manda.
+ */
+function cabeceraSede(sedeExplicita?: number | null): Record<string, string> {
+  if (tokenDeSoporte()) return {};
+  try {
+    const usuario = JSON.parse(localStorage.getItem(USER_KEY) ?? "null");
+    const negocio = JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "null");
+    return cabeceraDeSedeDeCaja({ usuario, negocio }, sedeExplicita);
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Cuánto se espera una respuesta antes de darla por perdida. El backend
  * responde en decenas de ms; 20 s ya es una red que no está.
  */
@@ -267,6 +289,23 @@ function qs(params: object = {}): string {
 }
 
 /**
+ * Lo que contesta `GET /qr-cobro`. `mismoEnTodas`, `sucursalId` y `origen` son
+ * del QR por sucursal (13-nov-2026) y un backend anterior no los manda.
+ */
+export interface QrCobroInfo {
+  imagen: string | null;
+  actualizadoEn: string | null;
+  /** El nombre de quien lo puso (backend del 18-oct en adelante). */
+  actualizadoPor?: string | null;
+  /** true = el mismo QR en todas las sucursales (lo de siempre). */
+  mismoEnTodas?: boolean;
+  /** La sede por la que se preguntó; null cuando rige el mismo para todas. */
+  sucursalId?: number | null;
+  /** "sucursal" = el propio de la sede; "general" = el del negocio (o el de respaldo). */
+  origen?: "general" | "sucursal";
+}
+
+/**
  * Llama al backend agregando el token y traduciendo errores a ApiError.
  *
  * Es el único punto por el que pasa todo el tráfico, así que acá viven las tres
@@ -300,6 +339,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
         // JSON acá lo rompe. Así pasa igual por las tres reglas de abajo.
         ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...cabeceraSede(),
         ...options.headers,
       },
     });
@@ -521,6 +561,12 @@ export const api = {
      * de su caja; quien pertenece a una sucursal ve siempre la suya.
      */
     sucursalId?: number | null;
+    /**
+     * Si lo tecleado no encuentra nada, que el servidor pruebe con lo más
+     * parecido del catálogo ("ibprofen" → "ibuprofeno") y lo diga en
+     * `corregido`. Sólo lo piden las pantallas de la farmacia.
+     */
+    aproximado?: boolean;
   }) =>
     request<PaginaProductos>(
       `/productos/buscar${qs({
@@ -530,8 +576,15 @@ export const api = {
         soloHabilitados: params.soloHabilitados ? "true" : undefined,
         categoriaId: params.categoriaId ?? undefined,
         sucursalId: params.sucursalId ?? undefined,
+        aproximado: params.aproximado ? "true" : undefined,
       })}`,
     ),
+  /**
+   * Las drogas, laboratorios y formas que ya están en las fichas del negocio,
+   * para sugerirlas al cargar un medicamento (farmacia). El catálogo de una
+   * farmacia viene paginado, así que la lista en memoria no alcanza.
+   */
+  sugerenciasFicha: () => request<SugerenciasFicha>("/productos/sugerencias-ficha"),
   /**
    * De qué lotes sale cada artículo del carrito en esa sucursal, en el orden
    * en que la venta los descuenta. Sin costos: lo lee quien cobra. Sólo
@@ -595,11 +648,15 @@ export const api = {
     }),
   // ── Encargos (rubro farmacia) ───────────────────────────────────────────
   /** Sin filtro trae sólo lo que sigue abierto. */
-  getEncargos: (params: { estado?: string; incluirCerrados?: boolean } = {}) =>
+  getEncargos: (
+    params: { estado?: string; incluirCerrados?: boolean; sucursalId?: number | null } = {},
+  ) =>
     request<ListaEncargos>(
       `/encargos${qs({
         estado: params.estado,
         incluirCerrados: params.incluirCerrados ? "true" : undefined,
+        // Sin esto, el consolidado; quien es de un local ve siempre el suyo.
+        sucursalId: params.sucursalId ?? undefined,
       })}`,
     ),
   crearEncargo: (input: EncargoInput) =>
@@ -773,18 +830,30 @@ export const api = {
 
   // ── Proveedores (farmacia) ──
   /** Los proveedores con lo que se les compró en el período (días AAAA-MM-DD). */
-  proveedores: (params: { desde?: string; hasta?: string; inactivos?: boolean } = {}) =>
+  proveedores: (
+    params: { desde?: string; hasta?: string; inactivos?: boolean; sucursalId?: number | null } = {},
+  ) =>
     request<ProveedorConCompras[]>(
-      `/proveedores${qs(
-        rangoParaApi({
+      `/proveedores${qs({
+        ...rangoParaApi({
           desde: params.desde,
           hasta: params.hasta,
           inactivos: params.inactivos ? "true" : undefined,
         }),
-      )}`,
+        // El proveedor es del negocio; la sucursal sólo acota las COMPRAS que se suman.
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
     ),
-  proveedor: (id: number, params: { desde?: string; hasta?: string } = {}) =>
-    request<ProveedorDetalle>(`/proveedores/${id}${qs(rangoParaApi(params))}`),
+  proveedor: (
+    id: number,
+    params: { desde?: string; hasta?: string; sucursalId?: number | null } = {},
+  ) =>
+    request<ProveedorDetalle>(
+      `/proveedores/${id}${qs({
+        ...rangoParaApi({ desde: params.desde, hasta: params.hasta }),
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
+    ),
   /** Si el nombre ya existe (sin importar mayúsculas ni tildes), el servidor lo rechaza. */
   crearProveedor: (input: ProveedorInput) =>
     request<Proveedor>("/proveedores", { method: "POST", body: JSON.stringify(input) }),
@@ -854,6 +923,18 @@ export const api = {
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),
   /** Devuelve `{ caja: null }` cuando el usuario no tiene turno abierto. */
   cajaActual: () => request<{ caja: Caja | null }>("/caja/actual"),
+  /**
+   * Todas las cajas abiertas del usuario, una por sucursal (13-nov): el admin
+   * de una organización puede tener una en cada local. Sirve para el selector
+   * de sede del POS y para avisar al cerrar sesión.
+   */
+  cajasAbiertas: () => request<{ cajas: CajaAbierta[] }>("/caja/abiertas"),
+  /**
+   * Las cajas abiertas de UNA sucursal, de cualquier usuario: con ellas el
+   * mesero elige a cuál va la cuenta de la mesa que cobra cuando hay varias.
+   */
+  cajasDelLocal: (sucursalId: number) =>
+    request<{ cajas: CajaDelLocal[] }>(`/caja/del-local${qs({ sucursalId })}`),
   /** `almacenId` sólo lo manda un usuario de organización: al resto el backend
    *  se lo rechaza porque trabaja en su sucursal asignada. */
   abrirCaja: (input: {
@@ -868,8 +949,34 @@ export const api = {
    * administrador movió la caja mientras se contaba, el backend contesta 409
    * ESPERADO_CAMBIO con el número nuevo en vez de guardar otra diferencia.
    */
-  cerrarCaja: (id: number, input: { montoCierre: number; notaCierre?: string; esperadoVisto?: number }) =>
-    request<Caja>(`/caja/${id}/cerrar`, { method: "POST", body: JSON.stringify(input) }),
+  cerrarCaja: (
+    id: number,
+    input: {
+      montoCierre: number;
+      notaCierre?: string;
+      esperadoVisto?: number;
+      /**
+       * Lo que este equipo declara del turno (12-nov, como Android): cuántas
+       * ventas le quedan sin subir y la clave de cada venta que registró en la
+       * caja. Con alguna sin llegar, el servidor frena el cierre (409
+       * VENTAS_SIN_SUBIR / VENTAS_SIN_CONFIRMAR). Un backend anterior los
+       * ignora y cierra como siempre. Ver `lib/offline/turno.ts`.
+       */
+      pendientesEnEquipo?: number;
+      ventasDelEquipo?: string[];
+    },
+  ) => request<Caja>(`/caja/${id}/cerrar`, { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * El latido del equipo que trabaja la caja (12-nov): cuántas ventas tiene
+   * sin subir y cuándo cobró la última, para que Supervisión diga «En línea» o
+   * «Sin señal» de la caja de la web igual que de la del APK. `cerrada: true`
+   * = la caja ya la cerraron desde otro lado. Ver `lib/offline/turno.ts`.
+   */
+  latidoCaja: (id: number, input: { pendientes: number; ultimaVentaEnEquipoEn?: string }) =>
+    request<{ ok: boolean; cerrada?: boolean; ahora?: number }>(`/caja/${id}/latido`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   getMovimientosCaja: (id: number) => request<MovimientoCaja[]>(`/caja/${id}/movimientos`),
   /** Sólo ADMIN y SUPERVISOR: el backend lo exige con RolesGuard. */
   crearMovimientoCaja: (
@@ -896,8 +1003,18 @@ export const api = {
     }),
 
   // ── Ventas ────────────────────────────────────────────────────────────────
+  /**
+   * Con `almacenId` en el cuerpo (el POS lo pone cuando el admin elige entre
+   * varias cajas), la cabecera de la sede es ESA y no la activa de ahora: la
+   * cola sin conexión sube la venta tiempo después y la sede elegida puede
+   * ser otra.
+   */
   crearVenta: (input: VentaInput) =>
-    request<Venta>("/ventas", { method: "POST", body: JSON.stringify(input) }),
+    request<Venta>("/ventas", {
+      method: "POST",
+      body: JSON.stringify(input),
+      ...(input.almacenId != null ? { headers: cabeceraSede(input.almacenId) } : {}),
+    }),
   getVentas: (cajaId?: number) => request<Venta[]>(`/ventas${qs({ cajaId })}`),
   getVenta: (id: number) => request<Venta>(`/ventas/${id}`),
   anularVenta: (id: number, input: AnularVentaInput = {}) =>
@@ -954,11 +1071,18 @@ export const api = {
   //  El mes se corta en la medianoche LOCAL (`periodoParaApi`): con el día
   //  pelado el backend tomaba la de UTC, y "Sobre las ventas" sumaba la noche
   //  del último día del mes anterior y dejaba afuera la del último de éste.
+  //  `sinSucursal: true` = sólo los gastos GENERALES del negocio (los que no son
+  //  de ningún local; PLAN-SUCURSAL-TOTAL §9.1). Gana sobre `sucursalId` y sólo
+  //  vale para la organización. `false`/omitido no viaja: la ruta queda como era.
   getResumenGastos: (params: {
     desde: string;
     hasta: string;
     sucursalId?: number | null;
-  }) => request<ResumenGastos>(`/gastos/resumen${qs(periodoParaApi(params))}`),
+    sinSucursal?: boolean;
+  }) =>
+    request<ResumenGastos>(
+      `/gastos/resumen${qs(periodoParaApi({ ...params, sinSucursal: params.sinSucursal || undefined }))}`,
+    ),
 
   getGastos: (
     params: {
@@ -968,8 +1092,9 @@ export const api = {
       q?: string;
       categoria?: string;
       sucursalId?: number | null;
+      sinSucursal?: boolean;
     },
-  ) => request<Gasto[]>(`/gastos${qs(periodoParaApi(params))}`),
+  ) => request<Gasto[]>(`/gastos${qs(periodoParaApi({ ...params, sinSucursal: params.sinSucursal || undefined }))}`),
 
   crearGasto: (input: GastoInput) =>
     request<Gasto>("/gastos", { method: "POST", body: JSON.stringify(input) }),
@@ -1025,9 +1150,13 @@ export const api = {
     ),
 
   // Gastos automaticos (las plantillas): la regla que crea el gasto sola.
-  getPlantillasGasto: (sucursalId?: number | null) =>
+  //  `sinSucursal`: sólo las reglas generales del negocio (ver `getGastos`).
+  getPlantillasGasto: (sucursalId?: number | null, sinSucursal?: boolean) =>
     request<PlantillaGasto[]>(
-      `/gastos/plantillas${qs({ sucursalId: sucursalId ?? undefined })}`,
+      `/gastos/plantillas${qs({
+        sucursalId: sucursalId ?? undefined,
+        sinSucursal: sinSucursal || undefined,
+      })}`,
     ),
   crearPlantillaGasto: (input: PlantillaGastoInput) =>
     request<PlantillaGasto>("/gastos/plantillas", {
@@ -1104,10 +1233,14 @@ export const api = {
   // el backend las dedupe: si el POST llegó pero la respuesta se perdió, el
   // reintento devuelve lo que ya existe en vez de duplicarlo — una comanda
   // repetida es un pedido que la cocina hace dos veces.
-  salon: () => request<Salon>("/salon"),
+  // `sucursalId`: el local del salón que se mira (sólo lo respeta el usuario de
+  // organización; al de un local el backend le fuerza el suyo). Sin él, igual
+  // que siempre: el consolidado, o el propio.
+  salon: (sucursalId?: number | null) => request<Salon>(`/salon${qs({ sucursalId })}`),
   mesa: (id: number) => request<Mesa>(`/salon/mesas/${id}`),
   /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
-  cartaSalon: () => request<Producto[]>("/salon/carta"),
+  cartaSalon: (sucursalId?: number | null) =>
+    request<Producto[]>(`/salon/carta${qs({ sucursalId })}`),
   turnoMesero: () => request<TurnoMesero>("/salon/turno"),
   /**
    * Una mesa ya cobrada del turno, para volver a darle el recibo al cliente.
@@ -1207,7 +1340,8 @@ export const api = {
     request<Mesa>(`/salon/mesas/${id}/reserva`, { method: "DELETE" }),
 
   /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
-  mesasPorCobrar: () => request<Mesa[]>("/salon/por-cobrar"),
+  mesasPorCobrar: (sucursalId?: number | null) =>
+    request<Mesa[]>(`/salon/por-cobrar${qs({ sucursalId })}`),
   /**
    * Convierte la cuenta de la mesa en venta.
    *
@@ -1230,6 +1364,12 @@ export const api = {
       propina?: number;
       totalEsperado?: number;
       clienteRequestId?: string;
+      /**
+       * Sólo el mesero y sólo cuando hay varias cajas abiertas en el local:
+       * la caja a la que va la cuenta. Sin esto, la abierta del local (la más
+       * reciente si hay varias), como siempre.
+       */
+      cajaId?: number;
     },
   ) => request<Venta>(`/salon/mesas/${id}/cobrar`, {
     method: "POST",
@@ -1255,16 +1395,28 @@ export const api = {
    * El QR vigente; `imagen` null si todavía nadie lo subió. `actualizadoPor`
    * es el nombre de quien lo puso (backend del 18-oct en adelante).
    */
-  qrCobro: () =>
-    request<{ imagen: string | null; actualizadoEn: string | null; actualizadoPor?: string | null }>("/qr-cobro"),
-  /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
-  subirQrCobro: (imagen: string) =>
+  qrCobro: (sucursalId?: number) =>
+    request<QrCobroInfo>(`/qr-cobro${qs({ sucursalId })}`),
+  /**
+   * Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor.
+   * `sucursalId` sólo con "Un QR para cada sucursal": sin él, el general.
+   */
+  subirQrCobro: (imagen: string, sucursalId?: number) =>
     request<{ imagen: string | null }>("/qr-cobro", {
       method: "PUT",
-      body: JSON.stringify({ imagen }),
+      body: JSON.stringify(sucursalId == null ? { imagen } : { imagen, sucursalId }),
     }),
-  borrarQrCobro: () =>
-    request<{ imagen: null }>("/qr-cobro", { method: "DELETE" }),
+  borrarQrCobro: (sucursalId?: number) =>
+    request<{ imagen: null }>(`/qr-cobro${qs({ sucursalId })}`, { method: "DELETE" }),
+  /**
+   * "El mismo QR en todas las sucursales" (`porSucursal: false`) o "uno en cada
+   * una" (`true`). Sólo la administración; rige con 2 o más sucursales.
+   */
+  cambiarModoQrCobro: (porSucursal: boolean) =>
+    request<{ mismoEnTodas: boolean }>("/qr-cobro/modo", {
+      method: "PUT",
+      body: JSON.stringify({ porSucursal }),
+    }),
 
   /**
    * El cajero confirma que recibió la plata.

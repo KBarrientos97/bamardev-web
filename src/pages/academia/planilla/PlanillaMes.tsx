@@ -8,9 +8,13 @@ import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
 import {
+  aPagarDe,
+  avisoOtrasSedes,
   datosClases,
   hayAtrasosSinJustificar,
+  puedeCerrarYPagar,
   textoAtrasos,
+  textoRepartoPorSede,
   textoGrupoDelMes,
   textoGrupoPlanilla,
   textoPagado,
@@ -53,6 +57,14 @@ import HistorialPagos from "./HistorialPagos";
  * Con `?docente=ID` (el botón «Pagos» de la pantalla Docentes, o «Historial de
  * pagos» de una tarjeta) se mira a ese docente solo: su tarjeta del mes, si
  * tiene algo, y su historial de pagos.
+ *
+ * Con 2+ sedes (PLAN-SUCURSAL-TOTAL §8.6): pagar es del MES ENTERO del docente,
+ * todas sus sedes juntas, aunque se esté mirando una. Por eso el botón y la
+ * confirmación dicen `aPagar` (no el `liquido` de la sede que se mira), la
+ * tarjeta avisa «además dicta en otra sede» antes de ofrecer pagar, y la
+ * confirmación dice cómo se reparte en los gastos de sueldos. Quien está atado
+ * a una sede no puede pagar a un docente que dicta también en otra (403
+ * `OTRA_SEDE`): no se le ofrece, lo paga la organización.
  */
 export default function PlanillaMes() {
   const p = usePalabras();
@@ -84,6 +96,9 @@ export default function PlanillaMes() {
     datos.recargar();
   };
 
+  // Los números de arriba siguen siendo de la sede que se mira (`liquido`); lo
+  // que pide cada botón es el mes completo (`aPagar`), y se aclara si difiere.
+  const sumaPartida = !!d?.docentes.some((x) => (x.otrasSedes?.length ?? 0) > 0);
   const porPagar = d ? d.docentes.filter((x) => x.estado !== "PAGADA").reduce((s, x) => s + x.liquido, 0) : 0;
   const pagado = d ? d.docentes.filter((x) => x.estado === "PAGADA").reduce((s, x) => s + x.liquido, 0) : 0;
   const pagadas = d ? d.docentes.filter((x) => x.estado === "PAGADA").length : 0;
@@ -157,7 +172,10 @@ export default function PlanillaMes() {
                 tono={porPagar > 0 ? "ok" : "normal"}
                 etiqueta={mes === hoy ? "Por pagar este mes" : "Por pagar"}
                 valor={fmtMoney(porPagar)}
-                pie={mes === hoy ? "provisorio: el mes no terminó" : `${d.docentes.length - pagadas} de ${d.docentes.length} sin pagar`}
+                pie={
+                  (mes === hoy ? "provisorio: el mes no terminó" : `${d.docentes.length - pagadas} de ${d.docentes.length} sin pagar`) +
+                  (sumaPartida ? " · sólo lo de esta sede: cada pago es del mes completo" : "")
+                }
               />
               <KpiTarjeta
                 icono="check"
@@ -222,8 +240,16 @@ function TarjetaDocente({
   onHistorial?: () => void;
 }) {
   const p = usePalabras();
+  const { usuario } = useAuth();
   const detalle = useApi(() => apiAcademia.planillaDocente(x.personalId, mes).catch(() => null), [x.personalId, mes, version]);
   const det = detalle.datos;
+  // Lo que sale de verdad (el mes de todas sus sedes), no el subtotal de la sede que se mira.
+  const monto = aPagarDe(x);
+  const otras = x.otrasSedes ?? [];
+  const avisoSedes = avisoOtrasSedes(otras);
+  const reparto = textoRepartoPorSede(det?.porSede);
+  // Atado a una sede y el docente dicta también en otra: lo cierra y paga la organización.
+  const sePuedePagar = puedeCerrarYPagar(usuario?.sucursalId != null, otras);
   const [pidiendo, setPidiendo] = useState(false);
   const [metodo, setMetodo] = useState<MetodoPagoPlanilla>("EFECTIVO");
   const [mesSinTerminar, setMesSinTerminar] = useState(false);
@@ -231,7 +257,7 @@ function TarjetaDocente({
   const [error, setError] = useState("");
   /** El comprobante abierto: después de pagar, o con «Mandar el comprobante». */
   const [comprobante, setComprobante] = useState(false);
-  const sinPago = x.liquido <= 0;
+  const sinPago = monto <= 0;
   const grupos = det ? gruposDeTarjeta(det) : [];
   const carreras = !grupos.length && det?.grupos?.length ? [...new Set(det.grupos.map((g) => nombreDe(g.carrera)))].join(", ") : "";
   const cuenta = det ? cuentaDelMesDocente(det) : null;
@@ -266,7 +292,7 @@ function TarjetaDocente({
       onPagado(
         sinPago
           ? `La planilla de ${x.nombre} quedó resuelta sin pago: no salió dinero ni se registró ningún gasto.`
-          : `Pagaste ${fmtMoney(x.liquido)} a ${x.nombre} (${METODOS_PAGO_DOCENTE.find(([k]) => k === metodo)?.[1] ?? metodo}): quedó como gasto de sueldos.`,
+          : `Pagaste ${fmtMoney(monto)} a ${x.nombre} (${METODOS_PAGO_DOCENTE.find(([k]) => k === metodo)?.[1] ?? metodo}): quedó como gasto de sueldos.`,
       );
     } catch (e) {
       setPidiendo(false);
@@ -302,6 +328,12 @@ function TarjetaDocente({
           )}
           {cuenta && <p className="text-[13px] text-texto-2">{cuenta}</p>}
           {extraDocente(x) && <p className="text-[12px] text-texto-3">{extraDocente(x)}</p>}
+          {/* Antes de ofrecer pagar: el pago es del mes entero, no de la sede que se mira. */}
+          {avisoSedes && x.estado !== "PAGADA" && (
+            <p role="note" className="rounded-lg bg-warning-bg px-3 py-2 text-[13px] font-semibold text-warning-text">
+              {avisoSedes}
+            </p>
+          )}
           {clases && <ClasesDelMes clases={clases} docente={p.docente} />}
           <div className="flex flex-wrap gap-x-4">
             <Link
@@ -328,7 +360,8 @@ function TarjetaDocente({
         <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
           <span className="sm:text-right">
             <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">A pagar</span>
-            <span className="block text-2xl font-bold tabular-nums tracking-tight text-texto">{fmtMoney(x.liquido)}</span>
+            <span className="block text-2xl font-bold tabular-nums tracking-tight text-texto">{fmtMoney(monto)}</span>
+            {otras.length > 0 && <span className="block text-[12px] text-texto-3">en esta sede: {fmtMoney(x.liquido)}</span>}
           </span>
           {x.estado === "PAGADA" ? (
             <>
@@ -342,9 +375,13 @@ function TarjetaDocente({
                 </BotonFila>
               )}
             </>
+          ) : liquida && !sePuedePagar ? (
+            <Chip tono="ambar" className="self-start text-[13px] sm:self-end">
+              Lo paga la organización
+            </Chip>
           ) : liquida ? (
             <Boton icono="billetera" className="min-h-11" disabled={ocupado} onClick={() => setPidiendo(true)}>
-              {sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(x.liquido)}`}
+              {sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(monto)}`}
             </Boton>
           ) : (
             <Chip tono={CHIP_ESTADO[x.estado]} className="self-start sm:self-end">
@@ -354,7 +391,7 @@ function TarjetaDocente({
         </div>
       </div>
       <ErrorMsg>{error}</ErrorMsg>
-      {comprobante && <ComprobantePago personalId={x.personalId} mes={mes} onClose={() => setComprobante(false)} />}
+      {comprobante && <ComprobantePago personalId={x.personalId} mes={mes} porSede={det?.porSede} onClose={() => setComprobante(false)} />}
 
       <Modal
         abierto={pidiendo}
@@ -367,7 +404,7 @@ function TarjetaDocente({
               Cancelar
             </Boton>
             <Boton onClick={() => void pagar()} disabled={ocupado}>
-              {ocupado ? "Un momento…" : sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(x.liquido)}`}
+              {ocupado ? "Un momento…" : sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(monto)}`}
             </Boton>
           </>
         }
@@ -375,16 +412,18 @@ function TarjetaDocente({
         <div className="space-y-4">
           {sinPago ? (
             <p className="text-sm text-texto-2">
-              El líquido de {x.nombre} por {tituloMes(mes).toLowerCase()} es <b className="tabular-nums">{fmtMoney(x.liquido)}</b>: este mes no sale dinero y no
+              El líquido de {x.nombre} por {tituloMes(mes).toLowerCase()} es <b className="tabular-nums">{fmtMoney(monto)}</b>: este mes no sale dinero y no
               se registra ningún gasto de sueldos. Lo que quedó en contra se resuelve en la planilla del mes siguiente. Se cierra la planilla, se da por
               resuelta y no se deshace.
             </p>
           ) : (
             <>
               <p className="text-sm text-texto-2">
-                ¿Pagar <b className="tabular-nums">{fmtMoney(x.liquido)}</b> a {x.nombre} por {tituloMes(mes).toLowerCase()}?
+                ¿Pagar <b className="tabular-nums">{fmtMoney(monto)}</b> a {x.nombre} por {tituloMes(mes).toLowerCase()}?
                 {x.estado === "EN_CURSO" ? " Se cierra su planilla del mes y" : ""} queda como gasto de sueldos: no se deshace.
               </p>
+              {avisoSedes && <p className="text-[13px] font-semibold text-warning-text">{avisoSedes}</p>}
+              {reparto && <p className="text-[13px] text-texto-2">Se reparte en Gastos por sede: {reparto}.</p>}
               <div className="space-y-2">
                 <span className="block text-[13px] font-semibold text-texto-2">Cómo se le paga</span>
                 <Chips titulo="Método" valor={metodo} opciones={METODOS_PAGO_DOCENTE} onChange={setMetodo} />

@@ -7,6 +7,7 @@ import { mesDe } from "../../lib/academia/calendario";
 import { enlaceAccesoDocente, esCargoDocente, mensajeAccesoDocente, telefonoOculto } from "../../lib/academia/docentes";
 import { nombreDe } from "../../lib/academia/formato";
 import type { Calendario } from "../../lib/academia/tipos";
+import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
@@ -22,6 +23,8 @@ import { Chip, EncabezadoPagina, PaginaAcademia, Tarjeta } from "./piezas";
 interface GrupoDelDocente {
   grupoId: number;
   texto: string;
+  /** La sede del grupo (el calendario la manda desde U3); un backend anterior no. */
+  sede: string | null;
 }
 
 /**
@@ -42,21 +45,33 @@ interface GrupoDelDocente {
  * Tanda 2 del 08-nov: cada tarjeta tiene «Ver su horario» (sus clases de las
  * dos semanas que vienen, abajo de la tarjeta) y «Pagos», que abre su planilla
  * (`/academia/planilla?docente=`), para quien la ve.
+ *
+ * Con 2 o más sedes (PLAN-SUCURSAL-TOTAL §1) la organización ve el selector de
+ * sede, en cada tarjeta dónde dicta («Central, Norte») y la sede en el chip de
+ * cada grupo. Quien está atado a una sede no ve nada de eso: el backend ya le
+ * da sólo su gente y sus grupos.
  */
 export default function Docentes() {
   const p = usePalabras();
   const { negocio } = useAuth();
+  const sede = useFiltroSede();
   const personas = useApi(() => apiPersonal.listar(), []);
   const cargos = useApi(() => apiPersonal.cargos().catch(() => [] as CargoRol[]), []);
   // Los grupos salen del Calendario de este mes (cada módulo con su docente). Si
   // no se pueden leer, la lista va igual, sin los grupos.
-  const calendario = useApi(() => apiAcademia.calendario({ desde: mesDe(new Date()), meses: 1 }).catch(() => null), []);
+  // Con una sede elegida, sólo los grupos de esa sede (la lista de docentes se filtra igual).
+  const calendario = useApi(
+    () => apiAcademia.calendario({ desde: mesDe(new Date()), meses: 1, sede: sede.sucursalId }).catch(() => null),
+    [sede.sucursalId],
+  );
   const [creando, setCreando] = useState(false);
   const [recien, setRecien] = useState<{ nombre: string; alta: AltaDocente; aviso?: string } | null>(null);
 
   const idsDocente = new Set((cargos.datos ?? []).filter(esCargoDocente).map((c) => c.id));
   const docentes = (personas.datos ?? [])
     .filter((x) => x.activo && x.cargoRolId != null && idsDocente.has(x.cargoRolId))
+    // Sin sedes cargadas = toda la organización (el mismo criterio que Personal): aparece en todas.
+    .filter((x) => sede.sucursalId == null || x.sucursalIds.length === 0 || x.sucursalIds.includes(sede.sucursalId))
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
   const grupos = useMemo(() => gruposPorDocente(calendario.datos), [calendario.datos]);
 
@@ -66,6 +81,10 @@ export default function Docentes() {
     const enlace = enlaceAccesoDocente(window.location.origin, negocio?.alias, usuario);
     return enlaceWhatsApp(telefono, mensajeAccesoDocente({ nombre, negocio: negocio?.nombre, enlace, usuario }));
   };
+  const nombreSede = (id: number) => sede.sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`;
+  /** Dónde dicta, para la tarjeta: sólo si hay varias sedes y quien mira es de la organización. */
+  const sedesDe = (x: Persona) =>
+    sede.elegir ? (x.sucursalIds.length > 0 ? x.sucursalIds.map(nombreSede).join(", ") : `Todas las ${p.sedes}`) : null;
   const waRecien = recien ? whatsappDe(recien.nombre, recien.alta.telefono, recien.alta.username) : null;
 
   return (
@@ -81,6 +100,8 @@ export default function Docentes() {
           )
         }
       />
+
+      {sede.selector}
 
       {creando && (
         <Tarjeta etiqueta={`Nuevo ${p.docente}`}>
@@ -130,6 +151,8 @@ export default function Docentes() {
             <TarjetaDocente
               key={x.id}
               persona={x}
+              sedes={sedesDe(x)}
+              conSede={sede.elegir}
               grupos={calendario.datos ? (grupos.get(x.id) ?? []) : null}
               whatsapp={x.conAcceso ? whatsappDe(x.nombre, x.telefono, x.acceso?.username) : null}
             />
@@ -142,10 +165,16 @@ export default function Docentes() {
 
 function TarjetaDocente({
   persona: x,
+  sedes,
+  conSede,
   grupos,
   whatsapp,
 }: {
   persona: Persona;
+  /** Dónde dicta («Central, Norte»); null = no se dice (un solo local o quien mira está atado a una sede). */
+  sedes: string | null;
+  /** Poner la sede en el chip de cada grupo. */
+  conSede: boolean;
   /** null = no se pudieron leer los grupos (no se dice «sin grupos»). */
   grupos: GrupoDelDocente[] | null;
   whatsapp: string | null;
@@ -165,6 +194,7 @@ function TarjetaDocente({
         <div className="min-w-0 flex-1 basis-48 space-y-0.5">
           <p className="text-[15px] font-bold text-texto">{x.nombre}</p>
           <p className="text-[13px] text-texto-3">{tel ? `WhatsApp ${tel}` : "Sin WhatsApp cargado"}</p>
+          {sedes && <p className="text-[13px] text-texto-3">Dicta en: {sedes}</p>}
         </div>
         {x.conAcceso && x.acceso ? (
           <Chip tono="verde" className="text-[12px]">
@@ -185,7 +215,7 @@ function TarjetaDocente({
                 to={`/academia/grupos/${g.grupoId}`}
                 className="inline-flex min-h-8 items-center rounded-full bg-muted px-3 text-[12px] font-semibold text-texto-2 hover:bg-primary-50 hover:text-primary-700"
               >
-                {g.texto}
+                {conSede && g.sede ? `${g.texto} · ${g.sede}` : g.texto}
               </Link>
             </li>
           ))}
@@ -242,6 +272,7 @@ function gruposPorDocente(cal: Calendario | null): Map<number, GrupoDelDocente[]
         lista.push({
           grupoId: g.grupoId,
           texto: [nombreDe(g.carrera), g.nombre, `M${g.modulo.orden} ${g.modulo.nombre}`, g.aula].filter(Boolean).join(" · "),
+          sede: g.sede ? nombreDe(g.sede) : null,
         });
         m.set(g.docente.personalId, lista);
       }

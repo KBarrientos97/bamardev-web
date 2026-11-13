@@ -96,6 +96,12 @@ export interface PlatoMenu {
   agotadoHoy: boolean;
   /** Lo que ve el cliente: agotado a mano o sin stock. */
   agotado: boolean;
+  /**
+   * false = el local que se está mirando no lo ofrece (PLAN-SUCURSAL-TOTAL §8.2);
+   * el editor lo sigue listando para poder tocarlo. Ausente = backend anterior
+   * (se ofrece en todos).
+   */
+  disponible?: boolean;
 }
 
 export interface EditorMenu {

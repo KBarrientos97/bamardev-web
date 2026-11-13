@@ -3,6 +3,7 @@ import { CampoCategoria, PanelCategorias } from "../components/CategoriasGasto";
 import { Icon } from "../components/Icon";
 import InputMonto from "../components/InputMonto";
 import { EncabezadoPagina } from "../components/filtros";
+import { CampoSucursalGasto, SelectFiltroSucursal } from "../components/SucursalGasto";
 import {
   AvisoOk,
   Badge,
@@ -18,12 +19,13 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
+import { usePalabras } from "../lib/academia/usePalabras";
 import { esPositivo } from "../lib/dinero";
 import { leerMonto, montoParaEditar } from "../lib/montoTecleado";
 import { fmtFecha, fmtMoney } from "../lib/format";
 import { esFarmacia } from "../lib/rubro";
 import { useApi } from "../lib/useApi";
-import { useSucursales } from "../lib/useSucursales";
+import { useFiltroSucursalGasto, useSucursalDelGasto } from "../lib/useSucursalGasto";
 import { useAuth } from "../store/AuthContext";
 import type {
   CategoriaGasto,
@@ -57,8 +59,10 @@ const ETIQUETA_FRECUENCIA: Record<FrecuenciaGasto, string> = Object.fromEntries(
 ) as Record<FrecuenciaGasto, string>;
 
 export default function GastosFijos() {
-  const { sucursalId } = useSucursales();
+  const filtroSuc = useFiltroSucursalGasto();
+  const { suc, sucursalId, sinSucursal } = filtroSuc;
   const { rubro } = useAuth();
+  const pal = usePalabras();
   const [editando, setEditando] = useState<PlantillaGasto | null | undefined>(
     undefined,
   );
@@ -66,10 +70,15 @@ export default function GastosFijos() {
   const [aviso, mostrarAviso] = useAviso();
   const [errorAccion, setErrorAccion] = useState("");
 
-  const lista = useApi(() => api.getPlantillasGasto(sucursalId), [sucursalId]);
+  const lista = useApi(
+    () => api.getPlantillasGasto(sucursalId, sinSucursal),
+    [sucursalId, sinSucursal],
+  );
   const categorias = useApi(() => api.getCategoriasGasto(), []);
 
   const plantillas = lista.datos ?? [];
+  // El badge de sucursal sólo si las plantillas son de más de un local.
+  const verSucursal = suc.mostrarColumna(plantillas, (p) => p.sucursalId);
   const activas = plantillas.filter((p) => p.activa);
 
   /** Lo que van a sumar las reglas activas la próxima vez que corran. */
@@ -107,6 +116,23 @@ export default function GastosFijos() {
 
       {aviso && <AvisoOk>{aviso}</AvisoOk>}
       {errorAccion && <ErrorMsg>{errorAccion}</ErrorMsg>}
+
+      {/* Con 2+ locales (y sólo para la organización): ver las reglas de un
+          local, de todos, o las generales. El gasto que crea la regla nace con
+          la sucursal de la regla, y esto es lo que lo explica. */}
+      {suc.elegir && (
+        <div className="space-y-1">
+          <div className="max-w-xs">
+            <Campo label={pal.Sede}>
+              <SelectFiltroSucursal filtro={filtroSuc} />
+            </Campo>
+          </div>
+          <p className="text-xs text-texto-3">
+            Cada gasto automático nace con la {pal.sede} de su regla; si la regla es del negocio entero,
+            el gasto también.
+          </p>
+        </div>
+      )}
 
       {activas.length > 0 && (
         <div className="rounded-xl border border-primary-200 bg-primary-50 p-4">
@@ -156,7 +182,7 @@ export default function GastosFijos() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{p.concepto}</span>
                   <Badge tono="gris">{p.categoriaNombre ?? p.categoria}</Badge>
-                  {p.sucursal && <Badge tono="gris">{p.sucursal}</Badge>}
+                  {verSucursal && p.sucursal && <Badge tono="gris">{p.sucursal}</Badge>}
                   {!p.activa && <Badge tono="amarillo">Pausado</Badge>}
                 </div>
                 <div className="mt-1 text-sm text-texto-3">
@@ -197,6 +223,7 @@ export default function GastosFijos() {
           plantilla={editando}
           categorias={categorias.datos ?? []}
           sucursalSugerida={sucursalId}
+          sugerirGeneral={sinSucursal}
           onCerrar={() => setEditando(undefined)}
           onGuardado={(texto) => {
             setEditando(undefined);
@@ -252,6 +279,7 @@ function FormPlantilla({
   plantilla,
   categorias,
   sucursalSugerida,
+  sugerirGeneral = false,
   onCerrar,
   onGuardado,
   onCatalogo,
@@ -260,6 +288,8 @@ function FormPlantilla({
   plantilla: PlantillaGasto | null;
   categorias: CategoriaGasto[];
   sucursalSugerida: number | null;
+  /** Se venía mirando «General del negocio»: la regla nueva nace general. */
+  sugerirGeneral?: boolean;
   onCerrar: () => void;
   onGuardado: (texto: string) => void;
   /** Ver `FormGasto`: sin esto, el desplegable de siempre y nada más. */
@@ -294,6 +324,13 @@ function FormPlantilla({
   /** true mientras el cuerpo del formulario muestra el panel de categorías. */
   const [conCategorias, setConCategorias] = useState(false);
   const panel = conCategorias && !!onCatalogo;
+  const pal = usePalabras();
+  /** De qué local es la regla: el job mensual copia este valor a cada gasto. */
+  const sucursal = useSucursalDelGasto({
+    actual: plantilla,
+    sugerida: sucursalSugerida,
+    sugerirGeneral,
+  });
 
   const guardar = async () => {
     if (enVuelo.current) return;
@@ -316,6 +353,10 @@ function FormPlantilla({
       m = parsed;
     }
 
+    // Mirando «Todas» no hay local que sugerir: se elige uno o «General del negocio».
+    const sinLocal = sucursal.validar();
+    if (sinLocal) return setError(sinLocal);
+
     const input: PlantillaGastoInput = {
       concepto: concepto.trim(),
       categoria,
@@ -324,10 +365,12 @@ function FormPlantilla({
       monto: m,
       beneficiario: beneficiario.trim() || null,
       nota: nota.trim() || null,
-      // Al editar se conserva el local que ya tenía; al crear, el que está
-      // filtrado. Sin esto toda regla nueva nacía sin local y el alquiler de
-      // una sucursal se cargaba al negocio entero, todos los meses.
-      sucursalId: plantilla ? plantilla.sucursalId : sucursalSugerida,
+      // Con el campo a la vista, lo elegido (null explícito = «General del
+      // negocio»). Sin él: al editar se conserva el local que ya tenía; al
+      // crear, el que está filtrado. Sin esto toda regla nueva nacía sin local
+      // y el alquiler de una sucursal se cargaba al negocio entero, todos los
+      // meses.
+      sucursalId: sucursal.paraEnviar(),
     };
 
     enVuelo.current = true;
@@ -457,6 +500,11 @@ function FormPlantilla({
             </span>
           </span>
         </label>
+
+        <CampoSucursalGasto
+          control={sucursal}
+          ayuda={`Cada gasto que cree esta regla nace con esta ${pal.sede}. «General del negocio» es para lo que no es de ningún local.`}
+        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Beneficiario (opcional)">

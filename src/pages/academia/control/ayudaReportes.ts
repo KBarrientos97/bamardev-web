@@ -28,6 +28,16 @@ export function ayudaInstituto(diasEspera: number | undefined) {
       deDonde: "Presentes y tardes dividido por todas las asistencias marcadas en el período, sin contar las justificadas.",
       noIncluye: ["Las clases sin lista pasada.", "Las faltas justificadas: no cuentan ni a favor ni en contra."],
     },
+    sedes: {
+      queMuestra: "Las sedes lado a lado: cuántos ingresaron, cuántos estudiantes activos hay y cómo pagan.",
+      deDonde:
+        "Ingresaron, activos, al día, en la espera, en mora y vencido se cuentan por la sede del GRUPO donde cursa el estudiante. Es la misma cuenta de la mora de arriba, partida por sede.",
+      incluye: ["Un estudiante que cursa en dos sedes cuenta en cada una."],
+      noIncluye: [
+        "Por eso los activos de las sedes pueden sumar más que los del instituto.",
+        "Lo cobrado y los sueldos por sede: el resultado en plata se mira sólo en Reportes de ventas → Estado de resultado.",
+      ],
+    },
     mora: {
       queMuestra: "Cómo están pagando hoy los estudiantes inscritos (también los de grupos que todavía no empezaron): al día, en la espera o en mora.",
       deDonde: `Es el mismo semáforo que ve el docente. En mora: debe una cuota que venció hace más de ${espera}. En la espera: debe, pero venció hace ${espera} o menos. Un estudiante en dos cursos cuenta una vez, con el peor color. Lo vencido suma lo que se debe de las cuotas ya vencidas.`,

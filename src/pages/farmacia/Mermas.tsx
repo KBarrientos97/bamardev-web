@@ -91,7 +91,11 @@ export default function MermasPagina({ embebido }: { embebido?: { desde: string;
         <div>
           <EncabezadoPagina
             titulo="Vencimientos y mermas"
-            subtitulo="Lo que se perdió por vencido, dañado o robado, y lo que está por perderse."
+            subtitulo={
+              "Lo que se perdió por vencido, dañado o robado, y lo que está por perderse." +
+              // La sede del usuario asignado (sólo con 2+ locales): apenas el nombre.
+              (suc.miSede ? ` · ${suc.miSede}` : "")
+            }
             volver={{ a: "/reportes", etiqueta: "Reportes" }}
             accion={<div className="flex gap-2">{exportar}</div>}
           />
@@ -159,7 +163,13 @@ export default function MermasPagina({ embebido }: { embebido?: { desde: string;
             onTramo={
               verVencimientos
                 ? (tramo) =>
-                    navigate("/vencimientos", { state: { tramo } satisfies FiltroVencimientos })
+                    navigate("/vencimientos", {
+                      // El local que se está mirando viaja con el tramo.
+                      state: {
+                        tramo,
+                        ...(sucursalId != null ? { sucursalId } : {}),
+                      } satisfies FiltroVencimientos,
+                    })
                 : undefined
             }
           />

@@ -3,6 +3,7 @@ import type { Comanda, Mesa } from "../../types/salon";
 import {
   cantidadItems,
   comandasPendientes,
+  conLocalDeZona,
   consumoDeMesa,
   estaOcupada,
   etiquetaMesa,
@@ -281,5 +282,59 @@ describe("las mesas que se ofrecen para pasar, juntar o unir", () => {
   it("nunca ofrece la misma mesa", () => {
     const libreActual = mesa({ id: 2, codigo: "M2" });
     expect(codigos(mesasParaElegir("unir", libreActual, todas))).not.toContain("M2");
+  });
+});
+
+describe("el local de la mesa (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  const zonas = [
+    { id: 1, codigo: "salon", nombre: "Salón", sucursalId: 10, sucursalNombre: "Centro" },
+    { id: 2, codigo: "salon", nombre: "Salón", sucursalId: 20, sucursalNombre: "Sur" },
+  ];
+  const c1 = mesa({ id: 1, codigo: "C1", zonaId: 1, estado: "OCUPADA" });
+  const c2 = mesa({ id: 2, codigo: "C2", zonaId: 1 });
+  const s1 = mesa({ id: 3, codigo: "S1", zonaId: 2 });
+  const s2 = mesa({ id: 4, codigo: "S2", zonaId: 2, estado: "OCUPADA" });
+  const todas = conLocalDeZona([c1, c2, s1, s2], zonas);
+  const codigos = (ms: Mesa[]) => ms.map((m) => m.codigo);
+
+  it("la mesa hereda el local de su zona", () => {
+    expect(todas.map((m) => m.sucursalId)).toEqual([10, 10, 20, 20]);
+    expect(todas[2].sucursalNombre).toBe("Sur");
+  });
+
+  it("el local que ya trae la mesa (backend nuevo) manda; de la zona sólo se toma el nombre", () => {
+    const delBackend = mesa({ id: 9, codigo: "N1", zonaId: 2, sucursalId: 20 });
+    const [m] = conLocalDeZona([delBackend], zonas);
+    expect(m.sucursalId).toBe(20);
+    expect(m.sucursalNombre).toBe("Sur");
+    // Con un local propio y distinto al de la zona, no se pisa.
+    const [otra] = conLocalDeZona([mesa({ id: 9, codigo: "N1", zonaId: 2, sucursalId: 99 })], zonas);
+    expect(otra.sucursalId).toBe(99);
+  });
+
+  it("sin zonas con local devuelve la misma lista, sin copiarla", () => {
+    const lista = [c1, c2];
+    expect(conLocalDeZona(lista, [{ id: 1, codigo: "salon", nombre: "Salón" }])).toBe(lista);
+  });
+
+  it("no ofrece mesas de otro local para pasar, juntar ni unir", () => {
+    expect(codigos(mesasParaElegir("pasar", todas[0], todas))).toEqual(["C2"]);
+    expect(codigos(mesasParaElegir("unir", todas[0], todas))).toEqual(["C2"]);
+    expect(codigos(mesasParaElegir("juntar", todas[0], todas))).toEqual([]);
+  });
+
+  it("la mesa que vuelve de una acción (sin local) se ubica por la lista del salón", () => {
+    const sinLocal = mesa({ id: 1, codigo: "C1", zonaId: 1, estado: "OCUPADA" });
+    expect(codigos(mesasParaElegir("pasar", sinLocal, todas))).toEqual(["C2"]);
+  });
+
+  it("una mesa sin local conocido (dato viejo) no se excluye", () => {
+    const vieja = mesa({ id: 9, codigo: "V1" });
+    expect(codigos(mesasParaElegir("pasar", todas[0], [...todas, vieja]))).toEqual(["C2", "V1"]);
+  });
+
+  it("filtrar por zona de un local no mezcla la zona de igual código del otro", () => {
+    expect(codigos(filtrarMesas(todas, { zonaCodigo: "salon", sucursalId: 20 }))).toEqual(["S1", "S2"]);
+    expect(codigos(filtrarMesas(todas, { zonaCodigo: "salon" }))).toEqual(["C1", "C2", "S1", "S2"]);
   });
 });

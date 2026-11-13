@@ -7,6 +7,7 @@ import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney } from "../../../lib/form
 import { mensajeRecibo } from "../../../lib/mensajeRecibo";
 import { marcaConsumo } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
+import { useLocalDelPapel, useRotuloSucursal } from "../../../lib/useHayVariasSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import type { Venta } from "../../../types";
 import { Chip } from "../ui";
@@ -41,6 +42,9 @@ export function ModalReciboVenta({
   const { negocio, incluye, rubro } = useAuth();
   const detalle = useApi(() => api.getVenta(fila.id), [fila.id]);
   const v = detalle.datos;
+  // El local, sólo si el negocio tiene varios: con uno el mensaje queda igual.
+  const sede = useLocalDelPapel(v?.almacen);
+  const rotuloSede = useRotuloSucursal();
   const ticket = useRef<HTMLElement>(null);
   const [compartiendo, setCompartiendo] = useState(false);
   const [aviso, setAviso] = useState("");
@@ -51,7 +55,7 @@ export function ModalReciboVenta({
     setCompartiendo(true);
     const nombre = (v?.comprobante ?? `recibo-${fila.id}`).replace(/[^A-Za-z0-9_-]/g, "_");
     // La imagen con el mensaje del recibo (Drick, 08-nov): las dos cosas, no una sola.
-    const res = await compartirComoImagen(ticket.current, nombre, v ? mensajeRecibo(v, negocio?.nombre ?? "") : undefined);
+    const res = await compartirComoImagen(ticket.current, nombre, v ? mensajeRecibo(v, negocio?.nombre ?? "", sede?.nombre, rotuloSede) : undefined);
     setCompartiendo(false);
     // Cancelar el diálogo del sistema no es un error que mostrar.
     if (!res.ok && res.motivo === "no_soportado") setAviso("Se descargó la imagen del recibo y se copió el mensaje para que los pegues.");

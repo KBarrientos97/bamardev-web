@@ -9,12 +9,15 @@ import type { Venta } from "../types";
  * enlace al estado de cuenta hace de comprobante: ahí el estudiante ve que su
  * pago figura.
  */
-export function mensajeRecibo(venta: Venta, negocio: string): string {
+export function mensajeRecibo(venta: Venta, negocio: string, sucursal?: string | null, rotulo = "Sucursal"): string {
   const cuotas = venta.cuotas ?? [];
   const nombre = venta.pagadorCuotas?.nombre ?? cuotas[0]?.alumno ?? venta.clienteNombre ?? null;
   const renglones: string[] = [];
   renglones.push(`Hola${nombre ? ` ${primerNombre(nombre)}` : ""}, gracias por tu pago${negocio ? ` en ${negocio}` : ""}.`);
   renglones.push(`Recibo ${venta.comprobante ?? `#${venta.id}`} · ${fmtFecha(venta.fecha)}`);
+  // El local, sólo si el negocio tiene varios (quien llama decide; ver `useLocalDelPapel`).
+  // `rotulo` es la palabra del rubro («Sede» en un instituto); por defecto, la de siempre.
+  if (sucursal) renglones.push(`${rotulo}: ${sucursal}`);
   renglones.push("");
   if (cuotas.length) {
     for (const c of cuotas) renglones.push(`• ${c.carrera ? `${c.carrera} · ` : ""}${c.concepto}: ${fmtMoney(c.cobrado)}`);
@@ -42,9 +45,9 @@ export function mensajeRecibo(venta: Venta, negocio: string): string {
  * alumno en un cobro de cuotas, el cliente del pedido en el POS) abre su chat;
  * sin teléfono, WhatsApp pide elegir el contacto.
  */
-export function whatsappDelRecibo(venta: Venta, negocio: string): string {
+export function whatsappDelRecibo(venta: Venta, negocio: string, sucursal?: string | null, rotulo = "Sucursal"): string {
   const numero = Telefono.paraWhatsApp(venta.telefonoPagador ?? venta.clienteTelefono);
-  return `https://wa.me/${numero ?? ""}?text=${encodeURIComponent(mensajeRecibo(venta, negocio))}`;
+  return `https://wa.me/${numero ?? ""}?text=${encodeURIComponent(mensajeRecibo(venta, negocio, sucursal, rotulo))}`;
 }
 
 /** "Molina, Rosa" → "Rosa"; "Rosa Molina" → "Rosa". */

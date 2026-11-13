@@ -42,8 +42,9 @@ export default function Dashboard() {
       <header>
         <h1 className="text-xl font-bold text-texto">Dashboard</h1>
         <p className="mt-0.5 text-[13px] text-texto-3">
-          {suc.nombre
-            ? `Inventario de ${suc.nombre}`
+          {/* `sedeVista`: la elegida (organización) o la propia (asignado, 2+ sucursales). */}
+          {suc.sedeVista
+            ? `Inventario de ${suc.sedeVista}`
             : "Vista general del sistema de inventario"}
         </p>
       </header>

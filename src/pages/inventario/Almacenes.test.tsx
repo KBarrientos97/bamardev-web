@@ -18,10 +18,20 @@ const sesion = vi.hoisted(() => ({
   features: undefined as string[] | undefined,
   // Si entra a Configuración › Datos de las sucursales.
   configura: true,
+  // Sucursal del usuario: null/undefined = organización.
+  sucursalId: null as number | null | undefined,
+  // El conteo de sucursales de la sesión, que los papeles usan: se renueva al crear o editar un local.
+  refrescarConteo: vi.fn(async () => {}),
 }));
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ rubro: sesion.rubro, negocio: { features: sesion.features }, puede: () => sesion.configura }),
+  useAuth: () => ({
+    rubro: sesion.rubro,
+    negocio: { features: sesion.features },
+    usuario: { sucursalId: sesion.sucursalId },
+    puede: () => sesion.configura,
+    refrescarSucursalesActivas: sesion.refrescarConteo,
+  }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -36,6 +46,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import { api } from "../../lib/api";
+import { FuenteSucursalesCtx } from "../../lib/sucursalesCompartidas";
 import Almacenes from "./Almacenes";
 
 function almacen(id: number, nombre: string, tipo: Almacen["tipo"]): Almacen {
@@ -62,6 +73,7 @@ beforeEach(() => {
   sesion.rubro = "FARMACIA";
   sesion.configura = true;
   sesion.features = undefined;
+  sesion.sucursalId = null;
   vi.mocked(api.getAlmacenes).mockResolvedValue(LUGARES);
 });
 
@@ -361,5 +373,70 @@ describe("lo que ve el cliente: en la ficha única de Sucursales (02-nov)", () =
     fireEvent.click(within(abrirDetalle("Sucursal Centro")).getByRole("button", { name: "Editar" }));
     expect(screen.getByText(/lo hace el dueño/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Datos de las sucursales/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("el usuario de un local (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  const SEGUNDA = { ...almacen(3, "Sucursal Norte", "SUCURSAL"), esPrincipal: false };
+
+  it("no ve Nuevo ni Hacer principal: el backend le respondería 403", async () => {
+    sesion.sucursalId = 3;
+    vi.mocked(api.getAlmacenes).mockResolvedValue([SEGUNDA]);
+    render(<Almacenes />, { wrapper: MemoryRouter });
+    await screen.findByText("Sucursal Norte");
+    expect(screen.queryByRole("button", { name: /^Nuevo/ })).not.toBeInTheDocument();
+    const detalle = abrirDetalle("Sucursal Norte");
+    expect(within(detalle).queryByRole("button", { name: "Hacer principal" })).not.toBeInTheDocument();
+    expect(within(detalle).getByRole("button", { name: "Editar" })).toBeInTheDocument();
+  });
+
+  it("la organización sí ve Nuevo y Hacer principal", async () => {
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL"), SEGUNDA]);
+    render(<Almacenes />, { wrapper: MemoryRouter });
+    await screen.findByText("Sucursal Norte");
+    expect(screen.getByRole("button", { name: /^Nuevo/ })).toBeInTheDocument();
+    const detalle = abrirDetalle("Sucursal Norte");
+    expect(within(detalle).getByRole("button", { name: "Hacer principal" })).toBeInTheDocument();
+  });
+
+  it("en la principal no puede desactivarla ni pasarla a depósito", async () => {
+    sesion.sucursalId = 1;
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL")]);
+    render(<Almacenes />, { wrapper: MemoryRouter });
+    await screen.findByText("Sucursal Centro");
+    fireEvent.click(within(abrirDetalle("Sucursal Centro")).getByRole("button", { name: "Editar" }));
+    expect(screen.getByRole("button", { name: "Depósito" })).toBeDisabled();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
+  });
+
+  it("en una que no es la principal sí puede editar el estado", async () => {
+    sesion.sucursalId = 3;
+    vi.mocked(api.getAlmacenes).mockResolvedValue([SEGUNDA]);
+    render(<Almacenes />, { wrapper: MemoryRouter });
+    await screen.findByText("Sucursal Norte");
+    fireEvent.click(within(abrirDetalle("Sucursal Norte")).getByRole("button", { name: "Editar" }));
+    expect(screen.getByRole("checkbox")).toBeEnabled();
+  });
+});
+
+describe("la lista compartida de locales", () => {
+  it("al guardar un local se invalida, para que el selector de las demas pantallas lo vea", async () => {
+    const invalidar = vi.fn();
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL")]);
+    render(
+      <FuenteSucursalesCtx.Provider value={{ obtener: async () => [], invalidar }}>
+        <MemoryRouter>
+          <Almacenes />
+        </MemoryRouter>
+      </FuenteSucursalesCtx.Provider>,
+    );
+    await screen.findByText("Sucursal Centro");
+    fireEvent.click(within(abrirDetalle("Sucursal Centro")).getByRole("button", { name: "Editar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(api.actualizarAlmacen).toHaveBeenCalled();
+    expect(invalidar).toHaveBeenCalled();
+    // Y el número de locales de la sesión, del que dependen los papeles (recibo, comanda, cierre).
+    expect(sesion.refrescarConteo).toHaveBeenCalled();
   });
 });

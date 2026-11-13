@@ -6,7 +6,15 @@ import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Sel
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
-import { datosClases, textoAtrasos, textoPagado } from "../../../lib/academia/pagosDocente";
+import {
+  aPagarDe,
+  avisoOtrasSedes,
+  datosClases,
+  puedeCerrarYPagar,
+  textoAtrasos,
+  textoPagado,
+  textoRepartoPorSede,
+} from "../../../lib/academia/pagosDocente";
 import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, MotivoNoPagoLinea } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import {
@@ -27,6 +35,7 @@ import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
+import { hayVariasEntre } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import {
   BotonFila,
@@ -82,6 +91,13 @@ const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_
  * hubo en el mes (D2: no descuentan solos, decide el admin) y, pagada, la
  * planilla dice con qué y quién pagó (ítem 3) y ofrece «Mandar el
  * comprobante» (ítem 17).
+ *
+ * Con 2+ sedes (PLAN-SUCURSAL-TOTAL §8.6): cerrar y pagar son del MES ENTERO
+ * del docente (todas sus sedes), así que el botón y la confirmación dicen
+ * `aPagar`; si quien mira ve una sola sede (un usuario atado) se avisa «además
+ * dicta en otra sede» y se le quita cerrar y pagar (403 `OTRA_SEDE`), y una
+ * tarjeta dice cómo cae el pago en cada sede. Las líneas y los grupos llevan su
+ * sede cuando hay de 2+.
  */
 export default function PlanillaDocente() {
   const p = usePalabras();
@@ -157,13 +173,13 @@ export default function PlanillaDocente() {
     try {
       await apiAcademia.pagarPlanilla(personalId, mes, metodo);
       setAviso(
-        d && d.resumen.liquido <= 0
+        d && aPagarDe({ liquido: d.resumen.liquido, aPagar: d.aPagar }) <= 0
           ? "Planilla resuelta sin pago: no salió dinero ni se registró ningún gasto."
           : "Pago registrado como gasto de sueldos.",
       );
       setPagando(false);
       // Ítem 17: recién pagado, el comprobante para mandárselo.
-      if (d && d.resumen.liquido > 0) setComprobante(true);
+      if (d && aPagarDe({ liquido: d.resumen.liquido, aPagar: d.aPagar }) > 0) setComprobante(true);
       carga.recargar();
     } catch (e) {
       setPagando(false);
@@ -174,11 +190,17 @@ export default function PlanillaDocente() {
   }
 
   const r = d.resumen;
+  // Lo que sale de verdad: el mes de todas sus sedes (el `liquido` de la sede que se mira es sólo un subtotal).
+  const monto = aPagarDe({ liquido: r.liquido, aPagar: d.aPagar });
+  const otras = d.otrasSedes ?? [];
+  const avisoSedes = avisoOtrasSedes(otras);
+  const reparto = textoRepartoPorSede(d.porSede);
+  const sePuedePagar = puedeCerrarYPagar(usuario?.sucursalId != null, otras);
   const clases = datosClases(d.clases);
   // Con líquido en 0 o negativo no sale dinero: no hay nada que pagar ni gasto de
   // sueldos que registrar. Lo que quedó en contra se resuelve en la planilla del
   // mes siguiente (ronda 1, D2). Se dice así sin importar cómo la cierre el backend.
-  const sinPago = r.liquido <= 0;
+  const sinPago = monto <= 0;
   // Bug 4: los ajustes (cobros anulados o repuestos de módulos ya liquidados) son una lista más, sólo si los hay.
   const ajustes = d.ajustes ?? [];
   const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar, ajustes };
@@ -191,6 +213,9 @@ export default function PlanillaDocente() {
     .sort()
     .reverse();
   const cobro = textoCobroPlanilla(d.pct.defecto, cursosDePlanilla(d, carreras.datos ?? null));
+  // La sede en cada grupo, sólo si las líneas del mes son de 2+ sedes.
+  const variasSedes = hayVariasEntre([...d.cuentan, ...d.postergados, ...d.atrasados, ...d.sinPagar, ...ajustes], (l) => l.sede?.id);
+  const sedeDeGrupo = (lineas: LineaPlanilla[]) => (variasSedes ? (lineas[0]?.sede?.nombre ?? "") : "");
   const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : "Cobrado del módulo";
   const cuenta = lista === "cuentan" || lista === "atrasados" || lista === "ajustes";
   const esAjustes = lista === "ajustes";
@@ -242,7 +267,7 @@ export default function PlanillaDocente() {
             </label>
             {/* Cerrar y pagar cierran el panel de la línea: en escritorio el
                 panel no tiene velo y la confirmación quedaba encima de él. */}
-            {liquida && d.estado === "EN_CURSO" && (
+            {liquida && d.estado === "EN_CURSO" && sePuedePagar && (
               <Boton
                 icono="lock"
                 disabled={ocupado}
@@ -254,7 +279,7 @@ export default function PlanillaDocente() {
                 Cerrar planilla
               </Boton>
             )}
-            {liquida && d.estado === "CERRADA" && (
+            {liquida && d.estado === "CERRADA" && sePuedePagar && (
               <Boton
                 icono="billetera"
                 disabled={ocupado}
@@ -263,7 +288,7 @@ export default function PlanillaDocente() {
                   setPagando(true);
                 }}
               >
-                {sinPago ? "Cerrar sin pago" : `Registrar pago ${fmtMoney(r.liquido)}`}
+                {sinPago ? "Cerrar sin pago" : `Registrar pago ${fmtMoney(monto)}`}
               </Boton>
             )}
           </>
@@ -276,6 +301,13 @@ export default function PlanillaDocente() {
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
+      {avisoSedes && d.estado !== "PAGADA" && (
+        // Antes de cerrar o pagar: el pago es del mes entero, no de la sede que se mira.
+        <p role="note" className="card bg-warning-bg px-4 py-3 text-sm font-semibold text-warning-text">
+          {avisoSedes}
+          {liquida && !sePuedePagar && " Lo cierra y lo paga la organización."}
+        </p>
+      )}
       {clases && (
         // Ítem 15: si dio sus clases del mes, arriba de la plata.
         <p role="status" aria-label="Clases del mes" className="card flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3 text-[13px] text-texto-3">
@@ -295,18 +327,18 @@ export default function PlanillaDocente() {
         <p role="status" className="card flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-texto-2">
           <Chip tono={CHIP_ESTADO[d.estado]}>Planilla {TEXTO_ESTADO[d.estado]}</Chip>
           <span>
-            líquido <b className="tabular-nums text-texto">{fmtMoney(r.liquido)}</b>
+            líquido <b className="tabular-nums text-texto">{fmtMoney(monto)}</b>
             {/* Ítem 3: con qué se pagó y quién lo registró. */}
-            {d.estado === "PAGADA" && r.liquido > 0 ? ` · ${[textoPagado(d.pago, d.pagadaEn), d.pago?.pagadoPor ? `pagó ${d.pago.pagadoPor}` : null].filter(Boolean).join(" · ")}` : ""}
+            {d.estado === "PAGADA" && monto > 0 ? ` · ${[textoPagado(d.pago, d.pagadaEn), d.pago?.pagadoPor ? `pagó ${d.pago.pagadoPor}` : null].filter(Boolean).join(" · ")}` : ""}
           </span>
-          {d.estado === "PAGADA" && r.liquido > 0 && (
+          {d.estado === "PAGADA" && monto > 0 && (
             <BotonFila icono="phone" className="min-h-11 sm:ml-auto sm:min-h-0" onClick={() => setComprobante(true)}>
               Mandar el comprobante
             </BotonFila>
           )}
         </p>
       )}
-      {comprobante && <ComprobantePago personalId={personalId} mes={d.mes} onClose={() => setComprobante(false)} />}
+      {comprobante && <ComprobantePago personalId={personalId} mes={d.mes} porSede={d.porSede} onClose={() => setComprobante(false)} />}
 
       {/* Sin retención (dueño, 08-nov) el bruto y el líquido eran el mismo número: queda uno. */}
       <section aria-label="Resumen de la planilla" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
@@ -331,10 +363,35 @@ export default function PlanillaDocente() {
             valor={fmtMoney(r.liquido)}
             // Sólo se dice el hecho: qué se hace con un líquido negativo lo decide el instituto.
             // Si no, de dónde sale (lo que era el pie del bruto).
-            pie={r.liquido < 0 ? "El líquido es negativo por ajustes de cobros anulados" : pieBrutoPlanilla(r)}
+            pie={
+              r.liquido < 0
+                ? "El líquido es negativo por ajustes de cobros anulados"
+                : otras.length > 0
+                  ? `Es lo de esta sede. El pago del mes completo es ${fmtMoney(monto)}`
+                  : pieBrutoPlanilla(r)
+            }
           />
         </div>
       </section>
+      {reparto && (
+        // Cómo cae el pago en cada sede: son los gastos de sueldos que se crean al pagar.
+        <section aria-label="El pago por sede" className="card px-4 py-3 text-[13px] text-texto-2">
+          <p className="font-semibold text-texto">Cómo cae el pago en cada sede</p>
+          <ul className="mt-1.5 space-y-0.5">
+            {(d.porSede ?? []).map((x) => (
+              <li key={x.sede.id} className="flex items-baseline justify-between gap-3">
+                <span>{x.sede.nombre}</span>
+                <b className="tabular-nums text-texto">{fmtMoney(x.liquido)}</b>
+              </li>
+            ))}
+            <li className="flex items-baseline justify-between gap-3 border-t border-borde-soft pt-1 font-semibold text-texto">
+              <span>Total del mes</span>
+              <b className="tabular-nums">{fmtMoney(monto)}</b>
+            </li>
+          </ul>
+          <p className="mt-1.5 text-[12px] text-texto-3">Al pagar se registra un gasto de sueldos en cada sede, en esa proporción.</p>
+        </section>
+      )}
 
       <Tarjeta
         etiqueta={`${p.Alumnos} de la planilla`}
@@ -370,7 +427,10 @@ export default function PlanillaDocente() {
             return (
               <section key={grupo} aria-label={grupo || "Sin grupo"} className="border-t border-borde-soft first:border-t-0">
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 sm:px-5">
-                  <h2 className="text-sm font-bold text-texto">{grupo || "Sin grupo"}</h2>
+                  <h2 className="text-sm font-bold text-texto">
+                    {grupo || "Sin grupo"}
+                    {sedeDeGrupo(lineas) && <span className="ml-2 text-[12px] font-semibold text-texto-3">{sedeDeGrupo(lineas)}</span>}
+                  </h2>
                   <span className="text-[13px] font-semibold tabular-nums text-texto-2">
                     {lineas.length} {lineas.length === 1 ? p.alumno : p.alumnos} · {esAjustes ? montoConSigno(total) : fmtMoney(total)}
                   </span>
@@ -548,7 +608,7 @@ export default function PlanillaDocente() {
               Cancelar
             </Boton>
             <Boton onClick={() => void pagar()} disabled={ocupado}>
-              {ocupado ? "Un momento…" : sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(r.liquido)}`}
+              {ocupado ? "Un momento…" : sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(monto)}`}
             </Boton>
           </>
         }
@@ -556,16 +616,18 @@ export default function PlanillaDocente() {
         <div className="space-y-4">
           {sinPago ? (
             <p className="text-sm text-texto-2">
-              El líquido de {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()} es <b className="tabular-nums">{fmtMoney(r.liquido)}</b>: este mes no sale dinero
+              El líquido de {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()} es <b className="tabular-nums">{fmtMoney(monto)}</b>: este mes no sale dinero
               y no se registra ningún gasto de sueldos. Lo que quedó en contra se resuelve en la planilla del mes siguiente. Se da por resuelta esta planilla
               y no se deshace.
             </p>
           ) : (
             <>
               <p className="text-sm text-texto-2">
-                ¿Pagar <b className="tabular-nums">{fmtMoney(r.liquido)}</b> a {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()}? Queda como gasto de
+                ¿Pagar <b className="tabular-nums">{fmtMoney(monto)}</b> a {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()}? Queda como gasto de
                 sueldos y la planilla pasa a pagada: no se deshace.
               </p>
+              {avisoSedes && <p className="text-[13px] font-semibold text-warning-text">{avisoSedes}</p>}
+              {reparto && <p className="text-[13px] text-texto-2">Se reparte en Gastos por sede: {reparto}.</p>}
               <div className="space-y-2">
                 <span className="block text-[13px] font-semibold text-texto-2">Cómo se le paga</span>
                 <Chips titulo="Método" valor={metodo} opciones={METODOS} onChange={setMetodo} />

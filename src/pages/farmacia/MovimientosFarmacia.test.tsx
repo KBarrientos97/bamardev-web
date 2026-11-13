@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Movimiento } from "../../types";
@@ -11,14 +11,27 @@ import type { Movimiento } from "../../types";
 
 const sesion = vi.hoisted(() => ({
   permisos: ["inventario.mover", "inventario.aprobar_transferencias"] as string[],
+  /** Atado a un local (id y nombre) o de organización (null), y cuántos locales hay. */
+  sucursalId: null as number | null,
+  sucursal: null as string | null,
+  activas: 1,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ usuario: { permisos: sesion.permisos } }),
+  useAuth: () => ({
+    usuario: {
+      id: 1,
+      permisos: sesion.permisos,
+      sucursalId: sesion.sucursalId,
+      sucursal: sesion.sucursal,
+    },
+    negocio: { id: 1, tipoNegocio: "FARMACIA", sucursalesActivas: sesion.activas },
+  }),
 }));
 
 vi.mock("../../lib/api", () => ({
   api: {
+    getSucursales: vi.fn(),
     getMovimientos: vi.fn(),
     getMovimiento: vi.fn(),
     aprobarMovimiento: vi.fn(async () => ({})),
@@ -62,6 +75,12 @@ const TRANSFERENCIA = movimiento(11, {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.permisos = ["inventario.mover", "inventario.aprobar_transferencias"];
+  sesion.sucursalId = null;
+  sesion.sucursal = null;
+  sesion.activas = 1;
+  vi.mocked(api.getSucursales).mockResolvedValue([
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+  ] as never);
   vi.mocked(api.getMovimientos).mockResolvedValue([ENTRADA, TRANSFERENCIA]);
   vi.mocked(api.getMovimiento).mockImplementation(async (id: number) =>
     id === TRANSFERENCIA.id ? TRANSFERENCIA : ENTRADA,
@@ -172,5 +191,66 @@ describe("Mientras carga", () => {
     abrir();
     expect(screen.getByText("Entradas y salidas de stock")).toBeInTheDocument();
     expect(screen.queryByText(/0 registrados/)).not.toBeInTheDocument();
+  });
+});
+
+describe("La sucursal", () => {
+  it("con un solo local no hay selector y se pide el consolidado", async () => {
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    expect(screen.queryByRole("button", { name: "Equipetrol" })).not.toBeInTheDocument();
+    expect(api.getMovimientos).toHaveBeenLastCalledWith(null);
+  });
+
+  it("con un local y un depósito tampoco hay selector: el depósito no es una sucursal", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 5, nombre: "Galpón", activo: true, tipo: "DEPOSITO", esPrincipal: false },
+    ] as never);
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    expect(screen.queryByRole("button", { name: "Galpón" })).not.toBeInTheDocument();
+    expect(api.getMovimientos).toHaveBeenLastCalledWith(null);
+  });
+
+  it("la organización con 2 locales elige cuál mira y se vuelve a pedir", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ] as never);
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    await screen.findByText(/2 sin aprobar · Equipetrol/);
+    expect(api.getMovimientos).toHaveBeenLastCalledWith(2);
+  });
+
+  it("al cambiar de local no quedan los movimientos del anterior mientras llega la lista nueva", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ] as never);
+    let soltar!: (v: Movimiento[]) => void;
+    vi.mocked(api.getMovimientos)
+      .mockResolvedValueOnce([ENTRADA, TRANSFERENCIA])
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    await waitFor(() => expect(api.getMovimientos).toHaveBeenLastCalledWith(2));
+    expect(screen.queryByText(/Centro → Equipetrol/)).not.toBeInTheDocument();
+
+    await act(async () => soltar([movimiento(12, { descripcion: "Solo de Equipetrol" })]));
+    expect(await screen.findByText(/Solo de Equipetrol/)).toBeInTheDocument();
+  });
+
+  it("el atado a un local no ve selector: sólo el nombre de su sede", async () => {
+    sesion.activas = 2;
+    sesion.sucursalId = 2;
+    sesion.sucursal = "Equipetrol";
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    expect(screen.getByText(/2 sin aprobar · Equipetrol/)).toBeInTheDocument();
+    expect(api.getSucursales).not.toHaveBeenCalled();
   });
 });

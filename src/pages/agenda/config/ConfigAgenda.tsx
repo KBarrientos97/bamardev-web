@@ -86,7 +86,7 @@ const esTema = (x: string | null): x is Tema => !!x && (TEMAS as string[]).inclu
 const esPestana = (x: string | null): x is Pestana => !!x && x in TEMA_DE;
 
 export default function ConfigAgenda() {
-  const { puede, negocio } = useAuth();
+  const { puede, negocio, usuario } = useAuth();
   const nombres = useNombreProfesional();
   const spa = useSpa();
   // Lo de la agenda y las reglas del dueño son permisos distintos (permisos.ts).
@@ -191,13 +191,17 @@ export default function ConfigAgenda() {
   );
   const almacenes = useApi(() => (veAgenda ? api.getSucursales() : Promise.resolve([] as Almacen[])), [veAgenda]);
 
-  // Un depósito no atiende a nadie: no tiene agenda.
+  // Un depósito no atiende a nadie: no tiene agenda. Quien está atado a una
+  // sede (`/almacenes/mias` lista todos los locales) ve sólo la suya: el
+  // backend le recorta y le responde 403 en lo de las otras, así que ofrecerlas
+  // sería mostrarle opciones que fallan (PLAN-SUCURSAL-TOTAL §1).
+  const miSucursalId = usuario?.sucursalId ?? null;
   const sucursales: Sucursal[] = useMemo(
     () =>
       (almacenes.datos ?? ([] as Almacen[]))
-        .filter((a) => a.activo && a.tipo !== "DEPOSITO")
+        .filter((a) => a.activo && a.tipo !== "DEPOSITO" && (miSucursalId == null || a.id === miSucursalId))
         .map((a) => ({ id: a.id, nombre: a.nombre })),
-    [almacenes.datos],
+    [almacenes.datos, miSucursalId],
   );
 
 

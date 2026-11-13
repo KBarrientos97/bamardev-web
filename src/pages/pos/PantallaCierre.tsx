@@ -18,8 +18,10 @@ import { api, type ApiError } from "../../lib/api";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import { declaracionDelEquipo, olvidarTurno } from "../../lib/offline/turno";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
+import { useLocalDelPapel } from "../../lib/useHayVariasSucursales";
 import { esBelleza, esBillar } from "../../lib/rubro";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
 import type {
@@ -61,6 +63,9 @@ export default function PantallaCierre({
   onIrAEntregas?: () => void;
 }) {
   const { incluye, rubro, puede } = useAuth();
+  // El local de la caja, sólo con 2+ sucursales: quien cierra tiene que ver
+  // de cuál es el arqueo que está firmando (PLAN-SUCURSAL-TOTAL, etapa 3).
+  const sede = useLocalDelPapel(caja.almacen ? { nombre: caja.almacen } : null)?.nombre;
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
   const [contado, setContado] = useState("");
   const [nota, setNota] = useState("");
@@ -74,7 +79,8 @@ export default function PantallaCierre({
    * no existe. Como Android (`CierreCajaViewModel`), no se cierra hasta
    * subirlas. Las rechazadas no traban: ya no van a llegar.
    */
-  const sinSubir = porSubir(useColaOffline()).length;
+  const cola = useColaOffline();
+  const sinSubir = porSubir(cola).length;
 
   const r = resumen.datos;
   /**
@@ -170,9 +176,17 @@ export default function PantallaCierre({
       // Se pasa la caja que devuelve el cierre: es la unica fuente con los
       // montos ya calculados por el backend. Releerla despues no sirve —
       // /caja/actual responde null en cuanto la caja queda cerrada.
+      // Lo que este equipo declara del turno (12-nov, como Android): cuántas
+      // ventas le quedan en la cola y la clave de cada venta que registró en
+      // esta caja. Si alguna no le llegó al servidor, el cierre se frena (409
+      // VENTAS_SIN_SUBIR / VENTAS_SIN_CONFIRMAR, con el motivo en pantalla) en
+      // vez de cerrar con esa plata fuera del arqueo. Sin nada que declarar,
+      // el servidor cierra como siempre.
+      const equipo = await declaracionDelEquipo(caja.id, cola);
       const cerrada = await api.cerrarCaja(caja.id, {
         montoCierre: contadoNum,
         ...(nota.trim() ? { notaCierre: nota.trim() } : {}),
+        ...equipo,
         // Billar (25-oct): el administrador puede registrar o anular algo en
         // esta caja desde Supervisión mientras la cajera cuenta. Sin esto se
         // guardaba otra diferencia de la que ella vio (anulaban una cena, ella
@@ -181,6 +195,8 @@ export default function PantallaCierre({
         // cambió. Los demás rubros cierran como siempre.
         ...(esBillar(rubro) ? { esperadoVisto: esperado } : {}),
       });
+      // Cerrada, el manifiesto de esta caja ya no sirve.
+      void olvidarTurno(caja.id);
       onCerrada(conLoVendido(cerrada, r?.productos));
     } catch (err) {
       if ((err as ApiError | null)?.codigo === "ESPERADO_CAMBIO") {
@@ -211,6 +227,7 @@ export default function PantallaCierre({
           <h1 className="text-[15px] font-bold text-texto">Cierre de caja</h1>
           <p className="text-xs text-texto-3">
             Abierta desde {abiertaDesde(caja.fechaApertura)}
+            {sede && ` · ${sede}`}
           </p>
         </div>
       </div>
@@ -462,6 +479,7 @@ export default function PantallaCierre({
       {viendoProductos && (
         <ProductosDelTurno
           cajaId={caja.id}
+          sede={sede}
           productos={vendidoDelArqueo ? r?.productos : undefined}
           onClose={() => setViendoProductos(false)}
         />
@@ -1078,6 +1096,7 @@ function ComprobanteCompleto({
   onSalir: () => void;
 }) {
   const diferencia = caja.montoDiferencia ?? 0;
+  const sede = useLocalDelPapel(caja.almacen ? { nombre: caja.almacen } : null)?.nombre;
   const turno = turnoDeCaja(caja.fechaApertura, caja.fechaCierre);
   // Un backend anterior no manda el arqueo con el cierre: queda lo de siempre
   // (el fondo, lo contado y la diferencia) con el turno fechado.
@@ -1093,6 +1112,7 @@ function ComprobanteCompleto({
         <h1 className="mt-4 text-xl font-bold text-texto">Caja cerrada</h1>
         <p className="mt-1 text-[13px] text-texto-3">
           {turno ? turno.resumen : `Turno de ${fmtHora(caja.fechaApertura)} a ${fmtHora(caja.fechaCierre)}`}
+          {sede && ` · ${sede}`}
         </p>
         {turno?.avisoDias && (
           <p
@@ -1183,7 +1203,12 @@ function ComprobanteCompleto({
       </div>
 
       {viendoProductos && (
-        <ProductosDelTurno cajaId={caja.id} productos={r?.productos} onClose={() => setViendoProductos(false)} />
+        <ProductosDelTurno
+          cajaId={caja.id}
+          sede={sede}
+          productos={r?.productos}
+          onClose={() => setViendoProductos(false)}
+        />
       )}
     </div>
   );
@@ -1202,6 +1227,7 @@ function Dato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 /** El comprobante de siempre: el fondo, lo contado, la diferencia y la nota. */
 function ComprobanteSimple({ caja, onSalir }: { caja: Caja; onSalir: () => void }) {
   const diferencia = caja.montoDiferencia ?? 0;
+  const sede = useLocalDelPapel(caja.almacen ? { nombre: caja.almacen } : null)?.nombre;
   return (
     <div className="flex min-h-full items-center justify-center p-5">
       <div className="w-full max-w-sm text-center">
@@ -1211,6 +1237,7 @@ function ComprobanteSimple({ caja, onSalir }: { caja: Caja; onSalir: () => void 
         <h1 className="mt-4 text-xl font-bold text-texto">Caja cerrada</h1>
         <p className="mt-1 text-[13px] text-texto-3">
           Turno de {fmtHora(caja.fechaApertura)} a {fmtHora(caja.fechaCierre)}
+          {sede && ` · ${sede}`}
         </p>
 
         <dl className="card mt-5 space-y-2 p-4 text-left text-sm">
@@ -1258,10 +1285,13 @@ function ComprobanteSimple({ caja, onSalir }: { caja: Caja; onSalir: () => void 
  */
 export function ProductosDelTurno({
   cajaId,
+  sede,
   productos,
   onClose,
 }: {
   cajaId: number;
+  /** El local del turno, sólo con 2+ sucursales (lo decide quien llama). */
+  sede?: string | null;
   /**
    * Lo vendido ya cargado (viene con el arqueo, y lo puede ver quien opera la
    * caja aunque no tenga reportes). Sin esto se pide a los reportes.
@@ -1294,7 +1324,10 @@ export function ProductosDelTurno({
       const { bajarPdf } = await import("../../lib/pdf/tablaPdf");
       await bajarPdf(
         `productos-vendidos-turno-${cajaId}.pdf`,
-        documentoProductosVendidos(d, { negocio: negocio?.nombre, subtitulo: `Turno #${cajaId}` }),
+        documentoProductosVendidos(d, {
+          negocio: negocio?.nombre,
+          subtitulo: `Turno #${cajaId}${sede ? ` · ${sede}` : ""}`,
+        }),
       );
     } catch {
       setErrorPdf(true);
@@ -1307,7 +1340,7 @@ export function ProductosDelTurno({
     <Modal
       abierto
       titulo="Productos vendidos"
-      subtitulo={`Turno #${cajaId}`}
+      subtitulo={`Turno #${cajaId}${sede ? ` · ${sede}` : ""}`}
       onClose={onClose}
       acciones={
         d && d.lineas > 0 ? (

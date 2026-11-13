@@ -10,7 +10,12 @@ import type { Caja, ResumenCaja } from "../../types";
  * de cerrar y el comprobante completo.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "PELUQUERIA" as string, reportes: true }));
+const sesion = vi.hoisted(() => ({
+  rubro: "PELUQUERIA" as string,
+  reportes: true,
+  /** Cuántas sucursales tiene el negocio (`negocio.sucursalesActivas` del login). */
+  locales: undefined as number | undefined,
+}));
 
 vi.mock("../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
@@ -20,6 +25,7 @@ vi.mock("../../store/AuthContext", async () => {
       rubro: sesion.rubro,
       incluye: () => true,
       puede: (s: string) => (s === "reportes" ? sesion.reportes : true),
+      negocio: { sucursalesActivas: sesion.locales },
       usuario: { rol: "ADMIN", nombre: "Ana Quispe", username: "ana", ...permisosDe("ADMIN") },
     }),
   };
@@ -72,6 +78,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sesion.rubro = "PELUQUERIA";
   sesion.reportes = true;
+  sesion.locales = undefined;
 });
 
 describe("B-28: las citas para revisar, con nombre y motivo", () => {
@@ -1155,5 +1162,46 @@ describe("11-nov: «Caja cerrada» lleva Productos vendidos en el restaurante (K
     });
     expect(alCerrar).toHaveBeenCalledTimes(1);
     expect(alCerrar.mock.calls[0][0].resumen.productos).toBe(VENDIDO);
+  });
+});
+
+describe("el cierre dice de qué local es la caja, sólo con varios (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  const caja = (extra: Partial<Caja> = {}) =>
+    ({
+      id: 1,
+      fechaApertura: "2026-10-06T12:00:00.000Z",
+      fechaCierre: "2026-10-06T20:00:00.000Z",
+      montoApertura: 100,
+      montoCierre: 430,
+      montoDiferencia: 0,
+      almacen: "Sucursal Sur",
+      ...extra,
+    }) as Caja;
+
+  it("el arqueo en curso lleva el local en el encabezado", async () => {
+    sesion.locales = 2;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    render(<PantallaCierre caja={caja()} onAtras={() => {}} onCerrada={() => {}} />);
+    await act(async () => {});
+    expect(screen.getByText(/Abierta desde .* · Sucursal Sur/)).toBeInTheDocument();
+  });
+
+  it("con un solo local el encabezado es el de siempre", async () => {
+    sesion.locales = 1;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    render(<PantallaCierre caja={caja()} onAtras={() => {}} onCerrada={() => {}} />);
+    await act(async () => {});
+    expect(screen.getByText(/Abierta desde/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sucursal Sur/)).not.toBeInTheDocument();
+  });
+
+  it("el comprobante de «Caja cerrada» lo dice con 2+ y no con uno", () => {
+    sesion.locales = 2;
+    const con = render(<CierreOk caja={caja()} onSalir={() => {}} />);
+    expect(screen.getByText(/Sucursal Sur/)).toBeInTheDocument();
+    con.unmount();
+    sesion.locales = 1;
+    render(<CierreOk caja={caja()} onSalir={() => {}} />);
+    expect(screen.queryByText(/Sucursal Sur/)).not.toBeInTheDocument();
   });
 });

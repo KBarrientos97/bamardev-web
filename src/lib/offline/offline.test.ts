@@ -12,9 +12,18 @@ import {
   sincronizar,
   usarAlmacenCola,
   type CuerpoEncolado,
+  type VentaEncolada,
 } from "./cola";
 import { conCopia, descontarDeLaCopia, leerCopia, SIN_COPIA, usarAlmacenCopias } from "./copias";
 import { fijarVentaSinInternet, modoOfflineDe } from "./modo";
+import {
+  anotarVentaDelTurno,
+  declaracionDelEquipo,
+  latidoDeCaja,
+  manifiestoDelTurno,
+  olvidarTurno,
+  usarAlmacenTurno,
+} from "./turno";
 import { cuerpoEncolado, reciboLocal, venderOEncolar } from "./ventas";
 
 const IPHONE =
@@ -57,6 +66,7 @@ const sinRed = () => new ApiError("Sin internet. Revisá la conexión del local.
 beforeEach(() => {
   usarAlmacenCola(almacenEnMemoria());
   usarAlmacenCopias(almacenEnMemoria());
+  usarAlmacenTurno(almacenEnMemoria());
   sesion();
   hayRespuesta();
 });
@@ -244,6 +254,17 @@ describe("cobrar: con señal, sin señal y en la web normal", () => {
     expect(await cargarCola()).toHaveLength(0);
   });
 
+  it("PLAN-SUCURSAL-TOTAL: cobrar una cita en la caja de otro local (409 OTRA_SUCURSAL) no se encola: el cajero lo ve", async () => {
+    // Un "no" del servidor, con el nombre de los dos locales: encolarlo sería
+    // guardar un cobro que nunca va a subir y esconderle el mensaje al cajero.
+    fijarVentaSinInternet(true);
+    const e = new ApiError("Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.", 409, { codigo: "OTRA_SUCURSAL" });
+    const enviar = vi.fn().mockRejectedValue(e);
+    await expect(venderOEncolar(venta({ citaId: 13 }), enviar, datos)).rejects.toBe(e);
+    expect(enviar).toHaveBeenCalledTimes(1);
+    expect(await cargarCola()).toHaveLength(0);
+  });
+
   it("reintentar el mismo cobro sin señal no lo encola dos veces", async () => {
     fijarVentaSinInternet(true);
     const v = venta();
@@ -299,6 +320,18 @@ describe("sincronizar la cola", () => {
     expect(cola).toHaveLength(1);
     expect(cola[0]).toMatchObject({ id: "a", estado: "RECHAZADA", ultimoError: "El producto 1 no existe" });
     // Una rechazada no se vuelve a mandar.
+    const otra = vi.fn();
+    await sincronizar(otra);
+    expect(otra).not.toHaveBeenCalled();
+  });
+
+  it("un cobro de cita encolado que sube y recibe 409 OTRA_SUCURSAL queda RECHAZADO, con el mensaje, y no se reintenta", async () => {
+    await encolar(encolada("a", "2026-10-13T15:00:00.000Z", { citaId: 13 }), recibo);
+    const mensaje = "Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.";
+    const r = await sincronizar(vi.fn().mockRejectedValue(new ApiError("Esa cita es de Centro y la venta es de Norte: cobrala desde la caja de Centro.", 409, { codigo: "OTRA_SUCURSAL" })));
+    expect(r).toEqual({ subidas: 0, rechazadas: 1, quedan: 0 });
+    expect((await cargarCola())[0]).toMatchObject({ estado: "RECHAZADA", ultimoError: mensaje });
+    // Otra vuelta no la vuelve a mandar: no hay bucle.
     const otra = vi.fn();
     await sincronizar(otra);
     expect(otra).not.toHaveBeenCalled();
@@ -387,5 +420,129 @@ describe("copia para abrir el POS sin señal", () => {
     expect(copia.find((p) => p.id === 3)?.stockTotal).toBe(3);
     // Guarda: el elaborado no lleva stock y no se toca.
     expect(copia.find((p) => p.id === 4)?.stockTotal).toBe(0);
+  });
+});
+
+describe("el manifiesto del turno y el latido del equipo (cierre confirmado por el servidor, 12-nov)", () => {
+  // Las anotaciones en vivo no se esperan (ver `anotada` en ventas.ts): un
+  // tick para que terminen.
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const ok = async () => ({ id: 9 }) as unknown as Venta;
+
+  it("una venta cobrada en vivo (2xx) queda anotada en el manifiesto de su caja, también en la web normal", async () => {
+    fijarVentaSinInternet(false);
+    const v = venta();
+    await venderOEncolar(v, ok, { productos, formasPago, cajaId: 5 });
+    await tick();
+    expect((await manifiestoDelTurno(5))?.claves).toEqual([v.clienteRequestId]);
+  });
+
+  it("una venta encolada sin señal queda anotada con la hora del cobro", async () => {
+    fijarVentaSinInternet(true);
+    const v = venta();
+    await venderOEncolar(
+      v,
+      async () => {
+        throw sinRed();
+      },
+      { productos, formasPago, cajaId: 5 },
+    );
+    const [enCola] = await cargarCola();
+    const m = await manifiestoDelTurno(5);
+    expect(m?.claves).toEqual([v.clienteRequestId]);
+    expect(m?.ultimaVentaEn).toBe(enCola.creadoEn);
+  });
+
+  it("una respuesta de error del servidor NO anota nada: una clave fantasma trabaría el cierre para siempre", async () => {
+    fijarVentaSinInternet(true);
+    await expect(
+      venderOEncolar(
+        venta(),
+        async () => {
+          throw new ApiError("Stock insuficiente", 400);
+        },
+        { productos, formasPago, cajaId: 5 },
+      ),
+    ).rejects.toThrow("Stock insuficiente");
+    await tick();
+    expect(await manifiestoDelTurno(5)).toBeNull();
+  });
+
+  it("sin caja conocida no anota nada y el cierre no declara nada", async () => {
+    fijarVentaSinInternet(false);
+    await venderOEncolar(venta(), ok, { productos, formasPago });
+    await tick();
+    expect(await declaracionDelEquipo(5, [])).toEqual({});
+  });
+
+  it("una encolada que el servidor rechaza al sincronizar se saca del manifiesto", async () => {
+    fijarVentaSinInternet(true);
+    const v = venta();
+    await venderOEncolar(
+      v,
+      async () => {
+        throw sinRed();
+      },
+      { productos, formasPago, cajaId: 5 },
+    );
+    await sincronizar(async () => {
+      throw new ApiError("Producto eliminado", 400);
+    });
+    expect((await manifiestoDelTurno(5))?.claves).toEqual([]);
+    // La cola todavía la lista (RECHAZADA), y el cierre ni la declara ni la
+    // cuenta como pendiente.
+    const cola = await cargarCola();
+    expect(cola.map((x) => x.estado)).toEqual(["RECHAZADA"]);
+    expect(await declaracionDelEquipo(5, cola)).toEqual({});
+  });
+
+  it("anotar en otra caja NO borra el manifiesto de la primera: el admin puede tener una abierta en cada sede", async () => {
+    await anotarVentaDelTurno(5, "a");
+    await anotarVentaDelTurno(6, "b");
+    expect((await manifiestoDelTurno(5))?.claves).toEqual(["a"]);
+    expect((await manifiestoDelTurno(6))?.claves).toEqual(["b"]);
+  });
+
+  it("el manifiesto de un turno de hace semanas (cerrado desde otro equipo) sí se limpia al anotar", async () => {
+    await anotarVentaDelTurno(5, "vieja", new Date("2026-10-01T10:00:00.000Z"));
+    await anotarVentaDelTurno(6, "nueva", new Date("2026-11-13T10:00:00.000Z"));
+    expect(await manifiestoDelTurno(5)).toBeNull();
+    expect((await manifiestoDelTurno(6))?.claves).toEqual(["nueva"]);
+  });
+
+  it("la declaración del cierre: las que quedan en la cola y las claves del turno, sin repetir ni rechazadas", async () => {
+    await anotarVentaDelTurno(5, "a");
+    await anotarVentaDelTurno(5, "b");
+    await anotarVentaDelTurno(5, "a");
+    const cola = [
+      { id: "c", estado: "PENDIENTE" },
+      { id: "d", estado: "ERROR" },
+      { id: "b", estado: "RECHAZADA" },
+    ] as VentaEncolada[];
+    expect(await declaracionDelEquipo(5, cola)).toEqual({ pendientesEnEquipo: 2, ventasDelEquipo: ["a"] });
+  });
+
+  it("después de cerrar, el manifiesto de esa caja se olvida", async () => {
+    await anotarVentaDelTurno(5, "a");
+    await olvidarTurno(5);
+    expect(await manifiestoDelTurno(5)).toBeNull();
+  });
+
+  it("el latido manda cuántas quedan sin subir y la última venta del equipo; un error (backend viejo) se traga", async () => {
+    await anotarVentaDelTurno(5, "a", new Date("2026-11-12T20:15:00.000Z"));
+    const enviar = vi.fn(async () => ({ ok: true }));
+    expect(await latidoDeCaja(5, 2, enviar)).toEqual({ ok: true });
+    expect(enviar).toHaveBeenCalledWith(5, { pendientes: 2, ultimaVentaEnEquipoEn: "2026-11-12T20:15:00.000Z" });
+    expect(
+      await latidoDeCaja(5, 0, async () => {
+        throw new ApiError("Not Found", 404);
+      }),
+    ).toBeNull();
+  });
+
+  it("el manifiesto es de quien cobró: otro usuario del mismo equipo no lo ve", async () => {
+    await anotarVentaDelTurno(5, "a");
+    sesion(7, 4);
+    expect(await manifiestoDelTurno(5)).toBeNull();
   });
 });

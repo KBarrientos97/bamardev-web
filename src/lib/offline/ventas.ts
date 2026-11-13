@@ -10,6 +10,7 @@ import type {
 import { encolar, hayRespuesta, marcarSinSenal, sinSenal, type CuerpoEncolado } from "./cola";
 import { leerCopia } from "./copias";
 import { ventaSinInternet } from "./modo";
+import { anotarVentaDelTurno } from "./turno";
 
 /**
  * Cobrar con o sin señal (PLAN-IOS F3). Port de `VentaRepositoryImpl.registrar`
@@ -35,13 +36,24 @@ export interface Cobro {
 export async function venderOEncolar(
   cuerpo: VentaInput & { clienteRequestId: string },
   enviar: (c: VentaInput) => Promise<Venta>,
-  datos: { productos: Producto[]; formasPago: FormaPago[]; cajero?: string | null },
+  datos: {
+    productos: Producto[];
+    formasPago: FormaPago[];
+    cajero?: string | null;
+    /** La caja del turno: a su manifiesto va la venta (12-nov, ver turno.ts). */
+    cajaId?: number | null;
+  },
 ): Promise<Cobro> {
-  if (!ventaSinInternet()) return { venta: await enviar(cuerpo), encolada: false };
+  if (!ventaSinInternet()) {
+    const venta = await enviar(cuerpo);
+    anotada(datos.cajaId, cuerpo.clienteRequestId);
+    return { venta, encolada: false };
+  }
   if (!sinSenal()) {
     try {
       const venta = await enviar(cuerpo);
       hayRespuesta();
+      anotada(datos.cajaId, cuerpo.clienteRequestId);
       return { venta, encolada: false };
     } catch (e) {
       if (!(e instanceof ApiError) || e.status !== 0) {
@@ -57,7 +69,21 @@ export async function venderOEncolar(
     : [];
   const recibo = reciboLocal(paraLaCola, { ...datos, clientes });
   await encolar(paraLaCola, recibo);
+  // Encolada, con la hora del cobro: el equipo ya depende del IndexedDB acá.
+  await anotarVentaDelTurno(datos.cajaId, cuerpo.clienteRequestId, new Date(paraLaCola.fechaCliente));
   return { venta: recibo, encolada: true };
+}
+
+/**
+ * Al manifiesto del turno (12-nov) SÓLO cuando el equipo sabe que la venta
+ * existe: con el 2xx en vivo (acá) y al encolarla. Nunca antes del intento ni
+ * ante una respuesta de error: una clave fantasma traba el cierre para siempre
+ * con VENTAS_SIN_CONFIRMAR. En vivo no se espera la escritura: el ticket no
+ * depende del IndexedDB (la web común nunca lo tocaba para vender, y no va a
+ * empezar a fallar por él); `anotarVentaDelTurno` se traga sus errores.
+ */
+function anotada(cajaId: number | null | undefined, clienteRequestId: string) {
+  void anotarVentaDelTurno(cajaId, clienteRequestId);
 }
 
 /**

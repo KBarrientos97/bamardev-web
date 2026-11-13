@@ -389,14 +389,34 @@ describe("Billar: la supervisión del administrador", () => {
   describe("el turno: lo de cada caja no se mezcla con lo de la anterior", () => {
     /** Las llamadas a `/billar/supervision` (no a pausar), con su query. */
     const pedidos = () => request.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith("/billar/supervision") && !u.includes("/sesiones/"));
-    const selector = () => screen.getByRole("combobox", { name: "Turno que estás viendo" });
+    const selector = () => screen.getByRole("button", { name: /^Turno que estás viendo/ });
+    /** La lista es de la app, no un <select> (13-nov): se abre y se toca el turno. */
+    const elegirTurno = async (turno: RegExp) => {
+      fireEvent.click(selector());
+      await act(async () => {
+        fireEvent.click(screen.getByRole("option", { name: turno }));
+      });
+    };
+    /** Lo que ofrece la lista, en orden; se abre para leerla y se vuelve a cerrar. */
+    const turnosEnLaLista = () => {
+      fireEvent.click(selector());
+      const lista = screen.getByRole("listbox", { name: "Turno que estás viendo" });
+      const nombres = within(lista)
+        .getAllByRole("option")
+        .map((o) => o.textContent ?? "");
+      fireEvent.keyDown(document, { key: "Escape" });
+      return nombres;
+    };
 
     it("lo vendido y la actividad son del turno de la caja que trabaja; el día entero va aparte", async () => {
       await montar();
       // El selector dice cuál es: la de Pepe, en curso.
-      expect(selector()).toHaveValue("1");
-      expect(within(selector()).getByRole("option", { name: /^Turno en curso · Pepe Mamani · desde / })).toBeInTheDocument();
-      expect(within(selector()).getByRole("option", { name: /^Kevin Dueño · .* → / })).toBeInTheDocument();
+      expect(selector()).toHaveTextContent(/^Turno en curso · Pepe Mamani · desde /);
+      fireEvent.click(selector());
+      const lista = screen.getByRole("listbox", { name: "Turno que estás viendo" });
+      expect(within(lista).getByRole("option", { name: /^Turno en curso · Pepe Mamani · desde / })).toHaveAttribute("aria-selected", "true");
+      expect(within(lista).getByRole("option", { name: /^Kevin Dueño · .* → / })).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
       // Lo vendido de arriba es lo del turno (Bs 120,50), no lo del día (Bs 180,50).
       const kpi = screen.getByText("Vendido en el turno").closest("div")!;
       expect(within(kpi).getByText(/120,50/)).toBeInTheDocument();
@@ -426,11 +446,9 @@ describe("Billar: la supervisión del administrador", () => {
         return supervision();
       });
       await montar();
-      await act(async () => {
-        fireEvent.change(selector(), { target: { value: "2" } });
-      });
+      await elegirTurno(/^Kevin Dueño/);
       expect(pedidos().at(-1)).toBe("/billar/supervision?turno=2");
-      expect(selector()).toHaveValue("2");
+      expect(selector()).toHaveTextContent(/^Kevin Dueño/);
       expect(screen.getByText(/Estás viendo un turno anterior/)).toBeInTheDocument();
       // Lo del turno elegido, y nada de lo del otro.
       const kpi = screen.getByText("Vendido en el turno").closest("div")!;
@@ -443,7 +461,7 @@ describe("Billar: la supervisión del administrador", () => {
         fireEvent.click(screen.getByRole("button", { name: "Volver al turno actual" }));
       });
       expect(pedidos().at(-1)).toBe("/billar/supervision");
-      expect(selector()).toHaveValue("1");
+      expect(selector()).toHaveTextContent(/^Turno en curso · Pepe Mamani/);
       expect(screen.queryByText(/Estás viendo un turno anterior/)).toBeNull();
     });
 
@@ -455,12 +473,8 @@ describe("Billar: la supervisión del administrador", () => {
         return supervision();
       });
       await montar();
-      await act(async () => {
-        fireEvent.change(selector(), { target: { value: "2" } });
-      });
-      await act(async () => {
-        fireEvent.change(selector(), { target: { value: "1" } });
-      });
+      await elegirTurno(/^Kevin Dueño/);
+      await elegirTurno(/^Turno en curso · Pepe Mamani/);
       // Sin `turno=`: así cuando abran otra caja, la pantalla pasa sola a la nueva.
       expect(pedidos().at(-1)).toBe("/billar/supervision");
     });
@@ -477,7 +491,7 @@ describe("Billar: la supervisión del administrador", () => {
       await montar();
       expect(screen.getByText(/No hay caja abierta/)).toBeInTheDocument();
       expect(screen.getByText(/empieza de cero/)).toBeInTheDocument();
-      expect(within(selector()).getByRole("option", { name: /^Último turno · Kevin Dueño/ })).toBeInTheDocument();
+      expect(turnosEnLaLista()).toContainEqual(expect.stringMatching(/^Último turno · Kevin Dueño/));
     });
 
     it("una caja que sigue abierta de antes de la jornada avisa que quizás se olvidaron de cerrarla", async () => {
@@ -488,7 +502,7 @@ describe("Billar: la supervisión del administrador", () => {
       });
       await montar();
       expect(screen.getByText(/¿Se olvidaron de cerrarla\?/)).toBeInTheDocument();
-      expect(within(selector()).getByRole("option", { name: /^Quedó abierta · Pepe Mamani/ })).toBeInTheDocument();
+      expect(turnosEnLaLista()).toContainEqual(expect.stringMatching(/^Quedó abierta · Pepe Mamani/));
     });
 
     describe("la semana: de lunes a domingo, se reinicia el lunes a las 13:00", () => {
@@ -518,15 +532,15 @@ describe("Billar: la supervisión del administrador", () => {
         expect(screen.getAllByText(/Semana del lun 19\/10 al dom 25\/10/)).toHaveLength(2);
         expect(screen.getByText(/La semana nueva empieza el lunes 26\/10 a las 13:00/)).toBeInTheDocument();
         // Cada turno con el día de la semana: quién, de cuándo a cuándo.
-        expect(within(selector()).getAllByRole("option")).toHaveLength(3);
-        expect(within(selector()).getAllByRole("option")[1].textContent).toMatch(/^pepe · (Lunes|Martes|Miércoles|Jueves|Viernes|Sábado|Domingo) \d\d\/\d\d \d\d:\d\d → /);
+        expect(turnosEnLaLista()).toHaveLength(3);
+        expect(turnosEnLaLista()[1]).toMatch(/^pepe · (Lunes|Martes|Miércoles|Jueves|Viernes|Sábado|Domingo) \d\d\/\d\d \d\d:\d\d → /);
       });
 
       it("con la semana entera la lista de cajas se pliega: las últimas y un botón para el resto", async () => {
         request.mockImplementation(async () => conSemana(5));
         await montar();
         // El selector sí lista los 6 turnos; la lista de cajas, 3 de entrada.
-        expect(within(selector()).getAllByRole("option")).toHaveLength(6);
+        expect(turnosEnLaLista()).toHaveLength(6);
         expect(filas()).toHaveLength(3);
         fireEvent.click(screen.getByRole("button", { name: "Ver 3 más de la semana" }));
         expect(filas()).toHaveLength(6);
@@ -549,7 +563,7 @@ describe("Billar: la supervisión del administrador", () => {
           turno: { cajaId: null, defectoId: null, desde: AHORA - 6 * 60 * MIN, hasta: null, ventas: 0, vendido: 0 },
         }));
         await montar();
-        expect(screen.queryByRole("combobox", { name: "Turno que estás viendo" })).toBeNull();
+        expect(screen.queryByRole("button", { name: /^Turno que estás viendo/ })).toBeNull();
         expect(screen.getByText(/Nadie abrió caja esta semana todavía/)).toBeInTheDocument();
       });
 
@@ -568,7 +582,7 @@ describe("Billar: la supervisión del administrador", () => {
         return anterior;
       });
       await montar();
-      expect(screen.queryByRole("combobox", { name: "Turno que estás viendo" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Turno que estás viendo/ })).toBeNull();
       expect(screen.getByText("Vendido hoy")).toBeInTheDocument();
       expect(screen.getByRole("complementary", { name: "Actividad de hoy" })).toBeInTheDocument();
     });

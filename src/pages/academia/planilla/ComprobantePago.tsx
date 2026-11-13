@@ -3,12 +3,13 @@ import { Boton, Cargando, ErrorMsg, Modal } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { tituloMes } from "../../../lib/academia/calendario";
 import { archivoComprobante, mensajeComprobanteDocente, textoMetodoPago, whatsappComprobante } from "../../../lib/academia/pagosDocente";
-import type { HistorialPagosDocente } from "../../../lib/academia/tipos";
+import type { HistorialPagosDocente, PagoDeSede } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { compartirComoImagen, enviarPorWhatsapp, type ResultadoCompartir } from "../../../lib/compartirTicket";
 import { fmtMoney } from "../../../lib/format";
 import { PIE_BAMARDEV } from "../../../lib/pieBamarDev";
 import { useApi } from "../../../lib/useApi";
+import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 
 /** "3 de noviembre de 2026": en el papel va la fecha entera. */
@@ -29,20 +30,39 @@ function fechaLarga(iso: string | null): string {
  * Los datos salen del historial de pagos del docente (`GET …/pagos`), que trae
  * también su WhatsApp. Si quien lo abre ya lo tiene cargado, lo pasa en
  * `historial` y no se vuelve a pedir.
+ *
+ * Con 2+ sedes (PLAN-SUCURSAL-TOTAL §8.6) el papel dice cómo cayó el pago en
+ * cada una («Central Bs 600 · Norte Bs 300»). Quien ya tiene el detalle del
+ * mes lo pasa en `porSede`; si no, se pide el detalle (sólo con 2+ sedes).
  */
 export default function ComprobantePago({
   personalId,
   mes,
   historial,
+  porSede: porSedeDado,
   onClose,
 }: {
   personalId: number;
   mes: string;
   historial?: HistorialPagosDocente | null;
+  /** Cómo se repartió el pago del mes entre las sedes, si quien abre ya lo sabe. */
+  porSede?: PagoDeSede[] | null;
   onClose: () => void;
 }) {
   const p = usePalabras();
   const { negocio } = useAuth();
+  const { hayVarias } = useSucursales();
+  const reparto = useApi(
+    async (): Promise<PagoDeSede[] | null> =>
+      porSedeDado !== undefined || !hayVarias
+        ? (porSedeDado ?? null)
+        : apiAcademia
+            .planillaDocente(personalId, mes)
+            .then((x) => x.porSede ?? null)
+            .catch(() => null),
+    [personalId, mes, hayVarias, porSedeDado],
+  );
+  const sedes = reparto.datos && reparto.datos.length > 1 ? reparto.datos : null;
   const carga = useApi(async () => historial ?? apiAcademia.pagosDocente(personalId), [personalId, historial]);
   const h = carga.datos;
   const pago = h?.pagos.find((x) => x.mes === mes && x.estado === "PAGADA") ?? null;
@@ -125,6 +145,14 @@ export default function ComprobantePago({
               <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-3">Monto pagado</span>
               <span className="block text-2xl font-extrabold tabular-nums">{fmtMoney(pago.liquido)}</span>
             </div>
+            {sedes && (
+              // Cómo cayó el pago en cada sede: son los gastos de sueldos que se cargaron.
+              <dl aria-label="Por sede" className="space-y-1 border-t border-dashed border-borde pt-2">
+                {sedes.map((x) => (
+                  <Fila key={x.sede.id} etiqueta={x.sede.nombre} valor={fmtMoney(x.liquido)} />
+                ))}
+              </dl>
+            )}
             <div className="text-center text-xs text-texto-3">
               <p>{pago.pagadoPor ? `Pagó: ${pago.pagadoPor} · ¡Gracias!` : "¡Gracias!"}</p>
               <p className="mt-0.5">{PIE_BAMARDEV}</p>

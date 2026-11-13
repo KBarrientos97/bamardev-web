@@ -18,6 +18,10 @@ export interface PedidoParaMensaje {
   totalACobrar: number;
   /** Ya lo pagó en caja: el total lo aclara. */
   prepagado: boolean;
+  /** El local, sólo si el negocio tiene varios: sin él, el mensaje de siempre. */
+  sucursal?: string | null;
+  /** Cómo llama el rubro al local («Sucursal» por defecto; «Sede» en un instituto). */
+  rotuloSucursal?: string;
 }
 
 /**
@@ -41,6 +45,9 @@ export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null): st
 
   if (nombre) partes.push(`🐔 ${nombre} 👋`);
   partes.push(`¡Hola! Te escribimos por tu pedido ${p.comprobante}. 🛵`);
+  // Con varios locales, de cuál sale (el cliente que pidió al de Sur no espera
+  // al de Centro). Sin esto, el mismo texto que la app.
+  if (p.sucursal) partes.push(`🏪 ${p.rotuloSucursal ?? "Sucursal"}: ${p.sucursal}`);
 
   if (p.lineas.length) {
     partes.push(
@@ -71,7 +78,7 @@ export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null): st
 }
 
 /** Un pedido como lo traen el repartidor y el historial de la caja (`Venta`). */
-export function pedidoDeVenta(v: Venta): PedidoParaMensaje {
+export function pedidoDeVenta(v: Venta, sucursal?: string | null, rotuloSucursal?: string): PedidoParaMensaje {
   return {
     comprobante: v.comprobante ?? `#${v.id}`,
     tipoPedido: v.tipoPedido,
@@ -80,6 +87,7 @@ export function pedidoDeVenta(v: Venta): PedidoParaMensaje {
     tarifaEnvio: v.tarifaEnvio ?? 0,
     totalACobrar: v.totalACobrar ?? 0,
     prepagado: !!v.prepagado,
+    ...(sucursal ? { sucursal, ...(rotuloSucursal ? { rotuloSucursal } : {}) } : {}),
   };
 }
 

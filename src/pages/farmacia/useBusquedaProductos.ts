@@ -16,7 +16,12 @@ import type { PaginaProductos, Producto } from "../../types";
  *  · pagina de a tandas, porque el catálogo de una farmacia no entra en una
  *    pantalla ni tiene por qué viajar entero;
  *  · deja **preguntar ya**, sin la espera, para el Enter del lector de código
- *    de barras (ver `buscarAhora`).
+ *    de barras (ver `buscarAhora`);
+ *  · pide la búsqueda **aproximada**: si lo tecleado no encuentra nada, el
+ *    servidor prueba con lo más parecido del catálogo y lo dice en
+ *    `corregido` (12-nov, pedido de Kevin: "ibprofen" no traía el
+ *    ibuprofeno). Nunca reemplaza lo que sí coincide: sólo entra cuando la
+ *    búsqueda exacta dio cero.
  */
 
 const ESPERA_MS = 250;
@@ -29,6 +34,12 @@ export interface Busqueda {
    */
   consulta: string | null;
   total: number;
+  /**
+   * Lo que se buscó en lugar de `consulta` porque ésa no encontró nada, o
+   * null. La pantalla lo tiene que decir: quien atiende tiene que ver que la
+   * lista es de "ibuprofeno" y no de lo que escribió.
+   */
+  corregido: string | null;
   cargando: boolean;
   error: string;
   hayMas: boolean;
@@ -45,6 +56,11 @@ export interface Busqueda {
    * milisegundos, cuando la búsqueda todavía está esperando a que se deje de
    * teclear. Decidir con lo que había en pantalla era decidir con los
    * resultados del texto anterior.
+   *
+   * Si la respuesta vino corregida devuelve una lista VACÍA: lo tecleado no
+   * encontró nada. El Enter del mostrador agrega el único resultado, y
+   * agregar "ibuprofeno" porque se escribió "ibprofen" sería elegir el remedio
+   * por la persona. La grilla igual muestra lo corregido, con su aviso.
    */
   buscarAhora: (texto: string) => Promise<Producto[] | null>;
 }
@@ -107,11 +123,12 @@ export function useBusquedaProductos({
           soloHabilitados,
           categoriaId,
           sucursalId,
+          aproximado: true,
         });
         if (pedido.current !== mio) return null;
         setPagina(res);
         setConsulta(texto);
-        return res.items;
+        return res.corregido ? [] : res.items;
       } catch (err) {
         if (pedido.current !== mio) return null;
         setError(err instanceof Error ? err.message : "No se pudo buscar");
@@ -173,6 +190,9 @@ export function useBusquedaProductos({
         soloHabilitados,
         categoriaId,
         sucursalId,
+        // La misma corrección que la primera tanda: el servidor decide con el
+        // total de lo tecleado, no con esta página.
+        aproximado: true,
       });
       if (pedido.current !== mio) return;
       // La tanda nueva se suma a lo que ya se está mirando; el total viene de
@@ -195,6 +215,7 @@ export function useBusquedaProductos({
     items,
     consulta,
     total: pagina?.total ?? 0,
+    corregido: pagina?.corregido ?? null,
     // Antes de la primera respuesta también es "cargando": entre que se
     // enciende y que sale la consulta (la espera del tecleo) el estado decía
     // que no, y las pantallas mostraban "El catálogo está vacío" o "0".

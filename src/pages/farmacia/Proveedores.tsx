@@ -16,6 +16,7 @@ import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import type { ProveedorConCompras, ProveedorInput } from "../../types";
 import { PERIODOS, rangoDe, type Periodo } from "./periodo";
 
@@ -33,10 +34,14 @@ export default function Proveedores() {
   const [conBajas, setConBajas] = useState(false);
   const [abierto, setAbierto] = useState<ProveedorConCompras | "nuevo" | null>(null);
   const { desde, hasta } = rangoDe(periodo);
+  // El proveedor es del negocio (el mismo para todos los locales); lo que
+  // cambia con la sucursal es cuánto se le COMPRÓ. Con 2+ locales el dueño
+  // elige de cuál ver las compras; quien es de un local ve las suyas.
+  const suc = useSucursales({ incluirDepositos: true });
 
   const lista = useApi(
-    () => api.proveedores({ desde, hasta, inactivos: conBajas }),
-    [desde, hasta, conBajas],
+    () => api.proveedores({ desde, hasta, inactivos: conBajas, sucursalId: suc.sucursalId }),
+    [desde, hasta, conBajas, suc.sucursalId],
   );
 
   const filtrados = useMemo(() => {
@@ -54,7 +59,11 @@ export default function Proveedores() {
     <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Proveedores"
-        subtitulo="A quién se le compra, y cuánto."
+        subtitulo={
+          "A quién se le compra, y cuánto." +
+          // La sede del usuario asignado (sólo con 2+ locales): sus compras son las de su local.
+          (suc.miSede ? ` · Compras de ${suc.miSede}` : "")
+        }
         accion={
           <Boton icono="plus" onClick={() => setAbierto("nuevo")}>
             Nuevo proveedor
@@ -64,6 +73,9 @@ export default function Proveedores() {
 
       <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
         <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
+        {suc.elegirSucursal && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-0 flex-1 basis-60">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-4">
@@ -105,7 +117,8 @@ export default function Proveedores() {
       ) : (
         <>
           <p className="text-[13px] text-texto-3">
-            Comprado {periodoTexto}:{" "}
+            Comprado {periodoTexto}
+            {suc.sedeVista ? ` en ${suc.sedeVista}` : ""}:{" "}
             <strong className="text-texto">{fmtMoney(total)}</strong> en {fmtNum(ingresos)}{" "}
             {ingresos === 1 ? "ingreso" : "ingresos"}
           </p>
@@ -148,6 +161,7 @@ export default function Proveedores() {
           proveedor={abierto === "nuevo" ? null : abierto}
           desde={desde}
           hasta={hasta}
+          sucursalId={suc.sucursalId}
           onClose={() => setAbierto(null)}
           onCambio={() => {
             lista.recargar();
@@ -167,12 +181,15 @@ function FichaProveedor({
   proveedor: p,
   desde,
   hasta,
+  sucursalId,
   onClose,
   onCambio,
 }: {
   proveedor: ProveedorConCompras | null;
   desde: string;
   hasta: string;
+  /** El local cuyas compras se ven (null = todo el negocio). */
+  sucursalId: number | null;
   onClose: () => void;
   onCambio: () => void;
 }) {
@@ -193,8 +210,8 @@ function FichaProveedor({
   const [error, setError] = useState("");
   const [bajando, setBajando] = useState(false);
   const detalle = useApi(
-    () => (p ? api.proveedor(p.id, { desde, hasta }) : Promise.resolve(null)),
-    [p?.id, desde, hasta],
+    () => (p ? api.proveedor(p.id, { desde, hasta, sucursalId }) : Promise.resolve(null)),
+    [p?.id, desde, hasta, sucursalId],
   );
 
   const cambiar = (campo: keyof ProveedorInput) => (e: React.ChangeEvent<HTMLInputElement>) =>

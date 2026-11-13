@@ -72,6 +72,15 @@ export type Seccion =
    */
   | "supervision_farmacia"
   /**
+   * Supervisión del local (12-nov): lo que hacen los cajeros del restaurante
+   * (y de cualquier negocio de mostrador), en vivo, con el estado del equipo
+   * de cada caja. Del dueño y el encargado (`caja.ver_todas`). Es la tercera
+   * hermana: la farmacia y el billar tienen la suya, así que no existe ahí, ni
+   * en belleza ni en el instituto (ver `FUERA_DE_RUBRO`). A diferencia de las
+   * otras dos, desde acá se puede anular una venta (con PIN y motivo).
+   */
+  | "supervision_restaurante"
+  /**
    * Toma de inventario (11-nov): contar lo que hay, lote por lote, y ajustar
    * con motivo. Es un movimiento de AJUSTE con pantalla propia. Sólo farmacia.
    */
@@ -310,6 +319,10 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // dueño y el encargado). Sin permiso nuevo a propósito: así una farmacia dada
   // de alta ayer la tiene sin migración.
   supervision_farmacia: { permiso: "caja.ver_todas", feature: "caja" },
+  // La del local, con la misma llave y por lo mismo: un restaurante que ya
+  // trabaja la tiene sin migración, y el cajero (que sólo ve su caja) no.
+  // Anular desde ahí pide además `ventas.anular` y el PIN, como el Historial.
+  supervision_restaurante: { permiso: "caja.ver_todas", feature: "caja" },
   // Contar y ajustar es mover inventario, con pantalla propia: la misma llave
   // que Ingreso y Salida de mercadería.
   toma_inventario: { permiso: "inventario.mover", feature: "inventario" },
@@ -569,6 +582,12 @@ const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  // La Supervisión del local va en la lista NEGRA y no en la blanca: el
+  // minimarket o la ferretería que cobran en caja la necesitan igual que el
+  // restaurante. La farmacia y el billar ya tienen la suya (con sus libros y
+  // sus mesas): dos "Supervisión" en el menú serían la misma pregunta con dos
+  // respuestas. Belleza y el instituto no la pidieron.
+  supervision_restaurante: ["FARMACIA", "BILLAR", ...RUBROS_BELLEZA, "ACADEMIA"],
   // En un instituto lo que se debe son cuotas, y eso es Cobranza
   // (PLAN-ACADEMIAS §4): "Cuentas por cobrar" no aparece.
   creditos: ["ACADEMIA"],

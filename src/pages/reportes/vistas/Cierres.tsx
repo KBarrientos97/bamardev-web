@@ -3,9 +3,9 @@ import { fmtMoney, fmtNum } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { ArqueoDetalle } from "../CierresVista";
 import { apiReportes, type CierreApi } from "../api";
-import { useExportar, useReporte } from "../contexto";
+import { useColumnaSucursal, useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsEntero, pct, plural } from "../formato";
-import { Cargador, FilaLista, KpiR, Lista, Nota } from "../ui";
+import { Cargador, Chip, FilaLista, KpiR, Lista, Nota } from "../ui";
 import { diferenciaDe, estadoDe, hojaCierres, resumenCierres, tituloCierre } from "./Cierres.datos";
 
 /**
@@ -22,7 +22,9 @@ export default function Cierres() {
   const datos = useApi(() => apiReportes.cierres(rango), [rango.desde, rango.hasta, rango.sucursalId]);
   const [abierto, setAbierto] = useState<CierreApi | null>(null);
   const historial = datos.datos?.historial ?? [];
-  useExportar("cierres-de-caja", historial.length > 0 ? () => [hojaCierres(historial)] : null);
+  // De qué local es cada caja: sólo la organización, y sólo si los cierres son de 2+ locales.
+  const { conLocal, rotulo } = useColumnaSucursal(historial, (c) => c.sucursal?.id);
+  useExportar("cierres-de-caja", historial.length > 0 ? () => [hojaCierres(historial, conLocal, rotulo)] : null);
 
   return (
     <>
@@ -67,7 +69,11 @@ export default function Cierres() {
                         <span className="hidden sm:inline">{tituloCierre(c)}</span>
                       </>
                     }
+                    chip={conLocal && c.sucursal ? <Chip>{c.sucursal.nombre}</Chip> : undefined}
                     linea={`${c.cajero} · esperado ${fmtMoney(c.esperado)} · contado ${fmtMoney(c.conteo)}`}
+                    // En el celular esa línea no entra y se cortaba justo en el
+                    // dato: «Admin QA · esperado Bs 117,…» (13-nov). Baja de renglón.
+                    ajustar
                     valor={<Pildora diferencia={diferenciaDe(c)} />}
                     valorPie={`vendió ${bsEntero(c.totalDia)}`}
                     onClick={() => setAbierto(c)}
@@ -84,7 +90,7 @@ export default function Cierres() {
           );
         }}
       </Cargador>
-      {abierto && <ArqueoDetalle cierre={abierto} onCerrar={() => setAbierto(null)} />}
+      {abierto && <ArqueoDetalle cierre={abierto} sede={conLocal ? abierto.sucursal?.nombre : null} onCerrar={() => setAbierto(null)} />}
     </>
   );
 }

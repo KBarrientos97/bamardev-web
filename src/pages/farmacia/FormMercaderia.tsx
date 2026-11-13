@@ -13,6 +13,7 @@ import {
 import { api } from "../../lib/api";
 import { parsearMonto } from "../../lib/dinero";
 import { fmtFecha, fmtMoney, isoDia } from "../../lib/format";
+import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { contiene } from "../../lib/texto";
 import { useAuth } from "../../store/AuthContext";
@@ -31,6 +32,7 @@ import {
   esPrecargaSalida,
   isoAMes,
   juntarMotivo,
+  codigoSinLote,
   mesAIso,
   ordenarSucursales,
   partirMotivo,
@@ -126,11 +128,25 @@ export default function FormMercaderia({
   const [precarga] = useState(() => (esPrecargaSalida(state) ? state : null));
   const { incluye, usuario } = useAuth();
   // El extra "Aprobar movimientos" (doble control, se vende aparte): quien
-  // carga sólo guarda y lo aprueba otra persona desde Movimientos, como antes.
+  // sólo mueve inventario carga y lo aprueba otra persona desde Movimientos.
   const dobleControl = incluye("aprobacion_inventario");
   const conLotes = incluye("lotes");
 
   const [tipo, setTipo] = useState<TipoMercaderia>(tipoInicial);
+  /**
+   * Si a ESTA persona se le ofrece "Guardar y aprobar". Hasta el 12-nov lo
+   * decidía sólo el doble control: con el extra el botón no aparecía para
+   * nadie, tampoco para la dueña o el regente que tienen `inventario.aprobar`
+   * y que el servidor sí deja aprobar (`puedeAprobar`). Guardaban, iban a
+   * Movimientos, abrían el ingreso y lo aprobaban: tres pasos de más para
+   * algo que podían hacer acá (Kevin, probando la demo). El doble control
+   * sigue frenando a quien sólo mueve inventario, que es para lo que existe.
+   */
+  const ofreceAprobar = ofreceAprobarMovimiento(
+    usuario,
+    tipo === "ENTRADA" ? "ENTRADA" : "SALIDA",
+    dobleControl,
+  );
   const [almacenId, setAlmacenId] = useState(
     precarga ? String(precarga.almacenId) : "",
   );
@@ -373,24 +389,26 @@ export default function FormMercaderia({
       const detalle: DetalleMovimientoInput = { productoId: l.articuloId, cantidad, costo };
 
       if (tipo === "ENTRADA" && llevaLote(l)) {
-        // Sin lote la mercadería entra al stock pero NO aparece en
-        // Vencimientos: es exactamente el agujero que esta pantalla existe
-        // para tapar, así que no se deja pasar.
-        if (!l.loteCodigo.trim())
-          return {
-            // Vencimientos sólo existe con `lotes`: sin eso, nombrarla es
-            // mandar a una pantalla que el plan no tiene.
-            error: conLotes
-              ? `Falta el lote de "${l.nombre}". Sin lote esa mercadería no aparece en Vencimientos.`
-              : `Falta el lote de "${l.nombre}".`,
-          };
-        const iso = mesAIso(l.loteMes);
-        if (!iso)
-          return {
-            error: `El vencimiento de "${l.nombre}" se escribe MM/AAAA, como en el envase (por ejemplo 04/2028).`,
-          };
-        detalle.loteCodigo = l.loteCodigo.trim();
-        detalle.loteVencimiento = iso;
+        // El número de lote es opcional desde el 12-nov (Kevin): en Bolivia
+        // parte de la mercadería llega sin lote impreso. Hasta ahí no se
+        // dejaba guardar y la salida era inventar un número.
+        //
+        //  · Con vencimiento y sin número entra como partida "S/L MM/AAAA"
+        //    (`codigoSinLote`): sigue en Vencimientos y en el FEFO.
+        //  · Sin ninguno de los dos entra al stock sin partida, como lo que
+        //    no maneja lote. El renglón lo avisa en ámbar antes de guardar.
+        //  · Con número, el vencimiento sigue siendo obligatorio: un lote
+        //    impreso siempre trae su fecha al lado.
+        const codigo = l.loteCodigo.trim();
+        if (codigo || l.loteMes.trim()) {
+          const iso = mesAIso(l.loteMes);
+          if (!iso)
+            return {
+              error: `El vencimiento de "${l.nombre}" se escribe MM/AAAA, como en el envase (por ejemplo 04/2028).`,
+            };
+          detalle.loteCodigo = codigo || codigoSinLote(iso);
+          detalle.loteVencimiento = iso;
+        }
       } else if (tipo === "SALIDA" && l.loteCodigo.trim()) {
         // Una salida con lote es la baja de ESE lote (llega de Vencimientos o
         // de una salida guardada así); sin lote el servidor sale por FEFO.
@@ -726,7 +744,14 @@ export default function FormMercaderia({
               className="border-warning bg-warning-bg/40"
             >
               <option value="">Elegí una</option>
-              {ordenarSucursales(almacenes.datos ?? []).map((a) => (
+              {/* Quien es de un local carga en el suyo: el servidor no le deja
+                  otro (como en la transferencia), así que el desplegable no
+                  le ofrece los demás. */}
+              {ordenarSucursales(
+                (almacenes.datos ?? []).filter(
+                  (a) => usuario?.sucursalId == null || a.id === usuario.sucursalId,
+                ),
+              ).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.tipo === "DEPOSITO" && !contiene(a.nombre, "deposito")
                     ? `${a.nombre} · depósito`
@@ -883,9 +908,9 @@ export default function FormMercaderia({
             {fmtMoney(total)}
           </p>
           <p className="mt-0.5 text-[12px] text-texto-3">
-            {dobleControl
-              ? "Queda pendiente: el stock se mueve cuando alguien lo aprueba en Movimientos."
-              : "Guardar lo deja pendiente: el stock se mueve recién al aprobarlo."}
+            {ofreceAprobar
+              ? "Guardar lo deja pendiente: el stock se mueve recién al aprobarlo."
+              : "Queda pendiente: el stock se mueve cuando alguien lo aprueba en Movimientos."}
           </p>
         </div>
         {/* En el celular los tres no entran en una fila sin partir el texto:
@@ -900,7 +925,7 @@ export default function FormMercaderia({
             Cancelar
           </Boton>
           <Boton
-            variante={dobleControl ? (entrada ? "primary" : "danger") : "soft"}
+            variante={ofreceAprobar ? "soft" : entrada ? "primary" : "danger"}
             onClick={() => guardar()}
             disabled={guardando}
             className="flex-1 sm:flex-none"
@@ -913,7 +938,7 @@ export default function FormMercaderia({
                   ? "Guardar entrada"
                   : "Guardar salida"}
           </Boton>
-          {!dobleControl && (
+          {ofreceAprobar && (
             <Boton
               variante={entrada ? "primary" : "danger"}
               icono="check"
@@ -951,6 +976,29 @@ export default function FormMercaderia({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Qué pasa con un renglón sin número de lote (opcional desde el 12-nov, ver
+ * `revisarLineas`). Se dice antes de guardar para que no sea una sorpresa en
+ * Vencimientos: con fecha entra como "S/L", sin fecha no entra a ninguna
+ * partida y no se va a ver en el semáforo.
+ */
+function PistaSinLote({ linea }: { linea: LineaForm }) {
+  if (linea.loteCodigo.trim()) return null;
+  const iso = mesAIso(linea.loteMes);
+  if (iso)
+    return (
+      <span className="mt-1 block text-[11px] text-texto-3">
+        Sin lote: entra como «{codigoSinLote(iso)}»
+      </span>
+    );
+  if (linea.loteMes.trim()) return null;
+  return (
+    <span className="mt-1 block text-[11px] font-semibold text-warning-text">
+      Sin lote ni vencimiento: no va a aparecer en Vencimientos
+    </span>
   );
 }
 
@@ -1180,7 +1228,8 @@ function Renglon({
                 <Input
                   value={l.loteCodigo}
                   onChange={(e) => onEditar({ loteCodigo: e.target.value })}
-                  placeholder="Lote"
+                  placeholder="Opcional"
+                  aria-label={`Lote de ${l.nombre}`}
                   // El mínimo va en el campo y no sólo en la columna: con la
                   // tabla justa, el navegador achica las columnas por igual y
                   // el ancho de la columna no alcanza. Así la tabla se estira
@@ -1191,6 +1240,7 @@ function Renglon({
               ) : (
                 <span className="text-texto-4">—</span>
               )}
+              {conLote && <PistaSinLote linea={l} />}
               {copiaDelAnterior && anterior && (
                 <button
                   type="button"

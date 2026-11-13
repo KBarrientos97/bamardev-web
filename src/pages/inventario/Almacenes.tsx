@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, EncabezadoPagina } from "../../components/filtros";
@@ -18,6 +18,7 @@ import { api } from "../../lib/api";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { esFarmacia, insumosSinStock, termino } from "../../lib/rubro";
+import { FuenteSucursalesCtx } from "../../lib/sucursalesCompartidas";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
@@ -60,9 +61,29 @@ function nombreDel(farmacia: boolean, tipo: TipoAlmacen = "SUCURSAL") {
 }
 
 export default function Almacenes() {
-  const { rubro, vocabulario, negocio } = useAuth();
+  const { rubro, vocabulario, negocio, usuario, refrescarSucursalesActivas } = useAuth();
   const farmacia = esFarmacia(rubro);
   const almacenes = useApi(() => api.getAlmacenes(), []);
+  // La lista de locales que comparten los selectores de toda la sesión: si acá
+  // se crea, edita o desactiva un local, el selector de Reportes no puede seguir
+  // mostrando el viejo hasta que venza el TTL (PLAN-SUCURSAL-TOTAL §7).
+  const fuente = useContext(FuenteSucursalesCtx);
+  /**
+   * El usuario de un local (`sucursalId != null`) no abre sucursales ni mueve la
+   * principal: eso cambia el cupo del plan y a dónde van las ventas sin
+   * almacén, y es del negocio. El backend ya le responde 403; acá no se le
+   * ofrece para no mostrarle un botón que sólo falla.
+   */
+  const deUnLocal = usuario?.sucursalId != null;
+  function recargarTodo() {
+    fuente?.invalidar();
+    // También el conteo de la sesión: los papeles dicen el local según
+    // `negocio.sucursalesActivas`, y crear el 2º local (o bajar a 1) no puede
+    // esperar al próximo chequeo de licencia. `?.` por los tests que mockean
+    // la sesión con lo mínimo.
+    void refrescarSucursalesActivas?.();
+    almacenes.recargar();
+  }
 
   const [q, setQ] = useState("");
   const [detalle, setDetalle] = useState<Almacen | null>(null);
@@ -87,6 +108,9 @@ export default function Almacenes() {
   const registraOtro =
     tieneFeature(negocio?.features, "multi_almacen") ||
     (!almacenes.cargando && !lista.some((a) => a.activo));
+  // El botón, en cambio, no le sale al usuario de un local (ver `deUnLocal`); y
+  // el subtítulo tampoco le dice "tu cuenta permite uno solo": no es el plan.
+  const verNuevo = registraOtro && !deUnLocal;
   const sucursales = lista.filter((a) => a.tipo !== "DEPOSITO");
   const depositos = lista.filter((a) => a.tipo === "DEPOSITO");
 
@@ -110,7 +134,7 @@ export default function Almacenes() {
     try {
       await api.marcarAlmacenPrincipal(a.id);
       setDetalle(null);
-      almacenes.recargar();
+      recargarTodo();
     } catch (err) {
       setErrorAccion(
         err instanceof Error ? err.message : "No se pudo cambiar la principal",
@@ -126,7 +150,7 @@ export default function Almacenes() {
       await api.eliminarAlmacen(aBorrar.id);
       setABorrar(null);
       setDetalle(null);
-      almacenes.recargar();
+      recargarTodo();
     } catch (err) {
       setErrorAccion(err instanceof Error ? err.message : "No se pudo eliminar");
     } finally {
@@ -152,7 +176,7 @@ export default function Almacenes() {
             : ` · Tu cuenta permite registrar ${farmacia ? "una sola sucursal" : "un solo almacén"}`)
         }
         accion={
-          registraOtro && (
+          verNuevo && (
             <Boton icono="plus" onClick={() => setCreando(true)}>
               Nuevo
             </Boton>
@@ -185,7 +209,8 @@ export default function Almacenes() {
                   : "Creá la primera ubicación donde guardás el stock."
             }
             accion={
-              !lista.length && (
+              !lista.length &&
+              !deUnLocal && (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
                   {nombreDel(farmacia).nuevo}
                 </Boton>
@@ -207,6 +232,7 @@ export default function Almacenes() {
         sinInsumos={insumosSinStock(rubro)}
         onClose={() => setDetalle(null)}
         onHacerPrincipal={hacerPrincipal}
+        deUnLocal={deUnLocal}
         onCambiado={() => almacenes.recargar()}
         onEditar={(a) => {
           setDetalle(null);
@@ -226,7 +252,7 @@ export default function Almacenes() {
         onGuardado={() => {
           setCreando(false);
           setEditando(null);
-          almacenes.recargar();
+          recargarTodo();
         }}
       />
 
@@ -294,6 +320,7 @@ function DetalleAlmacen({
   almacen: a,
   farmacia,
   sinInsumos,
+  deUnLocal,
   onClose,
   onEditar,
   onEliminar,
@@ -302,6 +329,8 @@ function DetalleAlmacen({
 }: {
   almacen: Almacen | null;
   farmacia: boolean;
+  /** El usuario es de un local: no mueve la principal (ver `Almacenes`). */
+  deUnLocal: boolean;
   /**
    * Restaurante: el backend ya no manda los insumos en la lista ni en los
    * totales (su stock no baja nunca: ver `insumosSinStock`), así que el texto
@@ -323,7 +352,7 @@ function DetalleAlmacen({
    * (no vende) y el que ya lo es no tiene a dónde ir.
    */
   const puedeSerPrincipal =
-    !a.esPrincipal && a.tipo !== "DEPOSITO" && a.activo;
+    !deUnLocal && !a.esPrincipal && a.tipo !== "DEPOSITO" && a.activo;
 
   return (
     <Modal
@@ -815,7 +844,10 @@ function FormAlmacenCuerpo({
   onGuardado: () => void;
 }) {
   const esEdicion = !!almacen;
-  const { puede } = useAuth();
+  const { puede, usuario } = useAuth();
+  // La principal no la baja un usuario de un local: cambia a dónde van las
+  // ventas sin almacén y es del negocio (el backend responde 403).
+  const principalAjena = usuario?.sucursalId != null && !!almacen?.esPrincipal;
   const [nombre, setNombre] = useState(almacen?.nombre ?? "");
   const [grupo, setGrupo] = useState(almacen?.grupo ?? "");
   const [tipo, setTipo] = useState<TipoAlmacen>(almacen?.tipo ?? "SUCURSAL");
@@ -894,8 +926,9 @@ function FormAlmacenCuerpo({
               <button
                 key={t}
                 type="button"
+                disabled={principalAjena && t === "DEPOSITO"}
                 onClick={() => setTipo(t)}
-                className={`flex-1 rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                className={`flex-1 rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   tipo === t
                     ? "border-primary-boton bg-primary-boton text-white"
                     : "border-borde bg-white text-texto-2 hover:bg-muted"
@@ -945,13 +978,16 @@ function FormAlmacenCuerpo({
           <input
             type="checkbox"
             checked={activo}
+            disabled={principalAjena}
             onChange={(e) => setActivo(e.target.checked)}
             className="h-4 w-4 rounded border-borde accent-primary"
           />
           <span className="text-sm text-texto-2">
             Activo
             <span className="ml-1 text-texto-4">
-              — si no, no se puede elegir en movimientos ni ventas
+              {principalAjena
+                ? "— es la sucursal principal: la desactiva la administración del negocio"
+                : "— si no, no se puede elegir en movimientos ni ventas"}
             </span>
           </span>
         </label>

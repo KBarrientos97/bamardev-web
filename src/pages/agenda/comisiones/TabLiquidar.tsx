@@ -23,7 +23,9 @@ import type { LiquidarInput } from "../../../lib/agenda/tiposComisiones";
 import { fmtFecha, fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
+import { usePalabras } from "../../../lib/academia/usePalabras";
 import { Casilla } from "../config/comun";
+import { DesglosePorSucursal, textoGastoPorSucursal, useDesgloseSucursal } from "./DesglosePorSucursal";
 import { mensajeDe, useNombreProfesional } from "../config/utilConfig";
 import { TablaLineas } from "./TabProduccion";
 
@@ -77,6 +79,17 @@ export default function TabLiquidar({
   const [aviso, setAviso] = useAviso();
 
   const p = previa.datos;
+  const pal = usePalabras();
+  // El desglose por local sólo aparece con 2+ locales y 2+ filas (con una sola
+  // sucursal el backend manda `porSucursal: []` y la pantalla queda como siempre).
+  const desglose = useDesgloseSucursal(p?.porSucursal);
+  // La confirmación avisa de los gastos por local SÓLO si de verdad se van a
+  // registrar así: el gasto tildado y `gastoPorSucursal` (si la cuenta no se
+  // puede repartir, el backend carga uno solo, general).
+  const avisoGastos =
+    desglose.ver && usaGastos && gasto && p?.gastoPorSucursal
+      ? textoGastoPorSucursal(desglose.filas, pal.sede)
+      : "";
   const hayAlgo = !!p && (p.lineas.length > 0 || p.lineasAjuste.length > 0 || p.adelantosPendientes.length > 0);
 
   const cerrar = async () => {
@@ -200,6 +213,17 @@ export default function TabLiquidar({
                 </p>
               )}
 
+              {desglose.ver && (
+                <DesglosePorSucursal
+                  filas={desglose.filas}
+                  nota={
+                    p.gastoPorSucursal
+                      ? undefined
+                      : "Esta cuenta no se puede repartir entre locales: si registrás el pago como gasto, se carga uno solo, general."
+                  }
+                />
+              )}
+
               <TablaLineas lineas={[...p.lineas, ...p.lineasAjuste]} />
 
               {p.adelantosPendientes.length > 0 && (
@@ -267,7 +291,7 @@ export default function TabLiquidar({
         titulo="¿Cerrar la liquidación?"
         texto={
           p
-            ? `Se paga ${fmtMoney(p.neto)} a ${p.recurso.nombre}. Una liquidación cerrada no se puede editar: lo que cambie después entra en la siguiente.`
+            ? `Se paga ${fmtMoney(p.neto)} a ${p.recurso.nombre}. ${avisoGastos ? `${avisoGastos} ` : ""}Una liquidación cerrada no se puede editar: lo que cambie después entra en la siguiente.`
             : ""
         }
         etiquetaOk="Cerrar liquidación"

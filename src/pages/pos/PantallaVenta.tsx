@@ -146,8 +146,8 @@ export default function PantallaVenta({
     () => new Map(carrito.lineas.map((l) => [l.producto.id, l.cantidad])),
     [carrito.lineas],
   );
-  /** Lo marcado agotado hoy en el Menú digital (vacío sin ese extra). */
-  const agotadosHoy = useAgotadosHoy();
+  /** Lo marcado agotado hoy en el Menú digital EN ESTE LOCAL (vacío sin ese extra). */
+  const agotadosHoy = useAgotadosHoy(sucursalId);
 
   const visibles = useMemo(() => {
     const porId = new Map(filtrados.map((p) => [p.id, p]));
@@ -430,7 +430,10 @@ function TarjetaVenta({
               </span>
             )}
           </div>
-          <h3 className="mt-2 line-clamp-2 text-[13px] font-bold leading-snug text-texto">
+          {/* Tres renglones y no dos: en la compu (4 columnas) «Arroz con leche
+              con dulce de leche – Mediano» quedaba «…con dulce de leche –…» y
+              la cajera no distinguía el tamaño, sólo por el precio (13-nov). */}
+          <h3 className="mt-2 line-clamp-3 text-[13px] font-bold leading-snug text-texto">
             {p.nombre}
           </h3>
           <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
@@ -751,7 +754,10 @@ function FilaCarrito({
     <li className="px-4 py-3">
       <div className="flex items-center gap-2.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-texto">
+          {/* Hasta dos renglones y no «…»: en el carrito «Arroz con leche con
+              leche condensada – Mediano» quedaba «Arroz con leche con leche c…»
+              y la cajera no sabía qué tamaño estaba cobrando (13-nov). */}
+          <p className="line-clamp-2 text-[13px] font-bold text-texto">
             {l.producto.nombre}
             {/* En una farmacia, la concentración si el nombre no la trae: quien
                 entrega tiene que saber si es el de 1 mg o el de 5 mg. En un

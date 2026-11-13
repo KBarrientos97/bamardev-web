@@ -25,7 +25,6 @@ import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type {
-  Almacen,
   Categoria,
   CompraDeInsumo,
   ComprasInsumos,
@@ -69,9 +68,10 @@ export default function Insumos() {
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está.
   const enPapelera = filtroStock === "papelera";
-  // Sin depósitos: acá la pregunta es "qué le falta a este local para trabajar
-  // hoy", y el stock del depósito no está en su gondola.
-  const suc = useSucursales();
+  // Con depósitos, como Inventario: la materia prima entra al depósito antes de
+  // repartirse a los locales, y el insumo que se mira ahí tiene que poder verse
+  // (PLAN-SUCURSAL-TOTAL, etapa 3).
+  const suc = useSucursales({ incluirDepositos: true });
   const insumos = useApi(
     () => api.getInsumos(enPapelera, suc.sucursalId),
     [enPapelera, suc.sucursalId],
@@ -118,7 +118,6 @@ export default function Insumos() {
   // `true` trae sólo las categorías de insumo: las de venta no aplican acá.
   const categorias = useApi(() => api.getCategorias(true), []);
   const unidades = useApi(() => api.getUnidades(), []);
-  const almacenes = useApi(() => api.getAlmacenes(), []);
 
   const [q, setQ] = useState("");
   const [detalle, setDetalle] = useState<Insumo | null>(null);
@@ -211,7 +210,7 @@ export default function Insumos() {
           />
         </div>
         <FilaFiltros>
-          {suc.elegir && (
+          {suc.elegirSucursal && (
             <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
           <Chips
@@ -282,7 +281,6 @@ export default function Insumos() {
         sinStock={sinStock}
         categorias={categorias.datos ?? []}
         unidades={unidades.datos ?? []}
-        almacenes={almacenes.datos ?? []}
         onClose={() => {
           setCreando(false);
           setEditando(null);
@@ -527,13 +525,43 @@ function DetalleInsumo({
           <Dato label="Categoría" valor={i.categoria?.nombre ?? "—"} />
           <Dato label="Unidad" valor={i.unidad?.nombre ?? "—"} />
           <Dato label="Proveedor" valor={i.proveedor || "—"} />
-          <Dato label="Almacén" valor={i.almacen?.nombre ?? "—"} />
+          {/* Con stock en 2+ almacenes el desglose va abajo: "el primero" como
+              único almacén decía que el insumo vive ahí. */}
+          {!(!sinStock && (i.stockPorAlmacen?.length ?? 0) > 1) && (
+            <Dato label="Almacén" valor={i.almacen?.nombre ?? "—"} />
+          )}
           <Dato
             label="Vencimiento"
             valor={i.vencimiento ? fmtFecha(i.vencimiento) : "Sin vencimiento"}
           />
           <Dato label="Estado" valor={i.habilitado ? "Habilitado" : "Inactivo"} />
         </dl>
+
+        {!sinStock && (i.stockPorAlmacen?.length ?? 0) > 1 && (
+          <div>
+            <h4 className="mb-2 text-[13px] font-bold text-texto">
+              Stock por almacén
+              <span className="ml-1.5 font-normal text-texto-3">— el de arriba es la suma</span>
+            </h4>
+            <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
+              {i.stockPorAlmacen!.map((s) => (
+                <li key={s.almacenId} className="flex items-center gap-2 px-3.5 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-texto">
+                    {s.nombre}
+                    {s.tipo === "DEPOSITO" && (
+                      <Badge tono="marca" className="ml-1.5">
+                        Depósito
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-[13px] font-bold text-texto">
+                    {fmtCantidad(s.cantidad)} {unidad}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -581,7 +609,6 @@ function FormInsumo({
   sinStock,
   categorias,
   unidades,
-  almacenes,
   onClose,
   onGuardado,
 }: {
@@ -591,7 +618,6 @@ function FormInsumo({
   sinStock: boolean;
   categorias: Categoria[];
   unidades: UnidadMedida[];
-  almacenes: Almacen[];
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -605,7 +631,6 @@ function FormInsumo({
       sinStock={sinStock}
       categorias={categorias}
       unidades={unidades}
-      almacenes={almacenes}
       onClose={onClose}
       onGuardado={onGuardado}
     />
@@ -617,7 +642,6 @@ function FormInsumoCuerpo({
   sinStock,
   categorias,
   unidades,
-  almacenes,
   onClose,
   onGuardado,
 }: {
@@ -625,7 +649,6 @@ function FormInsumoCuerpo({
   sinStock: boolean;
   categorias: Categoria[];
   unidades: UnidadMedida[];
-  almacenes: Almacen[];
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -643,7 +666,6 @@ function FormInsumoCuerpo({
   // El input date sólo entiende yyyy-MM-dd; el API ya devuelve ese formato,
   // pero recortamos por si algún día llega con hora.
   const [vencimiento, setVencimiento] = useState((insumo?.vencimiento ?? "").slice(0, 10));
-  const [almacenId, setAlmacenId] = useState(String(insumo?.almacen?.id ?? ""));
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -667,7 +689,6 @@ function FormInsumoCuerpo({
       proveedor: proveedor.trim(),
       ...(categoriaId ? { categoriaId: Number(categoriaId) } : {}),
       ...(vencimiento ? { vencimiento } : {}),
-      ...(almacenId ? { almacenId: Number(almacenId) } : {}),
     };
 
     setGuardando(true);
@@ -772,25 +793,16 @@ function FormInsumoCuerpo({
           <Input value={proveedor} onChange={(e) => setProveedor(e.target.value)} />
         </Campo>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Campo label="Vencimiento" hint="Opcional">
-            <Input
-              type="date"
-              value={vencimiento}
-              onChange={(e) => setVencimiento(e.target.value)}
-            />
-          </Campo>
-          <Campo label="Almacén">
-            <Select value={almacenId} onChange={(e) => setAlmacenId(e.target.value)}>
-              <option value="">Sin almacén</option>
-              {almacenes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nombre}
-                </option>
-              ))}
-            </Select>
-          </Campo>
-        </div>
+        {/* Sin campo "Almacén": el backend lo ignoraba (el insumo nace sin
+            stock y la existencia entra por Movimientos, en el almacén que se
+            elija ahí), así que elegirlo acá parecía decidir algo que no. */}
+        <Campo label="Vencimiento" hint="Opcional">
+          <Input
+            type="date"
+            value={vencimiento}
+            onChange={(e) => setVencimiento(e.target.value)}
+          />
+        </Campo>
 
         <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
           <Icon name="info" size={17} />

@@ -53,6 +53,7 @@ import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import FichasSucursales from "./pages/sucursales/FichasSucursales";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { SucursalesProvider } from "./lib/SucursalesProvider";
 import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
 import { ActualizarAlNavegar, useRecargarSiQuedoVieja } from "./lib/pwa/actualizarAlNavegar";
 
@@ -82,6 +83,8 @@ const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervis
 // Farmacia (11-nov): la Supervisión del administrador y la Toma de inventario.
 const SupervisionFarmacia = lazy(() => import("./pages/farmacia/supervision/Supervision"));
 const TomaInventario = lazy(() => import("./pages/farmacia/toma/TomaInventario"));
+// Supervisión del local (12-nov): la del restaurante y los negocios de mostrador.
+const SupervisionLocal = lazy(() => import("./pages/supervision/Supervision"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Tickets y despacho (extra `tickets_pedido`): sólo se bajan en un restaurante que lo tiene.
@@ -781,6 +784,18 @@ function Rutas() {
             </Protegida>
           }
         />
+        {/* El local (restaurante y mostrador): lo que hacen los cajeros, en vivo, y anular con PIN. Otra
+            ruta y no /supervision: la farmacia ya la usa, y un enlace guardado no tiene que cambiar de pantalla. */}
+        <Route
+          path="/supervision-local"
+          element={
+            <Protegida seccion="supervision_restaurante">
+              <Suspense fallback={null}>
+                <SupervisionLocal />
+              </Suspense>
+            </Protegida>
+          }
+        />
         {/* Farmacia: contar el estante lote por lote y ajustar lo que no cuadra. */}
         <Route
           path="/inventario/movimientos/toma"
@@ -1057,12 +1072,16 @@ function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
 export default function AppConSesion() {
   return (
     <AuthProvider>
-      {/* La versión nueva de un deploy, al pasar a otra pantalla (todas: también
-          las que no tienen el menú, como el salón del mesero). */}
-      <ActualizarAlNavegar />
-      <SinPantallaEnBlanco>
-        <Rutas />
-      </SinPantallaEnBlanco>
+      {/* La lista de locales se pide una vez por sesión y la comparten todos
+          los `useSucursales` (antes cada pantalla hacía la suya). */}
+      <SucursalesProvider>
+        {/* La versión nueva de un deploy, al pasar a otra pantalla (todas:
+            también las que no tienen el menú, como el salón del mesero). */}
+        <ActualizarAlNavegar />
+        <SinPantallaEnBlanco>
+          <Rutas />
+        </SinPantallaEnBlanco>
+      </SucursalesProvider>
     </AuthProvider>
   );
 }

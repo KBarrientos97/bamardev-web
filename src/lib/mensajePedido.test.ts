@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fmtMontoCliente } from "./format";
-import { enlaceWhatsApp, mensajePedido, type PedidoParaMensaje } from "./mensajePedido";
+import { enlaceWhatsApp, mensajePedido, pedidoDeVenta, type PedidoParaMensaje } from "./mensajePedido";
+import type { Venta } from "../types";
 
 /** El WhatsApp al cliente por su pedido: el mismo texto que la app. */
 
@@ -68,5 +69,32 @@ describe("mensajePedido", () => {
     expect(enlaceWhatsApp("59170000000", "¡Hola! 40")).toBe(
       "https://wa.me/59170000000?text=%C2%A1Hola!%2040",
     );
+  });
+});
+
+describe("el pedido con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
+  it("dice de cuál sale, justo después del saludo", () => {
+    const partes = mensajePedido({ ...DELIVERY, sucursal: "Sucursal Sur" }, "Pollos Don Omar").split("\n\n");
+    expect(partes[1]).toBe("¡Hola! Te escribimos por tu pedido V-000012. 🛵");
+    expect(partes[2]).toBe("🏪 Sucursal: Sucursal Sur");
+  });
+
+  it("con la palabra del rubro («Sede») la usa; sin ella, «Sucursal» como la app", () => {
+    const partes = mensajePedido({ ...DELIVERY, sucursal: "Central", rotuloSucursal: "Sede" }, "Instituto").split("\n\n");
+    expect(partes[2]).toBe("🏪 Sede: Central");
+    expect(mensajePedido({ ...DELIVERY, sucursal: "Central" }, "X")).toContain("🏪 Sucursal: Central");
+  });
+
+  it("sin sucursal, el texto de la app no cambia ni un carácter", () => {
+    expect(mensajePedido({ ...DELIVERY, sucursal: null }, "Pollos Don Omar")).toBe(mensajePedido(DELIVERY, "Pollos Don Omar"));
+    expect(mensajePedido(DELIVERY, "Pollos Don Omar")).not.toContain("Sucursal");
+  });
+
+  it("`pedidoDeVenta` sólo lleva el local si se lo piden", () => {
+    const v = { id: 1, comprobante: "V-1", tipoPedido: "RECOGER", detalles: [], total: 10, tarifaEnvio: 0 } as unknown as Venta;
+    expect(pedidoDeVenta(v)).not.toHaveProperty("sucursal");
+    expect(pedidoDeVenta(v, "Norte").sucursal).toBe("Norte");
+    expect(pedidoDeVenta(v, "Norte")).not.toHaveProperty("rotuloSucursal");
+    expect(pedidoDeVenta(v, "Norte", "Sede").rotuloSucursal).toBe("Sede");
   });
 });

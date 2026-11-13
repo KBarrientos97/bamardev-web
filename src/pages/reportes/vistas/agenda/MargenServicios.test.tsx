@@ -40,10 +40,10 @@ const fila = (extra: Partial<RentabilidadServicios["servicios"][number]> = {}) =
   ...extra,
 });
 
-async function montar() {
+async function montar(rango: DatosReporte["rango"] = contexto.rango) {
   render(
     <MemoryRouter>
-      <ContextoReporte.Provider value={contexto}>
+      <ContextoReporte.Provider value={{ ...contexto, rango }}>
         <MargenServicios />
       </ContextoReporte.Provider>
     </MemoryRouter>,
@@ -72,6 +72,12 @@ describe("costo y margen por servicio", () => {
     expect(renglon).toHaveTextContent("69%");
     // Con datos, se puede bajar a Excel.
     expect(registrarExportacion).toHaveBeenLastCalledWith(expect.objectContaining({ nombre: "costo-y-margen-por-servicio" }));
+  });
+
+  it("con una sucursal elegida arriba pide sólo lo vendido en ese local (antes lo ignoraba)", async () => {
+    vi.mocked(apiExtras.rentabilidadServicios).mockResolvedValue({ desde: "2026-07-16", hasta: "2026-10-13", ingreso: 150, costoInsumos: 46.5, margen: 103.5, servicios: [fila()] });
+    await montar({ ...contexto.rango, sucursalId: 4 });
+    expect(apiExtras.rentabilidadServicios).toHaveBeenCalledWith({ desde: "2026-07-16", hasta: "2026-10-13", sucursalId: 4 });
   });
 
   it("QA S2SEG-04: sin costos.ver el backend no manda costos y se ve una raya", async () => {

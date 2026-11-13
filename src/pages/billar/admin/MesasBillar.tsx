@@ -132,6 +132,7 @@ function MesasBillarCargadas() {
       <FormMesa
         key={vez}
         mesaId={form === "nueva" ? null : form}
+        sucursal={suc.hayVarias ? sucursal : undefined}
         onCerrar={() => setForm(null)}
         onListo={(m) => {
           setForm(null);

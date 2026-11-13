@@ -171,6 +171,15 @@ export interface SesionNegocio {
    * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
    */
   usaDespacho?: boolean;
+  /**
+   * Cuántas sucursales activas tiene el negocio (sólo tipo SUCURSAL, no
+   * depósitos). Lo manda el login y `/auth/me`; sirve para que un usuario
+   * ASIGNADO a un local —que no puede listarlos— sepa si hay más de uno.
+   * Opcional: una sesión guardada antes no lo tiene, y ahí vale `undefined`
+   * (= no se sabe: se trata como "un solo local", falla cerrado). No es lo
+   * mismo que 0 ni que 1.
+   */
+  sucursalesActivas?: number;
 }
 
 export interface LoginResponse {
@@ -200,6 +209,8 @@ export interface Me {
   permisosPropios?: string[];
   permisosVersion?: string;
   esDespacho?: boolean;
+  /** Mismo dato que `SesionNegocio.sucursalesActivas`, plano (no hay `negocio` acá). */
+  sucursalesActivas?: number;
 }
 
 // ── Roles del negocio (PLAN-ROLES-NEGOCIO §8) ───────────────────────────────
@@ -461,6 +472,12 @@ export interface Existencia {
   telefono: string | null;
   cantidad: number;
   ubicacion: string | null;
+  /**
+   * El punto de reorden propio de ese local (PLAN-SUCURSAL-TOTAL §10.1). `null`
+   * = no tiene excepción y vale el mínimo del artículo; ausente = backend viejo.
+   * Para "bajo stock en este local": `cantidad <= (stockMinimo ?? producto.stockMinimo)`.
+   */
+  stockMinimo?: number | null;
 }
 
 /**
@@ -482,6 +499,23 @@ export interface PaginaProductos {
   total: number;
   limite: number;
   offset: number;
+  /**
+   * Sólo con `aproximado`: lo que se buscó en lugar de lo tecleado, porque lo
+   * tecleado no encontró nada ("ibprofen" → "ibuprofeno"). `items` y `total`
+   * son de esto. Null o ausente: se buscó lo que se escribió.
+   */
+  corregido?: string | null;
+}
+
+/**
+ * Lo que ya se cargó en las fichas del negocio, para sugerirlo al dar de alta
+ * un medicamento: las drogas (una por una, aunque un artículo lleve dos), los
+ * laboratorios y las formas. Lo más usado primero.
+ */
+export interface SugerenciasFicha {
+  principiosActivos: string[];
+  laboratorios: string[];
+  formas: string[];
 }
 
 export interface ProductoInput {
@@ -495,6 +529,12 @@ export interface ProductoInput {
   stockMinimo?: number;
   /** El backend crea la "Carga inicial" con este monto. */
   stockInicial?: number;
+  /**
+   * El local donde se fija `stockInicial` de un combo (PLAN-SUCURSAL-TOTAL §8.5).
+   * Sólo lo manda quien es de organización con 2+ locales; sin él, el backend usa
+   * la sucursal de quien lo arma (o la principal). No se guarda en el producto.
+   */
+  almacenId?: number;
   descripcion?: string;
   codBarra?: string;
   habilitado?: boolean;
@@ -541,8 +581,13 @@ export interface Almacen {
    * dice de cuál se trata. Hay exactamente una por negocio.
    */
   esPrincipal: boolean;
-  direccion: string | null;
-  telefono: string | null;
+  /**
+   * Los de la ficha de la sucursal. Opcionales: `GET /almacenes/mias` (el listado
+   * del hook `useSucursales`) los trae desde PLAN-SUCURSAL-TOTAL §10.2, y un
+   * backend anterior no los manda. `null` = el local no cargó su ficha.
+   */
+  direccion?: string | null;
+  telefono?: string | null;
   /** Dónde está, para el mapa de la página (PLAN-PAGINA-WEB §3.1). */
   latitud?: number | null;
   longitud?: number | null;
@@ -578,7 +623,14 @@ export interface Insumo {
   proveedor: string | null;
   /** ISO yyyy-MM-dd. */
   vencimiento: string | null;
+  /** Sólo una pista: el primer almacén con stock. El desglose real es `stockPorAlmacen`. */
   almacen: Pick<Almacen, "id" | "nombre"> | null;
+  /**
+   * Dónde está el stock: una fila por almacén (depósitos incluidos). Opcional: un
+   * backend anterior no lo manda y el detalle sigue con `almacen`. Quien es de un
+   * local recibe sólo el suyo.
+   */
+  stockPorAlmacen?: { almacenId: number; nombre: string; tipo: TipoAlmacen; cantidad: number }[];
   habilitado: boolean;
 }
 
@@ -590,6 +642,7 @@ export interface InsumoInput {
   puntoReorden?: number;
   proveedor?: string;
   vencimiento?: string;
+  /** El backend lo ignora (el insumo nace sin stock): la web ya no lo manda. */
   almacenId?: number;
 }
 
@@ -949,6 +1002,8 @@ export interface EncargoInput {
   clienteNombre?: string;
   clienteTelefono?: string;
   nota?: string;
+  /** Dónde lo pidieron. Sin esto, el servidor usa la caja abierta o la principal. */
+  almacenId?: number;
 }
 
 export interface ContadorTramo {
@@ -968,6 +1023,30 @@ export interface Vencimientos {
 }
 
 // ── Caja ────────────────────────────────────────────────────────────────────
+
+/**
+ * Una caja abierta del usuario (`GET /caja/abiertas`): cada sucursal donde
+ * tiene turno. `almacen` llega como objeto del backend; se acepta también el
+ * nombre suelto de `Caja`.
+ */
+export interface CajaAbierta {
+  id: number;
+  almacenId: number | null;
+  almacen: { id: number; nombre: string } | string | null;
+  fechaApertura: string;
+}
+
+/**
+ * Una caja abierta en una sucursal, vista por quien NO es su dueño: el mesero
+ * que cobra una mesa y tiene que decir a cuál caja va la cuenta cuando hay
+ * varias abiertas en el local (`GET /caja/del-local`). De quién es la caja se
+ * dice con `usuario.nombre`; el mesero no ve montos ni ventas de ella.
+ */
+export interface CajaDelLocal {
+  id: number;
+  fechaApertura: string;
+  usuario: { id: number; nombre: string };
+}
 
 export interface Caja {
   id: number;
@@ -1225,6 +1304,12 @@ export interface Venta {
   fechaAprobacion?: string | null;
   cajaId?: number;
   almacenId?: number;
+  /**
+   * El local donde se hizo la venta, con su dirección y teléfono (de su ficha).
+   * El recibo y la comanda lo muestran SÓLO con 2+ sucursales. Opcional: un
+   * backend anterior no lo manda, y una venta sin internet todavía no lo tiene.
+   */
+  almacen?: { id: number; nombre: string; direccion?: string | null; telefono?: string | null } | null;
   cajero?: string | null;
   total: number;
   cambio?: number;
@@ -1630,6 +1715,12 @@ export interface Credito {
   /** Días que faltan para vencer. 0 = vence hoy. */
   diasParaVencer?: number;
   nota?: string | null;
+  /**
+   * El local de la venta que abrió la cuenta (`venta.almacen`). Opcional: un
+   * backend anterior a PLAN-SUCURSAL-TOTAL no lo manda, y una cuenta vieja
+   * puede venir sin local. Se muestra sólo con 2+ locales entre las filas.
+   */
+  sucursal?: { id: number; nombre: string } | null;
 }
 
 /** Un renglón de lo que se llevó fiado, como lo trae el detalle del crédito. */
@@ -1794,6 +1885,12 @@ export interface Dashboard {
     stockMinimo: number;
     /** A quién se le vuelve a pedir. Sólo lo carga la ficha de farmacia. */
     laboratorio?: string | null;
+    /**
+     * Sólo en el consolidado ("Todas las sucursales"): los locales donde está
+     * bajo el mínimo, con su stock. `stock` de arriba es el del más
+     * comprometido. Ausente con un local elegido o en un backend anterior.
+     */
+    sucursales?: { almacenId: number; nombre: string; stock: number; stockMinimo: number }[];
   }[];
   movimientos: {
     id: number;
@@ -2238,6 +2335,8 @@ export interface ReporteMovimientosCaja {
     monto: number;
     /** Billar (25-oct): el motivo, si se registró con uno. Un backend anterior no lo manda. */
     origen?: string | null;
+    /** El local de la caja del movimiento (§9.3). Un backend anterior no lo manda. */
+    sucursal?: { id: number; nombre: string } | null;
   }[];
   pagina: PaginaMeta;
   /**
@@ -2435,6 +2534,13 @@ export interface ResumenGastos {
    * 1-oct-2026 no lo manda.
    */
   atrasado?: GastosAtrasados;
+  /**
+   * Los gastos del período que NO son de ningún local (el alquiler de la
+   * oficina, el contador) y por eso no están en las cifras de arriba cuando se
+   * mira UNA sucursal. Viaja siempre; al usuario atado a un local le llega en
+   * cero. Opcional: un backend anterior a PLAN-SUCURSAL-TOTAL no lo manda.
+   */
+  generales?: { total: number; cantidad: number };
 }
 
 /** Gastos de meses anteriores que todavía tienen saldo. */

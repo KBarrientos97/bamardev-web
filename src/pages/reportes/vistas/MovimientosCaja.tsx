@@ -9,7 +9,7 @@ import { tieneFeature } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import type { PaginaMeta } from "../../../types";
-import { useExportar, useReporte } from "../contexto";
+import { useColumnaSucursal, useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsResta, pct, plural } from "../formato";
 import { Cargador, Chip, FilaLista, KpiR, Lista, Segmentos, Tarjeta } from "../ui";
 import {
@@ -62,7 +62,7 @@ const FILTROS = [
 type Filtro = (typeof FILTROS)[number][0];
 
 export default function MovimientosCaja() {
-  const { rango, veReporte } = useReporte();
+  const { rango, veReporte, variasSucursales } = useReporte();
   const { negocio, rubro } = useAuth();
   const conFiado = tieneFeature(negocio?.features, "fiado");
   const [tipo, setTipo] = useState<Filtro>("");
@@ -79,9 +79,13 @@ export default function MovimientosCaja() {
     [rango.desde, rango.hasta, rango.sucursalId, tipo, page],
   );
   const d = datos.datos;
+  // De qué local es cada movimiento: sólo la organización y sólo si los de la
+  // página son de 2+ locales. El Excel del período entero lo decide con sus filas.
+  const { conLocal, rotulo } = useColumnaSucursal(d?.items, (m) => m.sucursal?.id);
+  const local = { permitida: !!variasSucursales, rotulo };
   useExportar(
     "movimientos-de-caja",
-    d && d.items.length > 0 ? () => [hojaPaginaMovimientos(d.items, d.pagina, tipo)] : null,
+    d && d.items.length > 0 ? () => [hojaPaginaMovimientos(d.items, d.pagina, tipo, local)] : null,
     // En el restaurante el botón baja el período entero, con el filtro puesto
     // (REP-03); los demás rubros, la página que se ve.
     exportaElPeriodo(rubro)
@@ -89,6 +93,7 @@ export default function MovimientosCaja() {
           exportarMovimientos(
             (pag, limite) => api.reporteCaja({ ...rango, ...(tipo ? { tipo } : {}), page: pag, limite }),
             tipo,
+            local,
           )
       : undefined,
   );
@@ -199,7 +204,7 @@ export default function MovimientosCaja() {
                       titulo={tituloMovimiento(m)}
                       chip={efecto ? <ChipEfecto efecto={efecto} /> : undefined}
                       linea={[aspecto.etiqueta, m.detalle].filter(Boolean).join(" · ")}
-                      linea2={[fmtFechaHora(m.fecha), m.usuario, textoTurno(m.turnoId)].filter(Boolean).join(" · ")}
+                      linea2={[fmtFechaHora(m.fecha), m.usuario, conLocal ? m.sucursal?.nombre : null, textoTurno(m.turnoId)].filter(Boolean).join(" · ")}
                       valor={bsConSigno(montoConSigno(m))}
                       tonoValor={aspecto.entra ? "marca" : "rojo"}
                       // Con motivo (sólo el billar) el título lleva el detalle

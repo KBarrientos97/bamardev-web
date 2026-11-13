@@ -31,6 +31,7 @@ import TelevisoresDelLocal from "./TelevisoresDelLocal";
 import { tienePermiso } from "../../lib/permisos";
 import { LienzoTv, TableroTv, type DatosTableroTv } from "./TableroTv";
 import { entregados, listos, preparando, useTableroTickets } from "./useTableroTickets";
+import { SelectorLocalTickets, useLocalDeTickets } from "./useLocalDeTickets";
 
 /**
  * Tickets y pedidos: lo que el encargado mira y arma de los pedidos con
@@ -55,7 +56,10 @@ const PESTANAS: { valor: Pestana; texto: string; icono: "ticket" | "pantalla" | 
 
 export default function TicketsPedidos() {
   const [pestana, setPestana] = useState<Pestana>("pedidos");
-  const tablero = useTableroTickets();
+  // El local de los pedidos, la numeración y la TV: sólo la organización con 2+
+  // locales elige; el de un local ve el suyo (el backend se lo fuerza).
+  const local = useLocalDeTickets();
+  const tablero = useTableroTickets(local.sucursalId);
   const aj = useAjustesTv();
   const [llamandoPrueba, setLlamandoPrueba] = useState<number | null>(null);
   const { negocio } = useAuth();
@@ -90,9 +94,15 @@ export default function TicketsPedidos() {
             <h1 className="text-2xl font-bold text-texto">Tickets y pedidos</h1>
             <p className="mt-0.5 text-sm text-texto-3">
               Los pedidos con número de hoy y la pantalla que los llama, como en un banco.
+              {local.miSede && ` · ${local.miSede}`}
             </p>
           </div>
-          <PestanasTickets<Pestana> opciones={PESTANAS} valor={pestana} onCambiar={setPestana} />
+          <div className="flex flex-wrap items-center gap-2">
+            {local.elegir && (
+              <SelectorLocalTickets locales={local.locales} valor={local.sucursalId} onChange={local.setLocal} />
+            )}
+            <PestanasTickets<Pestana> opciones={PESTANAS} valor={pestana} onCambiar={setPestana} />
+          </div>
         </header>
 
         {aj.error && (
@@ -101,7 +111,7 @@ export default function TicketsPedidos() {
           </div>
         )}
 
-        {pestana === "pedidos" && <PestanaPedidos tablero={tablero} vistaPrevia={vistaPrevia} />}
+        {pestana === "pedidos" && <PestanaPedidos tablero={tablero} vistaPrevia={vistaPrevia} sucursalId={local.sucursalId} />}
         {pestana === "diseno" && (
           <PestanaDiseno aj={aj} vistaPrevia={vistaPrevia} onProbar={() => void probarLlamado()} />
         )}
@@ -116,9 +126,12 @@ export default function TicketsPedidos() {
 function PestanaPedidos({
   tablero,
   vistaPrevia,
+  sucursalId,
 }: {
   tablero: ReturnType<typeof useTableroTickets>;
   vistaPrevia: ReactNode;
+  /** El local elegido (sólo la organización con 2+): reinicia y enlaza el suyo. */
+  sucursalId: number | null;
 }) {
   const navigate = useNavigate();
   const { usuario, puede } = useAuth();
@@ -145,7 +158,7 @@ function PestanaPedidos({
   const reiniciar = async () => {
     setReiniciando(true);
     try {
-      await apiTickets.reiniciar();
+      await apiTickets.reiniciar(sucursalId);
       setConfirmarReinicio(false);
       await tablero.recargarTrasCambio();
     } catch (e) {
@@ -197,7 +210,7 @@ function PestanaPedidos({
         {/* Primero el código: con la TV colgada arriba es lo más fácil. El
             enlace queda para la compu enchufada a la TV. */}
         <TelevisoresDelLocal />
-        <EnlaceTv />
+        <EnlaceTv sucursalId={sucursalId} />
         <Tarjeta titulo="Despacho">
           {despachoApagado ? (
             <>
@@ -360,7 +373,7 @@ function TarjetaTicket({
  * El enlace de la TV: se genera una vez y se abre en el televisor (o en la
  * compu enchufada a él). Generar otro corta a la TV que tenía el anterior.
  */
-function EnlaceTv() {
+function EnlaceTv({ sucursalId }: { sucursalId: number | null }) {
   const [llave, setLlave] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState("");
   const [copiado, setCopiado] = useState(false);
@@ -374,7 +387,11 @@ function EnlaceTv() {
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo leer el enlace"));
   }, []);
 
-  const url = llave ? `${window.location.origin}/tv/tickets/${llave}` : "";
+  // La TV muestra el local que dice el enlace (`?sucursal=`); sin él, el
+  // principal. Con 2+ locales el de organización arma el enlace del elegido.
+  const url = llave
+    ? `${window.location.origin}/tv/tickets/${llave}${sucursalId != null ? `?sucursal=${sucursalId}` : ""}`
+    : "";
   const generar = async () => {
     setGenerando(true);
     setError("");

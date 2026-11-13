@@ -207,3 +207,37 @@ describe("Vendido sin stock (09-nov)", () => {
     expect(ayudaDeReporte("vendido-sin-stock", "RESTAURANTE")?.deDonde).toMatch(/si había 2 y se vendieron 5, son 3/);
   });
 });
+
+describe("Comparar sucursales (13-nov)", () => {
+  const ve = (ctx: ContextoCatalogo) => ids(ctx).flatMap(([, f]) => f).includes("comparar-sucursales");
+
+  it("lo ve la organización con 2+ sucursales, en Plata, debajo del Estado de resultado", () => {
+    const plata = gruposVisibles(dueno("RESTAURANTE", { variasSucursales: true })).find((g) => g.id === "plata");
+    const lista = plata?.fichas.map((f) => f.id) ?? [];
+    expect(lista.indexOf("comparar-sucursales")).toBe(lista.indexOf("resultado") + 1);
+  });
+
+  it("con un solo local, o para quien es de una sede, no existe (la regla de oro)", () => {
+    expect(ve(dueno("RESTAURANTE"))).toBe(false);
+    expect(ve(dueno("RESTAURANTE", { variasSucursales: false }))).toBe(false);
+  });
+
+  it("pide lo mismo que el Estado de resultado: rentabilidad en el plan y en el rol, y poder ver los gastos", () => {
+    const con = { variasSucursales: true };
+    expect(ve(dueno("RESTAURANTE", { ...con, permisos: ["reportes.ver", "reportes.operacion"] }))).toBe(false);
+    expect(ve(dueno("RESTAURANTE", { ...con, incluye: () => false }))).toBe(false);
+    expect(ve(dueno("RESTAURANTE", { ...con, puede: () => false }))).toBe(false);
+  });
+
+  it("existe en todos los rubros que tienen sucursales", () => {
+    for (const rubro of ["RESTAURANTE", "FARMACIA", "PELUQUERIA", "BILLAR", "ACADEMIA"]) {
+      expect(ve(dueno(rubro, { variasSucursales: true })), rubro).toBe(true);
+    }
+  });
+
+  it("veFicha no lo ofrece desde fuera sin saber que hay varias sucursales", () => {
+    const ctx = dueno("RESTAURANTE", { puede: () => true });
+    expect(veFicha("comparar-sucursales", ctx)).toBe(false);
+    expect(veFicha("comparar-sucursales", { ...ctx, variasSucursales: true })).toBe(true);
+  });
+});

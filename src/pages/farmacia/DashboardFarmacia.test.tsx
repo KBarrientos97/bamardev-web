@@ -13,7 +13,12 @@ import type { Dashboard, Vencimientos } from "../../types";
  * Vencimientos filtrado en ese tramo.
  */
 
-const plan = vi.hoisted(() => ({ lotes: true, reportes: true }));
+const plan = vi.hoisted(() => ({
+  lotes: true,
+  reportes: true,
+  /** Quién mira: de organización (null) o asignado a un local, y cuántos hay. */
+  sede: { sucursalId: null as number | null, sucursal: null as string | null, activas: undefined as number | undefined },
+}));
 const navegado = vi.hoisted(() => ({ a: "", con: null as unknown }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -21,7 +26,13 @@ vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
   return {
     useAuth: () => ({
-      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null },
+      usuario: {
+        rol: "ADMIN",
+        ...permisosDe("ADMIN"),
+        sucursalId: plan.sede.sucursalId,
+        sucursal: plan.sede.sucursal,
+      },
+      negocio: { id: 1, tipoNegocio: "FARMACIA", sucursalesActivas: plan.sede.activas },
       puede: (s: string) => (s === "reportes" ? plan.reportes : true),
       incluye: (c: string) => (c === "lotes" ? plan.lotes : true),
     }),
@@ -79,6 +90,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   plan.lotes = true;
   plan.reportes = true;
+  plan.sede = { sucursalId: null, sucursal: null, activas: undefined };
   navegado.a = "";
   navegado.con = null;
   vi.mocked(api.getDashboard).mockResolvedValue(resumen);
@@ -184,6 +196,85 @@ describe("una farmacia sin `lotes` (plan BASICO)", () => {
     expect(screen.queryByText("Semáforo de vencimientos")).not.toBeInTheDocument();
     expect(screen.queryByText("Por vencer")).not.toBeInTheDocument();
     expect(screen.getByText("Bajo stock")).toBeInTheDocument();
+  });
+});
+
+describe("el usuario asignado a una sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
+  it("con 2+ sucursales el subtítulo dice la suya, y nada más (sin selector)", async () => {
+    plan.sede = { sucursalId: 4, sucursal: "Farmacia Norte", activas: 2 };
+    await abrir();
+    expect(screen.getByText(/Farmacia Norte · hoy,/)).toBeInTheDocument();
+    expect(screen.queryByText(/Vista general de la farmacia/)).not.toBeInTheDocument();
+    // La tarjeta de ubicaciones también la nombra, no "En el negocio".
+    expect(screen.queryByText("En el negocio")).not.toBeInTheDocument();
+  });
+
+  it("con una sola sucursal queda como siempre", async () => {
+    plan.sede = { sucursalId: 4, sucursal: "Farmacia Norte", activas: 1 };
+    await abrir();
+    expect(screen.getByText(/Vista general de la farmacia · hoy,/)).toBeInTheDocument();
+    expect(screen.queryByText(/Farmacia Norte/)).not.toBeInTheDocument();
+  });
+});
+
+describe("la organización con 2+ sucursales", () => {
+  const dosLocales = [
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+
+  it("el consolidado dice en qué locales falta cada medicamento", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    vi.mocked(api.getDashboard).mockResolvedValue({
+      ...resumen,
+      stockCritico: [
+        {
+          id: 2,
+          nombre: "Ranitidina 150 mg",
+          stock: 0,
+          stockMinimo: 30,
+          laboratorio: "IFA",
+          sucursales: [
+            { almacenId: 2, nombre: "Equipetrol", stock: 0, stockMinimo: 30 },
+            { almacenId: 1, nombre: "Centro", stock: 3, stockMinimo: 30 },
+          ],
+        },
+      ],
+    });
+    await abrir();
+    expect(await screen.findByText("Equipetrol 0 · Centro 3")).toBeInTheDocument();
+  });
+
+  it("con un solo local no se agrega la línea de locales", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([dosLocales[0]] as never);
+    vi.mocked(api.getDashboard).mockResolvedValue({
+      ...resumen,
+      stockCritico: [
+        {
+          id: 2,
+          nombre: "Ranitidina 150 mg",
+          stock: 0,
+          stockMinimo: 30,
+          laboratorio: "IFA",
+          sucursales: [{ almacenId: 1, nombre: "Centro", stock: 0, stockMinimo: 30 }],
+        },
+      ],
+    });
+    await abrir();
+    await screen.findByText("Ranitidina 150 mg");
+    expect(screen.queryByText("Centro 0")).not.toBeInTheDocument();
+  });
+
+  it("con un local elegido, Vencimientos abre en ese mismo local", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    await abrir();
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText("≤ 30 días"));
+    });
+    expect(navegado.con).toEqual({ tramo: "HASTA_30", sucursalId: 2 });
   });
 });
 

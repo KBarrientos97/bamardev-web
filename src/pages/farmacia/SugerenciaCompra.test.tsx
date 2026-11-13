@@ -8,13 +8,26 @@ import type { ItemSugerencia, SugerenciaCompra } from "../../types";
  * puede cambiar antes de imprimir el pedido.
  */
 
+// Quién mira: por defecto un usuario de un local en un negocio de un local.
+const sesion = vi.hoisted(() => ({
+  sucursalId: 917 as number | null,
+  sucursal: null as string | null,
+  activas: undefined as number | undefined,
+}));
+
 vi.mock("../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
   const { permisosDe } = await import("../../test/sesiones");
   return {
     useAuth: () => ({
-      negocio: { id: 1, nombre: "Farmacia San Rafael" },
-      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
+      negocio: { id: 1, nombre: "Farmacia San Rafael", sucursalesActivas: sesion.activas },
+      usuario: {
+        id: 1,
+        rol: "ADMIN",
+        ...permisosDe("ADMIN"),
+        sucursalId: sesion.sucursalId,
+        sucursal: sesion.sucursal,
+      },
     }),
   };
 });
@@ -90,6 +103,9 @@ async function montar() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.sucursalId = 917;
+  sesion.sucursal = null;
+  sesion.activas = undefined;
   vi.mocked(api.sugerenciaCompra).mockResolvedValue(respuesta([diclofenaco, item({})]));
 });
 
@@ -206,5 +222,60 @@ describe("dentro de Reportes", () => {
     });
     expect(api.sugerenciaCompra).toHaveBeenLastCalledWith({ dias: 60, cobertura: 15, sucursalId: 7 });
     expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeEnabled();
+  });
+});
+
+describe("la sucursal en el pedido", () => {
+  /** Baja la planilla y devuelve su texto y el nombre del archivo. */
+  async function bajar() {
+    const bajado: { planilla?: Blob; archivo?: string } = {};
+    const original = { crear: URL.createObjectURL, revocar: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob | MediaSource) => {
+      bajado.planilla = b as Blob;
+      return "blob:planilla";
+    });
+    URL.revokeObjectURL = vi.fn();
+    const clic = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      bajado.archivo = this.download;
+    });
+    try {
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: /Exportar a Excel/ }));
+      return { texto: await bajado.planilla!.text(), archivo: bajado.archivo ?? "" };
+    } finally {
+      URL.createObjectURL = original.crear;
+      URL.revokeObjectURL = original.revocar;
+      clic.mockRestore();
+    }
+  }
+
+  const dosLocales = [
+    { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Sucursal Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+
+  it("con un solo local la planilla queda igual: sin columna Sucursal ni nombre en el archivo", async () => {
+    const { texto, archivo } = await bajar();
+    expect(texto.split("\r\n")[0].startsWith('"Laboratorio"')).toBe(true);
+    expect(archivo).toMatch(/^pedido-sugerido-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  it("el atado a un local con 2+ locales: su sede en el archivo, en una columna y en el subtítulo", async () => {
+    sesion.activas = 2;
+    sesion.sucursal = "Sucursal Equipetrol";
+    const { texto, archivo } = await bajar();
+    expect(texto.split("\r\n")[0].startsWith('"Sucursal";"Laboratorio"')).toBe(true);
+    expect(texto).toContain('"Sucursal Equipetrol";"INTI";"Ibuprofeno 400 mg"');
+    expect(archivo).toMatch(/^pedido-sugerido-sucursal-equipetrol-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(screen.getByText(/Sede: Sucursal Equipetrol\./)).toBeInTheDocument();
+  });
+
+  it("la organización con 'Todas' lo dice en la columna; elegida una, lleva el nombre de esa", async () => {
+    sesion.sucursalId = null;
+    sesion.activas = 2;
+    vi.mocked(api.getSucursales).mockResolvedValue(dosLocales as never);
+    const todas = await bajar();
+    expect(todas.texto).toContain('"Todas las sucursales";"INTI"');
+    expect(todas.archivo).toMatch(/^pedido-sugerido-todas-las-sucursales-/);
   });
 });

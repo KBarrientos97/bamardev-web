@@ -26,6 +26,7 @@ import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { insumosSinStock } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import ElegirArticulo from "./ElegirArticulo";
+import { almacenesElegibles, almacenInicial } from "./almacenInicial";
 import type {
   Almacen,
   ArticuloMovimiento,
@@ -137,7 +138,10 @@ export default function Movimientos() {
     () => api.getMovimientos(suc.sucursalId, fecha ? rangoParaApi({ desde: fecha, hasta: fecha }) : undefined),
     [suc.sucursalId, fecha],
   );
-  const almacenes = useApi(() => api.getAlmacenes(), []);
+  // El listado BÁSICO (`/almacenes/mias`): el formulario sólo necesita id, nombre y
+  // si está activo, y `GET /almacenes` pide `almacenes.administrar` (el
+  // encargado que sólo mueve mercadería recibía un 403 y no podía elegir dónde).
+  const almacenes = useApi(() => api.getSucursales(), []);
 
   const [q, setQ] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
@@ -437,7 +441,11 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
               <Icon name="calendar" size={12} /> {fmtFecha(m.fecha)}
             </span>
             <span className="flex items-center gap-1">
-              <Icon name="warehouse" size={12} /> {m.almacen?.nombre ?? "—"}
+              <Icon name="warehouse" size={12} />{" "}
+              {/* Una transferencia va de un local a otro: se lee de dónde a dónde. */}
+              {m.tipo === "TRANSFERENCIA" && m.almacenDestino
+                ? `${m.almacen?.nombre ?? "—"} → ${m.almacenDestino.nombre}`
+                : (m.almacen?.nombre ?? "—")}
             </span>
             <span>
               {m.items} {m.items === 1 ? "artículo" : "artículos"}
@@ -638,7 +646,14 @@ function DetalleMovimiento({
             </div>
 
             <dl className="grid grid-cols-2 gap-3">
-              <Dato label="Almacén" valor={m.almacen?.nombre ?? "—"} />
+              {m.tipo === "TRANSFERENCIA" && m.almacenDestino ? (
+                <>
+                  <Dato label="Sale de" valor={m.almacen?.nombre ?? "—"} />
+                  <Dato label="Llega a" valor={m.almacenDestino.nombre} />
+                </>
+              ) : (
+                <Dato label="Almacén" valor={m.almacen?.nombre ?? "—"} />
+              )}
               <Dato label="Origen" valor={m.origen ?? "—"} />
               <Dato label="Fecha" valor={fmtFecha(m.fecha)} />
               <Dato
@@ -1119,12 +1134,23 @@ function FormMovimientoCuerpo({
    */
   onGuardado: (r?: { id: number; aviso?: string }) => void;
 }) {
-  const { incluye } = useAuth();
+  const { incluye, usuario } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
   // Sin `lotes` el plan no tiene Vencimientos: el lote no se pide (16-oct).
   const conLotes = incluye("lotes");
   const [tipo, setTipo] = useState<TipoMovimiento>("ENTRADA");
-  const [almacenId, setAlmacenId] = useState(String(almacenes[0]?.id ?? ""));
+  // Quien es de un local mueve mercadería sólo del suyo (se le fija, sin
+  // selector); el de organización arranca en la principal y puede cambiar. Los
+  // dados de baja no se ofrecen (PLAN-SUCURSAL-TOTAL, etapa 3).
+  const deUnLocal = usuario?.sucursalId != null;
+  const elegibles = almacenesElegibles(almacenes, usuario?.sucursalId);
+  const [almacenId, setAlmacenId] = useState(() => String(almacenInicial(almacenes, usuario?.sucursalId)?.id ?? ""));
+  // Si la lista llegó después de abrir el formulario, se completa cuando llega.
+  useEffect(() => {
+    if (almacenId) return;
+    const sugerido = almacenInicial(almacenes, usuario?.sucursalId);
+    if (sugerido) setAlmacenId(String(sugerido.id));
+  }, [almacenes, almacenId, usuario?.sucursalId]);
   const [fecha, setFecha] = useState(isoDia(new Date()));
   const [comprobante, setComprobante] = useState("");
   const [descripcion, setDescripcion] = useState("");
@@ -1354,9 +1380,11 @@ function FormMovimientoCuerpo({
             </Select>
           </Campo>
           <Campo label="Almacén">
-            <Select value={almacenId} onChange={(e) => setAlmacenId(e.target.value)}>
-              <option value="">Elegí uno</option>
-              {almacenes.map((a) => (
+            {/* Quien es de un local lo ve fijo, con su sede: no mueve
+                mercadería de otro. */}
+            <Select value={almacenId} disabled={deUnLocal} onChange={(e) => setAlmacenId(e.target.value)}>
+              {!deUnLocal && <option value="">Elegí uno</option>}
+              {elegibles.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}
                 </option>
