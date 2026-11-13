@@ -34,7 +34,10 @@ const TEXTO_POR_CODIGO: Record<string, string> = {
   SUCURSAL_CERRADA: "Ese local acaba de cerrar. Probá con otro o un poco más tarde.",
   SOLO_RECOGER: "Ese local sólo atiende pedidos para pasar a recoger.",
   FUERA_DE_ZONA: "Esa dirección queda fuera de la zona de entrega. Probá con otra o pasá a recoger.",
-  TOPE_PEDIDOS: "Ya tenés pedidos en curso. Esperá a que el local los atienda para hacer otro.",
+  // TOPE_PEDIDOS no está acá a propósito (R2-04): el backend manda dos mensajes
+  // distintos con el mismo código —«Ya tenés 2 pedidos en curso» (por teléfono) y
+  // «Ahora hay muchos pedidos esperando desde esta conexión» (por conexión, que
+  // no es culpa del cliente)— y un texto fijo diría el equivocado.
   NO_DISPONIBLE_ONLINE: "No podemos tomar tu pedido por acá. Escribile al local por WhatsApp.",
   CAPTCHA: "No pudimos verificar que no sos un robot. Probá de nuevo.",
   PEDIDO_NO_ENCONTRADO: "No encontramos este pedido.",

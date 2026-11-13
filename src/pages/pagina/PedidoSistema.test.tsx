@@ -324,7 +324,6 @@ describe("el carrito con pedidos en el sistema", () => {
   it.each([
     ["FUERA_DE_ZONA", /queda fuera de la zona de entrega/],
     ["SUCURSAL_CERRADA", /acaba de cerrar/],
-    ["TOPE_PEDIDOS", /Ya tenés pedidos en curso/],
     ["NO_DISPONIBLE_ONLINE", /Escribile al local por WhatsApp/],
     ["CAPTCHA", /No pudimos verificar que no sos un robot/],
   ])("el código %s se explica en lenguaje del cliente", async (codigo, texto) => {
@@ -338,6 +337,21 @@ describe("el carrito con pedidos en el sistema", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
     expect(await screen.findByText(texto)).toBeInTheDocument();
     expect(screen.queryByText("texto técnico")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["Ya tenés 2 pedidos en curso. Esperá a que los atiendan para hacer otro."],
+    ["Ahora hay muchos pedidos esperando desde esta conexión: probá en unos minutos o escribile al local."],
+  ])("TOPE_PEDIDOS muestra el mensaje del backend, que distingue el teléfono de la conexión (R2-04): %s", async (mensaje) => {
+    servidor({ respuestaCrear: { status: 409, cuerpo: { statusCode: 409, message: mensaje, codigo: "TOPE_PEDIDOS" } } });
+    await montar();
+    await abrirPedido();
+    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    escribir("Dirección", "Calle Los Tajibos 23");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    expect(await screen.findByText(mensaje)).toBeInTheDocument();
   });
 
   it("un GPS poco preciso pide mover el pin antes de mandar", async () => {
