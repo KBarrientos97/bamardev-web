@@ -388,4 +388,40 @@ describe("el carrito con pedidos en el sistema", () => {
     expect(screen.getByLabelText("Tu WhatsApp")).toHaveValue("71234567");
     expect(screen.getByLabelText("Dirección")).toHaveValue("Calle 5");
   });
+
+  it("si el billete elegido deja de alcanzar porque sube el total, vuelve a «Justo» y no queda un monto invisible que bloquea (sesion 2)", async () => {
+    const s = servidor();
+    await montar();
+    await abrirPedido();
+    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    escribir("Dirección", "Calle Los Tajibos 23");
+    // Total 59 (50 + 9 de envío): el atajo de Bs 100 alcanza.
+    fireEvent.click(screen.getByRole("button", { name: "Bs 100" }));
+    expect(screen.getByRole("button", { name: "Bs 100" })).toHaveAttribute("aria-pressed", "true");
+    // Dos más: 150 + 9 = 159. El atajo de 100 ya no se ofrece.
+    fireEvent.click(screen.getByRole("button", { name: /^Sumar uno de Arroz con leche grande/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Sumar uno de Arroz con leche grande/ }));
+    expect(screen.queryByRole("button", { name: "Bs 100" })).not.toBeInTheDocument();
+    // Queda en «Justo» (visible), y el pedido sale sin pagaCon en vez de trabarse con «no alcanza».
+    expect(screen.getByRole("button", { name: "Justo" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    expect(await screen.findByText("Seguimiento del pedido")).toBeInTheDocument();
+    expect(JSON.parse(String(s.posteos()[0].init?.body))).not.toHaveProperty("pagaCon");
+  });
+
+  it("con la pantalla baja (celular de costado o teclado abierto) el pie deja de ser fijo: el formulario no queda en una rendija (sesion 2)", async () => {
+    servidor();
+    await montar();
+    await abrirPedido();
+    const hoja = document.querySelector(".hoja-pedido");
+    expect(hoja).not.toBeNull();
+    expect(document.querySelector(".cuerpo-pedido")).not.toBeNull();
+    expect(document.querySelector(".pie-pedido")).not.toBeNull();
+    // jsdom no evalúa media queries: se comprueba que la regla viaja con la hoja.
+    const css = Array.from(document.querySelectorAll("style")).map((e) => e.textContent).join(" ");
+    expect(css).toMatch(/@media \(max-height:520px\)\{\.hoja-pedido\{overflow-y:auto!important/);
+    expect(css).toMatch(/\.cuerpo-pedido\{overflow:visible!important/);
+  });
 });

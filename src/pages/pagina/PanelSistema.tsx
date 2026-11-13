@@ -43,6 +43,15 @@ export const PRECISION_MAXIMA_M = 100;
 const ICONO_PIN = "M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Zm0-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z";
 const ATAJOS_BILLETES = [50, 100, 200];
 
+/**
+ * Con la pantalla baja (celular de costado, o un navegador que achica la
+ * página cuando sale el teclado, como el de Instagram o Samsung) la cabecera y
+ * el pie fijos se comían todo el alto y el formulario quedaba en una rendija de
+ * 50 px. Ahí la hoja entera pasa a ser la que se desplaza, y el pie va al final
+ * del formulario en vez de quedarse fijo.
+ */
+export const ESTILO_PANTALLA_CORTA = `@media (max-height:520px){.hoja-pedido{overflow-y:auto!important;max-height:92dvh!important}.cuerpo-pedido{overflow:visible!important;flex:none!important}.pie-pedido{padding-bottom:12px!important}.nota-pie-pedido{display:none}}`;
+
 /** Una opción de la lista «Sale desde» / «¿Dónde lo retirás?». */
 interface Fila {
   e: Evaluada;
@@ -189,6 +198,13 @@ export default function PanelSistema({
   const { total: subtotal } = totalPedido(lineas);
   const envio = tipoReal === "DELIVERY" ? (ev?.envio ?? null) : 0;
   const total = subtotal + (envio ?? 0);
+
+  // El billete elegido deja de alcanzar si el total sube (otro producto, otro local, un
+  // envío más caro): el atajo ya no se ofrece, así que se vuelve a «Justo» en vez de
+  // quedar un monto invisible que bloquea el pedido con un error que no se entiende.
+  useEffect(() => {
+    if (pagaCon != null && pagaCon < total) setPagaCon(null);
+  }, [pagaCon, total]);
 
   // ── Qué falta ──
   const tel = telefonoDe8(telefono);
@@ -348,8 +364,9 @@ export default function PanelSistema({
       }}
     >
       {/* Las opciones son radios escondidos: sin esto, con el teclado no se ve cuál tiene el foco. */}
-      <style>{`.seg-pedido:has(input:focus-visible){outline:3px solid ${fuerte};outline-offset:1px}`}</style>
+      <style>{`.seg-pedido:has(input:focus-visible){outline:3px solid ${fuerte};outline-offset:1px}${ESTILO_PANTALLA_CORTA}`}</style>
       <section
+        className="hoja-pedido"
         style={{
           background: "#ffffff",
           width: "min(520px, 100%)",
@@ -381,7 +398,7 @@ export default function PanelSistema({
           </button>
         </header>
 
-        <div style={{ overflowY: "auto", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 16, flex: 1, minHeight: 0 }}>
+        <div className="cuerpo-pedido" style={{ overflowY: "auto", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 16, flex: 1, minHeight: 0 }}>
           {errorInfo && !info && (
             <div role="alert" style={{ background: "#FEF2F2", color: "#B91C1C", borderRadius: 12, padding: "10px 12px", fontSize: 14 }}>
               {errorInfo}{" "}
@@ -604,6 +621,7 @@ export default function PanelSistema({
         </div>
 
         <footer
+          className="pie-pedido"
           style={{
             borderTop: "1px solid #E5E7EB",
             padding: "12px 18px",
@@ -648,7 +666,7 @@ export default function PanelSistema({
           >
             {enviando ? "Enviando tu pedido…" : "Hacer pedido"}
           </button>
-          <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
+          <p className="nota-pie-pedido" style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
             El local acepta tu pedido y lo seguís desde tu celular. Pagás al recibir.
           </p>
         </footer>
