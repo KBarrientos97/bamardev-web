@@ -28,7 +28,18 @@ export interface PedidoParaMensaje {
    * «ya llegó» de un pedido que sigue en el local (QA R1, N8).
    */
   salioEn?: string | null;
+  /**
+   * Si el pedido vino de la página. Un delivery cargado a mano no tiene «Ya
+   * salí»: el repartidor escribe al llegar, como siempre. Uno de la página sí,
+   * así que el texto sigue el momento (por salir o en camino).
+   */
+  dePagina?: boolean;
 }
+
+/** Quién manda el mensaje: el repartidor (en la calle) o la caja (en el local). */
+export type DesdeMensaje = "REPARTIDOR" | "CAJA";
+
+const YA_LLEGO = "📍 ¡Nuestro delivery ya llegó a tu ubicación y está esperándote afuera para entregarte tu pedido!";
 
 /** De qué negocio es el mensaje: lo que decide el tono (emoji y cierre). */
 export interface RubroMensaje {
@@ -70,7 +81,12 @@ function adornosDe(rubro?: RubroMensaje | null): { cabecera: string; cierre: str
  *   falso.
  * - La plata va sin ".00" cuando es entera ("Bs 40"): ver `fmtMontoCliente`.
  */
-export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null, rubro?: RubroMensaje | null): string {
+export function mensajePedido(
+  p: PedidoParaMensaje,
+  negocio?: string | null,
+  rubro?: RubroMensaje | null,
+  desde: DesdeMensaje = "REPARTIDOR",
+): string {
   const nombre = negocio?.trim() || null;
   const partes: string[] = [];
   const clasico = esMensajeClasico(rubro);
@@ -100,20 +116,35 @@ export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null, rub
   totales.push(`💵 *Total a pagar: ${fmtMontoCliente(p.totalACobrar)}*`);
   partes.push(totales.join("\n"));
 
-  if (p.tipoPedido === "DELIVERY") {
-    partes.push(
-      clasico
-        ? "📍 ¡Nuestro delivery ya llegó a tu ubicación y está esperándote afuera para entregarte tu pedido!"
-        : // El mensaje se puede mandar antes de salir: no se afirma lo que no se sabe.
-          p.salioEn
-          ? "📍 Tu pedido ya salió del local y va en camino a tu ubicación."
-          : "📍 Te escribimos para coordinar la entrega de tu pedido.",
-    );
-  }
+  const llegada = lineaDeEntrega(p, clasico, desde);
+  if (llegada) partes.push(llegada);
   const emojiCierre = clasico ? "❤️🍗" : cierre;
   partes.push(nombre ? `¡Gracias por elegir ${nombre}! ${emojiCierre}` : `¡Gracias por elegirnos! ${emojiCierre}`);
 
   return partes.join("\n\n");
+}
+
+/**
+ * La línea de la entrega, o null. Es del domicilio: a quien pasa a recoger,
+ * «ya llegó a tu ubicación» le sería falso.
+ *
+ * Omar conserva su frase en todos los casos (el texto de hoy, fijado por test).
+ * Los demás dicen sólo lo que es verdad en ese momento, con las mismas frases
+ * que la app (`MensajeEntregaWhatsApp.kt`): la caja no habla de la llegada; un
+ * pedido de la página dice «por salir» o «en camino» según «Ya salí»; y «ya
+ * llegó» queda para el delivery cargado a mano, que el repartidor manda en la
+ * puerta.
+ */
+function lineaDeEntrega(p: PedidoParaMensaje, clasico: boolean, desde: DesdeMensaje): string | null {
+  if (p.tipoPedido !== "DELIVERY") return null;
+  if (clasico) return YA_LLEGO;
+  if (desde === "CAJA") return null;
+  if (p.dePagina) {
+    return p.salioEn
+      ? "🛵 ¡Tu pedido ya va en camino hacia tu ubicación!"
+      : "🛵 ¡Tu pedido ya está por salir hacia tu ubicación!";
+  }
+  return YA_LLEGO;
 }
 
 /** Un pedido como lo traen el repartidor y el historial de la caja (`Venta`). */
@@ -126,6 +157,7 @@ export function pedidoDeVenta(v: Venta, sucursal?: string | null, rotuloSucursal
     tarifaEnvio: v.tarifaEnvio ?? 0,
     totalACobrar: v.totalACobrar ?? 0,
     prepagado: !!v.prepagado,
+    ...(v.pedidoWeb ? { dePagina: true } : {}),
     ...(v.pedidoWeb?.salioEn ? { salioEn: v.pedidoWeb.salioEn } : {}),
     ...(sucursal ? { sucursal, ...(rotuloSucursal ? { rotuloSucursal } : {}) } : {}),
   };

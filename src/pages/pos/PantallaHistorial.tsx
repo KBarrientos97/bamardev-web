@@ -590,7 +590,7 @@ function DetalleVenta({
                           ? `https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`
                           : enlaceWhatsApp(
                               Telefono.paraWhatsApp(v.clienteTelefono),
-                              mensajePedido(pedidoDeVenta(v, hayVariasSucursales ? v.almacen?.nombre : null, rotuloSede), negocio?.nombre, negocio),
+                              mensajePedido(pedidoDeVenta(v, hayVariasSucursales ? v.almacen?.nombre : null, rotuloSede), negocio?.nombre, negocio, "CAJA"),
                             )
                       }
                       target="_blank"

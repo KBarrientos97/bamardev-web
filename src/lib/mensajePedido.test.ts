@@ -124,6 +124,11 @@ describe("el mensaje de Omar no cambia", () => {
     expect(mensajePedido(DELIVERY, "Pollos Don Omar", null)).toBe(OMAR_DELIVERY);
   });
 
+  it("desde la caja, y aunque venga de la página, Omar sigue igual que siempre", () => {
+    expect(mensajePedido(DELIVERY, "Pollos Don Omar", { tipoNegocio: "RESTAURANTE" }, "CAJA")).toBe(OMAR_DELIVERY);
+    expect(mensajePedido({ ...DELIVERY, dePagina: true }, "Pollos Don Omar", { tipoNegocio: "RESTAURANTE" })).toBe(OMAR_DELIVERY);
+  });
+
   it("aunque el pedido ya haya salido, Omar dice lo mismo (el texto clásico no mira salioEn)", () => {
     expect(mensajePedido({ ...DELIVERY, salioEn: "2026-11-13T20:00:00.000Z" }, "Pollos Don Omar", { tipoNegocio: "RESTAURANTE" })).toBe(OMAR_DELIVERY);
   });
@@ -145,26 +150,39 @@ describe("el mensaje de Omar no cambia", () => {
 describe("el mensaje de otros rubros y variantes no habla de pollo (QA R1, N8)", () => {
   const POSTRES = { tipoNegocio: "RESTAURANTE", variante: "POSTRES" };
 
+  // Un pedido de la página: el texto sigue el momento, con las frases de la app.
+  const DE_PAGINA = { ...DELIVERY, dePagina: true };
+
   it("Postres: emoji de postre, ni pollo ni «ya llegó»", () => {
-    const t = mensajePedido(DELIVERY, "El Ganadero", POSTRES);
+    const t = mensajePedido(DE_PAGINA, "El Ganadero", POSTRES);
     expect(t).toContain("🍮 El Ganadero 👋");
     expect(t).toContain("¡Gracias por elegir El Ganadero! ❤️🍮");
     expect(t).not.toMatch(/🐔|🍗/);
     expect(t).not.toMatch(/ya llegó/);
   });
 
-  it("antes de salir, no afirma nada que no sepa", () => {
-    expect(mensajePedido(DELIVERY, "El Ganadero", POSTRES)).toContain("📍 Te escribimos para coordinar la entrega de tu pedido.");
+  it("pedido de la página antes de «Ya salí»: está por salir", () => {
+    expect(mensajePedido(DE_PAGINA, "El Ganadero", POSTRES)).toContain("🛵 ¡Tu pedido ya está por salir hacia tu ubicación!");
   });
 
-  it("si el pedido ya salió, dice que va en camino", () => {
-    const t = mensajePedido({ ...DELIVERY, salioEn: "2026-11-13T20:00:00.000Z" }, "El Ganadero", POSTRES);
-    expect(t).toContain("📍 Tu pedido ya salió del local y va en camino a tu ubicación.");
+  it("pedido de la página que ya salió: va en camino", () => {
+    const t = mensajePedido({ ...DE_PAGINA, salioEn: "2026-11-13T20:00:00.000Z" }, "El Ganadero", POSTRES);
+    expect(t).toContain("🛵 ¡Tu pedido ya va en camino hacia tu ubicación!");
     expect(t).not.toMatch(/ya llegó/);
   });
 
+  it("delivery cargado a mano: el repartidor escribe en la puerta, «ya llegó» (igual que la app)", () => {
+    expect(mensajePedido(DELIVERY, "El Ganadero", POSTRES)).toContain("📍 ¡Nuestro delivery ya llegó a tu ubicación");
+  });
+
+  it("desde la caja no se habla de la llegada", () => {
+    const t = mensajePedido(DE_PAGINA, "El Ganadero", POSTRES, "CAJA");
+    expect(t).not.toMatch(/ya llegó|por salir|en camino hacia/);
+    expect(mensajePedido(DELIVERY, "El Ganadero", POSTRES, "CAJA")).not.toMatch(/ya llegó/);
+  });
+
   it("otro rubro (una farmacia): neutro, sin pollo", () => {
-    const t = mensajePedido(DELIVERY, "Farmacia Sol", { tipoNegocio: "FARMACIA" });
+    const t = mensajePedido(DE_PAGINA, "Farmacia Sol", { tipoNegocio: "FARMACIA" });
     expect(t).toContain("🛍️ Farmacia Sol 👋");
     expect(t).toContain("¡Gracias por elegir Farmacia Sol! ❤️");
     expect(t).not.toMatch(/🐔|🍗|ya llegó/);
