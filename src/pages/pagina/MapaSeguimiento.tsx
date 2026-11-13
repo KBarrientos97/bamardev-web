@@ -107,7 +107,14 @@ export default function MapaSeguimiento({
   useEffect(() => {
     const m = mapa.current;
     const ml = marcas.current.ml;
-    if (!listo || !m || !ml || !moto) return;
+    if (!listo || !m || !ml) return;
+    // El backend esconde la posición cuando tiene más de 2 minutos: una moto
+    // clavada en el último punto miente peor que no mostrar nada (PW-04).
+    if (!moto) {
+      marcas.current.moto?.remove();
+      marcas.current.moto = null;
+      return;
+    }
     if (marcas.current.moto) marcas.current.moto.setLngLat([moto.longitud, moto.latitud]);
     else marcas.current.moto = new ml.Marker({ element: ficha("M", "#DC2626", "El repartidor") }).setLngLat([moto.longitud, moto.latitud]).addTo(m);
     if (!m.getBounds().contains([moto.longitud, moto.latitud])) m.easeTo({ center: [moto.longitud, moto.latitud], duration: 600 });

@@ -57,9 +57,11 @@ function alEvento() {
 
 const sinSuscripcion = () => () => {};
 
-/** Para los tests: vuelve al estado de recién abierto. */
+/** Vuelve al estado de recién abierto: al cerrar sesión y en los tests. */
 export function reiniciarContador() {
+  if (valor === VACIO) return;
   valor = VACIO;
+  for (const f of oyentes) f();
 }
 
 /** Cuántos pedidos esperan respuesta. 0 (y sin consultar nada) si la sección no se ve. */
@@ -73,25 +75,62 @@ let contexto: AudioContext | null = null;
 let desbloqueado = false;
 const oyentesSonido = new Set<() => void>();
 
+/** Prende o apaga el «ya puede sonar» y avisa sólo si cambió. */
+function marcar(ok: boolean) {
+  if (desbloqueado === ok) return;
+  desbloqueado = ok;
+  for (const f of oyentesSonido) f();
+}
+
+/**
+ * Safari (iPad, iPhone) y las tablets que se bloquean dejan el contexto en
+ * `suspended` o `interrupted` al ocultar la página: sólo un toque lo vuelve a
+ * levantar. Un contexto sin `state` (los navegadores viejos, los tests) cuenta
+ * como andando.
+ */
+function parado(ctx: AudioContext): boolean {
+  const estado = ctx.state as string | undefined;
+  return estado === "suspended" || estado === "interrupted";
+}
+
+function alCambiarEstado() {
+  if (contexto) marcar(!parado(contexto));
+}
+
+/** Crea el contexto la primera vez y, si quedó dormido, lo despierta. Sólo con un toque. */
 function desbloquear() {
-  if (desbloqueado) return;
   try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    contexto = contexto ?? new Ctx();
-    void contexto.resume?.();
-    desbloqueado = true;
-    for (const f of oyentesSonido) f();
+    if (!contexto) {
+      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      contexto = new Ctx();
+      contexto.onstatechange = alCambiarEstado;
+    }
+    const ctx = contexto;
+    if (!parado(ctx)) {
+      marcar(true);
+      return;
+    }
+    // Despierta con el gesto; cuando el navegador lo confirma (`statechange`)
+    // vuelve a marcarse como listo.
+    void ctx.resume?.().then(
+      () => marcar(!parado(ctx)),
+      () => {},
+    );
   } catch {
     // Sin Web Audio: el aviso queda visual.
   }
 }
 
-/** El navegador sólo deja sonar después de un toque: se espera el primero de la sesión. */
-function esperarPrimerToque() {
+/**
+ * El navegador sólo deja sonar después de un toque, y en iOS el contexto se
+ * vuelve a dormir al bloquear la pantalla (PW-05): se escucha CUALQUIER toque
+ * de la sesión para despertarlo, no sólo el primero.
+ */
+function esperarToques() {
   if (typeof window === "undefined") return;
   for (const ev of ["pointerdown", "keydown", "touchstart"] as const) {
-    window.addEventListener(ev, desbloquear, { once: true, passive: true });
+    window.addEventListener(ev, desbloquear, { passive: true });
   }
 }
 
@@ -110,6 +149,14 @@ export function sonarPedido(): boolean {
   if (!desbloqueado || !contexto) return false;
   try {
     const ctx = contexto;
+    // El contexto se durmió desde el último toque: no suena, y se vuelve a
+    // ofrecer «Activar sonido» en vez de decir que sonó (PW-05). Se intenta
+    // despertarlo igual: si el navegador lo permite, vuelve solo.
+    if (parado(ctx)) {
+      marcar(false);
+      void ctx.resume?.().catch?.(() => {});
+      return false;
+    }
     const t0 = ctx.currentTime;
     [880, 1175, 880, 1175].forEach((hz, i) => {
       const osc = ctx.createOscillator();
@@ -132,6 +179,7 @@ export function sonarPedido(): boolean {
 
 /** Para los tests. */
 export function reiniciarSonido() {
+  if (contexto) contexto.onstatechange = null;
   contexto = null;
   desbloqueado = false;
   oyentesSonido.clear();
@@ -148,7 +196,7 @@ export function useSonidoListo(): boolean {
   );
 }
 
-if (typeof window !== "undefined") esperarPrimerToque();
+if (typeof window !== "undefined") esperarToques();
 
 // ── El aviso global ─────────────────────────────────────────────────────
 

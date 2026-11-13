@@ -134,6 +134,18 @@ describe("el aviso de pedidos web", () => {
     expect(screen.getByRole("link", { name: /3 pedidos web nuevos/ })).toBeInTheDocument();
   });
 
+  it("al cerrar sesión (reiniciarContador) el número de esta sesión no se lo hereda la siguiente (PW-21)", async () => {
+    contador.mockResolvedValue({ nuevos: 4, masViejoEn: null });
+    await montar();
+    expect(screen.getByRole("link", { name: /4 pedidos web nuevos/ })).toBeInTheDocument();
+    // El logout vacía el conteo; otro negocio que no puede consultar no ve el 4.
+    contador.mockRejectedValue(new Error("403"));
+    act(() => reiniciarContador());
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await avanzar(CADA_MS);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   describe("el sonido", () => {
     it("antes del primer toque no suena y ofrece «Activar sonido»", async () => {
       contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
@@ -152,6 +164,42 @@ describe("el aviso de pedidos web", () => {
       tonos.mockClear();
       // Llega un segundo pedido: suena.
       contador.mockResolvedValue({ nuevos: 2, masViejoEn: null });
+      await avanzar(CADA_MS);
+      expect(tonos).toHaveBeenCalled();
+    });
+
+    it("si el navegador durmió el contexto (iOS, pantalla bloqueada) no dice que sonó y vuelve a ofrecer «Activar sonido»", async () => {
+      let ctx!: AudioDormible;
+      class AudioDormible extends AudioFalso {
+        state = "running";
+        onstatechange: (() => void) | null = null;
+        constructor() {
+          super();
+          ctx = this;
+        }
+      }
+      vi.stubGlobal("AudioContext", AudioDormible);
+      await montar();
+      contador.mockResolvedValue({ nuevos: 1, masViejoEn: null });
+      await avanzar(CADA_MS);
+      fireEvent.click(screen.getByRole("button", { name: "Activar sonido" }));
+      expect(screen.queryByRole("button", { name: "Activar sonido" })).not.toBeInTheDocument();
+
+      // La tablet se bloquea: el contexto queda suspendido y llega otro pedido.
+      ctx.state = "suspended";
+      tonos.mockClear();
+      contador.mockResolvedValue({ nuevos: 2, masViejoEn: null });
+      await avanzar(CADA_MS);
+      expect(tonos).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Activar sonido" })).toBeInTheDocument();
+      // Se intentó despertarlo (si el navegador lo permite, vuelve solo).
+      expect(ctx.resume).toHaveBeenCalled();
+
+      // El navegador lo levanta (o la cajera toca el botón): vuelve a sonar.
+      ctx.state = "running";
+      act(() => ctx.onstatechange?.());
+      expect(screen.queryByRole("button", { name: "Activar sonido" })).not.toBeInTheDocument();
+      contador.mockResolvedValue({ nuevos: 3, masViejoEn: null });
       await avanzar(CADA_MS);
       expect(tonos).toHaveBeenCalled();
     });
