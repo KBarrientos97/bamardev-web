@@ -67,7 +67,9 @@ export default function Solicitudes() {
   const bandeja = useConsultaPeriodica<BandejaSolicitudes>(
     () => apiReservaOnline.bandeja(sucursalPedida ?? null),
     [sucursalPedida],
-    { pausado: rechazando !== null },
+    // `clave`: al cambiar de local, las solicitudes del anterior no quedan a la
+    // vista (con sus botones de aprobar y rechazar) hasta que llegue la bandeja nueva.
+    { pausado: rechazando !== null, clave: sucursalPedida ?? null },
   );
 
   /** Saca la cita de las dos listas (ya se resolvió). */

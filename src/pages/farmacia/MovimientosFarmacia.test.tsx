@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Movimiento } from "../../types";
@@ -223,6 +223,25 @@ describe("La sucursal", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
     await screen.findByText(/2 sin aprobar · Equipetrol/);
     expect(api.getMovimientos).toHaveBeenLastCalledWith(2);
+  });
+
+  it("al cambiar de local no quedan los movimientos del anterior mientras llega la lista nueva", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Equipetrol", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ] as never);
+    let soltar!: (v: Movimiento[]) => void;
+    vi.mocked(api.getMovimientos)
+      .mockResolvedValueOnce([ENTRADA, TRANSFERENCIA])
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    abrir();
+    await screen.findByText(/Centro → Equipetrol/);
+    fireEvent.click(await screen.findByRole("button", { name: "Equipetrol" }));
+    await waitFor(() => expect(api.getMovimientos).toHaveBeenLastCalledWith(2));
+    expect(screen.queryByText(/Centro → Equipetrol/)).not.toBeInTheDocument();
+
+    await act(async () => soltar([movimiento(12, { descripcion: "Solo de Equipetrol" })]));
+    expect(await screen.findByText(/Solo de Equipetrol/)).toBeInTheDocument();
   });
 
   it("el atado a un local no ve selector: sólo el nombre de su sede", async () => {

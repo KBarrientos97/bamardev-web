@@ -117,6 +117,32 @@ describe("Menú digital: el local del editor", () => {
     expect(local.setLocal).toHaveBeenCalledWith(2);
   });
 
+  it("al cambiar de local, el aviso no sale con los precios del anterior mientras llega el editor nuevo", async () => {
+    local.elegir = true;
+    local.sucursalId = 1;
+    const ui = () => (
+      <MemoryRouter>
+        <MenuDigital />
+      </MemoryRouter>
+    );
+    const { rerender } = render(ui());
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("tab", { name: /Platos y fotos/ }));
+    expect((await screen.findByText("Brasa cuarto")).closest("li")).toHaveTextContent("26");
+
+    // El hook (mockeado) devuelve ahora Norte; su editor tarda en llegar.
+    let soltar!: (e: EditorMenu) => void;
+    apiMenu.editor.mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    local.sucursalId = 2;
+    await act(async () => rerender(ui()));
+    expect(screen.queryByText("Brasa cuarto")).not.toBeInTheDocument();
+    expect(screen.getByText("Cargando el menú…")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("son los de Norte");
+
+    await act(async () => soltar(editor(30)));
+    expect((await screen.findByText("Brasa cuarto")).closest("li")).toHaveTextContent("30");
+  });
+
   it("un local, o atado a uno: sin selector ni aviso, y el editor se pide sin sucursal", async () => {
     await abrir();
     expect(apiMenu.editor).toHaveBeenCalledWith(null);

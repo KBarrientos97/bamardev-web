@@ -120,7 +120,11 @@ export default function MovimientosFarmacia() {
   // el dueño elige cuál mira (el servidor ya acota la lista); el de un local
   // ve sólo el suyo y recibe, apenas, su nombre en el subtítulo.
   const suc = useSucursales({ incluirDepositos: true });
-  const movimientos = useApi(() => api.getMovimientos(suc.sucursalId), [suc.sucursalId]);
+  // `clave`: al cambiar de local no quedan a la vista (con sus botones de
+  // aprobar) los movimientos del anterior.
+  const movimientos = useApi(() => api.getMovimientos(suc.sucursalId), [suc.sucursalId], {
+    clave: suc.sucursalId,
+  });
 
   const [q, setQ] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Mesa } from "../../types/salon";
 
@@ -172,6 +172,26 @@ describe("el salón con varios locales (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
     expect(screen.getByText("Libres · 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Abrir S1/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Abrir C1/ })).not.toBeInTheDocument();
+  });
+
+  it("al cambiar de local no quedan a la vista (ni a mano) las mesas del anterior mientras llega la respuesta", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES as never);
+    let soltarSur!: (v: never) => void;
+    vi.mocked(api.salon).mockImplementation((id?: number | null) =>
+      id === 2
+        ? (new Promise((r) => (soltarSur = r as never)) as never)
+        : (Promise.resolve({ mesas: MESAS_2, zonas: ZONAS_2 }) as never),
+    );
+    montar();
+    expect(await screen.findByRole("button", { name: /Abrir C1/ })).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sur" }));
+    // Pedido el local nuevo y sin respuesta: las mesas de Centro no están.
+    await waitFor(() => expect(api.salon).toHaveBeenLastCalledWith(2));
+    expect(screen.queryByRole("button", { name: /Abrir C1/ })).not.toBeInTheDocument();
+
+    await act(async () => soltarSur({ mesas: [MESAS_2[1]], zonas: [ZONAS_2[1]] } as never));
+    expect(await screen.findByRole("button", { name: /Abrir S1/ })).toBeInTheDocument();
   });
 
   it("el usuario de un local no ve selector ni local en las zonas: sólo su sede en la barra", async () => {

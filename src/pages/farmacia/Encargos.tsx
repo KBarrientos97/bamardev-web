@@ -67,6 +67,8 @@ export default function Encargos() {
         // Con qué filtro se pidió: ver `datos`, abajo.
         .then((r) => ({ ...r, filtro })),
     [filtro, suc.sucursalId],
+    // Al cambiar de local, los encargos del anterior no quedan a la vista.
+    { clave: suc.sucursalId },
   );
   // La caja abierta del dueño es el local donde está parado: ahí se anota por
   // defecto. Sólo se pregunta si hay varios locales entre los que elegir.

@@ -285,6 +285,25 @@ describe("Producción por local", () => {
     expect(apiComisiones.resumen).toHaveBeenLastCalledWith({ desde: "2026-11-02", hasta: "2026-11-08", sucursalId: 2 });
   });
 
+  it("al cambiar de local no queda la producción del anterior mientras llega la nueva, y el selector se queda", async () => {
+    let soltar!: (v: ResumenComisiones) => void;
+    vi.mocked(apiComisiones.resumen)
+      .mockResolvedValueOnce(RESUMEN)
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    await montar(<TabProduccion periodo={periodo} />);
+    expect(screen.getByText("Beto")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Norte" }));
+    });
+    expect(screen.queryByText("Beto")).not.toBeInTheDocument();
+    // Sigue el selector para poder volver sin esperar.
+    expect(screen.getByRole("button", { name: "Todas las sucursales" })).toBeInTheDocument();
+
+    await act(async () => soltar({ ...RESUMEN, profesionales: [{ ...RESUMEN.profesionales[0], nombre: "Dani" }] }));
+    expect(screen.getByText("Dani")).toBeInTheDocument();
+  });
+
   it("si el local no tiene profesionales se puede volver a «Todas»", async () => {
     vi.mocked(apiComisiones.resumen).mockImplementation(async (p) =>
       p.sucursalId === 2 ? { ...RESUMEN, profesionales: [] } : RESUMEN,

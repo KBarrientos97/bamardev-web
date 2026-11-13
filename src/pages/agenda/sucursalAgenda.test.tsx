@@ -125,6 +125,34 @@ describe("Solicitudes con 2+ locales", () => {
     expect(apiReservaOnline.bandeja).toHaveBeenLastCalledWith(2);
   });
 
+  it("al cambiar de local no quedan las solicitudes del anterior (con sus botones) mientras llega la bandeja nueva", async () => {
+    let soltar!: (v: Awaited<ReturnType<typeof apiReservaOnline.bandeja>>) => void;
+    vi.mocked(apiReservaOnline.bandeja)
+      .mockResolvedValueOnce({
+        solicitudes: [solicitud(7, 1, "Central", "María Flores"), solicitud(8, 2, "Norte", "Ana Paz")],
+        nuevas: [],
+        contador: { pendientes: 2, nuevas: 0 },
+      })
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    await montarSolicitudes();
+    expect(screen.getByRole("article", { name: "Solicitud de María Flores" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Norte" }));
+    });
+    expect(screen.queryByRole("article", { name: "Solicitud de María Flores" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("article", { name: "Solicitud de Ana Paz" })).not.toBeInTheDocument();
+
+    await act(async () =>
+      soltar({
+        solicitudes: [solicitud(8, 2, "Norte", "Ana Paz")],
+        nuevas: [],
+        contador: { pendientes: 1, nuevas: 0 },
+      }),
+    );
+    expect(screen.getByRole("article", { name: "Solicitud de Ana Paz" })).toBeInTheDocument();
+  });
+
   it("si la bandeja es de un solo local no repite el local en cada tarjeta", async () => {
     vi.mocked(apiReservaOnline.bandeja).mockResolvedValue({
       solicitudes: [solicitud(7, 1, "Central", "María Flores")],

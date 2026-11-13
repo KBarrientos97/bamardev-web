@@ -285,6 +285,26 @@ describe("la sucursal", () => {
     expect(api.getEncargos).toHaveBeenLastCalledWith(expect.objectContaining({ sucursalId: 2 }));
   });
 
+  it("al cambiar de local no queda la lista del anterior (con sus botones) mientras llega la nueva", async () => {
+    sesion.activas = 2;
+    let soltar!: (v: ListaEncargos) => void;
+    vi.mocked(api.getEncargos)
+      .mockResolvedValueOnce(mezcla)
+      .mockReturnValueOnce(new Promise((r) => (soltar = r)));
+    render(<Encargos />);
+    expect(await screen.findByText("El jarabe de la tos")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Equipetrol" })[0]);
+    });
+    expect(screen.queryByText("La crema del pomo azul")).toBeNull();
+    expect(screen.queryByText("El jarabe de la tos")).toBeNull();
+    expect(screen.getByText("Cargando…")).toBeInTheDocument();
+
+    await act(async () => soltar({ ...conLaCrema, items: [deEquipetrol] }));
+    expect(screen.getByText("El jarabe de la tos")).toBeInTheDocument();
+  });
+
   it("si todos los encargos son del mismo local no repite el nombre en cada tarjeta", async () => {
     sesion.activas = 2;
     vi.mocked(api.getEncargos).mockResolvedValue({ ...conLaCrema, items: [deCentro] });

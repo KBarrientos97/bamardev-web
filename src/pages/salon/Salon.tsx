@@ -76,7 +76,10 @@ export default function Salon({
   // El selector de local sólo le sale al de organización con 2+ locales; el de
   // un local ve el suyo (el backend se lo fuerza) y su nombre en la barra.
   const suc = useSucursales();
-  const salon = useApi(() => api.salon(suc.sucursalId), [suc.sucursalId]);
+  // `clave`: al cambiar de local, las mesas del anterior no se quedan a la vista
+  // (y a mano) hasta que llegue la respuesta; el refresco de cada 15 s, con el
+  // mismo local, sí conserva lo cargado.
+  const salon = useApi(() => api.salon(suc.sucursalId), [suc.sucursalId], { clave: suc.sucursalId });
 
   /**
    * El salón se refresca solo cada 15 segundos (eran 30 hasta el 10-nov: el
@@ -123,9 +126,11 @@ export default function Salon({
   // La mesa hereda el local de su zona: se lo pone la web para no ofrecer, al
   // pasar/juntar/unir, mesas de otro local (el backend responde 400).
   const mesas = useMemo(() => conLocalDeZona(salon.datos?.mesas ?? [], zonas), [salon.datos, zonas]);
+  // También sin datos (al cambiar de local): el detalle no ofrece pasar/juntar
+  // con las mesas del local anterior.
   useEffect(() => {
-    if (salon.datos) onMesas?.(mesas);
-  }, [salon.datos, mesas, onMesas]);
+    onMesas?.(mesas);
+  }, [mesas, onMesas]);
 
   const { cargando, error, recargar } = salon;
   useEffect(() => {

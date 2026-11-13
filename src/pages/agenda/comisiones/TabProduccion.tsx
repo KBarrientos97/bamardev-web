@@ -33,6 +33,8 @@ export default function TabProduccion({
   const resumen = useApi(
     () => apiComisiones.resumen({ desde: periodo.desde, hasta: periodo.hasta, ...(sucursalId != null ? { sucursalId } : {}) }),
     [periodo.desde, periodo.hasta, sucursalId],
+    // Al cambiar de local, la producción del anterior no queda a la vista.
+    { clave: sucursalId },
   );
   const [detalle, setDetalle] = useState<ProduccionProfesional | null>(null);
   // La columna con la palabra del rubro (QA DIA-17b: "PROFESIONAL" en uñas).
@@ -53,7 +55,15 @@ export default function TabProduccion({
         <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>
       </div>
     );
-  if (!resumen.datos) return <Cargando />;
+  if (!resumen.datos)
+    return (
+      // El selector se queda mientras llega el local nuevo: sin él, el chip
+      // que se acaba de tocar desaparecería con la carga.
+      <div className="space-y-3">
+        {selector}
+        <Cargando />
+      </div>
+    );
   const { profesionales, totales } = resumen.datos;
   if (!profesionales.length) {
     return (

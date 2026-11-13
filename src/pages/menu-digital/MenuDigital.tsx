@@ -73,6 +73,10 @@ export default function MenuDigital() {
   const pedido = useRef(0);
   const cargar = useCallback(() => {
     setError("");
+    // Lo que había es de OTRO local (o falló): se va a "Cargando el menú…" en
+    // vez de seguir mostrando, con el aviso del local nuevo, los precios del
+    // anterior. Si había un cambio de TV sin guardar, el desmontaje lo manda.
+    setDatos(null);
     const mio = ++pedido.current;
     apiMenuDigital
       .editor(sucursalId)
