@@ -199,3 +199,18 @@ describe("compartir la posición con el cliente", () => {
     expect(screen.getByText(/Activá el permiso de ubicación/)).toBeInTheDocument();
   });
 });
+
+describe("la tarjeta de la lista en un celular chico (sesion 2)", () => {
+  it("«Cobra al entregar» va en su propio renglón y no se mete debajo del monto", async () => {
+    vi.mocked(api.getMisEntregas).mockResolvedValue([ENTREGA_WEB]);
+    render(<Repartidor />);
+    await act(async () => {});
+    const tarjeta = screen.getByRole("button", { name: /Lucía/ });
+    const insignia = within(tarjeta).getByText("Cobra al entregar");
+    const monto = within(tarjeta).getByText("A cobrar");
+    // En 360 px la insignia (que no se parte) no entra en la columna del medio: si compartiera
+    // renglón con el monto, lo pisaba. Tienen que estar en renglones distintos de la tarjeta.
+    const renglon = (el: HTMLElement) => Array.from(tarjeta.children).find((c) => c.contains(el));
+    expect(renglon(insignia)).not.toBe(renglon(monto));
+  });
+});
