@@ -22,6 +22,37 @@ export interface PedidoParaMensaje {
   sucursal?: string | null;
   /** Cómo llama el rubro al local («Sucursal» por defecto; «Sede» en un instituto). */
   rotuloSucursal?: string;
+  /**
+   * Cuándo salió el repartidor, si es un pedido de la página y ya salió. Sólo
+   * lo mira el texto de los rubros que no son el de siempre: así no dicen
+   * «ya llegó» de un pedido que sigue en el local (QA R1, N8).
+   */
+  salioEn?: string | null;
+}
+
+/** De qué negocio es el mensaje: lo que decide el tono (emoji y cierre). */
+export interface RubroMensaje {
+  tipoNegocio?: string | null;
+  variante?: string | null;
+}
+
+/**
+ * El mensaje de siempre —el de la pollería, con 🐔, ❤️🍗 y «ya llegó»— es el de
+ * un RESTAURANTE sin variante (Pollos Don Omar). Un restaurante que no dice su
+ * rubro, o una sesión vieja sin `tipoNegocio`, también: ante la duda, no se
+ * toca lo que ya andaba. Cualquier otro rubro, o una variante como «Postres»,
+ * lleva un texto que no habla de pollo ni de un delivery que ya llegó.
+ */
+export function esMensajeClasico(rubro?: RubroMensaje | null): boolean {
+  if (rubro?.variante) return false;
+  const tipo = rubro?.tipoNegocio;
+  return !tipo || tipo === "RESTAURANTE";
+}
+
+/** El emoji de la cabecera y el del cierre, según el negocio (sólo fuera del texto clásico). */
+function adornosDe(rubro?: RubroMensaje | null): { cabecera: string; cierre: string } {
+  if (rubro?.variante === "POSTRES") return { cabecera: "🍮", cierre: "❤️🍮" };
+  return { cabecera: "🛍️", cierre: "❤️" };
 }
 
 /**
@@ -39,11 +70,13 @@ export interface PedidoParaMensaje {
  *   falso.
  * - La plata va sin ".00" cuando es entera ("Bs 40"): ver `fmtMontoCliente`.
  */
-export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null): string {
+export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null, rubro?: RubroMensaje | null): string {
   const nombre = negocio?.trim() || null;
   const partes: string[] = [];
+  const clasico = esMensajeClasico(rubro);
+  const { cabecera, cierre } = adornosDe(rubro);
 
-  if (nombre) partes.push(`🐔 ${nombre} 👋`);
+  if (nombre) partes.push(`${clasico ? "🐔" : cabecera} ${nombre} 👋`);
   partes.push(`¡Hola! Te escribimos por tu pedido ${p.comprobante}. 🛵`);
   // Con varios locales, de cuál sale (el cliente que pidió al de Sur no espera
   // al de Centro). Sin esto, el mismo texto que la app.
@@ -69,10 +102,16 @@ export function mensajePedido(p: PedidoParaMensaje, negocio?: string | null): st
 
   if (p.tipoPedido === "DELIVERY") {
     partes.push(
-      "📍 ¡Nuestro delivery ya llegó a tu ubicación y está esperándote afuera para entregarte tu pedido!",
+      clasico
+        ? "📍 ¡Nuestro delivery ya llegó a tu ubicación y está esperándote afuera para entregarte tu pedido!"
+        : // El mensaje se puede mandar antes de salir: no se afirma lo que no se sabe.
+          p.salioEn
+          ? "📍 Tu pedido ya salió del local y va en camino a tu ubicación."
+          : "📍 Te escribimos para coordinar la entrega de tu pedido.",
     );
   }
-  partes.push(nombre ? `¡Gracias por elegir ${nombre}! ❤️🍗` : "¡Gracias por elegirnos! ❤️🍗");
+  const emojiCierre = clasico ? "❤️🍗" : cierre;
+  partes.push(nombre ? `¡Gracias por elegir ${nombre}! ${emojiCierre}` : `¡Gracias por elegirnos! ${emojiCierre}`);
 
   return partes.join("\n\n");
 }
@@ -87,6 +126,7 @@ export function pedidoDeVenta(v: Venta, sucursal?: string | null, rotuloSucursal
     tarifaEnvio: v.tarifaEnvio ?? 0,
     totalACobrar: v.totalACobrar ?? 0,
     prepagado: !!v.prepagado,
+    ...(v.pedidoWeb?.salioEn ? { salioEn: v.pedidoWeb.salioEn } : {}),
     ...(sucursal ? { sucursal, ...(rotuloSucursal ? { rotuloSucursal } : {}) } : {}),
   };
 }

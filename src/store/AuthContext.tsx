@@ -313,6 +313,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /** La variante del rubro (`negocio.variante`): sigue a `/licencia/estado` como `pedidosWeb`. */
+  const fijarVariante = useCallback((variante: string | null) => {
+    setNegocio((previo) => {
+      if (!previo || (previo.variante ?? null) === variante) return previo;
+      const actualizado = { ...previo, variante };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   const fijarPedidosWeb = useCallback((recibe: boolean) => {
     setNegocio((previo) => {
       if (!previo || previo.pedidosWeb === recibe) return previo;
@@ -447,6 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refrescarPerfil(estado);
           // Un backend viejo no manda el campo: ahí se queda con lo que hay.
           if (typeof estado.pedidosWeb === "boolean") fijarPedidosWeb(estado.pedidosWeb);
+          if (estado.variante !== undefined) fijarVariante(estado.variante);
           refrescarPermisos(estado.permisosVersion);
           // El contador viaja en este mismo estado: cada 15 min y al volver a
           // la pestaña llega el del día, aunque nadie haya vendido acá.
@@ -481,6 +492,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refrescarFeatures,
     refrescarPerfil,
     fijarPedidosWeb,
+    fijarVariante,
     refrescarPermisos,
     pedirTurnoCupo,
     aplicarConsulta,

@@ -155,6 +155,12 @@ export interface SesionNegocio {
   alias?: string;
   moneda?: string;
   tipoNegocio?: string;
+  /**
+   * La variante del rubro («POSTRES» es un RESTAURANTE que se llama distinto) o
+   * null. Un backend viejo no la manda. Hoy sólo cambia el tono del mensaje de
+   * WhatsApp de un pedido.
+   */
+  variante?: string | null;
   /** Features del PLAN, en minúsculas. */
   features?: Feature[];
   /**
@@ -1974,6 +1980,8 @@ export interface EstadoLicencia {
   permisosVersion?: string;
   /** Lo mismo que `negocio.pedidosWeb` del login, para repintar el menú sin volver a entrar. */
   pedidosWeb?: boolean;
+  /** Lo mismo que `negocio.variante` del login: si el panel la cambia, la sesión abierta se entera. */
+  variante?: string | null;
   /**
    * Paleta y perfil del negocio, por lo mismo que `features`: si el panel le
    * cambia la paleta, la pestaña abierta se repinta sola. `perfilVersion`
