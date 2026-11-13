@@ -146,8 +146,8 @@ export default function PantallaVenta({
     () => new Map(carrito.lineas.map((l) => [l.producto.id, l.cantidad])),
     [carrito.lineas],
   );
-  /** Lo marcado agotado hoy en el Menú digital (vacío sin ese extra). */
-  const agotadosHoy = useAgotadosHoy();
+  /** Lo marcado agotado hoy en el Menú digital EN ESTE LOCAL (vacío sin ese extra). */
+  const agotadosHoy = useAgotadosHoy(sucursalId);
 
   const visibles = useMemo(() => {
     const porId = new Map(filtrados.map((p) => [p.id, p]));

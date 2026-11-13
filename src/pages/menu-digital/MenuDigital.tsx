@@ -95,8 +95,8 @@ export default function MenuDigital() {
       .catch(() => undefined);
   }, []);
 
-  // La respuesta de un PATCH es el plato resuelto en el local del USUARIO (o el
-  // principal), no en el que se está mirando: se quedan el precio y la
+  // La respuesta de un PATCH es el plato resuelto en el local que se está mirando
+  // (`sucursalId` viaja con el cambio); aun así se quedan el precio y la
   // disponibilidad que ya estaban (§10.5) y se toma lo demás.
   const cambiarPlato = useCallback((p: PlatoMenu) => {
     setDatos((d) =>
@@ -137,7 +137,7 @@ export default function MenuDigital() {
         </header>
         {local.elegir && local.nombre && (
           <p role="note" className="mt-3 text-[13px] text-texto-3">
-            Los precios y la disponibilidad son los de {local.nombre}. Marcar un plato como agotado vale para todos los locales.
+            Los precios y la disponibilidad son los de {local.nombre}. Marcar un plato como agotado vale sólo para {local.nombre}: en los demás locales sigue a la venta.
           </p>
         )}
         {error && (
@@ -155,7 +155,14 @@ export default function MenuDigital() {
             onPantallas={(pantallas) => setDatos((d) => (d ? { ...d, pantallas } : d))}
           />
         )}
-        {datos && pestana === "platos" && <PestanaPlatos datos={datos} onPlato={cambiarPlato} />}
+        {datos && pestana === "platos" && (
+          <PestanaPlatos
+            datos={datos}
+            onPlato={cambiarPlato}
+            sucursalId={sucursalId}
+            nombreLocal={local.elegir ? local.nombre : null}
+          />
+        )}
       </div>
     </div>
   );
@@ -1208,7 +1215,19 @@ function ControlesAnimacion({
 
 type Filtro = "todos" | "sinFoto" | "agotados" | number;
 
-function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: PlatoMenu) => void }) {
+function PestanaPlatos({
+  datos,
+  onPlato,
+  sucursalId,
+  nombreLocal,
+}: {
+  datos: EditorMenu;
+  onPlato: (p: PlatoMenu) => void;
+  /** El local elegido (sólo la organización con 2+ locales); null = el de quien edita. */
+  sucursalId: number | null;
+  /** Se pasa sólo cuando hay 2+ locales y se elige: con uno solo, nada cambia. */
+  nombreLocal: string | null;
+}) {
   const navigate = useNavigate();
   const [buscar, setBuscar] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -1234,7 +1253,7 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
   const editar = async (p: PlatoMenu, cambios: Parameters<typeof apiMenuDigital.editarPlato>[1]) => {
     setError("");
     try {
-      onPlato(await apiMenuDigital.editarPlato(p.id, cambios));
+      onPlato(await apiMenuDigital.editarPlato(p.id, cambios, sucursalId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
     }
@@ -1283,7 +1302,15 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
       <ul className="card divide-y divide-borde">
         {lista.length === 0 && <li className="p-8 text-center text-sm text-texto-3">No hay platos con ese filtro.</li>}
         {lista.map((p) => (
-          <FilaPlato key={p.id} plato={p} onEditar={(c) => void editar(p, c)} onPlato={onPlato} onError={setError} />
+          <FilaPlato
+            key={p.id}
+            plato={p}
+            sucursalId={sucursalId}
+            nombreLocal={nombreLocal}
+            onEditar={(c) => void editar(p, c)}
+            onPlato={onPlato}
+            onError={setError}
+          />
         ))}
       </ul>
     </div>
@@ -1292,11 +1319,15 @@ function PestanaPlatos({ datos, onPlato }: { datos: EditorMenu; onPlato: (p: Pla
 
 function FilaPlato({
   plato: p,
+  sucursalId,
+  nombreLocal,
   onEditar,
   onPlato,
   onError,
 }: {
   plato: PlatoMenu;
+  sucursalId: number | null;
+  nombreLocal: string | null;
   onEditar: (cambios: Parameters<typeof apiMenuDigital.editarPlato>[1]) => void;
   onPlato: (p: PlatoMenu) => void;
   onError: (e: string) => void;
@@ -1316,7 +1347,7 @@ function FilaPlato({
     onError("");
     try {
       const preparada = await prepararFotoPlato(f, sacarFondo);
-      onPlato(await apiMenuDigital.subirFoto(p.id, preparada.blob));
+      onPlato(await apiMenuDigital.subirFoto(p.id, preparada.blob, sucursalId));
       setUltimo(f);
       setFondo(preparada.fondoQuitado ? "quitado" : sacarFondo ? null : "con-fondo");
     } catch (e) {
@@ -1328,7 +1359,7 @@ function FilaPlato({
   };
   const quitar = async () => {
     try {
-      onPlato(await apiMenuDigital.quitarFoto(p.id));
+      onPlato(await apiMenuDigital.quitarFoto(p.id, sucursalId));
       setUltimo(null);
       setFondo(null);
     } catch (e) {
@@ -1437,7 +1468,7 @@ function FilaPlato({
         <button
           type="button"
           aria-pressed={p.agotadoHoy}
-          title="Se tacha en las TVs hasta mañana"
+          title={nombreLocal ? `Se tacha en las TVs de ${nombreLocal} hasta mañana` : "Se tacha en las TVs hasta mañana"}
           onClick={() => onEditar({ agotado: !p.agotadoHoy })}
           className={`shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${
             p.agotadoHoy ? "bg-danger-bg text-danger-text" : p.agotado ? "bg-muted text-texto-3" : "text-texto-3 hover:bg-muted"

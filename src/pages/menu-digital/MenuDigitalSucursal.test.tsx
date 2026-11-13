@@ -103,7 +103,7 @@ describe("Menú digital: el local del editor", () => {
     expect(apiMenu.editor).toHaveBeenCalledWith(2);
     expect(screen.getByRole("combobox", { name: "Sucursal" })).toHaveValue("2");
     expect(screen.getByRole("note")).toHaveTextContent(
-      "Los precios y la disponibilidad son los de Norte. Marcar un plato como agotado vale para todos los locales.",
+      "Los precios y la disponibilidad son los de Norte. Marcar un plato como agotado vale sólo para Norte: en los demás locales sigue a la venta.",
     );
     fireEvent.click(screen.getByRole("tab", { name: /Platos y fotos/ }));
     expect(await screen.findByText("Brasa cuarto")).toBeInTheDocument();
@@ -162,10 +162,36 @@ describe("Menú digital: el local del editor", () => {
     await act(async () => {
       fireEvent.click(within(fila).getByRole("button", { name: "Marcar agotado" }));
     });
-    await waitFor(() => expect(apiMenu.editarPlato).toHaveBeenCalledWith(1, { agotado: true }));
+    // "Agotado hoy" es por local: viaja el local que se mira (Norte).
+    await waitFor(() => expect(apiMenu.editarPlato).toHaveBeenCalledWith(1, { agotado: true }, 2));
     // Quedó agotado, pero sigue con el precio de Norte.
     const despues = screen.getByText("Brasa cuarto").closest("li")!;
     expect(despues).toHaveTextContent("30");
     expect(despues).not.toHaveTextContent("26");
+  });
+
+  it("con 2+ locales el botón dice de qué local es el agotado", async () => {
+    local.elegir = true;
+    local.sucursalId = 2;
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: /Platos y fotos/ }));
+    const fila = (await screen.findByText("Brasa cuarto")).closest("li")!;
+    expect(within(fila).getByRole("button", { name: "Marcar agotado" })).toHaveAttribute(
+      "title",
+      "Se tacha en las TVs de Norte hasta mañana",
+    );
+  });
+
+  it("un local, o atado a uno: marcar agotado no manda local y el botón no nombra ninguno", async () => {
+    apiMenu.editarPlato.mockResolvedValue(plato(1, "Brasa cuarto", 26, { agotado: true, agotadoHoy: true }));
+    await abrir();
+    fireEvent.click(screen.getByRole("tab", { name: /Platos y fotos/ }));
+    const fila = (await screen.findByText("Brasa cuarto")).closest("li")!;
+    const boton = within(fila).getByRole("button", { name: "Marcar agotado" });
+    expect(boton).toHaveAttribute("title", "Se tacha en las TVs hasta mañana");
+    await act(async () => {
+      fireEvent.click(boton);
+    });
+    await waitFor(() => expect(apiMenu.editarPlato).toHaveBeenCalledWith(1, { agotado: true }, null));
   });
 });
