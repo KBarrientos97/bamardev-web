@@ -17,8 +17,18 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+// El selector de local y la regla de la columna: por defecto, un solo local.
+const suc = vi.hoisted(() => ({ organizacion: false }));
 vi.mock("../../lib/useSucursales", () => ({
-  useSucursales: () => ({ sucursalId: null, setSucursalId: vi.fn(), elegir: false, sucursales: [] }),
+  useSucursales: () => ({
+    sucursalId: null,
+    setSucursalId: vi.fn(),
+    elegir: false,
+    sucursales: [],
+    // La regla de verdad: sólo la organización, y sólo con 2+ locales entre las filas.
+    mostrarColumna: <T,>(filas: T[], clave: (f: T) => number | null | undefined) =>
+      suc.organizacion && new Set(filas.map(clave).filter((x) => x != null)).size > 1,
+  }),
 }));
 
 import { api } from "../../lib/api";
@@ -58,6 +68,7 @@ const nota = () => screen.getByLabelText("Nota (opcional)");
 
 beforeEach(() => {
   vi.clearAllMocks();
+  suc.organizacion = false;
   vi.mocked(api.getMesas).mockResolvedValue([M3]);
   vi.mocked(api.getZonas).mockResolvedValue([{ id: 1, codigo: "salon", nombre: "Salón" }]);
   vi.mocked(api.crearMesa).mockResolvedValue(M3);
@@ -107,5 +118,47 @@ describe("la nota de la mesa", () => {
     await guardar();
     expect(api.actualizarMesa).toHaveBeenCalledWith(3, expect.objectContaining({ nota: "" }));
     expect(vi.mocked(api.actualizarMesa).mock.calls[0][1]).not.toHaveProperty("notaMesa");
+  });
+});
+
+describe("las mesas de varios locales (PLAN-SUCURSAL-TOTAL, etapa 5)", () => {
+  const ZONAS = [
+    { id: 1, codigo: "salon", nombre: "Salón", sucursalId: 10, sucursalNombre: "Centro" },
+    { id: 2, codigo: "salon", nombre: "Salón", sucursalId: 20, sucursalNombre: "Sur" },
+  ];
+  const MESAS = [
+    { ...M3, id: 3, nombre: "Mesa C1", zonaId: 1 },
+    { ...M3, id: 4, nombre: "Mesa S1", zonaId: 2 },
+  ];
+
+  it("la organización ve de qué local es cada mesa y cada zona", async () => {
+    suc.organizacion = true;
+    vi.mocked(api.getMesas).mockResolvedValue(MESAS);
+    vi.mocked(api.getZonas).mockResolvedValue(ZONAS);
+    render(<Mesas />);
+    await screen.findByText("Mesa C1");
+    expect(screen.getByText("Salón · Sur", { selector: "p" })).toBeInTheDocument();
+    // Y los chips de zona: dos «Salón» que antes no se distinguían.
+    expect(screen.getByRole("button", { name: "Salón · Centro" })).toBeInTheDocument();
+  });
+
+  it("elegir la zona de un local no mezcla la del otro con el mismo código", async () => {
+    suc.organizacion = true;
+    vi.mocked(api.getMesas).mockResolvedValue(MESAS);
+    vi.mocked(api.getZonas).mockResolvedValue(ZONAS);
+    render(<Mesas />);
+    await screen.findByText("Mesa C1");
+    fireEvent.click(screen.getByRole("button", { name: "Salón · Sur" }));
+    expect(screen.getByText("Mesa S1")).toBeInTheDocument();
+    expect(screen.queryByText("Mesa C1")).not.toBeInTheDocument();
+  });
+
+  it("con un solo local, o para el usuario de uno, no aparece el local", async () => {
+    vi.mocked(api.getMesas).mockResolvedValue(MESAS);
+    vi.mocked(api.getZonas).mockResolvedValue(ZONAS);
+    render(<Mesas />);
+    await screen.findByText("Mesa C1");
+    expect(screen.queryByText(/· Sur/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Salón" })).toHaveLength(2);
   });
 });
