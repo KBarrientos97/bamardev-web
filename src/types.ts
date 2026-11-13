@@ -1024,6 +1024,18 @@ export interface Vencimientos {
 
 // ── Caja ────────────────────────────────────────────────────────────────────
 
+/**
+ * Una caja abierta del usuario (`GET /caja/abiertas`): cada sucursal donde
+ * tiene turno. `almacen` llega como objeto del backend; se acepta también el
+ * nombre suelto de `Caja`.
+ */
+export interface CajaAbierta {
+  id: number;
+  almacenId: number | null;
+  almacen: { id: number; nombre: string } | string | null;
+  fechaApertura: string;
+}
+
 export interface Caja {
   id: number;
   estado: "ABIERTA" | "CERRADA";

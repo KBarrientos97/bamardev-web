@@ -13,6 +13,7 @@ import type {
   ActualizarUsuarioInput,
   CupoUsuarios,
   Caja,
+  CajaAbierta,
   Categoria,
   ClienteCredito,
   ComprasInsumos,
@@ -95,6 +96,7 @@ import type {
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
+import { cabeceraDeSedeDeCaja } from "./sedeDeCaja";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -195,6 +197,24 @@ function cerrarSesionVencida(huboToken: boolean) {
     }
   }
   window.location.assign("/");
+}
+
+/**
+ * La cabecera de la sede de caja (ver `sedeDeCaja.ts`): sólo para el usuario de
+ * una organización con 2+ sucursales que ya eligió una; a los demás, nada. Se
+ * lee de la sesión guardada y no del contexto de React, como `ambitoSesion`:
+ * el POS pide la caja en su primer render. En soporte (otra sesión, de otro
+ * negocio) nunca se manda.
+ */
+function cabeceraSede(sedeExplicita?: number | null): Record<string, string> {
+  if (tokenDeSoporte()) return {};
+  try {
+    const usuario = JSON.parse(localStorage.getItem(USER_KEY) ?? "null");
+    const negocio = JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "null");
+    return cabeceraDeSedeDeCaja({ usuario, negocio }, sedeExplicita);
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -318,6 +338,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
         // JSON acá lo rompe. Así pasa igual por las tres reglas de abajo.
         ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...cabeceraSede(),
         ...options.headers,
       },
     });
@@ -901,6 +922,12 @@ export const api = {
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),
   /** Devuelve `{ caja: null }` cuando el usuario no tiene turno abierto. */
   cajaActual: () => request<{ caja: Caja | null }>("/caja/actual"),
+  /**
+   * Todas las cajas abiertas del usuario, una por sucursal (13-nov): el admin
+   * de una organización puede tener una en cada local. Sirve para el selector
+   * de sede del POS y para avisar al cerrar sesión.
+   */
+  cajasAbiertas: () => request<{ cajas: CajaAbierta[] }>("/caja/abiertas"),
   /** `almacenId` sólo lo manda un usuario de organización: al resto el backend
    *  se lo rechaza porque trabaja en su sucursal asignada. */
   abrirCaja: (input: {
@@ -969,8 +996,18 @@ export const api = {
     }),
 
   // ── Ventas ────────────────────────────────────────────────────────────────
+  /**
+   * Con `almacenId` en el cuerpo (el POS lo pone cuando el admin elige entre
+   * varias cajas), la cabecera de la sede es ESA y no la activa de ahora: la
+   * cola sin conexión sube la venta tiempo después y la sede elegida puede
+   * ser otra.
+   */
   crearVenta: (input: VentaInput) =>
-    request<Venta>("/ventas", { method: "POST", body: JSON.stringify(input) }),
+    request<Venta>("/ventas", {
+      method: "POST",
+      body: JSON.stringify(input),
+      ...(input.almacenId != null ? { headers: cabeceraSede(input.almacenId) } : {}),
+    }),
   getVentas: (cajaId?: number) => request<Venta[]>(`/ventas${qs({ cajaId })}`),
   getVenta: (id: number) => request<Venta>(`/ventas/${id}`),
   anularVenta: (id: number, input: AnularVentaInput = {}) =>

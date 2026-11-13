@@ -496,11 +496,18 @@ describe("el manifiesto del turno y el latido del equipo (cierre confirmado por 
     expect(await declaracionDelEquipo(5, cola)).toEqual({});
   });
 
-  it("anotar en una caja nueva olvida el manifiesto de la anterior: un usuario tiene una sola caja abierta", async () => {
+  it("anotar en otra caja NO borra el manifiesto de la primera: el admin puede tener una abierta en cada sede", async () => {
     await anotarVentaDelTurno(5, "a");
     await anotarVentaDelTurno(6, "b");
-    expect(await manifiestoDelTurno(5)).toBeNull();
+    expect((await manifiestoDelTurno(5))?.claves).toEqual(["a"]);
     expect((await manifiestoDelTurno(6))?.claves).toEqual(["b"]);
+  });
+
+  it("el manifiesto de un turno de hace semanas (cerrado desde otro equipo) sí se limpia al anotar", async () => {
+    await anotarVentaDelTurno(5, "vieja", new Date("2026-10-01T10:00:00.000Z"));
+    await anotarVentaDelTurno(6, "nueva", new Date("2026-11-13T10:00:00.000Z"));
+    expect(await manifiestoDelTurno(5)).toBeNull();
+    expect((await manifiestoDelTurno(6))?.claves).toEqual(["nueva"]);
   });
 
   it("la declaración del cierre: las que quedan en la cola y las claves del turno, sin repetir ni rechazadas", async () => {

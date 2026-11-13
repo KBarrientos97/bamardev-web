@@ -44,6 +44,9 @@ export function usarAlmacenTurno(a: Almacen) {
   almacen = a;
 }
 
+/** Un manifiesto sin ventas hace más que esto es de un turno que ya no existe. */
+const VIGENCIA_MANIFIESTO_MS = 14 * 24 * 60 * 60 * 1000;
+
 const prefijo = (ambito: string) => `turno:${ambito}:`;
 const clave = (ambito: string, cajaId: number) => `${prefijo(ambito)}${cajaId}`;
 
@@ -81,11 +84,14 @@ export async function anotarVentaDelTurno(
     // ISO en UTC: comparar los textos es comparar las horas.
     const ultimaVentaEn = actual.ultimaVentaEn && actual.ultimaVentaEn > hora ? actual.ultimaVentaEn : hora;
     await almacen.guardar<ManifiestoTurno>(k, { cajaId, claves, ultimaVentaEn });
-    // Un usuario tiene una sola caja abierta a la vez: el manifiesto de otra
-    // caja es de un turno que ya cerró (quizás desde otro equipo) y no se va a
-    // declarar nunca más. Se limpia acá para no acumular por siempre.
-    for (const [otra] of await almacen.listar<ManifiestoTurno>(prefijo(ambito))) {
-      if (otra !== k) await almacen.borrar(otra);
+    // El admin de una organización puede tener una caja abierta en cada sede
+    // (13-nov), así que el manifiesto de OTRA caja puede ser de un turno
+    // vivo: no se borra por ser distinta. Se limpian sólo los viejos de verdad
+    // (un turno que cerró desde otro equipo y no se va a declarar nunca más),
+    // para no acumular por siempre.
+    const corte = new Date(cuando.getTime() - VIGENCIA_MANIFIESTO_MS).toISOString();
+    for (const [otra, m] of await almacen.listar<ManifiestoTurno>(prefijo(ambito))) {
+      if (otra !== k && (m.ultimaVentaEn ?? "") < corte) await almacen.borrar(otra);
     }
   } catch {
     /* el manifiesto nunca frena una venta */
