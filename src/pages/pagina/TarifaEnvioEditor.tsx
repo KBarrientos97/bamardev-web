@@ -63,7 +63,8 @@ export default function TarifaEnvioEditor() {
   }
 
   if (cargando) return <Cargando texto="Cargando la tarifa…" />;
-  const ejemplos = "tarifa" in lectura ? [1, 3, 5, 8].map((km) => [km, calcularEnvio(km, lectura.tarifa)] as const) : [];
+  // Más allá de «No entregar a más de», el cliente ve «fuera de zona»: el ejemplo no puede decir un precio.
+  const ejemplos = "tarifa" in lectura ? [1, 3, 5, 8].map((km) => [km, km > lectura.tarifa.maxKm ? null : calcularEnvio(km, lectura.tarifa)] as const) : [];
 
   return (
     <div className="space-y-3 border-t border-borde pt-4" aria-label="Tarifa de envío">
@@ -131,7 +132,7 @@ export default function TarifaEnvioEditor() {
       </label>
       {ejemplos.length > 0 && (
         <p className="text-[13px] text-texto-3">
-          Así quedaría: {ejemplos.map(([km, bs]) => `${km} km = ${fmtMoney(bs)}`).join(" · ")}. El resultado se redondea hacia arriba al boliviano.
+          Así quedaría: {ejemplos.map(([km, bs]) => `${km} km = ${bs == null ? "no se entrega" : fmtMoney(bs)}`).join(" · ")}. El resultado se redondea hacia arriba al boliviano.
         </p>
       )}
       {"error" in lectura && <p className="text-[13px] text-danger-text">{lectura.error}</p>}

@@ -172,6 +172,12 @@ describe("Pedidos y gift cards (editor)", () => {
       expect(await screen.findByText("Tarifa guardada.")).toBeInTheDocument();
     });
 
+    it("con un máximo corto, el ejemplo dice «no se entrega» en vez de un precio que el cliente nunca ve (sesion 2)", async () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true });
+      fireEvent.change(await screen.findByLabelText("Distancia máxima en km"), { target: { value: "4" } });
+      expect(screen.getByText(/1 km = Bs.7,00 · 3 km = Bs.9,00 · 5 km = no se entrega · 8 km = no se entrega/)).toBeInTheDocument();
+    });
+
     it("una tarifa inválida no se manda", async () => {
       montar({ conDelivery: true, conProductos: true, sistemaGuardado: true });
       fireEvent.change(await screen.findByLabelText("Distancia máxima en km"), { target: { value: "80" } });
