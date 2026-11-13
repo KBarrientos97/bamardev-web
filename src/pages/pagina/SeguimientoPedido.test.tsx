@@ -174,6 +174,20 @@ describe("el seguimiento del pedido", () => {
     expect(screen.getByText(/Retirás en/)).toHaveTextContent("Las Brisas");
   });
 
+  it("para recoger dice cómo llegar al local (sesion 2)", async () => {
+    servidor({ tipo: "RECOGER", estado: "ACEPTADO", envio: 0, total: 100, destino: null, direccion: null, referencia: null });
+    await montar();
+    const como = await screen.findByRole("link", { name: "Cómo llegar" });
+    expect(como).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=-17.7496,-63.1748");
+    expect(como).toHaveAttribute("rel", expect.stringContaining("noopener"));
+  });
+
+  it("si paga justo con un billete del mismo monto, no queda una frase colgada «Con Bs 109» (sesion 2)", async () => {
+    servidor({ estado: "ACEPTADO", pagaCon: 109, cambio: 0, faltan: 0 });
+    await montar();
+    expect(await screen.findByText(/Pagás en efectivo al recibir/)).not.toHaveTextContent(/Con Bs/);
+  });
+
   it("Rechazado: muestra el motivo y sale a WhatsApp", async () => {
     servidor({ estado: "RECHAZADO", motivoRechazo: "Se acabó" });
     await montar();

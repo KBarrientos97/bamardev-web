@@ -303,7 +303,8 @@ export default function SeguimientoPedido() {
                   : seg.formaPago === "QR"
                     ? "Pagás con QR al recibir."
                     : "Pagás en efectivo al recibir."}
-                {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && (
+                {/* Sin cambio ni faltante («Con Bs 100» con un total de 100) no hay nada más que decir: sobraba una frase colgada. */}
+                {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && ((seg.faltan ?? 0) > 0 || (seg.cambio ?? 0) > 0) && (
                   <>
                     {" "}
                     Con {formatoPrecio(seg.pagaCon)}
@@ -330,6 +331,20 @@ export default function SeguimientoPedido() {
               ) : (
                 <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
                   Retirás en <strong>{seg.sucursal.nombre}</strong>.
+                  {/* Quien pasa a retirar necesita saber adónde ir: antes sólo veía el nombre del local. */}
+                  {seg.sucursal.latitud != null && seg.sucursal.longitud != null && (
+                    <>
+                      {" "}
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${seg.sucursal.latitud},${seg.sucursal.longitud}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: fuerte, fontWeight: 700 }}
+                      >
+                        Cómo llegar
+                      </a>
+                    </>
+                  )}
                 </p>
               )}
             </>
