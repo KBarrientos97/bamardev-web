@@ -607,6 +607,9 @@ export function FormGasto({
     if (vence && vence < fecha) {
       return setError("El vencimiento no puede ser anterior a la fecha del gasto.");
     }
+    // Mirando «Todas» no hay local que sugerir: se elige uno o «General del negocio».
+    const sinLocal = sucursal.validar();
+    if (sinLocal) return setError(sinLocal);
 
     const input: GastoInput = {
       concepto: concepto.trim(),

@@ -353,6 +353,10 @@ function FormPlantilla({
       m = parsed;
     }
 
+    // Mirando «Todas» no hay local que sugerir: se elige uno o «General del negocio».
+    const sinLocal = sucursal.validar();
+    if (sinLocal) return setError(sinLocal);
+
     const input: PlantillaGastoInput = {
       concepto: concepto.trim(),
       categoria,

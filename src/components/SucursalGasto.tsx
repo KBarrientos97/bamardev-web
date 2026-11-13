@@ -3,6 +3,7 @@ import { fmtMoney } from "../lib/format";
 import {
   ETIQUETA_GENERAL,
   FILTRO_GENERAL,
+  SIN_ELEGIR,
   type useFiltroSucursalGasto,
   type useSucursalDelGasto,
 } from "../lib/useSucursalGasto";
@@ -66,12 +67,18 @@ export function CampoSucursalGasto({
   return (
     <Campo
       label={pal.Sede}
+      error={control.errorCampo}
       hint={
         ayuda ??
         `«${ETIQUETA_GENERAL}» es para lo que no es de ningún local, como el alquiler de la oficina.`
       }
     >
       <Select value={control.valor} onChange={(e) => control.setValor(e.target.value)}>
+        {control.falta && (
+          <option value={SIN_ELEGIR} disabled>
+            Elegí una {pal.sede}…
+          </option>
+        )}
         {control.opciones.map((o) => (
           <option key={o.id} value={o.id}>
             {o.nombre}

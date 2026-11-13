@@ -217,20 +217,39 @@ describe("Gastos: el campo Sucursal del formulario", () => {
     const form = await nuevoGasto();
     const campo = campoSucursal(form)!;
     expect(campo).toBeInTheDocument();
+    // Mirando «Todas» no hay local sugerido: arranca vacío (la primera opción no se puede elegir).
     expect(within(campo).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Elegí una sucursal…",
       "Central",
       "Norte",
       "General del negocio",
     ]);
+    expect((within(campo).getAllByRole("option")[0] as HTMLOptionElement).disabled).toBe(true);
   });
 
-  it("sin filtro arranca en la sucursal sugerida (la principal)", async () => {
+  it("con el filtro en «Todas» NO adivina la principal: arranca vacío y no deja guardar sin elegir", async () => {
     abrir(<Gastos />);
     await screen.findByText("Luz Norte");
     const form = await nuevoGasto();
-    expect(campoSucursal(form)).toHaveDisplayValue("Central");
+    expect(campoSucursal(form)).toHaveDisplayValue("Elegí una sucursal…");
     await guardarGasto(form);
+    // No se guardó: avisa, con el mensaje en el formulario y bajo el campo.
+    expect(api.crearGasto).not.toHaveBeenCalled();
+    expect(within(form).getAllByText("Elegí una sucursal o «General del negocio».").length).toBeGreaterThan(0);
+    // Elegida una, se guarda en ESA.
+    fireEvent.change(campoSucursal(form)!, { target: { value: "1" } });
+    await tocar(within(form).getByRole("button", { name: "Guardar" }));
     expect(vi.mocked(api.crearGasto).mock.calls[0][0]).toHaveProperty("sucursalId", 1);
+  });
+
+  it("elegir «General del negocio» a propósito sí deja guardar, con null explícito", async () => {
+    abrir(<Gastos />);
+    await screen.findByText("Luz Norte");
+    const form = await nuevoGasto();
+    fireEvent.change(campoSucursal(form)!, { target: { value: "" } });
+    await guardarGasto(form);
+    expect(api.crearGasto).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.crearGasto).mock.calls[0][0].sucursalId).toBeNull();
   });
 
   it("con un local filtrado arranca en ese local", async () => {
@@ -399,10 +418,13 @@ describe("Gastos automáticos: la sucursal de la regla", () => {
     expect(api.getPlantillasGasto).toHaveBeenLastCalledWith(2, false);
   });
 
-  it("el formulario arranca en la sucursal sugerida y deja elegir «General del negocio» (null explícito)", async () => {
+  it("con el filtro en «Todas» el formulario arranca vacío, no deja guardar sin elegir y deja elegir «General del negocio» (null explícito)", async () => {
     abrir(<GastosFijos />);
     const form = await nuevaRegla();
-    expect(campoSucursal(form)).toHaveDisplayValue("Central");
+    expect(campoSucursal(form)).toHaveDisplayValue("Elegí una sucursal…");
+    await guardarRegla(form);
+    expect(api.crearPlantillaGasto).not.toHaveBeenCalled();
+    expect(within(form).getAllByText("Elegí una sucursal o «General del negocio».").length).toBeGreaterThan(0);
     fireEvent.change(campoSucursal(form)!, { target: { value: "" } });
     await guardarRegla(form);
     const [cuerpo] = vi.mocked(api.crearPlantillaGasto).mock.calls[0];

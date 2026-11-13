@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePalabras } from "./academia/usePalabras";
 import { useSucursales } from "./useSucursales";
 
 /**
@@ -22,6 +23,14 @@ import { useSucursales } from "./useSucursales";
 export const FILTRO_GENERAL = "general";
 
 export const ETIQUETA_GENERAL = "General del negocio";
+
+/**
+ * El valor del campo de un gasto NUEVO cuando la organización está mirando
+ * «Todas»: no hay un local que sugerir y adivinar el principal cargaba gastos
+ * donde no eran, sin avisar. Hay que elegir un local o «General del negocio»
+ * antes de guardar.
+ */
+export const SIN_ELEGIR = "sin-elegir";
 
 /**
  * El filtro de las listas de gastos. Envuelve a `useSucursales` y le suma la
@@ -67,10 +76,11 @@ export interface DeQuienEs {
  * A qué local se le carga un gasto o una regla, en el formulario.
  *
  * - `elegir` (organización con 2+ locales): el campo se muestra. Arranca en el
- *   local que se estaba filtrando; si no había ninguno, en la sucursal
- *   sugerida (la principal); y si se venía mirando «General del negocio»
- *   (`sugerirGeneral`), en general. Al EDITAR arranca en lo que ya tenía y se
- *   puede reasignar.
+ *   local que se estaba filtrando; si se venía mirando «General del negocio»
+ *   (`sugerirGeneral`), en general; y con el filtro en «Todas» arranca VACÍO
+ *   (`SIN_ELEGIR`): no se adivina el principal, y `validar()` no deja guardar
+ *   hasta que se elija un local o «General». Al EDITAR arranca en lo que ya
+ *   tenía y se puede reasignar.
  * - Sin `elegir` (un local, o usuario atado): no hay campo y se manda lo de
  *   siempre —al editar, lo que ya tenía; al crear, `sugerida`—. El backend le
  *   fuerza su local al atado.
@@ -91,8 +101,10 @@ export function useSucursalDelGasto({
   sugerirGeneral?: boolean;
 }) {
   const suc = useSucursales();
+  const pal = usePalabras();
   const elegir = suc.elegir;
   const [tocado, setTocado] = useState<string | null>(null);
+  const [intentado, setIntentado] = useState(false);
 
   const porDefecto = actual
     ? actual.sucursalId == null
@@ -102,10 +114,14 @@ export function useSucursalDelGasto({
       ? ""
       : sugerida != null
         ? String(sugerida)
-        : suc.sugerida
-          ? String(suc.sugerida.id)
-          : "";
+        : elegir
+          ? SIN_ELEGIR
+          : suc.sugerida
+            ? String(suc.sugerida.id)
+            : "";
   const valor = tocado ?? porDefecto;
+  const falta = elegir && valor === SIN_ELEGIR;
+  const mensajeFalta = `Elegí una ${pal.sede} o «${ETIQUETA_GENERAL}».`;
 
   // Si el local que ya tenía el gasto no está entre los activos (se dio de baja
   // o es un depósito), igual se lista: sin esto el select caería en otro valor
@@ -120,9 +136,22 @@ export function useSucursalDelGasto({
     opciones,
     valor,
     setValor: setTocado,
+    /** El campo sigue vacío (`SIN_ELEGIR`): no se puede guardar así. */
+    falta,
+    /** El aviso bajo el campo: sólo después de intentar guardar sin elegir. */
+    errorCampo: falta && intentado ? mensajeFalta : undefined,
+    /**
+     * Para llamar antes de guardar: el mensaje si falta elegir (y marca el
+     * campo), o `null` si se puede seguir.
+     */
+    validar: (): string | null => {
+      if (!falta) return null;
+      setIntentado(true);
+      return mensajeFalta;
+    },
     /** Lo que va en `sucursalId` del body: id, o `null` explícito = general. */
     paraEnviar: (): number | null => {
-      if (elegir) return valor === "" ? null : Number(valor);
+      if (elegir) return valor === "" || valor === SIN_ELEGIR ? null : Number(valor);
       return actual ? actual.sucursalId : sugerida;
     },
   };
