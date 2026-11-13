@@ -506,6 +506,12 @@ export interface ProductoInput {
   stockMinimo?: number;
   /** El backend crea la "Carga inicial" con este monto. */
   stockInicial?: number;
+  /**
+   * El local donde se fija `stockInicial` de un combo (PLAN-SUCURSAL-TOTAL §8.5).
+   * Sólo lo manda quien es de organización con 2+ locales; sin él, el backend usa
+   * la sucursal de quien lo arma (o la principal). No se guarda en el producto.
+   */
+  almacenId?: number;
   descripcion?: string;
   codBarra?: string;
   habilitado?: boolean;

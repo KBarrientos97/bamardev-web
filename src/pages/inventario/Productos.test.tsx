@@ -833,3 +833,117 @@ describe("farmacia: el alta ayuda a escribir menos (B11 y M11)", () => {
     expect(document.getElementById("laboratorios")).toBeNull();
   });
 });
+
+describe("el stock del combo es de UN local (PLAN-SUCURSAL-TOTAL §8.5)", () => {
+  // Antes el formulario precargaba la SUMA de los locales y el backend la
+  // escribía entera en la principal: guardar duplicaba el stock.
+  const LOCALES = [
+    { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+  const existencia = (almacenId: number, nombre: string, cantidad: number) => ({
+    almacenId,
+    nombre,
+    tipo: "SUCURSAL",
+    esPrincipal: almacenId === 1,
+    direccion: null,
+    telefono: null,
+    cantidad,
+    ubicacion: null,
+  });
+  const combo = producto({
+    id: 5,
+    nombre: "Combo familiar",
+    tipoProducto: "COMPUESTO",
+    stockTotal: 12, // la suma: 5 en Central + 7 en Norte
+    unidadMedida: UNIDAD,
+    componentes: [{ ingredienteId: 2, nombre: "Gaseosa 2L", cantidad: 1 }],
+  });
+
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.existenciasProducto).mockClear();
+    vi.mocked(api.getSucursales).mockResolvedValue(LOCALES as never);
+    vi.mocked(api.existenciasProducto).mockResolvedValue([
+      existencia(1, "Central", 5),
+      existencia(2, "Norte", 7),
+    ] as never);
+  });
+
+  async function editarCombo() {
+    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+    getProductos.mockResolvedValue([combo, producto({ id: 2, nombre: "Gaseosa 2L" })]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByText("Combo familiar"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    });
+  }
+
+  it("organización con 2 locales: pide el local y precarga el stock de ESE local, no la suma", async () => {
+    sesion.locales = 2;
+    await editarCombo();
+    const selector = await screen.findByLabelText("¿En qué local cargás el stock del combo?");
+    // La sugerida (la principal) y su stock, no los 12 del total.
+    expect(selector).toHaveValue("1");
+    await vi.waitFor(() => expect(screen.getByLabelText(/^Stock del combo/)).toHaveValue("5"));
+
+    fireEvent.change(selector, { target: { value: "2" } });
+    await vi.waitFor(() => expect(screen.getByLabelText(/^Stock del combo/)).toHaveValue("7"));
+
+    fireEvent.change(screen.getByLabelText(/^Stock del combo/), { target: { value: "9" } });
+    await guardar();
+    expect(actualizarProducto).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({ stockInicial: 9, almacenId: 2 }),
+    );
+  });
+
+  it("un local sin stock del combo arranca vacío y hay que escribir el 0", async () => {
+    sesion.locales = 2;
+    vi.mocked(api.existenciasProducto).mockResolvedValue([
+      existencia(1, "Central", 5),
+      existencia(2, "Norte", 0),
+    ] as never);
+    await editarCombo();
+    const selector = await screen.findByLabelText("¿En qué local cargás el stock del combo?");
+    fireEvent.change(selector, { target: { value: "2" } });
+    await vi.waitFor(() => expect(screen.getByLabelText(/^Stock del combo/)).toHaveValue(""));
+    await guardar();
+    expect(actualizarProducto).not.toHaveBeenCalled();
+  });
+
+  it("crear un combo: también pide el local y lo manda con el stock", async () => {
+    sesion.locales = 2;
+    await abrirAltaCon();
+    llenar();
+    pasarACombo();
+    const selector = await screen.findByLabelText("¿En qué local cargás el stock del combo?");
+    fireEvent.change(selector, { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText(/^Stock del combo/), { target: { value: "3" } });
+    await guardar();
+    expect(crearProducto).toHaveBeenCalledWith(
+      expect.objectContaining({ stockInicial: 3, almacenId: 2 }),
+    );
+  });
+
+  it("un solo local: el formulario es el de siempre, sin selector ni almacenId", async () => {
+    sesion.locales = 1;
+    vi.mocked(api.getSucursales).mockResolvedValue([LOCALES[0]] as never);
+    await editarCombo();
+    expect(screen.queryByLabelText("¿En qué local cargás el stock del combo?")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Stock del combo/)).toHaveValue("12");
+    expect(api.existenciasProducto).not.toHaveBeenCalled();
+    await guardar();
+    expect(actualizarProducto.mock.calls[0][1]).not.toHaveProperty("almacenId");
+  });
+
+  it("usuario de un local: no ve el selector, el backend usa el suyo", async () => {
+    sesion.locales = 2;
+    sesion.sucursalId = 2;
+    await editarCombo();
+    expect(screen.queryByLabelText("¿En qué local cargás el stock del combo?")).not.toBeInTheDocument();
+    await guardar();
+    expect(actualizarProducto.mock.calls[0][1]).not.toHaveProperty("almacenId");
+  });
+});

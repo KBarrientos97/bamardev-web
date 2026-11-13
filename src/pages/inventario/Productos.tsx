@@ -579,6 +579,8 @@ export default function Productos() {
         // Sólo farmacia: ahí la lista viene paginada del servidor y `lista` está
         // vacía, así que las sugerencias de la ficha salen de lo que se ve.
         enPantalla={esFarmacia(rubro) ? busqueda.items : undefined}
+        // El local del filtro es el que propone el formulario del combo.
+        sucursalFiltradaId={suc.sucursalId}
         onClose={() => {
           setCreando(false);
           setEditando(null);
@@ -1041,6 +1043,7 @@ function FormProducto({
   unidades,
   productos,
   enPantalla,
+  sucursalFiltradaId,
   onClose,
   onGuardado,
 }: {
@@ -1051,6 +1054,8 @@ function FormProducto({
   productos: Producto[];
   /** Lo que la pantalla muestra ahora mismo, cuando no es `productos` (farmacia). */
   enPantalla?: Producto[];
+  /** El local elegido en el filtro de la lista (null = todas): propone el del stock del combo. */
+  sucursalFiltradaId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -1065,6 +1070,7 @@ function FormProducto({
       unidades={unidades}
       productos={productos}
       enPantalla={enPantalla}
+      sucursalFiltradaId={sucursalFiltradaId}
       onClose={onClose}
       onGuardado={onGuardado}
     />
@@ -1077,6 +1083,7 @@ function FormProductoCuerpo({
   unidades,
   productos,
   enPantalla,
+  sucursalFiltradaId,
   onClose,
   onGuardado,
 }: {
@@ -1085,6 +1092,7 @@ function FormProductoCuerpo({
   unidades: UnidadMedida[];
   productos: Producto[];
   enPantalla?: Producto[];
+  sucursalFiltradaId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -1120,13 +1128,48 @@ function FormProductoCuerpo({
       : undefined;
   const [costo, setCosto] = useState(String(producto?.costo ?? ""));
   const [stockMinimo, setStockMinimo] = useState(String(producto?.stockMinimo ?? ""));
-  const [stockInicial, setStockInicial] = useState(
-    // Sólo el combo trae su stock cargado: es un dato que se corrige, no que se
-    // suma. Y sólo si es > 0, para que un 0 heredado no parezca ya completado.
-    producto?.tipoProducto === "COMPUESTO" && producto.stockTotal > 0
-      ? String(producto.stockTotal)
-      : "",
+  // Lo que la persona escribió en «Stock del combo»; null = no tocó el campo y se
+  // muestra lo precargado (ver `precargaStock`).
+  const [stockEscrito, setStockEscrito] = useState<string | null>(null);
+  /**
+   * El combo guarda su stock en UN local (`fijarStockCombo`, valor absoluto, sin
+   * movimiento). Con 2+ locales, quien es de organización elige cuál: antes el
+   * formulario precargaba la SUMA de todos y el backend la escribía entera en la
+   * sucursal principal, duplicando stock (PLAN-SUCURSAL-TOTAL §3 etapa 3, §8.5).
+   * Quien es de un local, o el negocio de un solo local, no ve el campo: el
+   * backend usa la sucursal de siempre y el formulario queda idéntico.
+   */
+  const [localComboElegido, setLocalComboElegido] = useState<string | null>(null);
+  const conLocalDelCombo = suc.modo === "organizacion";
+  const localComboId =
+    localComboElegido ??
+    (sucursalFiltradaId != null
+      ? String(sucursalFiltradaId)
+      : suc.sugerida
+        ? String(suc.sugerida.id)
+        : "");
+  // Sólo un combo ya guardado trae stock que precargar, y con 2+ locales es el de
+  // CADA local: `GET /productos/:id/existencias` los trae todos en una llamada.
+  const precargaPorLocal =
+    conLocalDelCombo && !!producto && producto.tipoProducto === "COMPUESTO";
+  const existenciasCombo = useApi(
+    () =>
+      precargaPorLocal && producto
+        ? api.existenciasProducto(producto.id)
+        : Promise.resolve([]),
+    [precargaPorLocal, producto?.id],
   );
+  // Sólo el combo trae su stock cargado: es un dato que se corrige, no que se
+  // suma. Y sólo si es > 0, para que un 0 heredado no parezca ya completado.
+  const stockPrecargado = precargaPorLocal
+    ? existenciasCombo.datos?.find((e) => String(e.almacenId) === localComboId)?.cantidad
+    : producto?.tipoProducto === "COMPUESTO"
+      ? producto.stockTotal
+      : undefined;
+  const precargaStock =
+    stockPrecargado != null && stockPrecargado > 0 ? String(stockPrecargado) : "";
+  const stockInicial = stockEscrito ?? precargaStock;
+  const setStockInicial = setStockEscrito;
   const [categoriaId, setCategoriaId] = useState(String(producto?.categoria?.id ?? ""));
   const [unidadId, setUnidadId] = useState(String(producto?.unidadMedida?.id ?? ""));
   const [habilitado, setHabilitado] = useState(producto?.habilitado ?? true);
@@ -1300,6 +1343,11 @@ function FormProductoCuerpo({
       // editar. Un producto nace sin stock (lo que entra va por Movimientos) y
       // el backend no le toma este número.
       ...(esCombo && stockCombo != null ? { stockInicial: stockCombo } : {}),
+      // El local donde queda ese stock, sólo cuando el formulario lo pidió (2+
+      // locales y organización); si no, no viaja y rige lo de siempre.
+      ...(esCombo && stockCombo != null && conLocalDelCombo && localComboId
+        ? { almacenId: Number(localComboId) }
+        : {}),
       // La ficha viaja sólo donde el formulario la muestra. En otro rubro los
       // campos ni se dibujan, y mandarlos vacíos borraría lo que alguien haya
       // cargado desde una farmacia con el mismo catálogo.
@@ -1555,15 +1603,35 @@ function FormProductoCuerpo({
               // Obligatorio (INV-02): ver `guardar`. Al editar un combo en 0
               // el campo arranca vacío a propósito, así que hay que escribir
               // el 0: un 0 heredado no es un valor que alguien eligió.
-              <Campo label="Stock del combo *" hint="Cuántos combos tenés para vender (0 si hoy no hay)">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  value={stockInicial}
-                  onChange={(e) => setStockInicial(e.target.value)}
-                />
-              </Campo>
+              <>
+                {conLocalDelCombo && (
+                  <Campo label="¿En qué local cargás el stock del combo?">
+                    <Select
+                      value={localComboId}
+                      onChange={(e) => {
+                        setLocalComboElegido(e.target.value);
+                        // El número escrito era de OTRO local: se vuelve a lo guardado.
+                        setStockEscrito(null);
+                      }}
+                    >
+                      {suc.sucursales.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.nombre}
+                        </option>
+                      ))}
+                    </Select>
+                  </Campo>
+                )}
+                <Campo label="Stock del combo *" hint="Cuántos combos tenés para vender (0 si hoy no hay)">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    value={stockInicial}
+                    onChange={(e) => setStockInicial(e.target.value)}
+                  />
+                </Campo>
+              </>
             ) : (
               !esEdicion && (
                 <p className="self-end rounded-xl bg-muted px-3.5 py-2.5 text-xs text-texto-3">
