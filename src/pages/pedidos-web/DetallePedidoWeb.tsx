@@ -99,10 +99,12 @@ export default function DetallePedidoWeb({
       )}
 
       <section className="card space-y-3 p-4" aria-label="Cliente">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
+        {/* Con un nombre largo (hasta 60 letras) los botones bajan al renglón de abajo: al lado
+            dejaban al nombre en una columna de 70 px, una palabra por línea, y partían el teléfono. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 max-w-full">
             <p className="break-words text-sm font-bold text-texto">{p.nombre}</p>
-            <p className="text-[13px] text-texto-3">{Telefono.paraMostrar(p.telefono)}</p>
+            <p className="whitespace-nowrap text-[13px] text-texto-3">{Telefono.paraMostrar(p.telefono)}</p>
           </div>
           {tel && wa && (
             <div className="flex shrink-0 gap-2">

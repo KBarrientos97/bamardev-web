@@ -139,6 +139,14 @@ describe("la bandeja de pedidos web", () => {
     expect(screen.getByText("Bs 109,00")).toBeInTheDocument();
   });
 
+  it("las cuatro columnas pasan al renglón de abajo en vez de esconder «Hoy» en una fila que se desliza (sesion 2)", async () => {
+    await montar();
+    const hoy = await screen.findByRole("button", { name: "Hoy" });
+    const fila = hoy.parentElement as HTMLElement;
+    expect(fila.className).not.toMatch(/overflow-x-auto/);
+    expect(fila.className).toMatch(/flex-wrap/);
+  });
+
   it("sin pedidos: estado vacío; mientras carga no inventa ceros", async () => {
     mock.bandeja.mockReturnValue(new Promise(() => {}));
     await montar();
@@ -218,6 +226,18 @@ describe("el detalle", () => {
     expect(await screen.findByText(/En camino desde las \d\d:\d\d con Pedro/)).toBeInTheDocument();
     expect(screen.getByText(/La última posición del repartidor es de hace 1 min/)).toBeInTheDocument();
     expect(await screen.findByTestId("mapa-pin")).toHaveAttribute("data-moto", '{"latitud":-17.755,"longitud":-63.178,"en":"' + enCamino.posicion.en + '"}');
+  });
+
+  it("con un nombre largo, Llamar y WhatsApp bajan al renglón de abajo y no aplastan el nombre (sesion 2)", async () => {
+    mock.detalle.mockResolvedValue({ ...LUCIA, nombre: "Maria de los Angeles Fernandez-Quispe de la Torre Mamani" });
+    mock.bandeja.mockResolvedValue(bandeja({ nuevos: [{ ...LUCIA, nombre: "Maria de los Angeles Fernandez-Quispe de la Torre Mamani" }] }));
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Maria de los Angeles/));
+    const cliente = await screen.findByRole("region", { name: "Cliente" });
+    const fila = within(cliente).getByRole("link", { name: /Llamar/ }).parentElement!.parentElement as HTMLElement;
+    expect(fila.className).toMatch(/flex-wrap/);
+    // El teléfono no se parte en dos renglones.
+    expect(within(cliente).getByText("+591 71234567").className).toMatch(/whitespace-nowrap/);
   });
 
   it("al abrir aceptar o rechazar, el formulario se trae a la vista (en el celular nace bajo el mapa)", async () => {

@@ -121,7 +121,7 @@ export default function PedidosWeb() {
       </header>
 
       {sucursales.elegir && <Chips valor={sucursales.valorChip} opciones={sucursales.opciones} onChange={sucursales.alElegir} />}
-      <Chips valor={vista} opciones={opciones} onChange={setVista} />
+      <Chips envolver valor={vista} opciones={opciones} onChange={setVista} />
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{conflicto}</ErrorMsg>
