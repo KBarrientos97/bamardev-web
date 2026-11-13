@@ -1,3 +1,4 @@
+import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import { desbloquearAudio, hablar, zumbido } from "../alertas";
 import type { PinesBillar } from "../tipos";
@@ -16,6 +17,10 @@ import { TarjetaTipo } from "./TarjetaTipo";
  *
  * Todo es un borrador que vive en la pantalla (cambiar de pestaña no lo
  * pierde) y se guarda junto con "Guardar cambios".
+ *
+ * Las tarifas son del negocio entero, no de un local (decisión del dueño: por
+ * sucursal queda para después): con 2 o más locales se avisa, porque el
+ * selector de arriba hace pensar que lo de esta pestaña es del local elegido.
  */
 export function TabTarifas({
   b,
@@ -31,8 +36,10 @@ export function TabTarifas({
   mostrarErrores: boolean;
   onCambiar: (b: BorradorTarifas) => void;
 }) {
+  const { hayVarias } = useSucursales();
   return (
     <div className="space-y-4">
+      {hayVarias && <Nota icono="pin">Las tarifas, los avisos y el PIN valen para todos los locales.</Nota>}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {b.tipos.map((t) => (
           <TarjetaTipo
