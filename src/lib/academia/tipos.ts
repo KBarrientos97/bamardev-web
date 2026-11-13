@@ -1489,6 +1489,27 @@ export interface PanelControl {
  * no trae el "Resultado por sede" en plata (daba otra ganancia que el Estado
  * de resultado): el resultado vive sólo en Reportes de ventas.
  */
+/**
+ * Una sede en el comparativo de `GET /academia/reportes` (`porSede`,
+ * PLAN-SUCURSAL-TOTAL §9.5). Cada número se agrupa por su criterio: `cobrado`
+ * por la CAJA que recibió el cobro; `ingresaron`, `activos`, `alDia`,
+ * `enEspera`, `enMora` y `vencido` por la sede del GRUPO; `sueldos` por la
+ * sede del gasto. `sede: null` es la fila de los sueldos que no son de ninguna.
+ */
+export interface FilaSedeAcademia {
+  sede: Ref | null;
+  ingresaron: number;
+  /** Null sin permiso de montos (igual `vencido` y `sueldos`). */
+  cobrado: number | null;
+  activos: number;
+  alDia: number;
+  enEspera: number;
+  enMora: number;
+  pctMora: number | null;
+  vencido: number | null;
+  sueldos: number | null;
+}
+
 export interface ReportesAcademia {
   mes: string;
   /** Los días del período (L5): los del mes, o los `desde`/`hasta` pedidos. */
@@ -1524,6 +1545,12 @@ export interface ReportesAcademia {
   asistenciaPromedioPct: number | null;
   /** Cambio #29. */
   asistenciaPorGrupo?: { grupo: string | Ref; docente: string | Ref | null; pct: number | null }[];
+  /**
+   * El comparativo por sede (PLAN-SUCURSAL-TOTAL §9.5): una fila por sede para
+   * la organización; con una sede pedida (o un usuario atado a una) viene esa
+   * sola. Un backend anterior no lo manda.
+   */
+  porSede?: FilaSedeAcademia[];
 }
 
 export type AgruparReporte = "dia" | "semana" | "mes";
