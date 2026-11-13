@@ -199,6 +199,14 @@ export function useSucursales({ incluirDepositos = false } = {}) {
      * no debe ver selectores nuevos (PLAN-SUCURSAL-TOTAL §1).
      */
     elegirSucursal: elegir && modo === "organizacion",
+    /**
+     * La organización todavía espera la lista de locales (primera carga). Mientras
+     * tanto `elegir` y `modo` dicen "uno solo": para decidir algo irreversible
+     * —redirigir una ruta, por ejemplo— hay que esperar a que sea `false`. Para el
+     * usuario asignado y para quien no lista locales, siempre `false` (no hay
+     * lista que esperar).
+     */
+    cargandoLocales: esDeOrganizacion && !unLocal && almacenes.cargando && !almacenes.datos,
     /** `una` | `asignado` | `organizacion`: qué ve esta pantalla (ver `ModoSucursal`). */
     modo,
     /**

@@ -160,6 +160,31 @@ describe("Comparar sucursales (PLAN-SUCURSAL-TOTAL §3 etapa 6)", () => {
     expect(enMenu("Comparar sucursales")).toBeNull();
   });
 
+  it("con F5 en /reportes/comparar-sucursales no rebota al resumen mientras llega la lista de locales", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    let soltar!: (v: never) => void;
+    vi.mocked(api.getSucursales).mockReturnValue(new Promise((r) => (soltar = r as never)));
+    await montar("/reportes/comparar-sucursales");
+    // La lista no llegó: la ruta sigue en pie (el menú todavía no la ofrece).
+    expect(screen.queryByText("Lo más importante del período", { exact: false })).not.toBeInTheDocument();
+    expect(enMenu("Comparar sucursales")).toBeNull();
+
+    await act(async () => soltar(LOCALES as never));
+    expect(enMenu("Comparar sucursales")?.getAttribute("href")).toBe("/reportes/comparar-sucursales");
+    expect(screen.queryByText("Lo más importante del período", { exact: false })).not.toBeInTheDocument();
+  });
+
+  it("con un solo local y el enlace a mano, al llegar la lista vuelve al resumen", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.organizacion = true;
+    let soltar!: (v: never) => void;
+    vi.mocked(api.getSucursales).mockReturnValue(new Promise((r) => (soltar = r as never)));
+    await montar("/reportes/comparar-sucursales");
+    await act(async () => soltar(LOCALES.slice(0, 1) as never));
+    expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
+  });
+
   it("el link a mano de quien no lo ve vuelve al resumen", async () => {
     sesion.rubro = "RESTAURANTE";
     sesion.activas = 2;

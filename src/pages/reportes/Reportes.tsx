@@ -84,7 +84,19 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
       gruposVisibles({ rubro, features: negocio?.features, permisos: usuario?.permisos, puede, incluye, variasSucursales: suc.elegir }),
     [rubro, negocio?.features, usuario?.permisos, puede, incluye, suc.elegir],
   );
-  const fichas = useMemo(() => grupos.flatMap((g) => g.fichas), [grupos]);
+  // Las RUTAS no se filtran mientras llega la lista de locales: `suc.elegir` es
+  // `false` hasta entonces y, con F5 o un enlace directo a «Comparar sucursales»,
+  // el `*` mandaba a /reportes antes de saber si el reporte existe. Sólo el menú
+  // espera; si al final no hay 2+ locales, la ficha deja de existir y la ruta
+  // vuelve al resumen como cualquier enlace viejo.
+  const fichas = useMemo(
+    () =>
+      (suc.cargandoLocales
+        ? gruposVisibles({ rubro, features: negocio?.features, permisos: usuario?.permisos, puede, incluye, variasSucursales: true })
+        : grupos
+      ).flatMap((g) => g.fichas),
+    [grupos, suc.cargandoLocales, rubro, negocio?.features, usuario?.permisos, puede, incluye],
+  );
   // El Resumen y "Enviar resumen" son del permiso general: leen las ventas.
   const conResumen = puede("reportes");
   const id = location.pathname.replace(/^\/reportes\/?/, "").split("/")[0];

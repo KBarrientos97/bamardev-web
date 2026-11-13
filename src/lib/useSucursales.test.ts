@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen } from "../types";
 
@@ -152,6 +152,23 @@ describe("modo de la sucursal (PLAN-SUCURSAL-TOTAL §1)", () => {
     expect(result.current.hayVarias).toBe(false);
     // Las pantallas que no tenían filtro y lo agregan no lo muestran por un depósito.
     expect(result.current.elegirSucursal).toBe(false);
+  });
+
+  it("cargandoLocales: la organización lo tiene mientras llega la lista; el asignado, nunca", async () => {
+    sesion.features = CON_VARIOS;
+    let soltar!: (v: Awaited<ReturnType<typeof api.getSucursales>>) => void;
+    vi.mocked(api.getSucursales).mockReturnValue(new Promise((r) => (soltar = r)));
+    const org = renderHook(() => useSucursales());
+    expect(org.result.current.cargandoLocales).toBe(true);
+    await act(async () => soltar([local(1, "Principal"), local(2, "Central")]));
+    expect(org.result.current.cargandoLocales).toBe(false);
+    expect(org.result.current.elegir).toBe(true);
+
+    sesion.sucursalId = 2;
+    sesion.sucursal = "Central";
+    sesion.sucursalesActivas = 2;
+    const asignado = renderHook(() => useSucursales());
+    expect(asignado.result.current.cargandoLocales).toBe(false);
   });
 
   it("elegirSucursal: con 2+ sucursales (más un depósito) sí, y el depósito sigue en las opciones", async () => {
