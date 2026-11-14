@@ -307,7 +307,11 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   reparto: { permiso: "entregas.realizar", sinGeneral: "delivery.asignar", feature: "delivery" },
   // Los pedidos que llegan de la página (13-nov): los acepta quien asigna los
   // deliveries (cajero, encargado, administrador), con la feature `delivery`.
-  pedidos_web: { permiso: "delivery.asignar", feature: "delivery" },
+  // Desde el 14-nov un negocio sin `delivery` también los recibe, sólo para
+  // recoger (PLAN-DELIVERY-EXTERNO §2.2): con `recoger` alcanza, y el plan le
+  // recorta `delivery.asignar`, así que su cajero entra con `ventas.vender`
+  // (las rutas de la bandeja aceptan cualquiera de las dos).
+  pedidos_web: { permiso: "delivery.asignar", tambien: ["ventas.vender"], feature: "delivery", oFeature: "recoger" },
   // El panel del salón: el mesero (sus mesas) y quien supervisa el salón.
   salon: { permiso: "salon.atender", feature: "salon" },
   // El ABM de mesas y zonas, parte de la misma sección vendida.

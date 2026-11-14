@@ -24,6 +24,7 @@ import { olvidarCarta } from "../pages/salon/cartaGuardada";
 import { olvidarDispositivoPush, sincronizarPushSilencioso } from "../lib/push/registroPush";
 import { fijarMoneda } from "../lib/format";
 import { reiniciarContador } from "../lib/pedidosWeb/contador";
+import type { EntregaPedidosWeb } from "../lib/pedidosWeb/tipos";
 import { aplicarTema } from "../lib/temas";
 import {
   puede as puedeCapacidad,
@@ -313,6 +314,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /**
+   * Cómo se entregan los pedidos de la página (`negocio.entregaPedidosWeb` y
+   * `servicioDeliveryExterno`, PLAN-DELIVERY-EXTERNO §2.6): sigue a `/licencia/estado`
+   * para que un cambio hecho en el panel llegue a la sesión abierta.
+   */
+  const fijarEntregaPedidos = useCallback((entrega: EntregaPedidosWeb, servicio: string | null) => {
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      if ((previo.entregaPedidosWeb ?? "PROPIO") === entrega && (previo.servicioDeliveryExterno ?? null) === servicio) return previo;
+      const actualizado = { ...previo, entregaPedidosWeb: entrega, servicioDeliveryExterno: servicio };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   /** La variante del rubro (`negocio.variante`): sigue a `/licencia/estado` como `pedidosWeb`. */
   const fijarVariante = useCallback((variante: string | null) => {
     setNegocio((previo) => {
@@ -457,6 +473,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refrescarPerfil(estado);
           // Un backend viejo no manda el campo: ahí se queda con lo que hay.
           if (typeof estado.pedidosWeb === "boolean") fijarPedidosWeb(estado.pedidosWeb);
+          // Ausente (un backend viejo) = repartidores propios, como siempre.
+          if (estado.entregaPedidosWeb !== undefined || estado.servicioDeliveryExterno !== undefined) {
+            fijarEntregaPedidos(estado.entregaPedidosWeb ?? "PROPIO", estado.servicioDeliveryExterno ?? null);
+          }
           if (estado.variante !== undefined) fijarVariante(estado.variante);
           refrescarPermisos(estado.permisosVersion);
           // El contador viaja en este mismo estado: cada 15 min y al volver a
@@ -492,6 +512,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refrescarFeatures,
     refrescarPerfil,
     fijarPedidosWeb,
+    fijarEntregaPedidos,
     fijarVariante,
     refrescarPermisos,
     pedirTurnoCupo,

@@ -809,7 +809,8 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
       // al chequeo de la licencia (CONTRATO-PEDIDOS-WEB §9): sólo si el plan trae delivery.
       // Prendido: se prende ya. Apagado: la bandeja NO se va si quedan pedidos
       // vivos (R2-14); se le pregunta al backend, que es quien lo sabe.
-      if (sesion?.negocio?.features?.includes("delivery")) {
+      // Con `recoger` basta: un negocio sin delivery recibe pedidos sólo para retirar (PLAN-DELIVERY-EXTERNO §2.2).
+      if (sesion?.negocio?.features?.includes("delivery") || sesion?.negocio?.features?.includes("recoger")) {
         if (nuevo.pagina.pedidosSistema) sesion.fijarPedidosWeb(true);
         else {
           api
@@ -1314,6 +1315,9 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
             pedidosGuardado={e.pagina.pedidosWhatsapp}
             sistemaGuardado={e.pagina.pedidosSistema}
             conDelivery={tieneFeature(negocioSesion?.features, "delivery")}
+            conSistema={tieneFeature(negocioSesion?.features, "delivery") || tieneFeature(negocioSesion?.features, "recoger")}
+            entregaPedidos={negocioSesion?.entregaPedidosWeb}
+            servicioExterno={negocioSesion?.servicioDeliveryExterno}
             conProductos={modoCatalogo === "PRODUCTOS"}
             borrador={borrador}
             cambiar={cambiar}

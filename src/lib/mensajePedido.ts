@@ -1,5 +1,6 @@
 import type { Venta } from "../types";
 import { fmtMontoCliente } from "./format";
+import { nombreServicio } from "./pedidosWeb/entrega";
 
 /**
  * Lo que hace falta de un pedido para escribirle al cliente.
@@ -34,6 +35,12 @@ export interface PedidoParaMensaje {
    * así que el texto sigue el momento (por salir o en camino).
    */
   dePagina?: boolean;
+  /**
+   * El servicio externo (Yango…) que lleva el pedido en lugar de un repartidor
+   * propio (PLAN-DELIVERY-EXTERNO §2.1). Con él no hay delivery «que llega a tu
+   * ubicación»: el mensaje habla del servicio, en todos los rubros.
+   */
+  entregaExterna?: string | null;
 }
 
 /** Quién manda el mensaje: el repartidor (en la calle) o la caja (en el local). */
@@ -137,6 +144,12 @@ export function mensajePedido(
  */
 function lineaDeEntrega(p: PedidoParaMensaje, clasico: boolean, desde: DesdeMensaje): string | null {
   if (p.tipoPedido !== "DELIVERY") return null;
+  // Un servicio externo no «llega a tu ubicación» con nuestro repartidor: ni el texto clásico
+  // de Omar puede decirlo. La caja sí avisa quién lo lleva y en qué momento va.
+  if (p.entregaExterna) {
+    const servicio = nombreServicio(p.entregaExterna);
+    return p.salioEn ? `🛵 ¡Tu pedido ya va en camino con ${servicio}!` : `🛵 ¡Tu pedido sale pronto con ${servicio}!`;
+  }
   if (clasico) return YA_LLEGO;
   if (desde === "CAJA") return null;
   if (p.dePagina) {
@@ -158,6 +171,7 @@ export function pedidoDeVenta(v: Venta, sucursal?: string | null, rotuloSucursal
     totalACobrar: v.totalACobrar ?? 0,
     prepagado: !!v.prepagado,
     ...(v.pedidoWeb ? { dePagina: true } : {}),
+    ...(v.entregaExterna && !v.repartidor ? { entregaExterna: v.entregaExterna } : {}),
     ...(v.pedidoWeb?.salioEn ? { salioEn: v.pedidoWeb.salioEn } : {}),
     ...(sucursal ? { sucursal, ...(rotuloSucursal ? { rotuloSucursal } : {}) } : {}),
   };

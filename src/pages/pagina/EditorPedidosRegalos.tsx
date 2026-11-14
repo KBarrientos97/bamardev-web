@@ -3,6 +3,7 @@ import { Campo, Input } from "../../components/ui";
 import TarjetaRegalo from "../../components/regalos/TarjetaRegalo";
 import { DISENOS_REGALO, esDiseno, NOMBRE_DISENO, type DisenoRegalo } from "../../lib/regalos/disenos";
 import type { CambiosPagina, ConfigRegalos } from "../../lib/pagina/tipos";
+import type { EntregaPedidosWeb } from "../../lib/pedidosWeb/tipos";
 import Seccion from "./Seccion";
 import TarifaEnvioEditor from "./TarifaEnvioEditor";
 
@@ -52,6 +53,9 @@ export default function EditorPedidosRegalos({
   conPedidos,
   conWhatsapp,
   conDelivery = false,
+  conSistema = conDelivery,
+  entregaPedidos,
+  servicioExterno,
   conProductos = false,
 }: {
   guardado: ConfigRegalos | undefined;
@@ -70,8 +74,17 @@ export default function EditorPedidosRegalos({
   conPedidos: boolean;
   /** La página tiene un WhatsApp: adónde llegan pedidos y pedidos de gift card. */
   conWhatsapp: boolean;
-  /** El negocio tiene la feature `delivery`: sin ella no hay pedidos en el sistema. */
+  /** El negocio tiene la feature `delivery`: sin ella la página sólo recibe pedidos para recoger. */
   conDelivery?: boolean;
+  /**
+   * Puede recibir pedidos en el sistema: tiene `delivery` o `recoger` (PLAN-DELIVERY-EXTERNO §2.2).
+   * Sin decirlo, vale lo que `conDelivery`.
+   */
+  conSistema?: boolean;
+  /** Cómo entrega el negocio los pedidos de la página (lo elige BamarDev en el panel). Ausente = propios. */
+  entregaPedidos?: EntregaPedidosWeb;
+  /** El nombre del servicio externo; vacío = Yango. */
+  servicioExterno?: string | null;
   /** El catálogo está en «Mis productos» (sin productos detrás no hay qué pedir). */
   conProductos?: boolean;
 }) {
@@ -87,7 +100,9 @@ export default function EditorPedidosRegalos({
   };
   const pedidos = borrador.pedidosWhatsapp ?? pedidosGuardado ?? false;
   const sistema = borrador.pedidosSistema ?? sistemaGuardado ?? false;
-  const sistemaPrendido = sistema && conDelivery && conProductos;
+  const sistemaPrendido = sistema && conSistema && conProductos;
+  const sinReparto = !conDelivery || entregaPedidos === "SOLO_RECOGER";
+  const externo = conDelivery && entregaPedidos === "EXTERNO";
   // Vacío = todos (así lo guarda el backend).
   const ofrecidos: DisenoRegalo[] = r.disenos.filter(esDiseno).length ? r.disenos.filter(esDiseno) : [...DISENOS_REGALO];
   const porDefecto: DisenoRegalo = esDiseno(r.diseno) && ofrecidos.includes(r.diseno) ? r.diseno : ofrecidos[0];
@@ -156,7 +171,7 @@ export default function EditorPedidosRegalos({
         </p>
       )}
 
-      {conDelivery ? (
+      {conSistema ? (
         <div className="space-y-3 border-t border-borde pt-4">
           <label className={`flex items-start gap-3 ${conProductos ? "" : "opacity-60"}`}>
             <input
@@ -169,8 +184,11 @@ export default function EditorPedidosRegalos({
             <span>
               <strong className="block text-sm text-texto">Recibir pedidos en el sistema</strong>
               <span className="text-[13px] text-texto-3">
-                Tus clientes piden desde la página, marcan su casa en el mapa y el pedido te llega a la caja con aviso y sonido. Lo aceptás,
-                elegís quién lo lleva y el cliente ve la moto en su celular.
+                {sinReparto
+                  ? "Tus clientes piden desde la página para pasar a recoger y el pedido te llega a la caja con aviso y sonido. Lo aceptás y lo entregás cuando pasan."
+                  : externo
+                    ? `Tus clientes piden desde la página y el pedido te llega a la caja con aviso y sonido. Lo aceptás, escribís el envío que te cotizó ${servicioExterno?.trim() || "Yango"} y el cliente paga por QR antes de que salga.`
+                    : "Tus clientes piden desde la página, marcan su casa en el mapa y el pedido te llega a la caja con aviso y sonido. Lo aceptás, elegís quién lo lleva y el cliente ve la moto en su celular."}
               </span>
             </span>
           </label>
@@ -186,7 +204,8 @@ export default function EditorPedidosRegalos({
                 : "Tenés prendidos los dos, pero sin un WhatsApp cargado el carrito de WhatsApp no tiene a quién escribir: tu página usa el del sistema."}
             </p>
           )}
-          {sistema && conProductos && <TarifaEnvioEditor />}
+          {/* La tarifa por km sólo rige con repartidores propios: con un servicio externo el envío lo escribe la caja. */}
+          {sistema && conProductos && !sinReparto && !externo && <TarifaEnvioEditor />}
         </div>
       ) : (
         <p className="border-t border-borde pt-3 text-[13px] text-texto-3">

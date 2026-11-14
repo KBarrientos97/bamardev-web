@@ -5,6 +5,7 @@ import { AvisoOk, Badge, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import { EVENTO_PEDIDOS_WEB } from "../../lib/pedidosWeb/contador";
+import { esExterno, nombreServicio } from "../../lib/pedidosWeb/entrega";
 import type { Bandeja, PedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { useSucursales } from "../../lib/useSucursales";
 import DetallePedidoWeb from "./DetallePedidoWeb";
@@ -37,6 +38,8 @@ export default function PedidosWeb() {
   const [error, setError] = useState("");
   const [vista, setVista] = useState<Vista>("nuevos");
   const [abierto, setAbierto] = useState<PedidoWeb | null>(null);
+  /** Desde qué pestaña se abrió: lo que sigue (cobrar, salió, entregado) sólo tiene sentido en Aceptados y En camino. */
+  const [desde, setDesde] = useState<Vista>("nuevos");
   const [aviso, setAviso] = useState("");
   const [conflicto, setConflicto] = useState("");
 
@@ -98,6 +101,7 @@ export default function PedidosWeb() {
       <DetallePedidoWeb
         fila={abierto}
         ahora={ahora}
+        puedeAvanzar={desde === "aceptados" || desde === "camino"}
         onVolver={() => setAbierto(null)}
         onHecho={(m) => {
           setAbierto(null);
@@ -165,33 +169,58 @@ export default function PedidosWeb() {
         <Lista
           pedidos={nuevos}
           vacio={{ icono: "bolsa", titulo: "No hay pedidos nuevos", texto: "Cuando un cliente pida desde tu página, lo vas a ver acá y te avisamos con un sonido." }}
-          onAbrir={setAbierto}
+          onAbrir={(p) => {
+            setDesde("nuevos");
+            setAbierto(p);
+          }}
           ahora={ahora}
           conEspera
         />
       ) : vista === "aceptados" ? (
         <Lista
           pedidos={aceptados}
-          vacio={{ icono: "check", titulo: "Nada por salir", texto: "Los pedidos que aceptes aparecen acá hasta que el repartidor salga." }}
-          onAbrir={setAbierto}
+          vacio={{ icono: "check", titulo: "Nada por salir", texto: "Los pedidos que aceptes aparecen acá hasta que salgan o los retiren." }}
+          onAbrir={(p) => {
+            setDesde("aceptados");
+            setAbierto(p);
+          }}
           ahora={ahora}
         />
       ) : vista === "camino" ? (
         <Lista
           pedidos={enCamino}
-          vacio={{ icono: "truck", titulo: "Nadie en camino", texto: "Cuando un repartidor toque «Ya salí del local», el pedido pasa acá." }}
-          onAbrir={setAbierto}
+          vacio={{ icono: "truck", titulo: "Nadie en camino", texto: "Cuando un repartidor toque «Ya salí del local» (o marques que salió con un servicio externo), el pedido pasa acá." }}
+          onAbrir={(p) => {
+            setDesde("camino");
+            setAbierto(p);
+          }}
           ahora={ahora}
         />
       ) : (
         <div className="space-y-5">
           <section aria-label="Entregados hoy" className="space-y-2">
             <h2 className="text-[13px] font-bold uppercase tracking-wide text-texto-3">Entregados hoy ({entregados.length})</h2>
-            <Lista pedidos={entregados} vacio={{ icono: "check", titulo: "Todavía no entregaste ninguno hoy" }} onAbrir={setAbierto} ahora={ahora} />
+            <Lista
+              pedidos={entregados}
+              vacio={{ icono: "check", titulo: "Todavía no entregaste ninguno hoy" }}
+              onAbrir={(p) => {
+                setDesde("hoy");
+                setAbierto(p);
+              }}
+              ahora={ahora}
+            />
           </section>
           <section aria-label="No tomados hoy" className="space-y-2">
             <h2 className="text-[13px] font-bold uppercase tracking-wide text-texto-3">No tomados ({noTomados.length})</h2>
-            <Lista pedidos={noTomados} vacio={{ icono: "check", titulo: "Ninguno rechazado, vencido ni cancelado" }} onAbrir={setAbierto} ahora={ahora} />
+            <Lista
+              pedidos={noTomados}
+              vacio={{ icono: "check", titulo: "Ninguno rechazado, vencido ni cancelado" }}
+              onAbrir={(p) => {
+                setDesde("hoy");
+                setAbierto(p);
+              }}
+              ahora={ahora}
+            />
           </section>
         </div>
       )}
@@ -248,6 +277,13 @@ function Lista({
                   <Badge tono={p.tipo === "DELIVERY" ? "azul" : "morado"}>{p.tipo === "DELIVERY" ? "Delivery" : "Recoger"}</Badge>
                   <Badge tono={p.formaPago === "QR" ? "verde" : "gris"}>{p.formaPago === "QR" ? "QR" : "Efectivo"}</Badge>
                   <Badge tono={urgencia}>{haceCuanto(p.creadoEn, ahora())}</Badge>
+                  {/* Con un servicio externo, en Aceptados se ve de un vistazo a cuáles les falta el pago. */}
+                  {p.tipo === "DELIVERY" && esExterno(p.modoEntrega) && (
+                    <>
+                      <Badge tono="azul">{nombreServicio(p.servicio)}</Badge>
+                      {p.estado === "ACEPTADO" && !p.salioEn && <Badge tono={p.pagoConfirmadoEn ? "verde" : "amarillo"}>{p.pagoConfirmadoEn ? "Pagado" : "Falta el pago"}</Badge>}
+                    </>
+                  )}
                   {p.estado !== "NUEVO" && p.estado !== "ACEPTADO" && <Badge tono="rojo">{etiquetaNoTomado(p)}</Badge>}
                 </div>
               </div>

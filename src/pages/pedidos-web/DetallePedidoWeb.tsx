@@ -8,6 +8,7 @@ import { enlaceWhatsApp } from "../../lib/mensajePedido";
 import { urlRuta } from "../../lib/mapa";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import { EVENTO_PEDIDOS_WEB } from "../../lib/pedidosWeb/contador";
+import { errorDeEnlace, esExterno, MAX_ENLACE, nombreServicio } from "../../lib/pedidosWeb/entrega";
 import type { CodigoRechazo, PedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { Telefono } from "../../lib/telefono";
@@ -17,6 +18,8 @@ import { MOTIVOS_RECHAZO, aceptadoPorDe, haceCuanto, totalDe } from "./logica";
 
 // MapLibre (~1 MB) se baja recién cuando se abre un pedido con ubicación.
 const MapaPedido = lazy(() => import("../pagina/MapaSeguimiento"));
+// El cobro de «Cobrar y entregar» es el del historial: se baja sólo cuando se abre.
+const EntregarRecoger = lazy(() => import("../pos/PantallaHistorial").then((m) => ({ default: m.EntregarRecoger })));
 
 type Modo = "ver" | "aceptar" | "rechazar";
 
@@ -36,6 +39,7 @@ const VENCE_A_LOS_MS = 10 * 60_000;
 export default function DetallePedidoWeb({
   fila,
   ahora = Date.now,
+  puedeAvanzar = false,
   onVolver,
   onHecho,
   onConflicto,
@@ -44,6 +48,11 @@ export default function DetallePedidoWeb({
   fila: PedidoWeb;
   /** La hora del servidor (la bandeja corrige el reloj de la PC). */
   ahora?: () => number;
+  /**
+   * Se abrió desde Aceptados o En camino: ahí la caja avanza el pedido (confirmar el
+   * pago, «salió con…», entregar). Desde Hoy o Nuevos esos botones no corresponden.
+   */
+  puedeAvanzar?: boolean;
   onVolver: () => void;
   /** Se aceptó o rechazó: vuelve a la lista con este aviso. */
   onHecho: (mensaje: string) => void;
@@ -52,7 +61,13 @@ export default function DetallePedidoWeb({
 }) {
   const { negocio } = useAuth();
   const detalle = useApi(() => apiPedidosWeb.detalle(fila.id), [fila.id]);
-  const p: PedidoWeb = { ...fila, ...(detalle.datos ?? {}) };
+  /**
+   * Lo que la caja acaba de hacer (pago recibido, salió): se ve al instante, sin
+   * esperar a que el detalle se vuelva a pedir. Va último para no perderse con un detalle viejo.
+   */
+  const [recien, setRecien] = useState<Partial<PedidoWeb>>({});
+  const p: PedidoWeb = { ...fila, ...(detalle.datos ?? {}), ...recien };
+  const [cobrando, setCobrando] = useState(false);
   const [modo, setModo] = useState<Modo>("ver");
   /** «Cambió el precio de X…»: el pedido sigue NUEVO, con los precios de hoy (PW-01). */
   const [precioCambio, setPrecioCambio] = useState("");
@@ -73,6 +88,10 @@ export default function DetallePedidoWeb({
   const vencidoYa = siguiendo && Date.parse(p.venceEn ?? new Date(Date.parse(p.creadoEn) + VENCE_A_LOS_MS).toISOString()) <= ahora();
   const esNuevo = p.estado === "NUEVO" && !vencidoYa;
   const delivery = p.tipo === "DELIVERY";
+  // Delivery por un servicio externo (Yango…): sin repartidor, se paga por QR antes de que salga.
+  const externo = delivery && esExterno(p.modoEntrega);
+  const servicio = nombreServicio(p.servicio);
+  const sigueEnLocal = p.estado === "ACEPTADO" && puedeAvanzar;
 
   const tel = Telefono.paraLlamada(p.telefono);
   const wa = Telefono.paraWhatsApp(p.telefono);
@@ -111,8 +130,10 @@ export default function DetallePedidoWeb({
       {!esNuevo && (
         <div role={vencidoYa ? "alert" : undefined} className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
           {vencidoYa && "Venció: nadie lo respondió a tiempo. Ya no se puede aceptar."}
-          {p.estado === "ACEPTADO" && !p.salioEn && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
-          {p.estado === "ACEPTADO" && p.salioEn && `En camino desde las ${horaDe(p.salioEn)}${p.repartidor ? ` con ${p.repartidor.nombre}` : ""}${aceptadoPorDe(p) ? ` · lo aceptó ${aceptadoPorDe(p)}` : ""}.`}
+          {p.estado === "ACEPTADO" && !p.salioEn && !externo && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""}${p.repartidor ? ` · lo lleva ${p.repartidor.nombre}` : ""}.`}
+          {p.estado === "ACEPTADO" && p.salioEn && !externo && `En camino desde las ${horaDe(p.salioEn)}${p.repartidor ? ` con ${p.repartidor.nombre}` : ""}${aceptadoPorDe(p) ? ` · lo aceptó ${aceptadoPorDe(p)}` : ""}.`}
+          {p.estado === "ACEPTADO" && externo && !p.salioEn && `Aceptado${aceptadoPorDe(p) ? ` por ${aceptadoPorDe(p)}` : ""} · envío por ${servicio}. ${p.pagoConfirmadoEn ? "Pago recibido: falta que salga." : "Falta confirmar el pago."}`}
+          {p.estado === "ACEPTADO" && externo && p.salioEn && `Salió con ${servicio} a las ${horaDe(p.salioEn)}${aceptadoPorDe(p) ? ` · lo aceptó ${aceptadoPorDe(p)}` : ""}.`}
           {p.estado === "RECHAZADO" && `Rechazado${p.motivoRechazo ? `: ${p.motivoRechazo}` : ""}.`}
           {p.estado === "VENCIDO" && "Venció: nadie lo respondió a tiempo."}
           {p.estado === "CANCELADO" && "Lo canceló el cliente."}
@@ -173,8 +194,12 @@ export default function DetallePedidoWeb({
           </div>
           {delivery && (
             <div className="flex justify-between text-texto-2">
-              <dt>{p.envio != null && p.estado !== "NUEVO" ? "Envío" : "Envío sugerido"}{p.distanciaKm != null ? ` (${fmtCantidad(p.distanciaKm, 2)} km)` : ""}</dt>
-              <dd>{fmtMoney(p.estado !== "NUEVO" && p.envio != null ? p.envio : p.envioSugerido)}</dd>
+              <dt>
+                {externo
+                  ? `Envío por ${servicio}`
+                  : `${p.envio != null && p.estado !== "NUEVO" ? "Envío" : "Envío sugerido"}${p.distanciaKm != null ? ` (${fmtCantidad(p.distanciaKm, 2)} km)` : ""}`}
+              </dt>
+              <dd>{externo && p.estado === "NUEVO" ? "Lo escribís al aceptar" : fmtMoney(p.estado !== "NUEVO" && p.envio != null ? p.envio : p.envioSugerido)}</dd>
             </div>
           )}
           <div className="flex justify-between border-t border-borde pt-1.5 text-base font-extrabold text-texto">
@@ -184,6 +209,7 @@ export default function DetallePedidoWeb({
         </dl>
         <p className="mt-2 text-[13px] text-texto-2">
           Paga con <strong>{p.formaPago === "QR" ? "QR" : "efectivo"}</strong>
+          {externo && ", antes de que salga"}
           {p.formaPago === "EFECTIVO" && p.pagaCon != null && (
             <>
               : trae {fmtMoney(p.pagaCon)}, cambio {fmtMoney(Math.max(0, Math.round((p.pagaCon - totalDe(p)) * 100) / 100))}
@@ -199,12 +225,25 @@ export default function DetallePedidoWeb({
             <p className="text-sm font-bold text-texto">{p.direccion}</p>
             {p.referencia && <p className="text-[13px] text-texto-3">{p.referencia}</p>}
           </div>
+          {externo && (
+            <p className="text-[13px] text-texto-2">
+              Lo lleva <strong>{servicio}</strong>: no hay repartidor propio ni moto en vivo.
+              {p.enlaceSeguimiento && (
+                <>
+                  {" "}
+                  <a href={p.enlaceSeguimiento} target="_blank" rel="noreferrer" className="font-semibold text-primary-700 hover:underline">
+                    Abrir el seguimiento en {servicio}
+                  </a>
+                </>
+              )}
+            </p>
+          )}
           {pin ? (
             <>
               <Suspense fallback={<div className="h-56 rounded-2xl bg-muted" />}>
-                <MapaPedido destino={pin} local={null} moto={p.salioEn ? p.posicion : null} color="#047857" etiquetaDestino="El cliente" alto={220} />
+                <MapaPedido destino={pin} local={null} moto={p.salioEn && !externo ? p.posicion : null} color="#047857" etiquetaDestino="El cliente" alto={220} />
               </Suspense>
-              {p.salioEn && (
+              {p.salioEn && !externo && (
                 <p className="text-xs text-texto-3">
                   {p.posicion ? `La última posición del repartidor es de ${haceCuanto(p.posicion.en, ahora())}.` : "Todavía no hay posición reciente del repartidor."}
                 </p>
@@ -243,6 +282,51 @@ export default function DetallePedidoWeb({
       )}
       {modo === "rechazar" && esNuevo && (
         <FormRechazar pedido={p} onCancelar={() => setModo("ver")} onHecho={onHecho} onConflicto={onConflicto} />
+      )}
+
+      {sigueEnLocal && externo && (
+        <AvanceExterno
+          pedido={p}
+          servicio={servicio}
+          onCambio={(parte) => {
+            setRecien((r) => ({ ...r, ...parte }));
+            avisarCambio();
+            detalle.recargar();
+          }}
+          onEntregado={() => {
+            avisarCambio();
+            onHecho(`Marcaste el pedido N° ${String(p.numero).padStart(2, "0")} como entregado.`);
+          }}
+        />
+      )}
+
+      {sigueEnLocal && p.tipo === "RECOGER" && (
+        // Mismo lugar y mismo estilo que «Aceptar»: una acción principal abajo (QA R1, N13).
+        <div className="sticky bottom-0 -mx-5 mt-auto flex gap-2 border-t border-borde bg-white/95 px-5 pb-3 pt-3 backdrop-blur">
+          <Boton className="min-h-12 flex-1" icono="check" onClick={() => setCobrando(true)}>
+            {p.prepagado ? "Entregar" : "Cobrar y entregar"}
+          </Boton>
+        </div>
+      )}
+      {cobrando && (
+        <Suspense fallback={null}>
+          <EntregarRecoger
+            pedido={{
+              id: p.ventaId ?? p.id,
+              clienteNombre: p.nombre,
+              total: totalDe(p),
+              prepagado: p.prepagado === true,
+              pedidoWeb: { formaPago: p.formaPago, pagaCon: p.pagaCon },
+            }}
+            entregar={(pagos) => apiPedidosWeb.entregarRecoger(p.id, pagos)}
+            onClose={() => setCobrando(false)}
+            onEntregado={() => {
+              setCobrando(false);
+              avisarCambio();
+              onHecho(`Entregaste el pedido N° ${String(p.numero).padStart(2, "0")}.`);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* La barra fija: una acción principal. Con el formulario abierto, sus botones van en él. */}
@@ -302,10 +386,13 @@ function FormAceptar({
   onPrecioCambio: (m: string) => void;
 }) {
   const delivery = pedido.tipo === "DELIVERY";
+  // Con un servicio externo no hay repartidor ni sugerencia: la caja escribe el envío que cotizó el servicio.
+  const externo = delivery && esExterno(pedido.modoEntrega);
+  const servicio = nombreServicio(pedido.servicio);
   const caja = useVerseAlAbrir();
-  const repartidores = useApi(() => (delivery ? api.getRepartidores() : Promise.resolve([])), [delivery]);
+  const repartidores = useApi(() => (delivery && !externo ? api.getRepartidores() : Promise.resolve([])), [delivery, externo]);
   const [repartidorId, setRepartidorId] = useState("");
-  const [envio, setEnvio] = useState(montoParaEditar(pedido.envioSugerido));
+  const [envio, setEnvio] = useState(externo ? "" : montoParaEditar(pedido.envioSugerido));
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -328,7 +415,7 @@ function FormAceptar({
   }
 
   const tarifa = delivery ? leerMonto(envio) : 0;
-  const cambio = delivery && tarifa != null && Math.abs(tarifa - pedido.envioSugerido) > 0.004;
+  const cambio = delivery && !externo && tarifa != null && Math.abs(tarifa - pedido.envioSugerido) > 0.004;
   // Sólo los de la sucursal del pedido (o de toda la organización): uno de otro local no
   // puede ni salir ni entregarlo —el cerco de sucursal le dice que no— y el pedido quedaba
   // aceptado sin nadie que lo lleve. Un backend viejo no manda `sucursalId`: sirven todos.
@@ -343,7 +430,7 @@ function FormAceptar({
   }, [lista, repartidorId]);
 
   let falta = "";
-  if (delivery && !repartidorId) falta = "Elegí quién lo lleva.";
+  if (delivery && !externo && !repartidorId) falta = "Elegí quién lo lleva.";
   else if (tarifa == null || tarifa < 0) falta = "Escribí el envío.";
   else if (cambio && motivo.trim().length < 3) falta = "Contá en pocas palabras por qué cambiás el envío.";
 
@@ -353,7 +440,7 @@ function FormAceptar({
     setEnviando(true);
     try {
       await apiPedidosWeb.aceptar(pedido.id, {
-        ...(delivery ? { repartidorId: Number(repartidorId) } : {}),
+        ...(delivery && !externo ? { repartidorId: Number(repartidorId) } : {}),
         tarifaEnvio: tarifa,
         ...(cambio ? { motivoTarifa: motivo.trim() } : {}),
       });
@@ -374,7 +461,18 @@ function FormAceptar({
   return (
     <section ref={caja} className="card space-y-3 p-4" aria-label="Aceptar el pedido">
       <h2 className="text-sm font-bold text-texto">Aceptar el pedido</h2>
-      {delivery && (
+      {externo && (
+        <>
+          <p className="text-[13px] text-texto-2">
+            Lo lleva <strong>{servicio}</strong>: no hace falta elegir repartidor. El cliente paga los productos y el envío por QR antes de que salga.
+          </p>
+          <label className="block">
+            <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Envío con {servicio} (lo que te cotizó, en Bs)</span>
+            <InputMonto aria-label="Envío" value={envio} onChange={setEnvio} placeholder="0,00" className="w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm" />
+          </label>
+        </>
+      )}
+      {delivery && !externo && (
         <>
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">¿Quién lo lleva?</span>
@@ -423,6 +521,120 @@ function FormAceptar({
           {enviando ? "Aceptando…" : falta ? falta : "Aceptar pedido"}
         </Boton>
       </div>
+    </section>
+  );
+}
+
+/**
+ * Lo que la caja hace con un pedido por servicio externo (Yango…) ya aceptado
+ * (PLAN-DELIVERY-EXTERNO §2.4 y §2.8), en orden y un paso por vez:
+ *
+ * 1. «Pago recibido»: el cliente pagó el QR (productos + envío). Antes no sale nada.
+ * 2. «Salió con {servicio}», con el enlace de seguimiento si lo tiene (opcional).
+ * 3. «Entregado».
+ *
+ * Los errores del backend (como «Primero confirmá el pago») se muestran acá, sin
+ * sacar a la caja del pedido: son del paso, no del pedido.
+ */
+function AvanceExterno({
+  pedido,
+  servicio,
+  onCambio,
+  onEntregado,
+}: {
+  pedido: PedidoWeb;
+  servicio: string;
+  /** Un paso se hizo: lo que cambió, para verlo al instante. */
+  onCambio: (parte: Partial<PedidoWeb>) => void;
+  onEntregado: () => void;
+}) {
+  const pagado = !!pedido.pagoConfirmadoEn;
+  const salio = !!pedido.salioEn;
+  const [enlace, setEnlace] = useState(pedido.enlaceSeguimiento ?? "");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const errorEnlace = errorDeEnlace(enlace);
+  const enlaceLimpio = enlace.trim();
+  const enlaceCambio = enlaceLimpio !== (pedido.enlaceSeguimiento ?? "");
+
+  async function correr(accion: () => Promise<unknown>, alTerminar: () => void) {
+    if (enviando) return;
+    setError("");
+    setEnviando(true);
+    try {
+      await accion();
+      alTerminar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo completar. Probá de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const ahora = () => new Date().toISOString();
+
+  return (
+    <section className="card space-y-3 p-4" aria-label="Envío con servicio externo">
+      <h2 className="text-sm font-bold text-texto">{!pagado ? "Esperando el pago" : !salio ? "Listo para salir" : `Va con ${servicio}`}</h2>
+      {!pagado && (
+        <p className="text-[13px] text-texto-2">
+          Cuando veas en tu banco el pago por QR de <strong>{fmtMoney(totalDe(pedido))}</strong> (productos y envío), confirmalo: hasta entonces no sale el pedido.
+        </p>
+      )}
+      {pagado && (
+        <label className="block">
+          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Enlace de seguimiento de {servicio} (opcional)</span>
+          <Input aria-label="Enlace de seguimiento" value={enlace} maxLength={MAX_ENLACE} placeholder="https://…" inputMode="url" onChange={(e) => setEnlace(e.target.value)} />
+          {errorEnlace ? (
+            <span className="mt-1 block text-xs text-danger-text">{errorEnlace}</span>
+          ) : (
+            <span className="mt-1 block text-xs text-texto-3">El cliente lo ve en su seguimiento para ir viendo dónde está el envío.</span>
+          )}
+        </label>
+      )}
+      <ErrorMsg>{error}</ErrorMsg>
+      {!pagado && (
+        <Boton
+          className="min-h-12 w-full"
+          icono="check"
+          disabled={enviando}
+          onClick={() => correr(() => apiPedidosWeb.pagoRecibido(pedido.id), () => onCambio({ pagoConfirmadoEn: ahora() }))}
+        >
+          {enviando ? "Confirmando…" : "Pago recibido"}
+        </Boton>
+      )}
+      {pagado && !salio && (
+        <Boton
+          className="min-h-12 w-full"
+          icono="truck"
+          disabled={enviando || !!errorEnlace}
+          onClick={() =>
+            correr(
+              () => apiPedidosWeb.salio(pedido.id, enlaceLimpio || undefined),
+              () => onCambio({ salioEn: ahora(), enlaceSeguimiento: enlaceLimpio || null }),
+            )
+          }
+        >
+          {enviando ? "Guardando…" : `Salió con ${servicio}`}
+        </Boton>
+      )}
+      {salio && (
+        <div className="flex flex-col gap-2">
+          {enlaceCambio && enlaceLimpio && (
+            <Boton
+              variante="ghost"
+              className="min-h-11 w-full"
+              disabled={enviando || !!errorEnlace}
+              onClick={() => correr(() => apiPedidosWeb.salio(pedido.id, enlaceLimpio), () => onCambio({ enlaceSeguimiento: enlaceLimpio }))}
+            >
+              Guardar el enlace
+            </Boton>
+          )}
+          <Boton className="min-h-12 w-full" icono="check" disabled={enviando} onClick={() => correr(() => apiPedidosWeb.entregado(pedido.id), onEntregado)}>
+            {enviando ? "Guardando…" : "Entregado"}
+          </Boton>
+        </div>
+      )}
     </section>
   );
 }
