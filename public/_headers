@@ -21,6 +21,16 @@
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
 
+# El seguimiento de un pedido, /p/<sub>/pedido/<token> (pedidos web, PW-14),
+# lleva el token secreto del pedido en la URL, como la gestión de la reserva:
+# que no se indexe y que ningún clic hacia afuera viaje con el token. Se suma a
+# lo de /p/* (la regla de abajo se aplica además de la de arriba): sólo lo que
+# cambia, y el Referrer-Policy se despega para ponerle el suyo.
+/p/:sub/pedido/*
+  X-Robots-Tag: noindex, nofollow
+  ! Referrer-Policy
+  Referrer-Policy: no-referrer
+
 # La TV del salón del billar: /tv/billar/<llave> lleva en la URL la llave que
 # abre la pantalla. Que no se indexe ni viaje como referer. Sí se puede
 # enmarcar: no tiene nada que robar con un clic (sólo "Pantalla completa"), y

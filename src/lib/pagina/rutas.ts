@@ -33,6 +33,13 @@ export const urlPrivacidadDe = (subdominio: string) => `${urlPaginaDe(subdominio
 /** La tienda del sitio (09-nov): el catálogo entero, con buscador y categorías. */
 export const urlTiendaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/tienda`;
 
+/**
+ * El seguimiento de un pedido hecho desde la página (pedidos web, 13-nov): el
+ * token largo del enlace es lo único que lo abre, sin cuenta.
+ */
+export const urlPedidoDe = (subdominio: string, token: string) =>
+  `${urlPaginaDe(subdominio)}/pedido/${encodeURIComponent(token)}`;
+
 /** El formulario de preinscripción a un grupo (P2, academias). */
 export const urlInscribirmeDe = (subdominio: string, grupoId: number) =>
   `${urlPaginaDe(subdominio)}/inscribirme/${grupoId}`;
@@ -53,7 +60,8 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // el enlace que la recepción manda por WhatsApp.
   // `/p/<negocio>/mi-cuenta`: «Pagar mi inscripción» con el carnet (M5).
   // `/p/<negocio>/tienda`: el catálogo entero del sitio (09-nov).
-  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/tienda|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
+  // `/p/<negocio>/pedido/<token>`: el seguimiento de un pedido web (13-nov).
+  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/tienda|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
 }
 
 /**

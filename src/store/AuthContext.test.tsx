@@ -185,6 +185,54 @@ describe("refresco del perfil con el estado de la licencia", () => {
   });
 });
 
+describe("pedidos web: negocio.pedidosWeb sigue al estado de la licencia", () => {
+  function SondaPedidos() {
+    const { puede, negocio } = useAuth();
+    return (
+      <p>
+        guardado:{String(negocio?.pedidosWeb ?? "-")} entrada:{String(puede("pedidos_web"))}
+      </p>
+    );
+  }
+  const CON_DELIVERY: SesionNegocio = { ...BARBERIA, features: ["pos", "delivery"] };
+  const CAJERO: SesionUsuario = { ...ADMIN, permisos: ["ventas.vender", "delivery.asignar"] };
+  const montarPedidos = async () => {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaPedidos />
+        </AuthProvider>,
+      );
+    });
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(USER_KEY, JSON.stringify(CAJERO));
+  });
+
+  it("un negocio con delivery que no prendió los pedidos no ve la entrada (Omar)", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(CON_DELIVERY));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, features: ["pos", "delivery"], pedidosWeb: false });
+    await montarPedidos();
+    expect(screen.getByText("guardado:false entrada:false")).toBeInTheDocument();
+  });
+
+  it("cuando el dueño los prende, la entrada aparece en el próximo chequeo, sin volver a entrar", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...CON_DELIVERY, pedidosWeb: false }));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, features: ["pos", "delivery"], pedidosWeb: true });
+    await montarPedidos();
+    expect(screen.getByText("guardado:true entrada:true")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").pedidosWeb).toBe(true);
+  });
+
+  it("un backend viejo que no manda el campo deja lo que había (sin él, nunca se ve)", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...CON_DELIVERY, pedidosWeb: true }));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, features: ["pos", "delivery"] });
+    await montarPedidos();
+    expect(screen.getByText("guardado:true entrada:true")).toBeInTheDocument();
+  });
+});
+
 describe("cupo del Plan Emprendedor (§5.2)", () => {
   function SondaCupo() {
     const { cupo, refrescarCupo, login, logout } = useAuth();

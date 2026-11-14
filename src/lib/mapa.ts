@@ -15,6 +15,23 @@ export interface Ubicacion {
 export const ORIGEN_MOSAICOS = "https://tiles.openfreemap.org";
 
 /** Donde arranca el mapa si la sucursal todavía no tiene ubicación. */
+/**
+ * Los textos de MapLibre en español (`locale` del mapa). Sin esto, el mapa con
+ * gestos cooperativos decía «Use two fingers to move the map» en inglés encima
+ * de una página en español (QA R2, M7), y los botones de zoom tenían el título
+ * en inglés.
+ */
+export const TEXTOS_MAPA: Record<string, string> = {
+  "CooperativeGesturesHandler.WindowsHelpText": "Usá Ctrl + rueda del mouse para acercar el mapa",
+  "CooperativeGesturesHandler.MacHelpText": "Usá ⌘ + rueda del mouse para acercar el mapa",
+  "CooperativeGesturesHandler.MobileHelpText": "Usá dos dedos para mover el mapa",
+  "NavigationControl.ZoomIn": "Acercar",
+  "NavigationControl.ZoomOut": "Alejar",
+  "NavigationControl.ResetBearing": "Orientar al norte",
+  "AttributionControl.ToggleAttribution": "Ver créditos del mapa",
+  "AttributionControl.MapFeedback": "Opinar sobre el mapa",
+};
+
 export const SANTA_CRUZ: Ubicacion = { lat: -17.7834, lng: -63.1821 };
 
 type MapLibre = typeof import("maplibre-gl");
@@ -44,6 +61,22 @@ export function cargarMaplibre(): Promise<MapLibre> {
     });
   }
   return carga;
+}
+
+/**
+ * Deja la atribución («OpenFreeMap © OpenMapTiles…») plegada detrás del botón
+ * «i». MapLibre la abre sola en los mapas chicos y en el celular tapa un tercio
+ * del mapa y los pines de abajo; sigue a un toque, así que no se esconde. Va al
+ * crear el control y otra vez al cargar, porque MapLibre la reabre al medirse.
+ */
+export function plegarAtribucion(m: { getContainer(): HTMLElement; once(ev: "load", fn: () => void): unknown }) {
+  const plegar = () => {
+    const el = m.getContainer().querySelector(".maplibregl-ctrl-attrib");
+    el?.classList.remove("maplibregl-compact-show");
+    el?.removeAttribute("open");
+  };
+  plegar();
+  m.once("load", plegar);
 }
 
 /**

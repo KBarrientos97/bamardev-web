@@ -48,6 +48,7 @@ import LibroControlados from "./pages/farmacia/LibroControlados";
 import Proveedores from "./pages/farmacia/Proveedores";
 import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
+import PedidosWeb from "./pages/pedidos-web/PedidosWeb";
 import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
@@ -225,8 +226,17 @@ function SinAcceso() {
  * que mostrar un error después de cargar.
  */
 function Protegida({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
-  const { puede } = useAuth();
-  if (!puede(seccion)) return <Inicio />;
+  const { puede, estadoListo } = useAuth();
+  if (!puede(seccion)) {
+    // «Pedidos web» depende de un dato que una sesión vieja trae desactualizado
+    // (`negocio.pedidosWeb`): se espera el primer estado de la licencia antes de
+    // rebotar a quien abrió el enlace directo. `=== false`: sin el campo
+    // (un contexto de prueba) no se espera.
+    if (seccion === "pedidos_web" && estadoListo === false) {
+      return <div className="min-h-dvh bg-fondo" role="status" aria-busy="true" aria-label="Cargando" />;
+    }
+    return <Inicio />;
+  }
   return <>{children}</>;
 }
 
@@ -538,6 +548,16 @@ function Rutas() {
           element={
             <Protegida seccion="reparto">
               <Repartidor />
+            </Protegida>
+          }
+        />
+
+        {/* La bandeja de lo que los clientes piden desde la página (13-nov). */}
+        <Route
+          path="/pedidos-web"
+          element={
+            <Protegida seccion="pedidos_web">
+              <PedidosWeb />
             </Protegida>
           }
         />

@@ -11,6 +11,8 @@ const InscribirmePagina = lazy(() => import("./InscribirmePagina"));
 const PagarPagina = lazy(() => import("./PagarPagina"));
 // Academias (M5): «Pagar mi inscripción» con el carnet.
 const MiCuentaPagina = lazy(() => import("./MiCuentaPagina"));
+// Pedidos web (13-nov): el seguimiento del pedido que se hizo desde la página.
+const SeguimientoPedido = lazy(() => import("./SeguimientoPedido"));
 
 /**
  * `/p/<subdominio>` es la página PÚBLICA del negocio: la abre cualquiera, con
@@ -33,6 +35,7 @@ export default function RutasPaginaPublica() {
         <Route path="/p/:subdominio/pagar/:token" element={<PagarPagina />} />
         <Route path="/p/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />
         <Route path="/p/:subdominio/tienda" element={<PaginaPublica tienda />} />
+        <Route path="/p/:subdominio/pedido/:token" element={<SeguimientoPedido />} />
       </Routes>
     </Suspense>
   );

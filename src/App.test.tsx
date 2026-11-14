@@ -24,6 +24,9 @@ vi.mock("./components/Layout", async () => {
 vi.mock("./pages/inventario/Dashboard", () => ({
   default: () => <p>Inicio del administrador</p>,
 }));
+vi.mock("./pages/pedidos-web/PedidosWeb", () => ({
+  default: () => <p>Bandeja de pedidos web</p>,
+}));
 vi.mock("./pages/salon/PanelMesero", async () => {
   const { useAuth } = await import("./store/AuthContext");
   return {
@@ -118,6 +121,65 @@ describe("cerrar sesión y que entre otro", () => {
     await entrarComo(ADMIN);
     expect(screen.getByRole("button", { name: "Cerrar sesión del panel" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/salon");
+  });
+});
+
+describe("abrir «Pedidos web» directo con una sesión vieja", () => {
+  // La sesión se guardó antes de que el dueño prendiera los pedidos: `pedidosWeb` viejo (false).
+  const VIEJA: SesionNegocio = { ...RESTAURANTE, features: ["pos", "delivery"], pedidosWeb: false };
+  const estado = (pedidosWeb: boolean) =>
+    ({
+      vencimiento: null,
+      diasGracia: 5,
+      urlPago: "",
+      situacion: "ACTIVA",
+      vigente: true,
+      diasRestantes: 20,
+      diasParaBloqueo: null,
+      mensaje: "",
+      features: ["pos", "delivery"],
+      pedidosWeb,
+    }) as never;
+
+  function sesionVieja() {
+    tokenStore.set("token-admin");
+    localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(VIEJA));
+  }
+
+  it("espera el estado fresco de la licencia antes de decidir, y después entra a la bandeja", async () => {
+    sesionVieja();
+    let responder: (e: never) => void = () => {};
+    vi.mocked(api.licencia).mockImplementationOnce(() => new Promise((r) => (responder = r as never)));
+    await abrir("/pedidos-web");
+    // Todavía no llegó nada: cargando, sin rebotar a otra pantalla.
+    expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
+    expect(screen.queryByText("Inicio del administrador")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/pedidos-web");
+    // El dueño ya había prendido los pedidos: la licencia lo dice y la bandeja abre.
+    await act(async () => responder(estado(true)));
+    expect(screen.getByText("Bandeja de pedidos web")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/pedidos-web");
+  });
+
+  it("si el estado confirma que no recibe pedidos, ahí sí va a su inicio", async () => {
+    sesionVieja();
+    let responder: (e: never) => void = () => {};
+    vi.mocked(api.licencia).mockImplementationOnce(() => new Promise((r) => (responder = r as never)));
+    await abrir("/pedidos-web");
+    expect(screen.getByRole("status", { name: "Cargando" })).toBeInTheDocument();
+    await act(async () => responder(estado(false)));
+    expect(screen.queryByText("Bandeja de pedidos web")).not.toBeInTheDocument();
+    expect(window.location.pathname).not.toBe("/pedidos-web");
+  });
+
+  it("si la licencia no responde (sin red), no se queda esperando para siempre", async () => {
+    sesionVieja();
+    vi.mocked(api.licencia).mockImplementationOnce(() => Promise.reject(new Error("sin red")));
+    await abrir("/pedidos-web");
+    await act(async () => {});
+    expect(screen.queryByRole("status", { name: "Cargando" })).not.toBeInTheDocument();
+    expect(window.location.pathname).not.toBe("/pedidos-web");
   });
 });
 

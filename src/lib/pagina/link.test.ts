@@ -46,6 +46,13 @@ describe("dirección corta → la de siempre", () => {
     expect(rutaLargaDeLink("/saborcriollo/tienda")).toBe("/p/saborcriollo/tienda");
     expect(rutaLargaDeLink("/saborcriollo/tienda/x")).toBeNull();
     expect(rutaLargaDeLink("/horizonte/mi-cuenta/x")).toBeNull();
+    // El seguimiento de un pedido web (13-nov): con su token, sin más tramos.
+    expect(rutaLargaDeLink("/elganadero/pedido/Ab3_x-9QkLm2Ab3_x-9QkLm2Ab3_x-9QkLm2")).toBe(
+      "/p/elganadero/pedido/Ab3_x-9QkLm2Ab3_x-9QkLm2Ab3_x-9QkLm2",
+    );
+    expect(rutaLargaDeLink("/elganadero/pedido")).toBeNull();
+    expect(rutaLargaDeLink("/elganadero/pedido/abc/x")).toBeNull();
+    expect(rutaCortaDeVieja("/p/elganadero/pedido/Ab3_x-9QkLm2")).toBe("/elganadero/pedido/Ab3_x-9QkLm2");
   });
 
   it("lo demás no es la página de nadie", () => {

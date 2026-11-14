@@ -24,12 +24,14 @@ const sesion = vi.hoisted(() => ({
   sinCapacidades: [] as string[],
   /** ¿Ve las cuentas por cobrar? */
   creditos: false,
+  /** Cuántos locales activos tiene el negocio (la sesión lo trae del login). */
+  sucursalesActivas: undefined as number | undefined,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
-    negocio: { features: sesion.features },
+    negocio: { features: sesion.features, sucursalesActivas: sesion.sucursalesActivas },
     usuario: { rol: "ADMIN", permisos: sesion.permisos },
     puede: (s: string) => (s === "creditos" ? sesion.creditos : false),
     incluye: (c: string) => !sesion.sinCapacidades.includes(c),
@@ -112,6 +114,7 @@ beforeEach(() => {
   sesion.permisos = ["ventas.anular", "autorizar.pin"];
   sesion.sinCapacidades = [];
   sesion.creditos = false;
+  sesion.sucursalesActivas = undefined;
   vi.mocked(api.getVentas).mockResolvedValue([venta]);
   vi.mocked(api.getVenta).mockResolvedValue(venta);
   vi.mocked(api.getPedidosPendientes).mockResolvedValue([]);
@@ -856,5 +859,78 @@ describe("BUG-admin-7: «Anular» depende del permiso, no de la feature autoriza
     sesion.permisos = ["autorizar.pin"];
     await abrirDetalle();
     expect(screen.queryByRole("button", { name: "Anular venta" })).not.toBeInTheDocument();
+  });
+});
+
+describe("QA R1 N17: «Efectivo recibido» de un recoger de la página arranca con lo que dijo el cliente", () => {
+  const recojoWeb = {
+    ...venta,
+    id: 19,
+    comprobante: "T-0019",
+    tipoPedido: "RECOGER",
+    estadoEntrega: "PENDIENTE",
+    prepagado: false,
+    clienteNombre: "Beto",
+    total: 35,
+    pedidoWeb: { id: 3, numero: 42, latitud: null, longitud: null, referencia: null, formaPago: "EFECTIVO", pagaCon: 50, salioEn: null },
+  } as Venta;
+
+  async function abrir(v: Venta) {
+    sesion.features = ["pos", "caja", "recoger", "pago_qr_mixto"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([v]);
+    montarHistorial();
+    fireEvent.click(await screen.findByRole("button", { name: "Cobrar y entregar" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cobrar y entregar" });
+    await act(async () => {});
+    return dialogo;
+  }
+
+  it("con «paga con Bs 50» y un total de Bs 35, ya viene Bs 50 y el cambio calculado", async () => {
+    const dialogo = await abrir(recojoWeb);
+    expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("50,00");
+    expect(within(dialogo).getByText(/Cambio: Bs 15,00/)).toBeInTheDocument();
+  });
+
+  it("sin «paga con», o un recoger que no vino de la página, arranca vacío como siempre", async () => {
+    const dialogo = await abrir({ ...recojoWeb, pedidoWeb: { ...recojoWeb.pedidoWeb!, pagaCon: null } } as Venta);
+    expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("");
+  });
+
+  it("un recoger de la caja (sin pedido de la página) no cambia", async () => {
+    const dialogo = await abrir({ ...recojoWeb, pedidoWeb: null } as Venta);
+    expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("");
+  });
+});
+
+describe("M6 (QA R2): los pendientes dicen de qué local son cuando hay varios", () => {
+  const deBrisas = {
+    ...venta,
+    id: 21,
+    comprobante: "T-0021",
+    tipoPedido: "RECOGER",
+    estadoEntrega: "PENDIENTE",
+    prepagado: false,
+    clienteNombre: "Ana",
+    total: 100,
+    almacen: { id: 3, nombre: "Las Brisas" },
+  } as unknown as Venta;
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja", "recoger", "multi_almacen"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([deBrisas]);
+  });
+
+  it("con dos locales, el pendiente trae el nombre del suyo", async () => {
+    sesion.sucursalesActivas = 2;
+    montarHistorial();
+    await screen.findByRole("button", { name: "Cobrar y entregar" });
+    expect(screen.getByText("Las Brisas")).toBeInTheDocument();
+  });
+
+  it("con un solo local no se agrega nada (el negocio de una sede no cambia)", async () => {
+    sesion.sucursalesActivas = 1;
+    montarHistorial();
+    await screen.findByRole("button", { name: "Cobrar y entregar" });
+    expect(screen.queryByText("Las Brisas")).not.toBeInTheDocument();
   });
 });

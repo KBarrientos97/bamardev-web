@@ -19,6 +19,7 @@ import { api, type PagoEntrega } from "../../lib/api";
 import { atajosDeEfectivo } from "../../lib/billetes";
 import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
+import { recibidoSugerido } from "../../lib/pedidosWeb/cobro";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { abiertaDesde } from "./turnoDeCaja";
 import { Telefono } from "../../lib/telefono";
@@ -50,6 +51,7 @@ export default function PantallaHistorial({
   onVerComprobante: (venta: Venta) => void;
 }) {
   const { puede, negocio } = useAuth();
+  const hayVariasSucursales = useHayVariasSucursales();
   // Con copia en la app del iPhone (Android: `historial_ventas_{caja}`): sin
   // señal se ve lo que ya había subido, más lo cobrado sin internet.
   const ventas = useApi(() => conCopia(`historial:${caja.id}`, () => api.getVentas(caja.id)), [caja.id]);
@@ -201,6 +203,12 @@ export default function PantallaHistorial({
                       <p className="truncate text-[13px] font-bold text-texto">
                         {p.clienteNombre ?? "Sin nombre"}
                       </p>
+                      {/* Con varios locales, de cuál es: quien administra ve los pendientes de
+                          todos, y «Cobrar y entregar» no decía de qué sede (QA R2, M6). El cobro
+                          entra a la caja de ese local, no a la de acá. */}
+                      {hayVariasSucursales && p.almacen?.nombre && (
+                        <p className="truncate text-[11px] font-semibold text-texto-2">{p.almacen.nombre}</p>
+                      )}
                       <p className="truncate text-xs text-texto-3">
                         {p.tipoPedido === "DELIVERY" ? p.clienteDireccion : "Pasa a recoger"}
                         {p.repartidor ? ` · ${p.repartidor.nombre}` : ""}
@@ -589,7 +597,17 @@ function DetalleVenta({
                           ? `https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`
                           : enlaceWhatsApp(
                               Telefono.paraWhatsApp(v.clienteTelefono),
-                              mensajePedido(pedidoDeVenta(v, hayVariasSucursales ? v.almacen?.nombre : null, rotuloSede), negocio?.nombre),
+                              mensajePedido(
+                                pedidoDeVenta(
+                                  // `GET /ventas/:id` no trae `pedidoWeb`: se conserva el de la lista (QA R2, M1).
+                                  { ...v, pedidoWeb: v.pedidoWeb ?? venta.pedidoWeb },
+                                  hayVariasSucursales ? v.almacen?.nombre : null,
+                                  rotuloSede,
+                                ),
+                                negocio?.nombre,
+                                negocio,
+                                "CAJA",
+                              ),
                             )
                       }
                       target="_blank"
@@ -730,7 +748,11 @@ function EntregarRecoger({
   const { incluye } = useAuth();
   const formasPago = useApi(() => api.getFormasPago(), []);
   const [metodo, setMetodo] = useState<"EFECTIVO" | "QR" | "MIXTO">("EFECTIVO");
-  const [recibido, setRecibido] = useState("");
+  // Un pedido de la página en efectivo que dijo con cuánto paga: «Efectivo recibido» arranca ahí (QA R1, N17).
+  const [recibido, setRecibido] = useState(() => {
+    const dicho = pedido.pedidoWeb?.formaPago === "EFECTIVO" ? recibidoSugerido(pedido.pedidoWeb.pagaCon, pedido.total) : null;
+    return dicho != null ? montoParaEditar(dicho) : "";
+  });
   const [montoQr, setMontoQr] = useState("");
   const [qrConfirmado, setQrConfirmado] = useState(false);
   const [error, setError] = useState("");

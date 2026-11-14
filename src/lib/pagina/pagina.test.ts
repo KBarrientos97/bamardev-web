@@ -277,6 +277,9 @@ describe("rutas y permisos", () => {
     expect(esRutaDePaginaPublica("/p/horizonte/pagar/K7Q2abcdef")).toBe(true);
     expect(esRutaDePaginaPublica("/p/horizonte/mi-cuenta")).toBe(true);
     expect(esRutaDePaginaPublica("/p/horizonte/mi-cuenta/x")).toBe(false);
+    // El seguimiento de un pedido web (13-nov): con su token.
+    expect(esRutaDePaginaPublica("/p/elganadero/pedido/Ab3_x-9QkLm2")).toBe(true);
+    expect(esRutaDePaginaPublica("/p/elganadero/pedido")).toBe(false);
     expect(esRutaDePaginaPublica("/p/")).toBe(false);
     expect(esRutaDePaginaPublica("/pos")).toBe(false);
     expect(esRutaDePaginaPublica("/p/bv/otra")).toBe(false);

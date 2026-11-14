@@ -61,6 +61,19 @@ describe("WhatsApp por sucursal", () => {
     ]);
   });
 
+  // R2-13: los mismos casos que `src/pagina/whatsapp-criterio.spec.ts` del backend.
+  // El backend nunca manda un `whatsappUrl` para un número vacío o en blanco (manda
+  // null), y «hay WhatsApp» es lo mismo que «contactosWhatsapp no está vacío».
+  it("sin ningún número (sucursales con null y sin general) no hay contactos", () => {
+    expect(contactosWhatsapp(pagina(null, [sucursal("Norte", null), sucursal("Sur", null)]))).toEqual([]);
+  });
+
+  it("con un número en una sola sucursal ya hay contacto, aunque no haya general", () => {
+    expect(contactosWhatsapp(pagina(null, [sucursal("Norte", null), sucursal("Sur", "https://wa.me/59171112222")]))).toEqual([
+      { etiqueta: "Sur", url: "https://wa.me/59171112222" },
+    ]);
+  });
+
   it("sin general, sólo las sucursales", () => {
     const p = pagina(null, [sucursal("Norte", "https://wa.me/59170000002"), sucursal("Sur", "https://wa.me/59170000003")]);
     expect(contactosWhatsapp(p).map((c) => c.etiqueta)).toEqual(["Norte", "Sur"]);

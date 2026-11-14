@@ -1,0 +1,50 @@
+import type { EstadoSeguimiento, Seguimiento } from "./tipos";
+
+/** Los estados terminales del seguimiento: dejan de refrescarse. */
+export const ESTADOS_FINALES: EstadoSeguimiento[] = ["ENTREGADO", "RECHAZADO", "VENCIDO", "CANCELADO"];
+
+export const esFinal = (e: EstadoSeguimiento) => ESTADOS_FINALES.includes(e);
+
+/** Los pasos de la línea de tiempo, según el tipo de pedido (en RECOGER no hay «En camino»). */
+export function pasosDe(tipo: Seguimiento["tipo"]): { estado: EstadoSeguimiento; titulo: string }[] {
+  return tipo === "DELIVERY"
+    ? [
+        { estado: "RECIBIDO", titulo: "Recibido" },
+        { estado: "ACEPTADO", titulo: "Aceptado" },
+        { estado: "EN_CAMINO", titulo: "En camino" },
+        { estado: "ENTREGADO", titulo: "Entregado" },
+      ]
+    : [
+        { estado: "RECIBIDO", titulo: "Recibido" },
+        // No hay un estado «listo»: el paso se llama como lo que sabemos (aceptado) y la frase dice qué hacer (QA R1, N16).
+        { estado: "ACEPTADO", titulo: "Aceptado" },
+        { estado: "ENTREGADO", titulo: "Entregado" },
+      ];
+}
+
+/** Cuántos pasos lleva hecho (el índice del actual): para pintar la línea. */
+export function pasoActual(s: Pick<Seguimiento, "tipo" | "estado">): number {
+  const i = pasosDe(s.tipo).findIndex((p) => p.estado === s.estado);
+  return i < 0 ? 0 : i;
+}
+
+/** Una frase para el estado, la primera que lee el cliente. */
+export function fraseDe(s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "canceladoPor">>): string {
+  switch (s.estado) {
+    case "RECIBIDO":
+      return "Recibimos tu pedido. Esperá un momento: el local lo está revisando.";
+    case "ACEPTADO":
+      return s.tipo === "DELIVERY" ? "¡Aceptado! Lo estamos preparando." : "¡Aceptado! Lo estamos preparando: pasá a retirarlo en un rato.";
+    case "EN_CAMINO":
+      return "Tu pedido va en camino.";
+    case "ENTREGADO":
+      return "Entregado. ¡Que lo disfrutes!";
+    // Rechazado, vencido y cancelado dicen lo mismo acá: la tarjeta de abajo
+    // tiene el título y la causa. Antes la frase y el título repetían las mismas
+    // palabras una debajo de la otra (QA R2, S3).
+    case "RECHAZADO":
+    case "VENCIDO":
+    case "CANCELADO":
+      return "Tu pedido no siguió adelante.";
+  }
+}

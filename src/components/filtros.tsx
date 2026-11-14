@@ -204,6 +204,7 @@ export function Chips<T extends string>({
   valor,
   opciones,
   onChange,
+  envolver = false,
 }: {
   /**
    * Cómo se llama el grupo (Tipo, Estado…). Sólo se ve en la hoja de Filtros
@@ -213,9 +214,15 @@ export function Chips<T extends string>({
   valor: NoInfer<T>;
   opciones: readonly (readonly [T, string])[];
   onChange: (v: NoInfer<T>) => void;
+  /**
+   * Pocas opciones que tienen que verse TODAS: pasan al renglón de abajo en vez
+   * de quedar en una fila que se desliza con la última escondida (la bandeja de
+   * pedidos web perdía «Hoy» fuera de la pantalla en un celular de 360 px).
+   */
+  envolver?: boolean;
 }) {
   const lugar = useContext(LugarChips);
-  const fila = lugar === "fila" ? "max-md:contents" : lugar === "hoja" ? "" : FILA_DESLIZABLE;
+  const fila = envolver ? "" : lugar === "fila" ? "max-md:contents" : lugar === "hoja" ? "" : FILA_DESLIZABLE;
   return (
     <div className={`flex flex-wrap gap-2 ${fila}`}>
       {opciones.map(([k, label]) => (

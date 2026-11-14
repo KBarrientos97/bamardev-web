@@ -38,6 +38,8 @@ export interface AccionCatalogo {
    * pedido en vez de llevar a `href`.
    */
   alAgregar?: (item: ItemCatalogoPublico) => void;
+  /** Con `alAgregar`: ese ítem está agotado en el local elegido, no se puede sumar (pedidos al sistema). */
+  agotado?: (item: ItemCatalogoPublico) => boolean;
 }
 
 /**
@@ -1016,7 +1018,11 @@ export function VisorCatalogo({
         {item.descripcion && (
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{item.descripcion}</p>
         )}
-        {accion?.alAgregar ? (
+        {accion?.alAgregar && accion.agotado?.(item) ? (
+          <p role="status" style={{ ...estiloBoton, marginTop: 10, minHeight: 52, background: "#F3F4F6", color: "#6B7280", border: "none", cursor: "default" }}>
+            Agotado en este local
+          </p>
+        ) : accion?.alAgregar ? (
           <BotonAgregar
             key={item.id}
             alAgregar={() => accion.alAgregar!(item)}
