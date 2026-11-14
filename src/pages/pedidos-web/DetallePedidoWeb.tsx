@@ -13,6 +13,7 @@ import type { CodigoRechazo, PedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
+import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import { MOTIVOS_RECHAZO, aceptadoPorDe, haceCuanto, totalDe } from "./logica";
 
@@ -59,8 +60,12 @@ export default function DetallePedidoWeb({
   /** Alguien más ya lo tomó (409) o ya no espera: vuelve a la lista con este error. */
   onConflicto: (mensaje: string) => void;
 }) {
-  const { negocio } = useAuth();
+  const { negocio, usuario } = useAuth();
   const detalle = useApi(() => apiPedidosWeb.detalle(fila.id), [fila.id]);
+  // Aceptar un delivery y mover una entrega externa piden `delivery.asignar`; un cajero de un negocio sin
+  // delivery sólo atiende lo de recoger (PLAN-DELIVERY-EXTERNO §2.4). Una sesión vieja sin la lista de
+  // permisos no se puede juzgar: ahí se muestra todo y responde el backend.
+  const puedeAsignar = !Array.isArray(usuario?.permisos) || tienePermiso(usuario, "delivery.asignar");
   /**
    * Lo que la caja acaba de hacer (pago recibido, salió): se ve al instante, sin
    * esperar a que el detalle se vuelva a pedir. Va último para no perderse con un detalle viejo.
@@ -91,7 +96,8 @@ export default function DetallePedidoWeb({
   // Delivery por un servicio externo (Yango…): sin repartidor, se paga por QR antes de que salga.
   const externo = delivery && esExterno(p.modoEntrega);
   const servicio = nombreServicio(p.servicio);
-  const sigueEnLocal = p.estado === "ACEPTADO" && puedeAvanzar;
+  const sigueEnLocal = p.estado === "ACEPTADO" && puedeAvanzar && !p.entregadoEn;
+  const sinPermisoDelivery = delivery && !puedeAsignar;
 
   const tel = Telefono.paraLlamada(p.telefono);
   const wa = Telefono.paraWhatsApp(p.telefono);
@@ -284,7 +290,7 @@ export default function DetallePedidoWeb({
         <FormRechazar pedido={p} onCancelar={() => setModo("ver")} onHecho={onHecho} onConflicto={onConflicto} />
       )}
 
-      {sigueEnLocal && externo && (
+      {sigueEnLocal && externo && !sinPermisoDelivery && (
         <AvanceExterno
           pedido={p}
           servicio={servicio}
@@ -304,7 +310,7 @@ export default function DetallePedidoWeb({
         // Mismo lugar y mismo estilo que «Aceptar»: una acción principal abajo (QA R1, N13).
         <div className="sticky bottom-0 -mx-5 mt-auto flex gap-2 border-t border-borde bg-white/95 px-5 pb-3 pt-3 backdrop-blur">
           <Boton className="min-h-12 flex-1" icono="check" onClick={() => setCobrando(true)}>
-            {p.prepagado ? "Entregar" : "Cobrar y entregar"}
+            {p.pagado ? "Entregar" : "Cobrar y entregar"}
           </Boton>
         </div>
       )}
@@ -315,7 +321,7 @@ export default function DetallePedidoWeb({
               id: p.ventaId ?? p.id,
               clienteNombre: p.nombre,
               total: totalDe(p),
-              prepagado: p.prepagado === true,
+              prepagado: p.pagado === true,
               pedidoWeb: { formaPago: p.formaPago, pagaCon: p.pagaCon },
             }}
             entregar={(pagos) => apiPedidosWeb.entregarRecoger(p.id, pagos)}
@@ -330,7 +336,15 @@ export default function DetallePedidoWeb({
       )}
 
       {/* La barra fija: una acción principal. Con el formulario abierto, sus botones van en él. */}
-      {esNuevo && modo === "ver" && (
+      {esNuevo && modo === "ver" && sinPermisoDelivery && (
+        <div className="sticky bottom-0 -mx-5 mt-auto border-t border-borde bg-white/95 px-5 pb-3 pt-3 backdrop-blur">
+          <p className="mb-2 text-[13px] text-texto-2">Para aceptar un delivery hace falta el permiso de asignar deliveries: pedíselo a un encargado.</p>
+          <Boton variante="ghost" className="min-h-12 w-full" onClick={() => setModo("rechazar")}>
+            Rechazar
+          </Boton>
+        </div>
+      )}
+      {esNuevo && modo === "ver" && !sinPermisoDelivery && (
         // `mt-auto`: con pocas líneas la barra queda pegada al borde de abajo y no a mitad de pantalla (QA R1, N13).
         <div className="sticky bottom-0 -mx-5 mt-auto flex gap-2 border-t border-borde bg-white/95 px-5 pb-3 pt-3 backdrop-blur">
           <Boton variante="ghost" className="min-h-12 flex-1" onClick={() => setModo("rechazar")}>

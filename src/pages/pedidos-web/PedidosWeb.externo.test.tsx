@@ -10,9 +10,11 @@ import type { Bandeja, PedidoWeb } from "../../lib/pedidosWeb/tipos";
  * entregar un RECOGER desde la bandeja. La API y el mapa se simulan.
  */
 
+const sesion = vi.hoisted(() => ({ permisos: undefined as string[] | undefined }));
+
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, nombre: "Rosa", username: "rosa", sucursalId: 3 },
+    usuario: { id: 1, nombre: "Rosa", username: "rosa", sucursalId: 3, permisos: sesion.permisos },
     negocio: { nombre: "El Ganadero", features: ["delivery"], tipoNegocio: "RESTAURANTE" },
     rubro: "RESTAURANTE",
     vocabulario: undefined,
@@ -122,6 +124,7 @@ async function abrirDesde(pestana: RegExp, texto: RegExp) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.permisos = undefined;
   mock.bandeja.mockResolvedValue(bandeja());
   mock.detalle.mockImplementation(async (id) => (id === 12 ? NUEVO : id === 13 ? RECOGER : NUEVO));
   mock.pagoRecibido.mockResolvedValue(ACEPTADO);
@@ -171,6 +174,37 @@ describe("aceptar un delivery por un servicio externo", () => {
     expect(await screen.findByText("Envío por PedidosYa")).toBeInTheDocument();
     expect(screen.getByText("Lo escribís al aceptar")).toBeInTheDocument();
     expect(screen.getByText(/Paga con/)).toHaveTextContent("antes de que salga");
+  });
+});
+
+describe("un cajero sin delivery.asignar (negocio sin delivery o rol recortado)", () => {
+  it("no ve «Aceptar» en un delivery, pero sí puede rechazarlo", async () => {
+    sesion.permisos = ["ventas.vender"];
+    mock.bandeja.mockResolvedValue(bandeja({ nuevos: [NUEVO] }));
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    await screen.findByRole("heading", { name: /Pedido N° 07 · Lucía/ });
+    expect(screen.queryByRole("button", { name: "Aceptar pedido" })).not.toBeInTheDocument();
+    expect(screen.getByText(/hace falta el permiso de asignar deliveries/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rechazar" })).toBeInTheDocument();
+  });
+
+  it("un RECOGER sí lo acepta y lo entrega con sólo ventas.vender", async () => {
+    sesion.permisos = ["ventas.vender"];
+    mock.bandeja.mockResolvedValue(bandeja({ nuevos: [{ ...NUEVO, tipo: "RECOGER", modoEntrega: undefined }] }));
+    mock.detalle.mockResolvedValue({ ...NUEVO, tipo: "RECOGER", modoEntrega: undefined });
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    expect(await screen.findByRole("button", { name: "Aceptar pedido" })).toBeInTheDocument();
+  });
+
+  it("en un externo aceptado no ve «Pago recibido»", async () => {
+    sesion.permisos = ["ventas.vender"];
+    mock.bandeja.mockResolvedValue(bandeja({ aceptados: [ACEPTADO] }));
+    mock.detalle.mockResolvedValue(ACEPTADO);
+    await abrirDesde(/Aceptados/, /N° 07 · Lucía/);
+    await screen.findByRole("heading", { name: /Pedido N° 07 · Lucía/ });
+    expect(screen.queryByRole("button", { name: "Pago recibido" })).not.toBeInTheDocument();
   });
 });
 
@@ -251,6 +285,15 @@ describe("avanzar un pedido por servicio externo desde Aceptados", () => {
     await waitFor(() => expect(mock.salio).toHaveBeenCalledWith(12, "https://yango.com/nuevo"));
   });
 
+  it("uno ya entregado (entregadoEn) no ofrece avanzar aunque se abra desde Aceptados", async () => {
+    const entregado = { ...ACEPTADO, pagoConfirmadoEn: hace(9), pagado: true, salioEn: hace(5), entregadoEn: hace(1) };
+    mock.bandeja.mockResolvedValue(bandeja({ aceptados: [entregado] }));
+    mock.detalle.mockResolvedValue(entregado);
+    await abrirDesde(/Aceptados/, /N° 07 · Lucía/);
+    await screen.findByRole("heading", { name: /Pedido N° 07 · Lucía/ });
+    expect(screen.queryByRole("button", { name: "Entregado" })).not.toBeInTheDocument();
+  });
+
   it("desde «Hoy» no hay botones para avanzar", async () => {
     mock.bandeja.mockResolvedValue(bandeja({ entregadosHoy: [{ ...ACEPTADO, pagoConfirmadoEn: hace(9), salioEn: hace(5) }] }));
     mock.detalle.mockResolvedValue({ ...ACEPTADO, pagoConfirmadoEn: hace(9), salioEn: hace(5) });
@@ -281,7 +324,7 @@ describe("un pedido para recoger aceptado", () => {
   });
 
   it("ya pagado dice «Entregar» y no cobra nada", async () => {
-    mock.detalle.mockResolvedValue({ ...RECOGER, prepagado: true });
+    mock.detalle.mockResolvedValue({ ...RECOGER, pagado: true });
     await abrirDesde(/Aceptados/, /N° 08 · Jorge/);
     fireEvent.click(await screen.findByRole("button", { name: "Entregar" }));
     const dialogo = await screen.findByRole("dialog");

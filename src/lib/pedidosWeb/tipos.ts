@@ -229,8 +229,13 @@ export interface PedidoWeb {
   pagoConfirmadoEn?: string | null;
   /** El enlace con que el cliente sigue el pedido en el servicio externo. */
   enlaceSeguimiento?: string | null;
-  /** Si el backend avisa que un pedido para recoger ya está cobrado, se entrega sin cobrar. */
-  prepagado?: boolean;
+  /**
+   * La venta ya está cobrada (en caja, o el QR del servicio externo ya se confirmó):
+   * un RECOGER así se entrega sin cobrar. Un backend anterior no lo manda: se cobra al entregar.
+   */
+  pagado?: boolean;
+  /** Cuándo se entregó (el detalle de uno de «Hoy»): ya no hay nada que avanzar. */
+  entregadoEn?: string | null;
 }
 
 /** `GET /pedidos-web/bandeja`. */
