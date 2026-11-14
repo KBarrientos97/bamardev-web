@@ -230,6 +230,7 @@ export default function Repartidor() {
             entregas.recargar();
           }}
           onSalio={entregas.recargar}
+          sinUbicacion={!!posicion.falla}
         />
       )}
 
@@ -334,6 +335,7 @@ function DetalleEntrega({
   onClose,
   onCambio,
   onSalio,
+  sinUbicacion,
 }: {
   pedido: Venta;
   formasPago: FormaPago[];
@@ -341,6 +343,8 @@ function DetalleEntrega({
   onCambio: () => void;
   /** Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la posición. */
   onSalio: () => void;
+  /** Sin permiso de ubicación: «Ya saliste» no puede decir que el cliente ve la moto (QA R2, S5). */
+  sinUbicacion: boolean;
 }) {
   const completo = useApi(() => api.getVenta(pedido.id), [pedido.id]);
   const { negocio } = useAuth();
@@ -484,6 +488,7 @@ function DetalleEntrega({
                   setSalioAca(salioEn);
                   onSalio();
                 }}
+                sinUbicacion={sinUbicacion}
               />
             )}
 

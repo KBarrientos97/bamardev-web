@@ -18,6 +18,7 @@ export default function AccionesPedidoWeb({
   web,
   cobro,
   onSalio,
+  sinUbicacion = false,
 }: {
   ventaId: number;
   direccion: string | null;
@@ -30,6 +31,8 @@ export default function AccionesPedidoWeb({
    * que ya salió sin esperar a que la lista vuelva del servidor.
    */
   onSalio: (salioEn: string) => void;
+  /** El navegador no da la ubicación (permiso negado o apagado): el cliente NO ve la moto. */
+  sinUbicacion?: boolean;
 }) {
   const [salio, setSalio] = useState<string | null>(web.salioEn);
   const [saliendo, setSaliendo] = useState(false);
@@ -91,7 +94,9 @@ export default function AccionesPedidoWeb({
       </button>
       {salio ? (
         <p className="rounded-lg bg-white px-3 py-2.5 text-[13px] font-semibold text-primary-700">
-          Ya saliste: el cliente ve dónde vas mientras esta pantalla esté abierta.
+          {sinUbicacion
+            ? "Ya saliste, pero el cliente todavía no ve dónde vas: activá el permiso de ubicación del navegador."
+            : "Ya saliste: el cliente ve dónde vas mientras esta pantalla esté abierta."}
         </p>
       ) : (
         <Boton className="min-h-12 w-full" icono="truck" onClick={yaSali} disabled={saliendo}>

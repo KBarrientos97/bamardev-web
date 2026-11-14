@@ -51,6 +51,7 @@ export default function PantallaHistorial({
   onVerComprobante: (venta: Venta) => void;
 }) {
   const { puede, negocio } = useAuth();
+  const hayVariasSucursales = useHayVariasSucursales();
   // Con copia en la app del iPhone (Android: `historial_ventas_{caja}`): sin
   // señal se ve lo que ya había subido, más lo cobrado sin internet.
   const ventas = useApi(() => conCopia(`historial:${caja.id}`, () => api.getVentas(caja.id)), [caja.id]);
@@ -202,6 +203,12 @@ export default function PantallaHistorial({
                       <p className="truncate text-[13px] font-bold text-texto">
                         {p.clienteNombre ?? "Sin nombre"}
                       </p>
+                      {/* Con varios locales, de cuál es: quien administra ve los pendientes de
+                          todos, y «Cobrar y entregar» no decía de qué sede (QA R2, M6). El cobro
+                          entra a la caja de ese local, no a la de acá. */}
+                      {hayVariasSucursales && p.almacen?.nombre && (
+                        <p className="truncate text-[11px] font-semibold text-texto-2">{p.almacen.nombre}</p>
+                      )}
                       <p className="truncate text-xs text-texto-3">
                         {p.tipoPedido === "DELIVERY" ? p.clienteDireccion : "Pasa a recoger"}
                         {p.repartidor ? ` · ${p.repartidor.nombre}` : ""}

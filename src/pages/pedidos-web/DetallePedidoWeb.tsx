@@ -468,7 +468,8 @@ function FormRechazar({
       <h2 className="text-sm font-bold text-texto">¿Por qué lo rechazás?</h2>
       <p className="text-[13px] text-texto-3">El cliente ve el motivo en su pantalla.</p>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Atajos de motivo">
-        {MOTIVOS_RECHAZO.map(([k, texto]) => (
+        {/* «No llegamos a esa zona» no aplica a quien pasa a retirar (QA R2, S1). */}
+        {MOTIVOS_RECHAZO.filter(([k]) => !(pedido.tipo === "RECOGER" && k === "FUERA_DE_ZONA")).map(([k, texto]) => (
           <button
             key={k}
             type="button"

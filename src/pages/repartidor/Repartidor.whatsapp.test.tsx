@@ -119,3 +119,27 @@ describe("el WhatsApp del repartidor en un pedido de la página (QA R2, M1)", ()
     expect(mensajeDelBoton(detalle)).toContain("ya llegó a tu ubicación");
   });
 });
+
+describe("el aviso de «Ya saliste» sin permiso de ubicación (QA R2, S5)", () => {
+  it("si el navegador niega la ubicación, no dice que el cliente ve dónde vas", async () => {
+    Object.defineProperty(navigator, "geolocation", {
+      value: {
+        watchPosition: vi.fn((_ok: unknown, mal?: (e: GeolocationPositionError) => void) => {
+          mal?.({ code: 1 } as GeolocationPositionError);
+          return 1;
+        }),
+        clearWatch: vi.fn(),
+      },
+      configurable: true,
+    });
+    const detalle = await abrir({ ...DE_LA_LISTA, pedidoWeb: { ...WEB, salioEn: "2026-11-13T20:10:00.000Z" } } as Venta);
+    expect(detalle).toHaveTextContent(/el cliente todavía no ve dónde vas/);
+    expect(detalle).not.toHaveTextContent(/el cliente ve dónde vas mientras/);
+  });
+
+  it("con permiso, sigue diciendo que el cliente ve dónde vas", async () => {
+    const detalle = await abrir({ ...DE_LA_LISTA, pedidoWeb: { ...WEB, salioEn: "2026-11-13T20:10:00.000Z" } } as Venta);
+    expect(detalle).toHaveTextContent(/Ya saliste: el cliente ve dónde vas/);
+  });
+});
+
