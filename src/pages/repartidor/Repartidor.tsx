@@ -362,7 +362,11 @@ function DetalleEntrega({
   // el pedido quedaba pendiente para siempre.
   const aCobrar = p.totalACobrar ?? 0;
   const aRegistrar = p.total ?? 0;
-  const webDelPedido = p.pedidoWeb ?? pedido.pedidoWeb ?? null;
+  // «Ya salí» recién tocado: el detalle conserva la fila de la lista de antes,
+  // así que la hora se recuerda acá hasta que la lista se refresque.
+  const [salioAca, setSalioAca] = useState<string | null>(null);
+  const webBase = p.pedidoWeb ?? pedido.pedidoWeb ?? null;
+  const webDelPedido = webBase ? { ...webBase, salioEn: webBase.salioEn ?? salioAca } : null;
   // Un pedido prepagado sólo se confirma: la plata ya entró a la caja.
   const soloConfirmar = pendiente && (p.prepagado || aCobrar <= 0);
 
@@ -377,7 +381,13 @@ function DetalleEntrega({
   const hrefWhatsApp = !numeroWhatsApp
     ? null
     : pendiente
-      ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p, hayVariasSucursales ? p.almacen?.nombre : null, rotuloSede), negocio?.nombre, negocio))
+      ? enlaceWhatsApp(
+          numeroWhatsApp,
+          // `GET /ventas/:id` no trae `pedidoWeb` (sí la lista de entregas): sin
+          // pasarlo aparte, un pedido de la página decía «ya llegó» aunque el
+          // repartidor ni hubiera salido (QA R2, M1).
+          mensajePedido(pedidoDeVenta({ ...p, pedidoWeb: webDelPedido }, hayVariasSucursales ? p.almacen?.nombre : null, rotuloSede), negocio?.nombre, negocio),
+        )
       : `https://wa.me/${numeroWhatsApp}`;
 
   async function confirmarEntrega(pagos?: PagoEntrega[]) {
@@ -464,13 +474,16 @@ function DetalleEntrega({
               )}
             </div>
 
-            {(p.pedidoWeb ?? pedido.pedidoWeb) && pendiente && (
+            {webBase && pendiente && (
               <AccionesPedidoWeb
                 ventaId={p.id}
                 direccion={p.clienteDireccion}
-                web={(p.pedidoWeb ?? pedido.pedidoWeb)!}
+                web={webBase}
                 cobro={{ productos: p.total ?? 0, envio: p.tarifaEnvio ?? 0, aCobrar }}
-                onSalio={onSalio}
+                onSalio={(salioEn) => {
+                  setSalioAca(salioEn);
+                  onSalio();
+                }}
               />
             )}
 

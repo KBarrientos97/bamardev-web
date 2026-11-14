@@ -590,7 +590,17 @@ function DetalleVenta({
                           ? `https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`
                           : enlaceWhatsApp(
                               Telefono.paraWhatsApp(v.clienteTelefono),
-                              mensajePedido(pedidoDeVenta(v, hayVariasSucursales ? v.almacen?.nombre : null, rotuloSede), negocio?.nombre, negocio, "CAJA"),
+                              mensajePedido(
+                                pedidoDeVenta(
+                                  // `GET /ventas/:id` no trae `pedidoWeb`: se conserva el de la lista (QA R2, M1).
+                                  { ...v, pedidoWeb: v.pedidoWeb ?? venta.pedidoWeb },
+                                  hayVariasSucursales ? v.almacen?.nombre : null,
+                                  rotuloSede,
+                                ),
+                                negocio?.nombre,
+                                negocio,
+                                "CAJA",
+                              ),
                             )
                       }
                       target="_blank"

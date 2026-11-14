@@ -24,8 +24,12 @@ export default function AccionesPedidoWeb({
   web: PedidoWebDeEntrega;
   /** Los números de la venta: productos (lo que registra), envío (del repartidor) y lo que se le cobra en mano. */
   cobro: { productos: number; envio: number; aCobrar: number };
-  /** Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la posición. */
-  onSalio: () => void;
+  /**
+   * Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la
+   * posición. Recibe la hora para que el detalle (y el WhatsApp que arma) sepan
+   * que ya salió sin esperar a que la lista vuelva del servidor.
+   */
+  onSalio: (salioEn: string) => void;
 }) {
   const [salio, setSalio] = useState<string | null>(web.salioEn);
   const [saliendo, setSaliendo] = useState(false);
@@ -40,8 +44,9 @@ export default function AccionesPedidoWeb({
     setSaliendo(true);
     try {
       await apiPedidosWeb.sali(ventaId);
-      setSalio(new Date().toISOString());
-      onSalio();
+      const ahora = new Date().toISOString();
+      setSalio(ahora);
+      onSalio(ahora);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo avisar la salida");
     } finally {
