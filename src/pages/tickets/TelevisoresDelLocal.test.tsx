@@ -64,6 +64,8 @@ describe("TVs del local", () => {
     api.listar.mockResolvedValue({ televisores: [], opciones: [TICKETS, MENU_1] });
     api.conectar.mockResolvedValue(tv({ nombre: "TV 1", muestra: "MENU", menu: 1 }));
     render(<TelevisoresDelLocal />);
+    // Las dos formas de abrirla: la app y, en el navegador, la dirección.
+    expect(screen.getByText("BamarDev TV")).toBeInTheDocument();
     expect(screen.getByText(`${window.location.host}/tv`)).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: "Conectar una TV" }));
