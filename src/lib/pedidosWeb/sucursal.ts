@@ -1,4 +1,5 @@
 import { dentroDeZona, calcularEnvio, distanciaEntregaKm, type Punto } from "./tarifa";
+import { ofreceDelivery } from "./entrega";
 import type { SucursalPedido } from "./tipos";
 
 /**
@@ -16,6 +17,11 @@ export interface Evaluada {
   envio: number | null;
   /** Sin coordenadas la sucursal sólo admite recoger. */
   conCoordenadas: boolean;
+  /**
+   * Ofrece delivery: tiene punto en el mapa y el backend no la dejó sólo para
+   * recoger (sin QR con un servicio externo, o negocio en «sólo recoger»).
+   */
+  delivery: boolean;
   dentroDeZona: boolean;
   /** Abierta y dentro de la zona: se puede elegir para este pin. */
   atiende: boolean;
@@ -28,25 +34,31 @@ export function tieneCoordenadas(s: SucursalPedido): s is SucursalPedido & { lat
 /** Todas las sucursales vistas desde el pin: primero las que atienden, de la más cerca a la más lejos. */
 export function evaluarSucursales(pin: Punto | null, sucursales: SucursalPedido[]): Evaluada[] {
   const lista = sucursales.map((sucursal, indice): Evaluada => {
-    if (!pin || !tieneCoordenadas(sucursal)) {
+    const delivery = tieneCoordenadas(sucursal) && ofreceDelivery(sucursal);
+    if (!pin || !tieneCoordenadas(sucursal) || !delivery) {
       return {
         sucursal,
         indice,
         distanciaKm: null,
         envio: null,
         conCoordenadas: tieneCoordenadas(sucursal),
+        delivery,
         dentroDeZona: false,
         atiende: false,
       };
     }
     const distanciaKm = distanciaEntregaKm({ latitud: sucursal.latitud, longitud: sucursal.longitud }, pin);
-    const dentro = dentroDeZona(distanciaKm, sucursal.tarifa);
+    // Con un servicio externo la tarifa viene `null`: la página no calcula el envío
+    // ni pone tope de distancia (lo confirma el local); la última palabra es del backend.
+    const tarifa = sucursal.tarifa;
+    const dentro = tarifa ? dentroDeZona(distanciaKm, tarifa) : true;
     return {
       sucursal,
       indice,
       distanciaKm,
-      envio: dentro ? calcularEnvio(distanciaKm, sucursal.tarifa) : null,
+      envio: tarifa && dentro ? calcularEnvio(distanciaKm, tarifa) : null,
       conCoordenadas: true,
+      delivery: true,
       dentroDeZona: dentro,
       atiende: sucursal.abierta && dentro,
     };
@@ -72,7 +84,7 @@ export function motivoSinCobertura(pin: Punto | null, sucursales: SucursalPedido
   if (!pin) return null;
   const todas = evaluarSucursales(pin, sucursales);
   if (todas.some((e) => e.atiende)) return null;
-  const conMapa = todas.filter((e) => e.conCoordenadas);
+  const conMapa = todas.filter((e) => e.delivery);
   if (conMapa.length === 0) return "Este local todavía no hace entregas a domicilio. Podés pasar a recoger tu pedido.";
   const alAlcance = conMapa.filter((e) => e.dentroDeZona);
   if (alAlcance.length === 0) return "Esa dirección queda fuera de la zona de entrega. Probá con otra o pasá a recoger.";

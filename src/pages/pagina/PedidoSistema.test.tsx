@@ -458,3 +458,78 @@ describe("el carrito con pedidos en el sistema", () => {
     expect(screen.queryByText(/Sacamos/)).not.toBeInTheDocument();
   });
 });
+
+describe("la hoja del pedido con delivery por un servicio externo (PLAN-DELIVERY-EXTERNO §2.8)", () => {
+  // Con un servicio externo la tarifa viene null: la página no calcula el envío por km.
+  const EXT = (extra: Partial<SucursalPedido> = {}): SucursalPedido => ({ ...BRISAS, tarifa: null, delivery: true, ...extra });
+  const INFO_EXT: InfoPedidos = { ...INFO, entrega: { modo: "EXTERNO", servicio: null }, sucursales: [EXT()] };
+
+  it("el pago queda fijo en QR y el envío lo confirma el local, con el servicio nombrado", async () => {
+    const s = servidor({ info: INFO_EXT });
+    await montar();
+    await abrirPedido();
+    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    expect(screen.getByText("Se paga por QR antes de que salga")).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Efectivo" })).not.toBeInTheDocument();
+    expect(screen.queryByText("¿Con cuánto pagás?")).not.toBeInTheDocument();
+    expect(screen.getByText("Te lo confirma el local (envío por Yango)")).toBeInTheDocument();
+    expect(screen.queryByText(/≈ Bs/)).not.toBeInTheDocument();
+
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    escribir("Dirección", "Calle Los Tajibos 23");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    await screen.findByText("Seguimiento del pedido");
+    const cuerpo = JSON.parse(String(s.posteos()[0].init?.body));
+    expect(cuerpo).toMatchObject({ tipo: "DELIVERY", formaPago: "QR", latitud: -17.77 });
+    expect(cuerpo).not.toHaveProperty("pagaCon");
+  });
+
+  it("con otro nombre de servicio, ese nombre", async () => {
+    servidor({ info: { ...INFO_EXT, entrega: { modo: "EXTERNO", servicio: "PedidosYa" } } });
+    await montar();
+    await abrirPedido();
+    await screen.findByRole("button", { name: "Marcar mi casa" });
+    expect(screen.getByText("Te lo confirma el local (envío por PedidosYa)")).toBeInTheDocument();
+  });
+
+  it("para recoger se elige el pago como siempre (el QR fijo es sólo del delivery)", async () => {
+    servidor({ info: INFO_EXT });
+    await montar();
+    await abrirPedido();
+    await screen.findByRole("button", { name: "Marcar mi casa" });
+    fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
+    expect(screen.getByRole("radio", { name: "Efectivo" })).toBeInTheDocument();
+    expect(screen.queryByText("Se paga por QR antes de que salga")).not.toBeInTheDocument();
+  });
+
+  it("una sucursal sin QR (delivery: false) atiende sólo para recoger y no deja mandar a domicilio", async () => {
+    const s = servidor({ info: { ...INFO_EXT, sucursales: [EXT({ delivery: false })] } });
+    await montar();
+    await abrirPedido();
+    // Sin ninguna sucursal con delivery, el cliente queda en «Paso a recoger».
+    expect(await screen.findByRole("radio", { name: "Paso a recoger" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Delivery" })).toBeDisabled();
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    await screen.findByText("Seguimiento del pedido");
+    expect(JSON.parse(String(s.posteos()[0].init?.body)).tipo).toBe("RECOGER");
+  });
+});
+
+describe("la hoja del pedido en un negocio sin delivery o en «sólo recoger»", () => {
+  it("si el backend sólo ofrece RECOGER, no aparece la opción de delivery ni el mapa", async () => {
+    const s = servidor({ info: { ...INFO, tipos: ["RECOGER"] } });
+    await montar();
+    await abrirPedido();
+    await screen.findByRole("radio", { name: "Paso a recoger" });
+    expect(screen.queryByRole("radio", { name: "Delivery" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar mi casa" })).not.toBeInTheDocument();
+    escribir("Tu nombre", "Lucía");
+    escribir("Tu WhatsApp", "71234567");
+    fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+    await screen.findByText("Seguimiento del pedido");
+    expect(JSON.parse(String(s.posteos()[0].init?.body)).tipo).toBe("RECOGER");
+  });
+});

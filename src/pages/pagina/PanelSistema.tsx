@@ -15,6 +15,7 @@ import {
 } from "../../lib/pedidosWeb/cliente";
 import { evaluarSucursales, motivoSinCobertura, type Evaluada } from "../../lib/pedidosWeb/sucursal";
 import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
+import { entregaDe, esExterno, nombreServicio, ofreceDelivery } from "../../lib/pedidosWeb/entrega";
 import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
 import type { CuerpoPedido, FormaPagoWeb, InfoPedidos, TipoPedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { siteKeyTurnstile } from "../../lib/turnstile";
@@ -231,11 +232,21 @@ export default function PanelSistema({
   const sinPedidos = avisoSinPedidos(info);
   const sucursales = useMemo(() => info?.sucursales ?? [], [info]);
   const conMapa = sucursales.filter((s) => s.latitud != null && s.longitud != null);
-  const aceptaDelivery = (info?.tipos ?? []).includes("DELIVERY") && conMapa.length > 0;
-  const aceptaRecoger = (info?.tipos ?? []).includes("RECOGER");
+  // Delivery sólo donde el backend lo ofrece: no en «sólo recoger» ni, con un servicio
+  // externo, en la sucursal sin QR de cobro (PLAN-DELIVERY-EXTERNO §2.2).
+  const conDelivery = conMapa.filter(ofreceDelivery);
+  const tiposOfrecidos = info?.tipos ?? [];
+  const aceptaDelivery = tiposOfrecidos.includes("DELIVERY") && conDelivery.length > 0;
+  // Con un servicio externo el envío no se calcula por km: lo confirma el local al aceptar (§2.8).
+  const entrega = entregaDe(info);
+  const servicio = nombreServicio(entrega.servicio);
+  const aceptaRecoger = tiposOfrecidos.includes("RECOGER");
   // Si el negocio hace sólo una de las dos, esa queda fija.
   const tipoReal: TipoPedidoWeb = tipo === "DELIVERY" && !aceptaDelivery && aceptaRecoger ? "RECOGER" : tipo === "RECOGER" && !aceptaRecoger && aceptaDelivery ? "DELIVERY" : tipo;
   const centroMapa = conMapa.length ? { lat: conMapa[0].latitud!, lng: conMapa[0].longitud! } : null;
+  const externoEntrega = esExterno(entrega.modo) && tipoReal === "DELIVERY";
+  // Con envío por servicio externo el pago es siempre QR y antes de que salga: no se elige.
+  const formaPagoReal: FormaPagoWeb = externoEntrega ? "QR" : formaPago;
 
   // ── Qué sucursal lo atiende ──
   const punto = useMemo(() => (pin ? { latitud: pin.lat, longitud: pin.lng } : null), [pin]);
@@ -246,8 +257,9 @@ export default function PanelSistema({
         let detalle: string;
         if (!e.sucursal.abierta) detalle = TEXTO_SIN_PEDIDOS_AHORA;
         else if (!pin) detalle = "Marcá tu ubicación";
-        else if (!e.conCoordenadas) detalle = "No hace delivery";
+        else if (!e.delivery) detalle = "No hace delivery";
         else if (!e.dentroDeZona) detalle = "Queda lejos de tu dirección";
+        else if (externoEntrega) detalle = `Envío por ${servicio}`;
         else detalle = `${e.distanciaKm?.toLocaleString("es-BO")} km · envío ≈ ${formatoPrecio(e.envio)}`;
         return { e, puede: e.atiende, detalle };
       });
@@ -255,7 +267,7 @@ export default function PanelSistema({
     return [...evaluadas]
       .sort((a, b) => a.indice - b.indice)
       .map((e) => ({ e, puede: e.sucursal.abierta, detalle: e.sucursal.abierta ? (e.sucursal.direccion ?? "") : TEXTO_SIN_PEDIDOS_AHORA }));
-  }, [evaluadas, tipoReal, pin]);
+  }, [evaluadas, tipoReal, pin, externoEntrega, servicio]);
 
   let elegida: number | null = null;
   if (tipoReal === "DELIVERY") {
@@ -313,7 +325,7 @@ export default function PanelSistema({
   }, [lineas]);
 
   const { total: subtotal } = totalPedido(lineas);
-  const envio = tipoReal === "DELIVERY" ? (ev?.envio ?? null) : 0;
+  const envio = tipoReal === "DELIVERY" ? (externoEntrega ? null : (ev?.envio ?? null)) : 0;
   const total = subtotal + (envio ?? 0);
 
   // El billete elegido deja de alcanzar si el total sube (otro producto, otro local, un
@@ -326,7 +338,7 @@ export default function PanelSistema({
   // ── Qué falta ──
   const tel = telefonoDe8(telefono);
   const montoOtro = Number(otroMonto.replace(",", "."));
-  const pagaConFinal = formaPago === "EFECTIVO" ? (otroMonto.trim() ? montoOtro : pagaCon) : null;
+  const pagaConFinal = formaPagoReal === "EFECTIVO" ? (otroMonto.trim() ? montoOtro : pagaCon) : null;
   const faltas: Falta[] = [];
   if (!lineas.length) faltas.push({ texto: "Sumá algo a tu pedido." });
   if (lineasAgotadas.length && sucursal) {
@@ -386,7 +398,7 @@ export default function PanelSistema({
       tipo: tipoReal,
       nombre: nombre.trim(),
       telefono: tel,
-      formaPago,
+      formaPago: formaPagoReal,
       ...(tipoReal === "DELIVERY" && pin
         ? {
             direccion: direccion.trim(),
@@ -615,7 +627,8 @@ export default function PanelSistema({
               <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
                 <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>¿Cómo lo recibís?</legend>
                 <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
-                  {(["DELIVERY", "RECOGER"] as const).map((t) => {
+                  {/* Sólo los tipos que el local ofrece: sin delivery (o en «sólo recoger») no aparece. */}
+                  {(["DELIVERY", "RECOGER"] as const).filter((t) => tiposOfrecidos.includes(t)).map((t) => {
                     const disponible = t === "DELIVERY" ? aceptaDelivery : aceptaRecoger;
                     return (
                       <label key={t} className="seg-pedido" style={segmento(tipoReal === t, disponible)}>
@@ -729,17 +742,26 @@ export default function PanelSistema({
               )}
 
               <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
-                <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>{tipoReal === "DELIVERY" ? "¿Cómo pagás? Al recibir" : "¿Cómo pagás? Al retirar"}</legend>
-                <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
-                  {(["EFECTIVO", "QR"] as const).map((f) => (
-                    <label key={f} className="seg-pedido" style={segmento(formaPago === f)}>
-                      <input type="radio" name="forma-pago" checked={formaPago === f} onChange={() => setFormaPago(f)} style={oculto} />
-                      {f === "EFECTIVO" ? "Efectivo" : "QR"}
-                    </label>
-                  ))}
-                </div>
+                <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>
+                  {externoEntrega ? "¿Cómo pagás? Antes de que salga" : tipoReal === "DELIVERY" ? "¿Cómo pagás? Al recibir" : "¿Cómo pagás? Al retirar"}
+                </legend>
+                {externoEntrega ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#F3F4F6", borderRadius: 14, padding: "12px 14px" }}>
+                    <span style={{ fontWeight: 800, color: fuerte, fontSize: 15 }}>QR</span>
+                    <span style={{ fontSize: 14, color: "#374151" }}>Se paga por QR antes de que salga</span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
+                    {(["EFECTIVO", "QR"] as const).map((f) => (
+                      <label key={f} className="seg-pedido" style={segmento(formaPago === f)}>
+                        <input type="radio" name="forma-pago" checked={formaPago === f} onChange={() => setFormaPago(f)} style={oculto} />
+                        {f === "EFECTIVO" ? "Efectivo" : "QR"}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </fieldset>
-              {formaPago === "EFECTIVO" && (
+              {formaPagoReal === "EFECTIVO" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <span style={etiqueta}>¿Con cuánto pagás?</span>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -776,7 +798,13 @@ export default function PanelSistema({
                   )}
                 </div>
               )}
-              {formaPago === "QR" && <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>Te mostramos el QR para pagar {tipoReal === "DELIVERY" ? "cuando recibas el pedido" : "cuando lo retires"}.</p>}
+              {formaPagoReal === "QR" && (
+                <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>
+                  {externoEntrega
+                    ? "Cuando el local acepte tu pedido, te mostramos el QR para pagar los productos y el envío."
+                    : `Te mostramos el QR para pagar ${tipoReal === "DELIVERY" ? "cuando recibas el pedido" : "cuando lo retires"}.`}
+                </p>
+              )}
 
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={etiqueta}>Nota (opcional)</span>
@@ -817,7 +845,8 @@ export default function PanelSistema({
             Vaciar pedido
           </button>
           <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
-            El local acepta tu pedido y lo seguís desde tu celular. {tipoReal === "DELIVERY" ? "Pagás al recibir." : "Pagás al retirar."}
+            El local acepta tu pedido y lo seguís desde tu celular.{" "}
+            {externoEntrega ? "Pagás por QR antes de que salga." : tipoReal === "DELIVERY" ? "Pagás al recibir." : "Pagás al retirar."}
           </p>
         </div>
 
@@ -842,11 +871,13 @@ export default function PanelSistema({
             {tipoReal === "DELIVERY" && (
               <div style={{ display: "flex", gap: 6 }}>
                 <dt>Envío</dt>
-                <dd style={{ margin: 0 }}>{envio != null ? `≈ ${formatoPrecio(envio)}` : "Marcá tu ubicación"}</dd>
+                <dd style={{ margin: 0 }}>
+                  {externoEntrega ? `Te lo confirma el local (envío por ${servicio})` : envio != null ? `≈ ${formatoPrecio(envio)}` : "Marcá tu ubicación"}
+                </dd>
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", flexBasis: "100%", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
-              <dt>Total</dt>
+              <dt>{externoEntrega ? "Total (sin el envío)" : "Total"}</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(total)}</dd>
             </div>
           </dl>

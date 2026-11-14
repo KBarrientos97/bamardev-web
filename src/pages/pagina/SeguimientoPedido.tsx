@@ -8,6 +8,7 @@ import { alDescansar, precargarMapa } from "../../lib/mapa";
 import { ErrorPedido, apiPedidoPublico } from "../../lib/pedidosWeb/apiPublica";
 import { olvidarPedidoEnCurso } from "../../lib/pedidosWeb/cliente";
 import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
+import { esExterno, nombreServicio, urlDeQr } from "../../lib/pedidosWeb/entrega";
 import { esFinal, fraseDe, pasoActual, pasosDe } from "../../lib/pedidosWeb/estado";
 import type { Seguimiento } from "../../lib/pedidosWeb/tipos";
 import { FAMILIA, Trazo } from "./PedidoPagina";
@@ -40,6 +41,8 @@ export default function SeguimientoPedido() {
   const [confirmando, setConfirmando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
   const [errorCancelar, setErrorCancelar] = useState("");
+  /** El QR de pago no cargó (sin señal o ruta caída): se le dice, en vez de dejar un hueco. */
+  const [qrFalla, setQrFalla] = useState(false);
   const final = useRef(false);
   /**
    * El error de cancelar vino de la señal (sin respuesta o 5xx) y no del local:
@@ -120,9 +123,11 @@ export default function SeguimientoPedido() {
   }, [seg, nombre]);
 
   // El mapa se adelanta cuando el pedido ya fue aceptado, para que al salir la moto esté listo.
+  // Con un servicio externo no hay moto que seguir: no se baja el mapa.
+  const modoEntrega = seg?.entrega?.modo;
   useEffect(() => {
-    if (seg?.estado === "ACEPTADO" && seg.tipo === "DELIVERY") return alDescansar(() => precargarMapa(pedazoMapa));
-  }, [seg?.estado, seg?.tipo]);
+    if (seg?.estado === "ACEPTADO" && seg.tipo === "DELIVERY" && !esExterno(modoEntrega)) return alDescansar(() => precargarMapa(pedazoMapa));
+  }, [seg?.estado, seg?.tipo, modoEntrega]);
 
   async function cancelar() {
     setCancelando(true);
@@ -190,6 +195,12 @@ export default function SeguimientoPedido() {
   const whatsapp = seg.whatsappLocal;
   const puedeCancelar = seg.estado === "RECIBIDO";
   const enCamino = seg.estado === "EN_CAMINO";
+  // Delivery por un servicio externo (Yango): se paga por QR antes de que salga y no hay moto (§2.5).
+  const externo = seg.tipo === "DELIVERY" && esExterno(seg.entrega?.modo);
+  const servicio = nombreServicio(seg.entrega?.servicio);
+  const pagoPendiente = externo && seg.estado === "ACEPTADO" && seg.pago?.pendiente ? seg.pago : null;
+  // Hasta que la caja acepta, el envío es «a confirmar»: el total todavía no lo lleva.
+  const envioAConfirmar = externo && seg.estado === "RECIBIDO";
 
   return (
     <main style={{ ...fondo, paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}>
@@ -267,7 +278,47 @@ export default function SeguimientoPedido() {
           </section>
         )}
 
-        {enCamino && (
+        {pagoPendiente && (
+          <section
+            aria-label="Pagar con QR"
+            style={{ background: "#ffffff", border: "1px solid #E5E7EB", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center" }}
+          >
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Total a pagar: {formatoPrecio(pagoPendiente.monto)}</p>
+            {qrFalla ? (
+              <p role="alert" style={{ margin: 0, fontSize: 14, color: ROJO, fontWeight: 600 }}>
+                No pudimos mostrar el QR. {whatsapp ? "Escribile al local por WhatsApp y te lo manda." : "Probá de nuevo en un momento."}
+              </p>
+            ) : (
+              <img
+                src={urlDeQr(pagoPendiente.qrUrl)}
+                alt="QR para pagar tu pedido"
+                onError={() => setQrFalla(true)}
+                style={{ width: "100%", maxWidth: 280, height: "auto", borderRadius: 12, border: "1px solid #E5E7EB", background: "#ffffff" }}
+              />
+            )}
+            <p style={{ margin: 0, fontSize: 13, color: "#4B5563" }}>
+              Escaneá el QR con la app de tu banco y pagá el monto exacto. Cuando el local vea tu pago, tu pedido sale con {servicio}.
+            </p>
+          </section>
+        )}
+
+        {enCamino && externo && (
+          <section aria-label="Tu pedido va en camino" style={{ background: "#ffffff", border: "1px solid #E5E7EB", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Tu pedido va en camino con {servicio}</p>
+            {seg.enlaceSeguimiento && (
+              <a
+                href={seg.enlaceSeguimiento}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none", padding: "0 14px", textAlign: "center" }}
+              >
+                Seguirlo en {servicio}
+              </a>
+            )}
+          </section>
+        )}
+
+        {enCamino && !externo && (
           <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
               {seg.repartidor ? `${seg.repartidor.nombre} va con tu pedido` : "Tu pedido va en camino"}
@@ -303,7 +354,7 @@ export default function SeguimientoPedido() {
             {seg.tipo === "DELIVERY" && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <dt>Envío</dt>
-                <dd style={{ margin: 0 }}>{formatoPrecio(seg.envio)}</dd>
+                <dd style={{ margin: 0 }}>{envioAConfirmar ? "A confirmar" : formatoPrecio(seg.envio)}</dd>
               </div>
             )}
             {/* El total subía en silencio cuando la caja cambiaba el envío al aceptar (QA R1, N10). */}
@@ -314,20 +365,24 @@ export default function SeguimientoPedido() {
               </p>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
-              <dt>{sinCobro ? "Total del pedido" : "Total a pagar"}</dt>
+              <dt>{sinCobro ? "Total del pedido" : envioAConfirmar ? "Total (sin el envío)" : "Total a pagar"}</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(seg.total)}</dd>
             </div>
           </dl>
           {!sinCobro && (
             <>
               <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-                {seg.estado === "ENTREGADO"
+                {seg.estado === "ENTREGADO" || (externo && (enCamino || (seg.estado === "ACEPTADO" && !pagoPendiente)))
                   ? seg.formaPago === "QR"
                     ? "Pagaste con QR."
                     : "Pagaste en efectivo."
-                  : seg.formaPago === "QR"
-                    ? `Pagás con QR al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`
-                    : `Pagás en efectivo al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`}
+                  : externo
+                    ? envioAConfirmar
+                      ? `Se paga por QR antes de que salga: cuando el local lo acepte, te mostramos el QR con el envío por ${servicio} ya sumado.`
+                      : "Se paga por QR antes de que salga."
+                    : seg.formaPago === "QR"
+                      ? `Pagás con QR al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`
+                      : `Pagás en efectivo al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`}
                 {/* Sin cambio ni faltante («Con Bs 100» con un total de 100) no hay nada más que decir: sobraba una frase colgada. */}
                 {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && ((seg.faltan ?? 0) > 0 || (seg.cambio ?? 0) > 0) && (
                   <>
