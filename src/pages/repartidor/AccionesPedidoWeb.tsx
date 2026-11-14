@@ -18,14 +18,21 @@ export default function AccionesPedidoWeb({
   web,
   cobro,
   onSalio,
+  sinUbicacion = false,
 }: {
   ventaId: number;
   direccion: string | null;
   web: PedidoWebDeEntrega;
   /** Los números de la venta: productos (lo que registra), envío (del repartidor) y lo que se le cobra en mano. */
   cobro: { productos: number; envio: number; aCobrar: number };
-  /** Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la posición. */
-  onSalio: () => void;
+  /**
+   * Tocó «Ya salí del local»: la lista se refresca y empieza a compartirse la
+   * posición. Recibe la hora para que el detalle (y el WhatsApp que arma) sepan
+   * que ya salió sin esperar a que la lista vuelva del servidor.
+   */
+  onSalio: (salioEn: string) => void;
+  /** El navegador no da la ubicación (permiso negado o apagado): el cliente NO ve la moto. */
+  sinUbicacion?: boolean;
 }) {
   const [salio, setSalio] = useState<string | null>(web.salioEn);
   const [saliendo, setSaliendo] = useState(false);
@@ -40,8 +47,9 @@ export default function AccionesPedidoWeb({
     setSaliendo(true);
     try {
       await apiPedidosWeb.sali(ventaId);
-      setSalio(new Date().toISOString());
-      onSalio();
+      const ahora = new Date().toISOString();
+      setSalio(ahora);
+      onSalio(ahora);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo avisar la salida");
     } finally {
@@ -86,7 +94,9 @@ export default function AccionesPedidoWeb({
       </button>
       {salio ? (
         <p className="rounded-lg bg-white px-3 py-2.5 text-[13px] font-semibold text-primary-700">
-          Ya saliste: el cliente ve dónde vas mientras esta pantalla esté abierta.
+          {sinUbicacion
+            ? "Ya saliste, pero el cliente todavía no ve dónde vas: activá el permiso de ubicación del navegador."
+            : "Ya saliste: el cliente ve dónde vas mientras esta pantalla esté abierta."}
         </p>
       ) : (
         <Boton className="min-h-12 w-full" icono="truck" onClick={yaSali} disabled={saliendo}>

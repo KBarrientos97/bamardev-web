@@ -24,12 +24,14 @@ const sesion = vi.hoisted(() => ({
   sinCapacidades: [] as string[],
   /** ¿Ve las cuentas por cobrar? */
   creditos: false,
+  /** Cuántos locales activos tiene el negocio (la sesión lo trae del login). */
+  sucursalesActivas: undefined as number | undefined,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
-    negocio: { features: sesion.features },
+    negocio: { features: sesion.features, sucursalesActivas: sesion.sucursalesActivas },
     usuario: { rol: "ADMIN", permisos: sesion.permisos },
     puede: (s: string) => (s === "creditos" ? sesion.creditos : false),
     incluye: (c: string) => !sesion.sinCapacidades.includes(c),
@@ -112,6 +114,7 @@ beforeEach(() => {
   sesion.permisos = ["ventas.anular", "autorizar.pin"];
   sesion.sinCapacidades = [];
   sesion.creditos = false;
+  sesion.sucursalesActivas = undefined;
   vi.mocked(api.getVentas).mockResolvedValue([venta]);
   vi.mocked(api.getVenta).mockResolvedValue(venta);
   vi.mocked(api.getPedidosPendientes).mockResolvedValue([]);
@@ -896,5 +899,38 @@ describe("QA R1 N17: «Efectivo recibido» de un recoger de la página arranca c
   it("un recoger de la caja (sin pedido de la página) no cambia", async () => {
     const dialogo = await abrir({ ...recojoWeb, pedidoWeb: null } as Venta);
     expect(within(dialogo).getByLabelText("Efectivo recibido")).toHaveValue("");
+  });
+});
+
+describe("M6 (QA R2): los pendientes dicen de qué local son cuando hay varios", () => {
+  const deBrisas = {
+    ...venta,
+    id: 21,
+    comprobante: "T-0021",
+    tipoPedido: "RECOGER",
+    estadoEntrega: "PENDIENTE",
+    prepagado: false,
+    clienteNombre: "Ana",
+    total: 100,
+    almacen: { id: 3, nombre: "Las Brisas" },
+  } as unknown as Venta;
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja", "recoger", "multi_almacen"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([deBrisas]);
+  });
+
+  it("con dos locales, el pendiente trae el nombre del suyo", async () => {
+    sesion.sucursalesActivas = 2;
+    montarHistorial();
+    await screen.findByRole("button", { name: "Cobrar y entregar" });
+    expect(screen.getByText("Las Brisas")).toBeInTheDocument();
+  });
+
+  it("con un solo local no se agrega nada (el negocio de una sede no cambia)", async () => {
+    sesion.sucursalesActivas = 1;
+    montarHistorial();
+    await screen.findByRole("button", { name: "Cobrar y entregar" });
+    expect(screen.queryByText("Las Brisas")).not.toBeInTheDocument();
   });
 });

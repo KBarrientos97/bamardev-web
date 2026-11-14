@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL, Marker } from "maplibre-gl";
 import { estiloMapa } from "../../lib/estiloMapa";
-import { cargarMaplibre, plegarAtribucion } from "../../lib/mapa";
+import { cargarMaplibre, plegarAtribucion, TEXTOS_MAPA } from "../../lib/mapa";
 
 /**
  * El mapa del seguimiento (pedidos web, 13-nov): la moto, la casa y el local.
@@ -72,6 +72,7 @@ export default function MapaSeguimiento({
             center: [centro.longitud, centro.latitud],
             zoom: 14,
             attributionControl: false,
+            locale: TEXTOS_MAPA,
           });
         } catch {
           setFalla("Este navegador no puede mostrar el mapa.");

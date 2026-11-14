@@ -59,6 +59,9 @@ interface Falta {
   campo?: CampoForm;
 }
 
+/** La marca que lleva la entrada del historial que suma la hoja abierta (M4). */
+const MARCA_HOJA = "hojaPedidoAbierta";
+
 /** Cuánto se espera al captcha antes de ofrecer reintentar: «Esperá un segundo» no puede ser eterno (QA R1, N1). */
 export const ESPERA_CAPTCHA_MS = 12_000;
 
@@ -142,6 +145,12 @@ export default function PanelSistema({
   const [intento, setIntento] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * Tocó «Hacer pedido» mientras el captcha todavía verificaba (con una conexión
+   * lenta tarda varios segundos): el pedido sale solo apenas llega el token, una
+   * sola vez, en vez de pedirle que toque otra vez sin decirle cuándo (QA R2, M8).
+   */
+  const [enviarAlVerificar, setEnviarAlVerificar] = useState(false);
   const [sacados, setSacados] = useState("");
   const requestId = useRef(nuevoRequestId());
   /**
@@ -159,6 +168,38 @@ export default function PanelSistema({
     return alDescansar(() => precargarMapa(pedazoPin));
   }, []);
   useEffect(() => setAgotadosServidor(null), [info]);
+
+  // El botón «atrás» del celular cierra la hoja y no la página (QA R2, M4).
+  const alCerrar = useRef(onCerrar);
+  alCerrar.current = onCerrar;
+  useEffect(() => {
+    const anterior = window.history.state as { idx?: number } | null;
+    // Una entrada nueva del historial con la misma dirección. Se copia el estado
+    // del router (con su índice sumado) para que sus propias navegaciones sigan
+    // contando bien.
+    window.history.pushState({ ...anterior, idx: (anterior?.idx ?? 0) + 1, [MARCA_HOJA]: true }, "");
+    let cerradaPorAtras = false;
+    const alAtras = () => {
+      cerradaPorAtras = true;
+      alCerrar.current();
+    };
+    window.addEventListener("popstate", alAtras);
+    return () => {
+      window.removeEventListener("popstate", alAtras);
+      // Se cerró con la X (o por otra causa) y la entrada que sumamos sigue arriba:
+      // se saca, o el primer «atrás» de la página parecería no hacer nada. Si se
+      // navegó (el seguimiento reemplaza la entrada), ya no está y no se toca.
+      const actual = window.history.state as Record<string, unknown> | null;
+      if (!cerradaPorAtras && actual?.[MARCA_HOJA]) {
+        // El «atrás» que provocamos nosotros no es del cliente: se descarta sin que
+        // lo vea una hoja que se haya vuelto a abrir mientras llega (también el
+        // doble montaje del modo estricto). Este oyente se registró antes que el de
+        // la hoja nueva, así que corta la propagación primero.
+        window.addEventListener("popstate", (e) => e.stopImmediatePropagation(), { once: true });
+        window.history.back();
+      }
+    };
+  }, []);
 
   // El captcha que no responde no puede dejar al cliente esperando para siempre.
   useEffect(() => {
@@ -228,6 +269,11 @@ export default function PanelSistema({
   }
   const ev = filas.find((f) => f.e.indice === elegida)?.e ?? null;
   const sucursal = ev?.sucursal ?? null;
+  const sucursalId = sucursal?.id ?? null;
+  // El error del envío era de ESE pedido en ESE local: al cambiar de local o de
+  // productos ya no corresponde, y dejaba el «está agotado» pegado en el pie de
+  // la hoja aunque ya se hubiera arreglado (QA R2, M2).
+  useEffect(() => setError(""), [sucursalId, lineas]);
   // Lo que ESE local no puede servir hoy: lo que dice la info y lo que acaba de decir el backend.
   const agotados = useMemo(() => {
     const ids = new Set(sucursal?.agotados ?? []);
@@ -309,14 +355,22 @@ export default function PanelSistema({
           ? "Tildá el recuadro de verificación (está al final de esta hoja)."
           : estadoCaptcha === "fallo"
             ? "No pudimos verificar que no sos un robot: tocá «Reintentar la verificación»."
-            : "Esperá un segundo: estamos verificando que no sos un robot.",
+            : enviarAlVerificar
+              ? "Esperá un segundo: estamos verificando que no sos un robot. Tu pedido se manda solo apenas termine."
+              : "Esperá un segundo: estamos verificando que no sos un robot.",
       campo: "captcha",
     });
   }
   const bloqueado = faltas.length > 0 || enviando || !!sinPedidos;
+  /** Sólo el captcha (verificando) impide mandar: ahí el toque se guarda y sale solo. */
+  const soloFaltaElCaptcha = !!siteKey && !captcha && estadoCaptcha === "verificando" && faltas.every((f) => f.campo === "captcha") && !sinPedidos;
 
   async function hacerPedido() {
     setIntento(true);
+    if (soloFaltaElCaptcha && !enviando) {
+      setEnviarAlVerificar(true);
+      return;
+    }
     if (faltas.length || enviando || sinPedidos || !sucursal || !tel) {
       // Sube al primer campo con problema: en el celular queda fuera de la pantalla y parece que el botón no anda.
       const campo = faltas.find((f) => f.campo)?.campo;
@@ -359,7 +413,9 @@ export default function PanelSistema({
       requestId.current = nuevoRequestId();
       huellaEnviada.current = "";
       pedido.vaciar();
-      navegar(urlPedidoDe(subdominio, r.token));
+      // `replace`: la entrada que sumó la hoja se reemplaza por el seguimiento, así
+      // «atrás» desde ahí vuelve a la página y no a una hoja que ya no existe.
+      navegar(urlPedidoDe(subdominio, r.token), { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos enviar tu pedido. Probá de nuevo.");
       // El token del captcha es de un solo uso: se pide otro. El mismo
@@ -375,6 +431,22 @@ export default function PanelSistema({
       setEnviando(false);
     }
   }
+
+  // Llegó el token que se esperaba: se manda, una sola vez (se apaga la marca antes
+  // de enviar). El mismo `clienteRequestId` cubre el reintento por si ya había entrado.
+  // Si en el medio el captcha pidió tildar o falló, o cambió algo que ahora falta, se
+  // suelta la marca y se vuelve al camino de siempre (que avisa qué falta).
+  useEffect(() => {
+    if (!enviarAlVerificar) return;
+    if (captcha) {
+      setEnviarAlVerificar(false);
+      void hacerPedido();
+    } else if (estadoCaptcha !== "verificando") {
+      setEnviarAlVerificar(false);
+    }
+    // hacerPedido es de este mismo render: sólo importa que llegó el token.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captcha, estadoCaptcha, enviarAlVerificar]);
 
   function usarMiUbicacion() {
     if (!navigator.geolocation) {
@@ -805,7 +877,7 @@ export default function PanelSistema({
             onClick={hacerPedido}
             style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: enviando ? "wait" : "pointer", opacity: bloqueado ? 0.55 : 1, fontFamily: "inherit" }}
           >
-            {enviando ? "Enviando tu pedido…" : "Hacer pedido"}
+            {enviando ? "Enviando tu pedido…" : enviarAlVerificar ? "Verificando… se envía solo" : "Hacer pedido"}
           </button>
         </footer>
       </section>

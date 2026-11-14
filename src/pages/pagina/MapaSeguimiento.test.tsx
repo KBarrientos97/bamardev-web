@@ -43,6 +43,7 @@ vi.mock("../../lib/mapa", () => {
   class AttributionControl {}
   class NavigationControl {}
   return {
+    TEXTOS_MAPA: {},
     cargarMaplibre: async () => ({ Map, Marker, LngLatBounds, AttributionControl, NavigationControl }),
     plegarAtribucion: () => {},
   };

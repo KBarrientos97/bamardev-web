@@ -562,3 +562,18 @@ describe("ronda 1 de QA (13-nov)", () => {
     expect(barra.parentElement!.className).toMatch(/\bmin-h-full\b/);
   });
 });
+
+describe("ronda 2 de QA (14-nov)", () => {
+  it("S1: «Rechazar» un pedido para recoger no ofrece «No llegamos a esa zona»; uno a domicilio sí", async () => {
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 08 · Jorge/));
+    await screen.findByRole("heading", { name: /Pedido N° 08 · Jorge/ });
+    fireEvent.click(screen.getByRole("button", { name: "Rechazar" }));
+    const form = screen.getByRole("region", { name: "Rechazar el pedido" });
+    expect(within(form).queryByRole("button", { name: "No llegamos a esa zona" })).not.toBeInTheDocument();
+    for (const atajo of ["Se acabó", "Ya cerramos", "Pedido falso", "Otro motivo"]) {
+      expect(within(form).getByRole("button", { name: atajo })).toBeInTheDocument();
+    }
+  });
+});
+

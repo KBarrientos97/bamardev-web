@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL, Marker } from "maplibre-gl";
 import { Boton } from "./ui";
 import { estiloMapa } from "../lib/estiloMapa";
-import { cargarMaplibre, redondear, SANTA_CRUZ, type Ubicacion } from "../lib/mapa";
+import { cargarMaplibre, redondear, SANTA_CRUZ, TEXTOS_MAPA, type Ubicacion } from "../lib/mapa";
 
 /**
  * Marcar dónde está la sucursal (PLAN-PAGINA-WEB §3.1): se toca el mapa o se
@@ -41,6 +41,7 @@ export default function ElegirUbicacion({
             center: [desde.lng, desde.lat],
             zoom: inicial.current ? 16 : 12,
             attributionControl: false,
+            locale: TEXTOS_MAPA,
           });
         } catch {
           setFalla("Este navegador no puede mostrar el mapa.");

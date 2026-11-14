@@ -15,6 +15,23 @@ export interface Ubicacion {
 export const ORIGEN_MOSAICOS = "https://tiles.openfreemap.org";
 
 /** Donde arranca el mapa si la sucursal todavía no tiene ubicación. */
+/**
+ * Los textos de MapLibre en español (`locale` del mapa). Sin esto, el mapa con
+ * gestos cooperativos decía «Use two fingers to move the map» en inglés encima
+ * de una página en español (QA R2, M7), y los botones de zoom tenían el título
+ * en inglés.
+ */
+export const TEXTOS_MAPA: Record<string, string> = {
+  "CooperativeGesturesHandler.WindowsHelpText": "Usá Ctrl + rueda del mouse para acercar el mapa",
+  "CooperativeGesturesHandler.MacHelpText": "Usá ⌘ + rueda del mouse para acercar el mapa",
+  "CooperativeGesturesHandler.MobileHelpText": "Usá dos dedos para mover el mapa",
+  "NavigationControl.ZoomIn": "Acercar",
+  "NavigationControl.ZoomOut": "Alejar",
+  "NavigationControl.ResetBearing": "Orientar al norte",
+  "AttributionControl.ToggleAttribution": "Ver créditos del mapa",
+  "AttributionControl.MapFeedback": "Opinar sobre el mapa",
+};
+
 export const SANTA_CRUZ: Ubicacion = { lat: -17.7834, lng: -63.1821 };
 
 type MapLibre = typeof import("maplibre-gl");
