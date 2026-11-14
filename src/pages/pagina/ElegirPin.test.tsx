@@ -42,6 +42,7 @@ vi.mock("../../lib/mapa", () => {
   class AttributionControl {}
   class NavigationControl {}
   return {
+    TEXTOS_MAPA: {},
     cargarMaplibre: () =>
       new Promise((resolver) => {
         mapa.soltar = () => resolver({ Map, Marker, AttributionControl, NavigationControl });

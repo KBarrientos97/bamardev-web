@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL, Marker } from "maplibre-gl";
 import { estiloMapa } from "../../lib/estiloMapa";
-import { cargarMaplibre, plegarAtribucion, redondear, SANTA_CRUZ, type Ubicacion } from "../../lib/mapa";
+import { cargarMaplibre, plegarAtribucion, redondear, SANTA_CRUZ, TEXTOS_MAPA, type Ubicacion } from "../../lib/mapa";
 
 /**
  * El pin de la casa del cliente (pedidos web, 13-nov): se toca el mapa o se
@@ -48,6 +48,7 @@ export default function ElegirPin({
             center: [desde.lng, desde.lat],
             zoom: v0 ? 17 : c0 ? 14 : 12,
             attributionControl: false,
+            locale: TEXTOS_MAPA,
           });
         } catch {
           setFalla("Este navegador no puede mostrar el mapa.");
