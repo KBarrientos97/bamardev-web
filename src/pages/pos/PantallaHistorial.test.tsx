@@ -482,6 +482,26 @@ describe("los pedidos por entregar según el plan", () => {
     expect(screen.getByRole("button", { name: "Cobrar y entregar" })).toBeInTheDocument();
   });
 
+  it("un delivery por un servicio externo dice «Envío por Yango», no deja un repartidor vacío (PLAN-DELIVERY-EXTERNO)", async () => {
+    sesion.features = ["pos", "caja", "delivery"];
+    const pedido = {
+      ...venta,
+      id: 9,
+      comprobante: "T-0009",
+      tipoPedido: "DELIVERY",
+      estadoEntrega: "PENDIENTE",
+      clienteNombre: "Lucía",
+      clienteDireccion: "Calle Los Tajibos 23",
+      repartidor: null,
+      entregaExterna: "Yango",
+    } as Venta;
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([pedido]);
+    abrir();
+    expect(await screen.findByText(/Calle Los Tajibos 23 · Envío por Yango/)).toBeInTheDocument();
+    // Un delivery no tiene botón acá: lo avanza la bandeja de pedidos web.
+    expect(screen.queryByRole("button", { name: "Cobrar y entregar" })).not.toBeInTheDocument();
+  });
+
   it("sin recoger ni delivery (un salón de belleza) no se piden: sería un 403 (QA M-11)", async () => {
     sesion.features = ["pos", "caja", "agenda"];
     abrir();

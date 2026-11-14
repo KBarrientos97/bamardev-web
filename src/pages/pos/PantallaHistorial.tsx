@@ -20,6 +20,7 @@ import { atajosDeEfectivo } from "../../lib/billetes";
 import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { recibidoSugerido } from "../../lib/pedidosWeb/cobro";
+import { nombreServicio } from "../../lib/pedidosWeb/entrega";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { abiertaDesde } from "./turnoDeCaja";
 import { Telefono } from "../../lib/telefono";
@@ -211,7 +212,7 @@ export default function PantallaHistorial({
                       )}
                       <p className="truncate text-xs text-texto-3">
                         {p.tipoPedido === "DELIVERY" ? p.clienteDireccion : "Pasa a recoger"}
-                        {p.repartidor ? ` · ${p.repartidor.nombre}` : ""}
+                        {p.repartidor ? ` · ${p.repartidor.nombre}` : p.entregaExterna ? ` · Envío por ${nombreServicio(p.entregaExterna)}` : ""}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -635,7 +636,10 @@ function DetalleVenta({
                     <DatoPedido etiqueta="Recoge estimado" valor={`~${v.minutosEstimados} min`} />
                   )}
                   {v.tipoPedido === "DELIVERY" && (
-                    <DatoPedido etiqueta="Repartidor" valor={v.repartidor?.nombre ?? "Sin asignar"} />
+                    <DatoPedido
+                      etiqueta={!v.repartidor && v.entregaExterna ? "Envío" : "Repartidor"}
+                      valor={v.repartidor?.nombre ?? (v.entregaExterna ? `Envío por ${nombreServicio(v.entregaExterna)}` : "Sin asignar")}
+                    />
                   )}
                   <DatoPedido etiqueta="Atendido por" valor={v.cajero ?? "—"} />
                 </dl>
@@ -736,12 +740,24 @@ function DetalleVenta({
  * entera (`CobrarFragment` en modo entrega); el backend acepta varios pagos
  * mientras sumen el total del pedido.
  */
-function EntregarRecoger({
+/** Lo que el diálogo necesita del pedido: una `Venta` lo trae, y la bandeja de pedidos web lo arma con su fila. */
+export type PedidoParaEntregar = Pick<Venta, "id" | "clienteNombre" | "total" | "prepagado"> & {
+  pedidoWeb?: Pick<NonNullable<Venta["pedidoWeb"]>, "formaPago" | "pagaCon"> | null;
+};
+
+/**
+ * Exportado para la bandeja de pedidos web (PLAN-DELIVERY-EXTERNO §2.4): el mismo
+ * cobro, pero llamando a `entregar-recoger` del pedido en vez de a la venta.
+ */
+export function EntregarRecoger({
   pedido,
+  entregar = (pagos) => api.entregarPedido(pedido.id, pagos),
   onClose,
   onEntregado,
 }: {
-  pedido: Venta;
+  pedido: PedidoParaEntregar;
+  /** Cómo se entrega: por defecto `POST ventas/:id/entregar` (el historial). */
+  entregar?: (pagos?: PagoEntrega[]) => Promise<unknown>;
   onClose: () => void;
   onEntregado: () => void;
 }) {
@@ -820,7 +836,7 @@ function EntregarRecoger({
 
     setEnviando(true);
     try {
-      await api.entregarPedido(pedido.id, pagos);
+      await entregar(pagos);
       onEntregado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo entregar el pedido");

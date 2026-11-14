@@ -776,3 +776,27 @@ describe("Aprobar con el doble control (MOV-03)", () => {
     }
   });
 });
+
+describe("«Pedidos web» en un negocio sin delivery (PLAN-DELIVERY-EXTERNO §2.2)", () => {
+  const ctx = (permisos: string[], features: Feature[], pedidosWeb = true): ContextoPermisos => ({ ...ctxCon(permisos, "RESTAURANTE", features), pedidosWeb });
+
+  it("con `recoger` sin `delivery` el cajero la ve con `ventas.vender`: el plan le recorta `delivery.asignar`", () => {
+    expect(puedeVer(ctx(["ventas.vender"], ["pos", "caja", "recoger"]), "pedidos_web")).toBe(true);
+  });
+
+  it("con `delivery`, la sigue viendo quien asigna deliveries", () => {
+    expect(puedeVer(ctx(["delivery.asignar"], ["pos", "caja", "delivery"]), "pedidos_web")).toBe(true);
+  });
+
+  it("sin ninguna de las dos features, no", () => {
+    expect(puedeVer(ctx(["ventas.vender", "delivery.asignar"], ["pos", "caja"]), "pedidos_web")).toBe(false);
+  });
+
+  it("con el interruptor apagado (pedidosWeb false), no, aunque tenga todo", () => {
+    expect(puedeVer(ctx(["ventas.vender", "delivery.asignar"], ["pos", "caja", "delivery", "recoger"], false), "pedidos_web")).toBe(false);
+  });
+
+  it("sin permiso de vender ni de asignar, no", () => {
+    expect(puedeVer(ctx(["catalogo.ver"], ["pos", "caja", "recoger"]), "pedidos_web")).toBe(false);
+  });
+});

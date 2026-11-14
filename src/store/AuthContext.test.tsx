@@ -233,6 +233,44 @@ describe("pedidos web: negocio.pedidosWeb sigue al estado de la licencia", () =>
   });
 });
 
+describe("entrega de los pedidos de la página: sigue al estado de la licencia (PLAN-DELIVERY-EXTERNO §2.6)", () => {
+  function SondaEntrega() {
+    const { negocio } = useAuth();
+    return (
+      <p>
+        entrega:{negocio?.entregaPedidosWeb ?? "-"} servicio:{negocio?.servicioDeliveryExterno ?? "-"}
+      </p>
+    );
+  }
+  const montarEntrega = async () => {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaEntrega />
+        </AuthProvider>,
+      );
+    });
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...BARBERIA, features: ["pos", "delivery"] }));
+  });
+
+  it("si el panel la cambia a servicio externo, la sesión abierta se entera", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, features: ["pos", "delivery"], entregaPedidosWeb: "EXTERNO", servicioDeliveryExterno: "PedidosYa" });
+    await montarEntrega();
+    expect(screen.getByText("entrega:EXTERNO servicio:PedidosYa")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").entregaPedidosWeb).toBe("EXTERNO");
+  });
+
+  it("un backend viejo que no la manda no inventa nada (se lee como propios)", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, features: ["pos", "delivery"] });
+    await montarEntrega();
+    expect(screen.getByText("entrega:- servicio:-")).toBeInTheDocument();
+  });
+});
+
 describe("cupo del Plan Emprendedor (§5.2)", () => {
   function SondaCupo() {
     const { cupo, refrescarCupo, login, logout } = useAuth();

@@ -477,3 +477,69 @@ describe("ronda 2 de QA: texto libre y recoger", () => {
     expect(screen.getByText("Se nos agotó algo de tu pedido")).toBeInTheDocument();
   });
 });
+
+describe("el seguimiento con un servicio externo (PLAN-DELIVERY-EXTERNO §2.5)", () => {
+  const EXTERNO = { entrega: { modo: "EXTERNO" as const, servicio: null }, formaPago: "QR" as const, pagaCon: null, cambio: null };
+  const QR = `/publico/pedidos/elganadero/${TOKEN}/qr`;
+
+  it("Recibido: el envío es «a confirmar» y se avisa que se paga por QR antes de que salga", async () => {
+    servidor({ ...EXTERNO, envio: 0, total: 100 });
+    await montar();
+    await screen.findByRole("heading", { name: "Pedido N° 07" });
+    expect(screen.getByText("Envío").nextElementSibling).toHaveTextContent("A confirmar");
+    expect(screen.getByText("Total (sin el envío)").nextElementSibling).toHaveTextContent("Bs 100");
+    expect(screen.getByText(/Se paga por QR antes de que salga/)).toBeInTheDocument();
+    // Sin moto ni mapa, y ni una palabra de «te llevan de cambio».
+    expect(screen.queryByTestId("mapa")).not.toBeInTheDocument();
+    expect(screen.queryByText(/de cambio/)).not.toBeInTheDocument();
+  });
+
+  it("Aceptado sin pago: pide pagar el monto con el QR del local, que se ve como imagen", async () => {
+    servidor({ ...EXTERNO, estado: "ACEPTADO", envio: 9, total: 109, pago: { pendiente: true, monto: 109, qrUrl: QR } });
+    await montar();
+    expect(await screen.findByText("Pagá Bs 109 con este QR para que salga tu pedido")).toBeInTheDocument();
+    const img = screen.getByRole("img", { name: "QR para pagar tu pedido" });
+    expect(img).toHaveAttribute("src", `/api${QR}`);
+    expect(screen.getByText("Total a pagar: Bs 109")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar pedido" })).not.toBeInTheDocument();
+  });
+
+  it("si el QR no carga, lo dice y manda al WhatsApp del local", async () => {
+    servidor({ ...EXTERNO, estado: "ACEPTADO", envio: 9, total: 109, pago: { pendiente: true, monto: 109, qrUrl: QR } });
+    await montar();
+    fireEvent.error(await screen.findByRole("img", { name: "QR para pagar tu pedido" }));
+    expect(await screen.findByText(/No pudimos mostrar el QR/)).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "QR para pagar tu pedido" })).not.toBeInTheDocument();
+  });
+
+  it("Aceptado y pagado: «Pago recibido», sin QR", async () => {
+    servidor({ ...EXTERNO, estado: "ACEPTADO", envio: 9, total: 109 });
+    await montar();
+    expect(await screen.findByText("¡Pago recibido! Lo estamos preparando.")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "QR para pagar tu pedido" })).not.toBeInTheDocument();
+    expect(screen.getByText("Pagaste con QR.")).toBeInTheDocument();
+  });
+
+  it("En camino: va con el servicio, con botón para seguirlo si hay enlace, y sin moto", async () => {
+    servidor({ ...EXTERNO, estado: "EN_CAMINO", envio: 9, total: 109, salioEn: "2026-11-14T15:00:00.000Z", enlaceSeguimiento: "https://yango.com/track/abc" });
+    await montar();
+    expect((await screen.findAllByText("Tu pedido va en camino con Yango")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Seguirlo en Yango" })).toHaveAttribute("href", "https://yango.com/track/abc");
+    expect(screen.queryByTestId("mapa")).not.toBeInTheDocument();
+    expect(screen.queryByText(/ubicación del repartidor/)).not.toBeInTheDocument();
+  });
+
+  it("En camino con otro servicio y sin enlace: nombra al servicio y no hay botón", async () => {
+    servidor({ ...EXTERNO, entrega: { modo: "EXTERNO", servicio: "PedidosYa" }, estado: "EN_CAMINO", envio: 9, total: 109, salioEn: "2026-11-14T15:00:00.000Z" });
+    await montar();
+    expect((await screen.findAllByText("Tu pedido va en camino con PedidosYa")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: /Seguirlo en/ })).not.toBeInTheDocument();
+  });
+
+  it("con repartidores propios nada de esto aparece (el pedido de siempre)", async () => {
+    servidor({ estado: "EN_CAMINO", entrega: { modo: "PROPIO", servicio: null }, salioEn: "2026-11-13T20:10:00.000Z", repartidor: { nombre: "Pedro" } });
+    await montar();
+    expect(await screen.findByTestId("mapa")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Seguirlo en/ })).not.toBeInTheDocument();
+  });
+});

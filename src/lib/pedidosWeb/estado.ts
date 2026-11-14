@@ -1,3 +1,5 @@
+import { formatoPrecio } from "../pagina/catalogo";
+import { esExterno, nombreServicio } from "./entrega";
 import type { EstadoSeguimiento, Seguimiento } from "./tipos";
 
 /** Los estados terminales del seguimiento: dejan de refrescarse. */
@@ -28,15 +30,25 @@ export function pasoActual(s: Pick<Seguimiento, "tipo" | "estado">): number {
   return i < 0 ? 0 : i;
 }
 
-/** Una frase para el estado, la primera que lee el cliente. */
-export function fraseDe(s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "canceladoPor">>): string {
+/**
+ * Una frase para el estado, la primera que lee el cliente. Con un servicio
+ * externo (PLAN-DELIVERY-EXTERNO §2.5) el pedido se paga por QR antes de salir
+ * y no hay moto: las frases lo dicen.
+ */
+export function fraseDe(
+  s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "canceladoPor" | "entrega" | "pago">>,
+): string {
+  const externo = s.tipo === "DELIVERY" && esExterno(s.entrega?.modo);
   switch (s.estado) {
     case "RECIBIDO":
       return "Recibimos tu pedido. Esperá un momento: el local lo está revisando.";
     case "ACEPTADO":
+      if (externo) {
+        return s.pago?.pendiente ? `Pagá ${formatoPrecio(s.pago.monto)} con este QR para que salga tu pedido` : "¡Pago recibido! Lo estamos preparando.";
+      }
       return s.tipo === "DELIVERY" ? "¡Aceptado! Lo estamos preparando." : "¡Aceptado! Lo estamos preparando: pasá a retirarlo en un rato.";
     case "EN_CAMINO":
-      return "Tu pedido va en camino.";
+      return externo ? `Tu pedido va en camino con ${nombreServicio(s.entrega?.servicio)}` : "Tu pedido va en camino.";
     case "ENTREGADO":
       return "Entregado. ¡Que lo disfrutes!";
     // Rechazado, vencido y cancelado dicen lo mismo acá: la tarjeta de abajo

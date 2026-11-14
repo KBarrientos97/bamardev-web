@@ -105,6 +105,26 @@ describe("Pedidos y gift cards (editor)", () => {
       expect(cambiar).toHaveBeenCalledWith({ pedidosSistema: true });
     });
 
+    it("con `recoger` pero sin `delivery` también se prende: la página sólo recibe pedidos para recoger", () => {
+      const cambiar = montar({ conDelivery: false, conSistema: true, conProductos: true });
+      expect(screen.getByText(/para pasar a recoger/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("checkbox", { name: /Recibir pedidos en el sistema/ }));
+      expect(cambiar).toHaveBeenCalledWith({ pedidosSistema: true });
+    });
+
+    it("con un servicio externo no muestra la tarifa por km: el envío lo escribe la caja", async () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true, entregaPedidos: "EXTERNO", servicioExterno: "PedidosYa" });
+      expect(screen.getByText(/escribís el envío que te cotizó PedidosYa/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Precio fijo del primer tramo")).not.toBeInTheDocument();
+      expect(apiPedidosWeb.tarifa).not.toHaveBeenCalled();
+    });
+
+    it("en «sólo recoger» tampoco hay tarifa, aunque tenga delivery", () => {
+      montar({ conDelivery: true, conProductos: true, sistemaGuardado: true, entregaPedidos: "SOLO_RECOGER" });
+      expect(screen.getByText(/para pasar a recoger/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Precio fijo del primer tramo")).not.toBeInTheDocument();
+    });
+
     it("sin la feature delivery no ofrece el interruptor y explica cómo pedirlo", () => {
       montar({ conDelivery: false, conProductos: true });
       expect(screen.queryByRole("checkbox", { name: /Recibir pedidos en el sistema/ })).not.toBeInTheDocument();

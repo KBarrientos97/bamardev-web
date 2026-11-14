@@ -76,6 +76,15 @@ describe("BUG-pedidos-11 / BUG-cobro-5: Subtotal + Envío = TOTAL", () => {
     expect(screen.getByText("El envío lo cobra el repartidor.")).toBeInTheDocument();
   });
 
+  it("un delivery por un servicio externo dice quién lo lleva, no «lo cobra el repartidor»", () => {
+    dibujar(deliveryCobradoEnCaja({ repartidor: null, entregaExterna: "Yango" }));
+    expect(screen.getByText("Envío:")).toBeInTheDocument();
+    expect(screen.getByText("Envío por Yango")).toBeInTheDocument();
+    expect(screen.getByText("El envío va por Yango.")).toBeInTheDocument();
+    expect(screen.queryByText("El envío lo cobra el repartidor.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Repartidor:")).not.toBeInTheDocument();
+  });
+
   it("un pedido contra entrega, desde «Ver comprobante», también", () => {
     dibujar(deliveryCobradoEnCaja({ prepagado: false, pagos: [], formasPago: [], totalACobrar: 58, montoRendicion: 50 }));
     expect(fila("TOTAL")).toHaveTextContent(/Bs.58,00/);

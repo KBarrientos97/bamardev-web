@@ -5,7 +5,7 @@
 import type { Tema } from "./lib/temas";
 import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
-import type { PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
+import type { EntregaPedidosWeb, PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -186,6 +186,14 @@ export interface SesionNegocio {
    * viejo que no lo manda se lee como `false`.
    */
   pedidosWeb?: boolean;
+  /**
+   * Quién entrega los pedidos de la página (PLAN-DELIVERY-EXTERNO §2.6):
+   * repartidores propios, un servicio externo o sólo recoger. Ausente (backend
+   * viejo) = `PROPIO`.
+   */
+  entregaPedidosWeb?: EntregaPedidosWeb;
+  /** El nombre del servicio externo; vacío o ausente = «Yango». */
+  servicioDeliveryExterno?: string | null;
   /**
    * Cuántas sucursales activas tiene el negocio (sólo tipo SUCURSAL, no
    * depósitos). Lo manda el login y `/auth/me`; sirve para que un usuario
@@ -1349,6 +1357,12 @@ export interface Venta {
   entregadoEn: string | null;
   repartidor?: { id: number; nombre: string } | null;
   /**
+   * El servicio externo (Yango…) que lleva este delivery cuando no hay
+   * repartidor propio (PLAN-DELIVERY-EXTERNO §2.1). Un delivery con esto y sin
+   * `repartidor` es normal: se muestra «Envío por …», no «Sin asignar».
+   */
+  entregaExterna?: string | null;
+  /**
    * Sólo si la venta vino de un pedido de la página (13-nov): su ubicación y
    * cómo paga, para navegar y para «Ya salí del local». null en las demás.
    */
@@ -1980,6 +1994,9 @@ export interface EstadoLicencia {
   permisosVersion?: string;
   /** Lo mismo que `negocio.pedidosWeb` del login, para repintar el menú sin volver a entrar. */
   pedidosWeb?: boolean;
+  /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
+  entregaPedidosWeb?: EntregaPedidosWeb;
+  servicioDeliveryExterno?: string | null;
   /** Lo mismo que `negocio.variante` del login: si el panel la cambia, la sesión abierta se entera. */
   variante?: string | null;
   /**
