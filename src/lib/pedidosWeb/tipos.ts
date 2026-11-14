@@ -20,6 +20,20 @@ export interface TarifaEnvio {
 export type TipoPedidoWeb = "DELIVERY" | "RECOGER";
 export type FormaPagoWeb = "EFECTIVO" | "QR";
 
+/**
+ * Quién hace la entrega de los pedidos de la página (PLAN-DELIVERY-EXTERNO §2.1):
+ * repartidores propios con la app, un servicio de afuera (Yango) o sólo recoger.
+ * Un backend viejo no lo manda: se lee como PROPIO.
+ */
+export type EntregaPedidosWeb = "PROPIO" | "EXTERNO" | "SOLO_RECOGER";
+
+/** Lo que ve el cliente de la operativa de entrega: propia o externa con el nombre del servicio. */
+export interface EntregaPublica {
+  modo: "PROPIO" | "EXTERNO";
+  /** El nombre del servicio; vacío = «Yango». */
+  servicio: string | null;
+}
+
 export type MotivoSinPedidos = "SIN_DELIVERY" | "APAGADO" | "CATALOGO_MANUAL";
 
 /** Una sucursal tal como la ve el cliente antes de armar el pedido. */
@@ -33,7 +47,13 @@ export interface SucursalPedido {
   longitud: number | null;
   /** Tiene una caja abierta: si no, no recibe pedidos. */
   abierta: boolean;
-  tarifa: TarifaEnvio;
+  /** Con un servicio externo viene `null`: la página no calcula el envío por km (§2.2). */
+  tarifa: TarifaEnvio | null;
+  /**
+   * Si ESTA sucursal ofrece delivery (§2.2). Un backend viejo no lo manda: se
+   * deduce de las coordenadas, como siempre.
+   */
+  delivery?: boolean;
   /**
    * Los ítems de la carta (`itemId`) que ESE local no puede servir hoy (agotado a
    * mano o sin stock). Un backend viejo no lo manda: se lee como «ninguno».
@@ -48,6 +68,8 @@ export interface InfoPedidos {
   tipos: TipoPedidoWeb[];
   /** En el mismo orden que `CatalogoPublico.sucursales` de la página. */
   sucursales: SucursalPedido[];
+  /** Quién entrega. Ausente (backend viejo) = repartidores propios. */
+  entrega?: EntregaPublica;
 }
 
 export interface LineaPedidoEnvio {
@@ -135,6 +157,15 @@ export interface Seguimiento {
   /** Sólo en EN_CAMINO y con menos de 2 minutos; si no, null. */
   posicion: { latitud: number; longitud: number; en: string } | null;
   whatsappLocal: string | null;
+  /** Quién entrega este pedido. Ausente = repartidores propios. */
+  entrega?: EntregaPublica;
+  /** Con un servicio externo: el enlace para seguir el pedido allá (sólo `https://`). */
+  enlaceSeguimiento?: string | null;
+  /**
+   * Con un servicio externo, mientras el pedido está aceptado y sin pagar: lo
+   * que hay que pagar y el QR del local (§2.5). Si no, no viene.
+   */
+  pago?: { pendiente: true; monto: number; qrUrl: string } | null;
 }
 
 // ── Privado (bandeja) ───────────────────────────────────────────────────
@@ -190,6 +221,21 @@ export interface PedidoWeb {
   venceEn?: string | null;
   aceptadoEn: string | null;
   salioEn: string | null;
+  /** Quién hace la entrega de ESTE pedido (§2.4). Ausente (backend viejo) = repartidores propios. */
+  modoEntrega?: "PROPIO" | "EXTERNO";
+  /** El nombre del servicio externo; vacío = «Yango». */
+  servicio?: string | null;
+  /** Cuándo la caja confirmó que el cliente pagó por QR (sólo servicio externo). */
+  pagoConfirmadoEn?: string | null;
+  /** El enlace con que el cliente sigue el pedido en el servicio externo. */
+  enlaceSeguimiento?: string | null;
+  /**
+   * La venta ya está cobrada (en caja, o el QR del servicio externo ya se confirmó):
+   * un RECOGER así se entrega sin cobrar. Un backend anterior no lo manda: se cobra al entregar.
+   */
+  pagado?: boolean;
+  /** Cuándo se entregó (el detalle de uno de «Hoy»): ya no hay nada que avanzar. */
+  entregadoEn?: string | null;
 }
 
 /** `GET /pedidos-web/bandeja`. */
@@ -210,6 +256,7 @@ export interface ContadorPedidos {
 }
 
 export interface CuerpoAceptar {
+  /** Con un servicio externo no va: el backend responde 400 si viene. */
   repartidorId?: number;
   tarifaEnvio: number;
   motivoTarifa?: string;

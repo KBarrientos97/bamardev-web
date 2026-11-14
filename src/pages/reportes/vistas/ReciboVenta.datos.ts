@@ -1,5 +1,6 @@
 import { aCentavos } from "../../../lib/dinero";
 import { fmtFechaHora, fmtMoney } from "../../../lib/format";
+import { nombreServicio } from "../../../lib/pedidosWeb/entrega";
 import { tienePermiso } from "../../../lib/permisos";
 import { Telefono } from "../../../lib/telefono";
 import type { PagoVenta, Venta } from "../../../types";
@@ -99,6 +100,7 @@ export function datosPedido(
     | "clienteTelefono"
     | "clienteDireccion"
     | "repartidor"
+    | "entregaExterna"
     | "notaPedido"
     | "estadoEntrega"
     | "entregadoEn"
@@ -114,7 +116,11 @@ export function datosPedido(
   poner("Cliente", v.clienteNombre);
   poner("Teléfono", v.clienteTelefono ? Telefono.paraMostrar(v.clienteTelefono) : null);
   if (domicilio) poner("Dirección", v.clienteDireccion);
-  if (domicilio) poner("Repartidor", v.repartidor?.nombre);
+  if (domicilio) {
+    // Un delivery por un servicio externo no tiene repartidor propio: se dice quién lo lleva.
+    if (!v.repartidor && v.entregaExterna) poner("Envío", `Por ${nombreServicio(v.entregaExterna)}`);
+    else poner("Repartidor", v.repartidor?.nombre);
+  }
   if (v.estadoEntrega === "ENTREGADO") poner("Entregado", v.entregadoEn ? fmtFechaHora(v.entregadoEn) : "Sí");
   else if (v.estadoEntrega === "PENDIENTE") poner("Entrega", "Todavía no se entregó");
   else if (v.estadoEntrega === "CANCELADO") poner("Entrega", "Cancelado");

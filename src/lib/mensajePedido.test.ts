@@ -206,3 +206,27 @@ describe("el mensaje de otros rubros y variantes no habla de pollo (QA R1, N8)",
     expect(pedidoDeVenta({ ...v, pedidoWeb: null } as unknown as Venta)).not.toHaveProperty("salioEn");
   });
 });
+
+describe("mensajePedido con un servicio externo (PLAN-DELIVERY-EXTERNO)", () => {
+  const EXTERNO: PedidoParaMensaje = { ...DELIVERY, dePagina: true, entregaExterna: "Yango" };
+
+  it("no dice que «ya llegó»: ni en el texto clásico de Omar", () => {
+    for (const desde of ["REPARTIDOR", "CAJA"] as const) {
+      const t = mensajePedido(EXTERNO, "Pollos Don Omar", null, desde);
+      expect(t).not.toMatch(/ya llegó|esperándote afuera/);
+      expect(t).toContain("🛵 ¡Tu pedido sale pronto con Yango!");
+    }
+  });
+
+  it("cuando ya salió, dice que va en camino con el servicio", () => {
+    expect(mensajePedido({ ...EXTERNO, entregaExterna: "PedidosYa", salioEn: "2026-11-14T15:00:00.000Z" }, "El Ganadero", { tipoNegocio: "RESTAURANTE", variante: "POSTRES" }, "CAJA")).toContain(
+      "🛵 ¡Tu pedido ya va en camino con PedidosYa!",
+    );
+  });
+
+  it("pedidoDeVenta lo toma de la venta sólo si no hay repartidor propio", () => {
+    const v = { id: 5, comprobante: "V-5", tipoPedido: "DELIVERY", detalles: [], total: 10, tarifaEnvio: 0, totalACobrar: 10, prepagado: false, entregaExterna: "Yango" } as unknown as Venta;
+    expect(pedidoDeVenta(v).entregaExterna).toBe("Yango");
+    expect(pedidoDeVenta({ ...v, repartidor: { id: 1, nombre: "Pedro" } } as unknown as Venta)).not.toHaveProperty("entregaExterna");
+  });
+});
