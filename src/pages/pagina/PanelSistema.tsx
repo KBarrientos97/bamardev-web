@@ -356,7 +356,7 @@ export default function PanelSistema({
           : estadoCaptcha === "fallo"
             ? "No pudimos verificar que no sos un robot: tocá «Reintentar la verificación»."
             : enviarAlVerificar
-              ? "Verificando que no sos un robot: tu pedido se manda solo apenas termine."
+              ? "Esperá un segundo: estamos verificando que no sos un robot. Tu pedido se manda solo apenas termine."
               : "Esperá un segundo: estamos verificando que no sos un robot.",
       campo: "captcha",
     });
