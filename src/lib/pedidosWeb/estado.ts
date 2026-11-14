@@ -39,11 +39,12 @@ export function fraseDe(s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<S
       return "Tu pedido va en camino.";
     case "ENTREGADO":
       return "Entregado. ¡Que lo disfrutes!";
+    // Rechazado, vencido y cancelado dicen lo mismo acá: la tarjeta de abajo
+    // tiene el título y la causa. Antes la frase y el título repetían las mismas
+    // palabras una debajo de la otra (QA R2, S3).
     case "RECHAZADO":
-      return "El local no pudo tomar tu pedido.";
     case "VENCIDO":
-      return "El local no respondió a tiempo.";
     case "CANCELADO":
-      return s.canceladoPor === "LOCAL" ? "El local canceló tu pedido." : "Este pedido está cancelado.";
+      return "Tu pedido no siguió adelante.";
   }
 }

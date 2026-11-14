@@ -399,7 +399,9 @@ describe("el seguimiento del pedido", () => {
     await montar();
     expect(await screen.findByRole("heading", { name: "El local canceló tu pedido" })).toBeInTheDocument();
     expect(screen.getByText("Motivo: Se cayó la moto.")).toBeInTheDocument();
-    expect(screen.getByText("El local canceló tu pedido.")).toBeInTheDocument();
+    // La frase de arriba ya no repite el título de la tarjeta (QA R2, S3).
+    expect(screen.getByText("Tu pedido no siguió adelante.")).toBeInTheDocument();
+    expect(screen.queryByText("El local canceló tu pedido.")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Pedido cancelado" })).not.toBeInTheDocument();
   });
 
@@ -427,5 +429,51 @@ describe("el seguimiento del pedido", () => {
     await montar();
     await screen.findByText(/¡Aceptado!/);
     expect(screen.queryByText(/cambió el envío/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ronda 2 de QA: texto libre y recoger", () => {
+  /** Un texto largo y sin espacios, como una URL pegada. */
+  const LARGO = "https://maps.example.com/" + "x".repeat(180);
+
+  it("la dirección, la referencia y el motivo se parten donde haga falta: el contenedor lleva overflow-wrap (M3)", async () => {
+    servidor({ estado: "ACEPTADO", direccion: LARGO, referencia: LARGO, envio: 12, envioPedido: 7, motivoEnvio: LARGO });
+    await montar();
+    const entrega = await screen.findByText(/Entrega en/);
+    expect(entrega).toHaveTextContent(LARGO);
+    expect(entrega.closest("div[style*='overflow-wrap']")).not.toBeNull();
+    // El aviso del cambio de envío (con el motivo largo) cuelga del mismo contenedor.
+    const aviso = screen.getByText(/El local cambió el envío/);
+    expect(aviso.closest("div[style*='overflow-wrap']")).not.toBeNull();
+  });
+
+  it("el motivo largo de un cancelado por el local no ensancha la tarjeta", async () => {
+    servidor({ estado: "CANCELADO", canceladoPor: "LOCAL", motivoCancelacion: LARGO });
+    await montar();
+    const motivo = await screen.findByText(/Motivo:/);
+    expect(motivo.closest("div[style*='overflow-wrap']")).not.toBeNull();
+  });
+
+  it("para recoger dice «al retirar» y «te damos» de cambio, no «al recibir» ni «te llevan» (S4)", async () => {
+    servidor({ tipo: "RECOGER", estado: "ACEPTADO", envio: 0, total: 100, cambio: 100, pagaCon: 200, direccion: null, referencia: null });
+    await montar();
+    const texto = await screen.findByText(/Pagás en efectivo al retirar/);
+    expect(texto).toHaveTextContent("te damos Bs 100 de cambio");
+    expect(screen.queryByText(/al recibir/)).not.toBeInTheDocument();
+  });
+
+  it("a domicilio sigue diciendo «al recibir» y «te llevan»", async () => {
+    servidor({ estado: "ACEPTADO" });
+    await montar();
+    const texto = await screen.findByText(/Pagás en efectivo al recibir/);
+    expect(texto).toHaveTextContent("te llevan Bs 91 de cambio");
+  });
+
+  it("rechazado y vencido tampoco repiten el título en la frase de arriba (S3)", async () => {
+    servidor({ estado: "RECHAZADO", motivoRechazo: "Se nos agotó algo de tu pedido" });
+    await montar();
+    expect(await screen.findByRole("heading", { name: "Pedido rechazado" })).toBeInTheDocument();
+    expect(screen.getByText("Tu pedido no siguió adelante.")).toBeInTheDocument();
+    expect(screen.getByText("Se nos agotó algo de tu pedido")).toBeInTheDocument();
   });
 });

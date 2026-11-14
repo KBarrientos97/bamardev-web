@@ -194,7 +194,7 @@ export default function SeguimientoPedido() {
   return (
     <main style={{ ...fondo, paddingBottom: "calc(120px + env(safe-area-inset-bottom, 0px))" }}>
       <header style={{ background: fuerte, color: "#ffffff", padding: "18px 16px 20px" }}>
-        <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        <div style={{ maxWidth: 560, margin: "0 auto", overflowWrap: "anywhere" }}>
           <Link to={volver} style={{ color: "#ffffff", opacity: 0.85, fontSize: 13, textDecoration: "none" }}>
             ← {nombre}
           </Link>
@@ -206,7 +206,11 @@ export default function SeguimientoPedido() {
         </div>
       </header>
 
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* `overflow-wrap` se hereda: la dirección, la referencia, el motivo y el nombre
+          son texto libre del cliente o del local, y una URL pegada sin espacios
+          ensanchaba toda la página (QA R2, M3). `anywhere` (y no `break-word`)
+          también achica el ancho mínimo de las tarjetas flex. */}
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 14, overflowWrap: "anywhere" }}>
         {sinConexion && (
           <p role="status" style={{ margin: 0, fontSize: 13, color: "#92400E", background: "#FFFBEB", borderRadius: 12, padding: "10px 12px" }}>
             Sin conexión: te mostramos lo último que supimos. Seguimos intentando.
@@ -322,8 +326,8 @@ export default function SeguimientoPedido() {
                     ? "Pagaste con QR."
                     : "Pagaste en efectivo."
                   : seg.formaPago === "QR"
-                    ? "Pagás con QR al recibir."
-                    : "Pagás en efectivo al recibir."}
+                    ? `Pagás con QR al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`
+                    : `Pagás en efectivo al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`}
                 {/* Sin cambio ni faltante («Con Bs 100» con un total de 100) no hay nada más que decir: sobraba una frase colgada. */}
                 {seg.estado !== "ENTREGADO" && seg.formaPago === "EFECTIVO" && seg.pagaCon != null && ((seg.faltan ?? 0) > 0 || (seg.cambio ?? 0) > 0) && (
                   <>
@@ -337,7 +341,7 @@ export default function SeguimientoPedido() {
                       seg.cambio != null &&
                       seg.cambio > 0 && (
                         <>
-                          : te llevan <strong>{formatoPrecio(seg.cambio)}</strong> de cambio.
+                          : {seg.tipo === "DELIVERY" ? "te llevan" : "te damos"} <strong>{formatoPrecio(seg.cambio)}</strong> de cambio.
                         </>
                       )
                     )}
