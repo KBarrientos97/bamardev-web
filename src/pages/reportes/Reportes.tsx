@@ -360,7 +360,7 @@ function SelectorMovil({ grupos, ficha, conResumen }: { grupos: GrupoVisible[]; 
         <FichaIcono icono={ficha?.icono ?? "chart"} tono={ficha?.tono ?? "verde"} size={34} />
         <span className="min-w-0 flex-1">
           <span className="block text-[11px] font-bold uppercase tracking-wider text-texto-4">Reporte</span>
-          <span className="block truncate text-[15px] font-bold text-texto">{ficha?.titulo ?? "Resumen"}</span>
+          <span className="block break-words text-[15px] font-bold leading-tight text-texto">{ficha?.titulo ?? "Resumen"}</span>
         </span>
         <span className="text-[13px] font-semibold text-primary-700">Cambiar</span>
         <Icon name="chevronDown" size={16} />

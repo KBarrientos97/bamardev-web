@@ -48,8 +48,12 @@ const CSS_IMPRESION = `
   }
   .resumen-plataforma th { font-weight: 700; }
   .resumen-plataforma .num { text-align: right; white-space: nowrap; }
-  .resumen-plataforma .anulado td { text-decoration: line-through; color: #444; }
-  .resumen-plataforma .anulado .marca { display: block; text-decoration: none; font-weight: 700; font-size: 8pt; }
+  /* La raya de «tachado» va en cada dato (.tachado) y no en la celda: una raya
+     declarada en el padre no se puede cancelar desde el hijo, y el motivo de la
+     anulación (.marca) tiene que leerse entero. */
+  .resumen-plataforma .anulado td { color: #444; }
+  .resumen-plataforma .tachado { text-decoration: line-through; }
+  .resumen-plataforma .marca { display: block; font-weight: 700; font-size: 8pt; color: #000; }
   .resumen-plataforma tfoot th { border-top: 1pt solid #000; }
   .resumen-plataforma .nota { margin-top: 3mm; font-size: 8.5pt; font-style: italic; }
 }
@@ -143,16 +147,18 @@ export default function ResumenPedidosImpreso({
 }
 
 function FilaPedido({ p, conSucursal }: { p: PedidoPlataforma; conSucursal: boolean }) {
+  // Un anulado va tachado, menos su marca «Anulado: motivo».
+  const t = (x: string) => (p.anuladoEn ? <span className="tachado">{x}</span> : x);
   return (
     <tr className={p.anuladoEn ? "anulado" : undefined}>
-      <td>{fmtFechaHora(p.fecha)}</td>
+      <td>{t(fmtFechaHora(p.fecha))}</td>
       <td>
-        {p.codigoExterno ?? "—"}
+        {t(p.codigoExterno ?? "—")}
         {p.anuladoEn && <span className="marca">{textoAnulado(p)}</span>}
       </td>
-      {conSucursal && <td>{p.almacen.nombre}</td>}
-      <td>{p.usuario?.nombre ?? "—"}</td>
-      <td className="num">{fmtMoney(p.total)}</td>
+      {conSucursal && <td>{t(p.almacen.nombre)}</td>}
+      <td>{t(p.usuario?.nombre ?? "—")}</td>
+      <td className="num">{t(fmtMoney(p.total))}</td>
     </tr>
   );
 }

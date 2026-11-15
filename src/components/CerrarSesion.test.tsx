@@ -18,6 +18,8 @@ const sesion = vi.hoisted(() => ({
   permisos: ["caja.operar", "ventas.vender"] as string[],
   logout: vi.fn(),
   cola: [] as { estado: string }[],
+  /** Los pedidos de Yango y PedidosYa tomados sin internet. */
+  pedidos: [] as { estado: string }[],
   sinSenal: false,
   esAdministrador: false,
   features: [] as string[],
@@ -62,6 +64,7 @@ vi.mock("../lib/api", async (original) => {
 vi.mock("../lib/offline/cola", async (original) => ({
   ...(await original<typeof import("../lib/offline/cola")>()),
   useColaOffline: () => sesion.cola,
+  usePedidosEncolados: () => sesion.pedidos,
   sinSenal: () => sesion.sinSenal,
 }));
 
@@ -137,6 +140,7 @@ beforeEach(() => {
   sesion.rubro = "RESTAURANTE";
   sesion.permisos = ["caja.operar", "ventas.vender"];
   sesion.cola = [];
+  sesion.pedidos = [];
   sesion.sinSenal = false;
   sesion.esAdministrador = false;
   sesion.features = [];
@@ -332,6 +336,59 @@ describe("restaurante: con la caja abierta no se cierra sesión", () => {
     expect(sesion.logout).not.toHaveBeenCalled();
     fireEvent.click(within(aviso).getByText("Cerrar sesión igual"));
     expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("sólo pedidos de plataforma sin subir: no dice «ventas cobradas» ni que frenan el cierre", async () => {
+    sesion.pedidos = [{ estado: "PENDIENTE" }, { estado: "RECHAZADA" }];
+    montar();
+    await salir();
+    const aviso = screen.getByRole("dialog", { name: "Pedidos sin subir" });
+    expect(aviso).toHaveTextContent(
+      "Hay 1 pedido de plataforma tomado sin internet que todavía no subió. Si cerrás sesión queda guardado en este equipo y sube recién cuando vuelvas a entrar con tu usuario y haya internet.",
+    );
+    expect(aviso.textContent).not.toMatch(/venta/i);
+  });
+
+  it("varios pedidos de plataforma, en plural", async () => {
+    sesion.pedidos = [{ estado: "PENDIENTE" }, { estado: "ERROR" }];
+    montar();
+    await salir();
+    expect(screen.getByRole("dialog", { name: "Pedidos sin subir" })).toHaveTextContent(
+      "Hay 2 pedidos de plataforma tomados sin internet que todavía no subieron. Si cerrás sesión quedan guardados",
+    );
+  });
+
+  it("ventas y pedidos a la vez: los dos, cada uno con su nombre", async () => {
+    sesion.cola = [{ estado: "PENDIENTE" }];
+    sesion.pedidos = [{ estado: "PENDIENTE" }, { estado: "PENDIENTE" }];
+    montar();
+    await salir();
+    const aviso = screen.getByRole("dialog", { name: "Ventas y pedidos sin subir" });
+    expect(aviso).toHaveTextContent(
+      "Hay 1 venta cobrada y 2 pedidos de plataforma sin subir, tomados sin internet. Si cerrás sesión quedan guardados en este equipo",
+    );
+  });
+
+  it("con la caja abierta, el aviso de los pedidos no dice que frenan el cierre (no están en el cierre)", async () => {
+    vi.mocked(api.cajaActual).mockResolvedValue(CAJA_ABIERTA);
+    sesion.pedidos = [{ estado: "PENDIENTE" }];
+    montar();
+    await salir();
+    const aviso = screen.getByRole("dialog", { name: "Caja abierta" });
+    expect(aviso).toHaveTextContent(
+      "Además, hay 1 pedido de plataforma tomado sin internet que todavía no subió: sube solo cuando vuelva la conexión.",
+    );
+    expect(aviso.textContent).not.toMatch(/se puede cerrar la caja/);
+  });
+
+  it("con la caja abierta y las dos cosas: las ventas frenan el cierre y los pedidos sólo se avisan", async () => {
+    vi.mocked(api.cajaActual).mockResolvedValue(CAJA_ABIERTA);
+    sesion.cola = [{ estado: "PENDIENTE" }];
+    sesion.pedidos = [{ estado: "PENDIENTE" }];
+    montar();
+    await salir();
+    const aviso = screen.getByRole("dialog", { name: "Caja abierta" });
+    expect(aviso).toHaveTextContent("recién ahí se puede cerrar la caja. También hay 1 pedido de plataforma tomado sin internet");
   });
 
   it("quien no opera caja (el repartidor) no pregunta por ninguna caja", async () => {
