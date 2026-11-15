@@ -19,6 +19,7 @@ import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, 
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
 import { useLocalDelPapel, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { abrirWhatsapp } from "../../lib/academia/vista";
+import { recordatorioDeLaPlata, type PlataDelCambio } from "./cambioDeVenta";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -37,10 +38,19 @@ export default function PantallaRecibo({
   onHistorial,
   etiquetaNueva = "Nueva venta",
   reimpresion = false,
+  modificada = null,
 }: {
   venta: Venta;
   onNuevaVenta: () => void;
   onHistorial: () => void;
+  /**
+   * La venta se acaba de MODIFICAR (cambio de productos con PIN, 15-nov): la
+   * pantalla dice "Venta modificada" y le recuerda a la cajera la plata que
+   * tiene que devolver o que cobró. Los papeles salen como en una venta
+   * recién cobrada: el cliente se lleva el recibo nuevo y la cocina la
+   * comanda nueva. Sin esto, la pantalla de siempre.
+   */
+  modificada?: PlataDelCambio | null;
   /** El botón principal: "Nueva venta" en el POS, "Cobrar a otro" en el instituto (A1). */
   etiquetaNueva?: string;
   /**
@@ -167,6 +177,9 @@ export default function PantallaRecibo({
   // de pagos: el cliente busca "Efectivo recibido" y "Cambio entregado".
   const efectivo = pagos.find((p) => /efectivo/i.test(p.formaPago ?? ""));
   const qr = pagos.find((p) => /qr|transfer/i.test(p.formaPago ?? ""));
+  // Efectivo en negativo: plata que SALIÓ del cajón por un cambio de productos
+  // en una venta que se había cobrado por otro medio (15-nov).
+  const efectivoDevuelto = !!efectivo && efectivo.monto < 0;
 
   // Belleza (QA PER-01): el pago guarda lo recibido de la VENTA (así el
   // backend calcula bien el vuelto), y la propina en efectivo va aparte. Pero
@@ -195,6 +208,10 @@ export default function PantallaRecibo({
   const metodo =
     venta.formasPago?.join(" + ") ||
     pagos
+      // Con qué PAGÓ: un pago en negativo es plata devuelta por ese medio (un
+      // cambio de productos en una venta cobrada por QR), no un medio de pago.
+      // Sólo los negativos: cualquier otro pago se lee como siempre.
+      .filter((p) => !(p.monto < 0))
       .map((p) => p.formaPago)
       .filter(Boolean)
       .join(" + ") ||
@@ -458,7 +475,11 @@ export default function PantallaRecibo({
           <dt>Método de pago</dt>
           <dd className="font-bold text-texto">{metodo}</dd>
         </div>
-        {efectivo && (
+        {/* Un pago en efectivo NEGATIVO no es efectivo recibido: es la venta
+            cobrada por QR a la que un cambio de productos le devolvió la
+            diferencia en efectivo. Ahí no hay renglón de "recibido", y abajo
+            dice "Devuelto en efectivo". En cualquier otra venta, lo de siempre. */}
+        {efectivo && !efectivoDevuelto && (
           <div className="flex justify-between text-texto-2">
             <dt>
               Efectivo recibido
@@ -483,7 +504,7 @@ export default function PantallaRecibo({
         {cambio > 0 && (
           // Con `gap`: en el ticket de 320 px se leía "Cambio entregadoBs 27,00".
           <div className="flex justify-between gap-2 font-bold text-texto">
-            <dt>Cambio entregado</dt>
+            <dt>{efectivoDevuelto ? "Devuelto en efectivo" : "Cambio entregado"}</dt>
             <dd>{fmtMoney(cambio)}</dd>
           </div>
         )}
@@ -594,10 +615,11 @@ export default function PantallaRecibo({
                   <Icon name="check" size={24} strokeWidth={2.5} />
                 </span>
                 <div className="min-w-0">
-                  <h1 className="text-xl font-bold text-texto">Venta registrada</h1>
+                  <h1 className="text-xl font-bold text-texto">{modificada ? "Venta modificada" : "Venta registrada"}</h1>
                   <p className="text-[13px] text-texto-3">{venta.comprobante ?? `#${venta.id}`}</p>
                 </div>
               </div>
+              {modificada && <AvisoDelCambio cambio={modificada} />}
               <NumeroGrande numero={numero} detalles={detalles} />
               {ancha && (
                 <div className="mt-5 space-y-3">
@@ -674,7 +696,7 @@ export default function PantallaRecibo({
             <Icon name={venta.pendienteSync ? "wifiOff" : "check"} size={28} strokeWidth={2.5} />
           </span>
           <h1 className="mt-3 text-lg font-bold text-texto">
-            {venta.pendienteSync ? "Venta guardada sin internet" : "Venta registrada"}
+            {venta.pendienteSync ? "Venta guardada sin internet" : modificada ? "Venta modificada" : "Venta registrada"}
           </h1>
           <p className="mt-0.5 text-[13px] text-texto-3">
             {/* Cobrada sin señal (app del iPhone): todavía no tiene número; se
@@ -684,6 +706,7 @@ export default function PantallaRecibo({
               ? "Se sube sola cuando vuelva la conexión. El número lo pone el sistema al subirla."
               : (venta.comprobante ?? `#${venta.id}`)}
           </p>
+          {modificada && <AvisoDelCambio cambio={modificada} />}
           {ancha && (
             <div className="mt-6 w-full max-w-sm space-y-3">
               {nueva("w-full")}
@@ -701,6 +724,24 @@ export default function PantallaRecibo({
       {avisoAbajo}
       {barraAbajo}
     </div>
+  );
+}
+
+/**
+ * Después de modificar una venta: lo que la cajera tiene que hacer con la
+ * plata, grande y antes que cualquier botón. En rojo si sale del cajón.
+ */
+function AvisoDelCambio({ cambio }: { cambio: PlataDelCambio }) {
+  const sale = cambio.diferencia < 0 && Math.abs(cambio.diferencia) >= 0.005;
+  return (
+    <p
+      role="status"
+      className={`mt-3 w-full rounded-xl px-3.5 py-2.5 text-center text-[14px] font-bold print:hidden ${
+        sale ? "bg-danger-bg text-danger-text" : "bg-primary-50 text-primary-700"
+      }`}
+    >
+      {recordatorioDeLaPlata(cambio)}
+    </p>
   );
 }
 

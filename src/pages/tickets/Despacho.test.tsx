@@ -71,6 +71,28 @@ describe("Despacho", () => {
     expect(within(tarjeta).getByText("PARA LLEVAR")).toBeInTheDocument();
     expect(within(tarjeta).getByText("sin ensalada")).toBeInTheDocument();
     expect(screen.getByText(/1 en preparación · 1 listos por entregar/)).toBeInTheDocument();
+    // El pedido de siempre no dice nada de cambios.
+    expect(screen.queryByText(/PEDIDO CAMBIADO/)).not.toBeInTheDocument();
+  });
+
+  it("si la caja le cambió productos después de cobrarlo, el pedido lo avisa (15-nov)", async () => {
+    api.tablero.mockResolvedValue(
+      tablero([
+        ticket({
+          modificadoEn: new Date(ahora - 60_000).toISOString(),
+          items: [{ producto: "Broaster cuarto", cantidad: 2, nota: null, consumo: "LLEVAR" }],
+        }),
+        ticket({ id: 2, numero: 73 }),
+      ]),
+    );
+    render(<Despacho />);
+    const cambiado = (await screen.findByText("072")).closest("article")!;
+    expect(within(cambiado).getByText(/^PEDIDO CAMBIADO · /)).toBeInTheDocument();
+    // Lo que se ve es el pedido como quedó.
+    expect(within(cambiado).getByText("Broaster cuarto")).toBeInTheDocument();
+    // Y sólo ese: el de al lado no cambió.
+    const otro = screen.getByText("073").closest("article")!;
+    expect(within(otro).queryByText(/PEDIDO CAMBIADO/)).not.toBeInTheDocument();
   });
 
   it("«Listo · llamar» lo marca listo y avisa que suena en la pantalla", async () => {

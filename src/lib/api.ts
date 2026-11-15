@@ -7,6 +7,7 @@ import type {
   Almacen,
   AlmacenInput,
   AnularVentaInput,
+  ModificarVentaInput,
   ArticuloMovimiento,
   ImportarMedicamentosInput,
   RespuestaImportacion,
@@ -1026,6 +1027,12 @@ export const api = {
   getVenta: (id: number) => request<Venta>(`/ventas/${id}`),
   anularVenta: (id: number, input: AnularVentaInput = {}) =>
     request<Venta>(`/ventas/${id}/anular`, { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * Cambia los productos de una venta ya cobrada (misma venta, mismo
+   * comprobante) y cobra o devuelve la diferencia. Con PIN y motivo, siempre.
+   */
+  modificarVenta: (id: number, input: ModificarVentaInput) =>
+    request<Venta>(`/ventas/${id}/modificar`, { method: "POST", body: JSON.stringify(input) }),
   // ── Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §4.1) ──────────
   // No son ventas: no tocan la caja. Con `almacenId` la sucursal viaja
   // también en la cabecera, como `crearVenta`: la cola sin señal lo sube

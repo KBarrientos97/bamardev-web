@@ -37,19 +37,26 @@ import { motivosRevision, requiereRevision } from "../../lib/revisionVenta";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import VentasSinSubir from "../../components/offline/VentasSinSubir";
 import { useAuth } from "../../store/AuthContext";
-import type { Caja, Venta } from "../../types";
+import type { Caja, ModificacionVenta, Venta } from "../../types";
+import { cambioDeProductos, motivoNoModificable, plataDelCambio, rubroModificaVentas } from "./cambioDeVenta";
 
 export default function PantallaHistorial({
   caja,
   onAtras,
   onCierre,
   onVerComprobante,
+  onModificar,
 }: {
   caja: Caja;
   onAtras: () => void;
   onCierre: () => void;
   /** Abre el recibo de una venta ya hecha (el POS es quien tiene esa pantalla). */
   onVerComprobante: (venta: Venta) => void;
+  /**
+   * Abre el cambio de productos de una venta ya cobrada (15-nov; el POS es
+   * quien tiene el catálogo). Sin esto no se ofrece.
+   */
+  onModificar?: (venta: Venta) => void;
 }) {
   const { puede, negocio } = useAuth();
   const hayVariasSucursales = useHayVariasSucursales();
@@ -317,6 +324,11 @@ export default function PantallaHistorial({
                           </Badge>
                         )}
                         {requiereRevision(v) && <Badge tono="amarillo">A revisar</Badge>}
+                        {/* Se le cambiaron productos después de cobrada (con
+                            PIN): que se vea en la lista, sin abrir cada una. */}
+                        {v.estado === "APROBADO" && (v.vecesModificada ?? 0) > 0 && (
+                          <Badge tono="azul">Modificada</Badge>
+                        )}
                       </div>
                       <p className="mt-0.5 text-xs text-texto-3">
                         {fmtHora(v.fecha)} · {v.items ?? 0}{" "}
@@ -381,6 +393,15 @@ export default function PantallaHistorial({
             setDetalle(null);
             onVerComprobante(v);
           }}
+          cajaId={caja.id}
+          onModificar={
+            onModificar
+              ? (v) => {
+                  setDetalle(null);
+                  onModificar(v);
+                }
+              : undefined
+          }
         />
       )}
     </div>
@@ -437,6 +458,8 @@ function DetalleVenta({
   onAnulada,
   onEntregar,
   onVerComprobante,
+  cajaId,
+  onModificar,
 }: {
   venta: Venta;
   onClose: () => void;
@@ -445,6 +468,10 @@ function DetalleVenta({
   onEntregar?: (venta: Venta) => void;
   /** Reimprimir el comprobante de un pedido ya cobrado. */
   onVerComprobante?: (venta: Venta) => void;
+  /** La caja abierta del POS: sólo se modifican las ventas de ese turno. */
+  cajaId?: number;
+  /** Cambiar los productos de la venta (con PIN). Recibe la venta ENTERA. */
+  onModificar?: (venta: Venta) => void;
 }) {
   const { usuario, rubro, negocio } = useAuth();
   // Con varios locales, el mensaje al cliente dice de cuál sale su pedido.
@@ -483,6 +510,22 @@ function DetalleVenta({
   const puedeAnular = v.estado === "APROBADO" && tienePermiso(usuario, "ventas.anular");
 
   /**
+   * Modificar la venta (15-nov): cambiarle productos después de cobrada, en
+   * vez de anularla y hacer otra. Con el mismo permiso que anular —y el PIN de
+   * un encargado, que se pide siempre al confirmar— porque abre la misma
+   * puerta: achicar una venta cobrada. Sólo la de mostrador del turno abierto,
+   * sin nada atado (fiado, mesa, descuento…), y recién con la venta ENTERA
+   * leída: de ahí salen los renglones, los pagos y la versión que se cambia.
+   */
+  const puedeModificar =
+    !!onModificar &&
+    !!completa.datos &&
+    tienePermiso(usuario, "ventas.anular") &&
+    rubroModificaVentas(rubro) &&
+    motivoNoModificable(completa.datos, cajaId) === null;
+  const cambios = v.modificaciones ?? [];
+
+  /**
    * El bloque de pedido (recoger / domicilio), con las mismas reglas que la
    * app (`HostEntregaDetalle.accionPara`):
    *
@@ -519,6 +562,21 @@ function DetalleVenta({
                 {v.prepagado ? "Entregar" : "Cobrar y entregar"}
               </Boton>
             )}
+            {puedeModificar && (
+              // "Modificar" a secas en el botón: con "Modificar venta" los tres
+              // no entraban en un renglón (ni en la compu ni en el celular) y
+              // «Anular venta» bajaba solo. El nombre entero queda para el
+              // lector de pantalla.
+              <Boton
+                variante="ghost"
+                icono="edit"
+                aria-label="Modificar venta"
+                title="Cambiar los productos de esta venta"
+                onClick={() => onModificar!(completa.datos!)}
+              >
+                Modificar
+              </Boton>
+            )}
             {puedeAnular && (
               <Boton variante="danger" icono="x" onClick={() => setAnulando(true)}>
                 Anular venta
@@ -538,6 +596,22 @@ function DetalleVenta({
                 {v.anulacionAutorizadaPor && (
                   <p className="mt-0.5">Autorizó: {v.anulacionAutorizadaPor}</p>
                 )}
+              </div>
+            )}
+
+            {/* Se le cambiaron productos después de cobrada: qué salió, qué
+                entró, la plata, quién lo hizo y quién puso el PIN. Lo ve
+                cualquiera que abra la venta; el dueño, además, en Reportes. */}
+            {cambios.length > 0 && (
+              <div className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+                <p className="font-bold">
+                  {cambios.length === 1 ? "Venta modificada" : `Venta modificada ${cambios.length} veces`}
+                </p>
+                <ul className="mt-1 space-y-2">
+                  {cambios.map((c) => (
+                    <CambioDeLaVenta key={c.id} cambio={c} />
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -689,12 +763,22 @@ function DetalleVenta({
                   <dd>{fmtMoney(v.totalACobrar ?? v.total + v.tarifaEnvio)}</dd>
                 </div>
               )}
-              {(v.pagos ?? []).map((p, i) => (
-                <div key={i} className="flex justify-between text-texto-2">
-                  <dt>{p.formaPago ?? "Pago"}</dt>
-                  <dd>{fmtMoney(p.monto)}</dd>
-                </div>
-              ))}
+              {(v.pagos ?? []).map((p, i) =>
+                // Un pago en negativo es plata que SALIÓ por ese medio: la
+                // diferencia de un cambio devuelta en efectivo en una venta
+                // que se había cobrado por QR. Se dice con palabras.
+                p.monto < 0 ? (
+                  <div key={i} className="flex justify-between gap-2 text-texto-2">
+                    <dt>Devuelto en {(p.formaPago ?? "efectivo").toLowerCase()}</dt>
+                    <dd className="shrink-0">− {fmtMoney(-p.monto)}</dd>
+                  </div>
+                ) : (
+                  <div key={i} className="flex justify-between text-texto-2">
+                    <dt>{p.formaPago ?? "Pago"}</dt>
+                    <dd>{fmtMoney(p.monto)}</dd>
+                  </div>
+                ),
+              )}
             </dl>
           </div>
         )}
@@ -976,6 +1060,30 @@ export function EntregarRecoger({
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Un cambio de productos de la venta: de cuánto a cuánto y la plata, qué salió
+ * y qué entró, el motivo, quién lo hizo y quién puso el PIN.
+ */
+function CambioDeLaVenta({ cambio: c }: { cambio: ModificacionVenta }) {
+  const { sale, entra } = cambioDeProductos(c.antes, c.despues);
+  const lista = (ls: { producto: string; cantidad: number }[]) =>
+    ls.map((l) => `${fmtNum(l.cantidad)}× ${l.producto}`).join(", ");
+  return (
+    <li>
+      <p className="font-semibold">
+        {fmtHora(c.fecha)} · de {fmtMoney(c.totalAntes)} a {fmtMoney(c.totalDespues)}: {plataDelCambio(c)}
+      </p>
+      {sale.length > 0 && <p>Salió: {lista(sale)}</p>}
+      {entra.length > 0 && <p>Entró: {lista(entra)}</p>}
+      <p>Motivo: {c.motivo}</p>
+      <p>
+        Lo hizo {c.usuario ?? "—"}
+        {c.autorizadoPor && c.autorizadoPor !== c.usuario ? ` · autorizó ${c.autorizadoPor} con su PIN` : " con su PIN"}
+      </p>
+    </li>
   );
 }
 

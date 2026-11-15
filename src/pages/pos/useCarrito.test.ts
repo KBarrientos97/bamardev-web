@@ -387,3 +387,47 @@ describe("useCarrito · la venta de la farmacia", () => {
     expect(idsGuardados("LOCAL")).toEqual([]);
   });
 });
+
+describe("useCarrito · en memoria (modificar una venta ya cobrada, 15-nov)", () => {
+  beforeEach(() => sessionStorage.clear());
+
+  it("arranca con las líneas que le dan y no lee ni pisa la venta a medio armar del mostrador", () => {
+    // El mostrador tiene su venta guardada en la pestaña.
+    sessionStorage.setItem("bamar.carrito.LOCAL", '[{"id":9,"cantidad":3,"enMesa":3,"nota":""}]');
+    const pollo = producto({ id: 1, stockTotal: 5 });
+    const { result } = renderHook(() =>
+      useCarrito("LOCAL", [pollo], true, { inicial: [{ producto: pollo, cantidad: 2, enMesa: 2, nota: "sin ají" }] }),
+    );
+    expect(result.current.lineas.map((l) => [l.producto.id, l.cantidad, l.enMesa, l.nota])).toEqual([[1, 2, 2, "sin ají"]]);
+
+    act(() => result.current.agregar(pollo));
+    act(() => result.current.setCantidad(1, 1));
+    expect(result.current.lineas[0].cantidad).toBe(1);
+    // Lo del mostrador sigue como estaba.
+    expect(sessionStorage.getItem("bamar.carrito.LOCAL")).toBe('[{"id":9,"cantidad":3,"enMesa":3,"nota":""}]');
+  });
+
+  it("vaciarlo tampoco borra lo guardado del mostrador", () => {
+    sessionStorage.setItem("bamar.carrito.LOCAL", '[{"id":9,"cantidad":1,"enMesa":1,"nota":""}]');
+    const pollo = producto({ id: 1 });
+    const { result } = renderHook(() =>
+      useCarrito("LOCAL", [pollo], true, { inicial: [{ producto: pollo, cantidad: 1, enMesa: 1, nota: "" }] }),
+    );
+    act(() => result.current.vaciar());
+    expect(result.current.lineas).toHaveLength(0);
+    expect(idsGuardados("LOCAL")).toEqual([9]);
+  });
+
+  it("respeta el mismo tope de stock y manda los renglones como una venta", () => {
+    const coca = producto({ id: 2, precio: 23, stockTotal: 2 });
+    const { result } = renderHook(() =>
+      useCarrito("LOCAL", [coca], true, { inicial: [{ producto: coca, cantidad: 2, enMesa: 1, nota: "" }] }),
+    );
+    act(() => result.current.agregar(coca));
+    expect(result.current.lineas[0].cantidad).toBe(2);
+    expect(result.current.aDetalles()).toEqual([
+      { productoId: 2, cantidad: 1, precio: 23, consumo: "MESA" },
+      { productoId: 2, cantidad: 1, precio: 23, consumo: "LLEVAR" },
+    ]);
+  });
+});

@@ -3,6 +3,7 @@ import { numeroTicket } from "../../lib/tickets/llamado";
 import type { Venta } from "../../types";
 import type { TamanoLetra } from "../../types/menuDigital";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
+import { cambioDeProductos } from "./cambioDeVenta";
 
 /**
  * La comanda de cocina de un pedido con número (extra `tickets_pedido`): el
@@ -50,6 +51,12 @@ export default function ComandaCocina({
     { titulo: "PARA LLEVAR", lineas: detalles.filter((d) => d.consumo !== "MESA") },
   ].filter((g) => g.lineas.length > 0);
   const unidades = detalles.reduce((s, d) => s + d.cantidad, 0);
+  // La venta se modificó después de cobrada (15-nov): la cocina ya tiene un
+  // papel con este mismo número. Éste dice que es un CAMBIO y qué ya no va,
+  // para que no prepare los dos. La lista de abajo es el pedido como quedó.
+  const cambiado = (venta.vecesModificada ?? 0) > 0;
+  const ultimoCambio = cambiado ? (venta.modificaciones?.[0] ?? null) : null;
+  const yaNoVa = ultimoCambio ? cambioDeProductos(ultimoCambio.antes, ultimoCambio.despues).sale : [];
 
   return (
     <article
@@ -63,6 +70,18 @@ export default function ComandaCocina({
         <p className="mt-3 text-[10px] font-bold tracking-[0.3em] text-texto-3">TICKET N°</p>
         <p className="font-mono text-[64px] font-black leading-none tracking-tight text-texto">{numeroTicket(numero)}</p>
       </header>
+      {cambiado && (
+        <div className="mt-3 rounded border-2 border-texto px-2 py-1.5 text-center text-texto">
+          <p className="text-[15px] font-black tracking-[0.08em]">
+            PEDIDO CAMBIADO{venta.modificadaEn ? ` · ${fmtHora(venta.modificadaEn)}` : ""}
+          </p>
+          {yaNoVa.length > 0 && (
+            <p className="mt-0.5 text-[13px] font-bold">
+              YA NO VA: {yaNoVa.map((l) => `${fmtCantidad(l.cantidad)}× ${l.producto}`).join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
       <div className="mt-3 flex justify-between border-b border-dashed border-borde pb-2 font-mono text-[11px] text-texto-2">
         <span>{fmtHora(venta.fecha)}</span>
         <span>{venta.comprobante ?? `#${venta.id}`}</span>

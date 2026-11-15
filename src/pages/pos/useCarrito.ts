@@ -138,14 +138,24 @@ export function useCarrito(
    * y, por lo tanto, tampoco guardaba.
    */
   catalogoListo: boolean = catalogo.length > 0,
+  /**
+   * Un carrito que vive sólo en memoria y arranca con estas líneas: el de
+   * modificar una venta ya cobrada (`ModificarVenta`, 15-nov). No lee ni
+   * escribe `sessionStorage`: si lo hiciera pisaría la venta a medio armar
+   * del mostrador, que es otra cosa. Sin esto —todo el POS de siempre— el
+   * carrito se guarda y se rehidrata como antes.
+   */
+  enMemoria?: { inicial: LineaCarrito[] },
 ): Carrito {
   const clave = `${CLAVE_CARRITO}.${tipoPedido}`;
-  const [lineas, setLineas] = useState<LineaCarrito[]>([]);
+  const sinGuardar = enMemoria !== undefined;
+  const [lineas, setLineas] = useState<LineaCarrito[]>(() => enMemoria?.inicial ?? []);
   const [rehidratado, setRehidratado] = useState(false);
 
   // Rehidratar en cuanto llega el catálogo: antes no se puede, porque las
   // líneas necesitan el Producto y sólo tenemos su id.
   useEffect(() => {
+    if (sinGuardar) return;
     if (rehidratado || !catalogoListo) return;
     const guardadas = leerGuardado(clave);
     if (guardadas.length > 0) {
@@ -166,12 +176,12 @@ export function useCarrito(
       );
     }
     setRehidratado(true);
-  }, [catalogo, catalogoListo, clave, rehidratado]);
+  }, [catalogo, catalogoListo, clave, rehidratado, sinGuardar]);
 
   // Y se guarda con cada cambio. Recién después de rehidratar, para que el
   // estado vacío del primer render no borre lo que había guardado.
   useEffect(() => {
-    if (!rehidratado) return;
+    if (sinGuardar || !rehidratado) return;
     try {
       if (lineas.length === 0) {
         sessionStorage.removeItem(clave);
@@ -187,7 +197,7 @@ export function useCarrito(
     } catch {
       /* sin storage se sigue igual: es una comodidad, no un requisito */
     }
-  }, [lineas, clave, rehidratado]);
+  }, [lineas, clave, rehidratado, sinGuardar]);
 
   /**
    * Consumo con el que nace una línea nueva. En el local la mayoría se sienta

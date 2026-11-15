@@ -61,6 +61,9 @@ export function nombreAccion(codigo: string | null): string {
     case "ANULAR_VENTA":
     case "AUTORIZACION_ANULAR":
       return "Anular una venta";
+    case "MODIFICAR_VENTA":
+    case "AUTORIZACION_MODIFICAR":
+      return "Modificar una venta";
     case "FIAR_SOBRE_LIMITE":
     case "LIMITE_CREDITO":
       return "Fiar por encima del límite";

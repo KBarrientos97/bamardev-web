@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { apiTickets } from "../../lib/apiTickets";
-import { fmtCantidad } from "../../lib/format";
+import { fmtCantidad, fmtHora } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
 import { SelectorLocalTickets, useLocalDeTickets } from "./useLocalDeTickets";
 import { useAlDia, useMantenerEncendida } from "../../publico/tv/pantalla";
@@ -360,6 +360,14 @@ function TarjetaPedido({
           </span>
         )}
       </div>
+      {/* La caja le cambió productos después de cobrarlo: lo de abajo ya es
+          el pedido como quedó, y la franja avisa que no es el que la cocina
+          vio la primera vez. */}
+      {t.modificadoEn && (
+        <p className="bg-[#FFC800] px-4 py-1.5 text-center text-[13px] font-extrabold tracking-wide text-[#1A1A1A]">
+          PEDIDO CAMBIADO · {fmtHora(t.modificadoEn)}
+        </p>
+      )}
       <div className="flex-1 space-y-2 px-4 py-3">
         {enMesa.length > 0 && <GrupoItems tipo="MESA" items={enMesa} />}
         {llevar.length > 0 && <GrupoItems tipo="LLEVAR" items={llevar} />}

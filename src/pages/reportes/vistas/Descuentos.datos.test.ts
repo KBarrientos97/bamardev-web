@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { DescuentosApi } from "../api";
-import { claveNombre, hojasDescuentos, porCajero, sinDescuentos, sobreVentas, sumaCantidades } from "./Descuentos.datos";
+import {
+  claveNombre,
+  hojasDescuentos,
+  listaDeProductos,
+  medioDelCambio,
+  porCajero,
+  queCambio,
+  sinDescuentos,
+  sobreVentas,
+  sumaCantidades,
+} from "./Descuentos.datos";
 
 function reporte(p: Partial<DescuentosApi> = {}): DescuentosApi {
   return {
@@ -80,5 +90,73 @@ describe("descuentos: vacío y Excel", () => {
       ultimasAnulaciones: [{ fecha: "12 oct · 21:30", idVenta: "V001389", cajero: "María F.", monto: 31, autorizadoPor: "Kevin", motivo: "Mal cobrado" }],
     });
     expect(hojasDescuentos(con).map((h) => h.nombre)).toEqual(["Por cajero", "Últimas anulaciones"]);
+  });
+});
+
+describe("descuentos: las ventas modificadas (15-nov)", () => {
+  const cambio = (p: Partial<NonNullable<DescuentosApi["modificaciones"]>["ultimas"][number]> = {}) => ({
+    fecha: "15 nov · 12:05",
+    ventaId: 7,
+    idVenta: "V-000007",
+    anulada: false,
+    cajero: "Cata Cajera",
+    autorizadoPor: "Ana Encargada",
+    motivo: "El cliente cambió de idea",
+    totalAntes: 51,
+    totalDespues: 48,
+    diferencia: -3,
+    pagos: [{ formaPagoId: 1, formaPago: "Efectivo", monto: -3 }],
+    sale: [
+      { producto: "Broaster cuarto", cantidad: 1 },
+      { producto: "Coca Cola 3L", cantidad: 1 },
+    ],
+    entra: [
+      { producto: "Brasa cuarto", cantidad: 1 },
+      { producto: "Coca Cola 2L", cantidad: 1 },
+    ],
+    ...p,
+  });
+  const modificaciones = (ultimas = [cambio()]) => ({
+    cantidad: ultimas.length,
+    devuelto: 3,
+    cobrado: 0,
+    porCajero: [{ cajero: "Cata Cajera", cantidad: ultimas.length, devuelto: 3, cobrado: 0 }],
+    ultimas,
+  });
+
+  it("con una sola venta modificada el reporte ya no está vacío", () => {
+    expect(sinDescuentos(reporte({ modificaciones: modificaciones() }))).toBe(false);
+    // Un backend anterior (o un período sin cambios) no manda el bloque.
+    expect(sinDescuentos(reporte())).toBe(true);
+  });
+
+  it("dice en una línea qué salió y qué entró", () => {
+    expect(queCambio(cambio())).toBe(
+      "Salió 1× Broaster cuarto, 1× Coca Cola 3L · Entró 1× Brasa cuarto, 1× Coca Cola 2L",
+    );
+    expect(queCambio(cambio({ sale: [] }))).toBe("Entró 1× Brasa cuarto, 1× Coca Cola 2L");
+    expect(queCambio(cambio({ sale: [], entra: [] }))).toMatch(/Los mismos productos/);
+    expect(listaDeProductos([])).toBe("—");
+  });
+
+  it("por dónde se movió la plata", () => {
+    expect(medioDelCambio(cambio())).toBe("en efectivo");
+    expect(medioDelCambio(cambio({ pagos: [{ formaPagoId: 2, formaPago: "QR", monto: 4 }] }))).toBe("por QR");
+    expect(medioDelCambio(cambio({ pagos: [] }))).toBe("");
+  });
+
+  it("van a su hoja del Excel, con lo devuelto y lo cobrado en columnas aparte", () => {
+    const hojas = hojasDescuentos(
+      reporte({ modificaciones: modificaciones([cambio(), cambio({ diferencia: 4, totalDespues: 55, pagos: [{ formaPagoId: 2, formaPago: "QR", monto: 4 }] })]) }),
+    );
+    expect(hojas.map((h) => h.nombre)).toEqual(["Por cajero", "Ventas modificadas"]);
+    // La primera fila son los títulos; las demás, un cambio por fila.
+    const [titulos, ...filas] = hojas[1].filas;
+    const columna = (titulo: string) => filas.map((f) => f[titulos.indexOf(titulo)]);
+    expect(titulos).toContain("Autorizó");
+    expect(columna("Devuelto al cliente (Bs)")).toEqual([3, 0]);
+    expect(columna("Cobrado de más (Bs)")).toEqual([0, 4]);
+    expect(columna("Medio")).toEqual(["en efectivo", "por QR"]);
+    expect(columna("Salió del pedido")[0]).toBe("1× Broaster cuarto, 1× Coca Cola 3L");
   });
 });

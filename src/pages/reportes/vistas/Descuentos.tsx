@@ -1,13 +1,15 @@
-import { esCero } from "../../../lib/dinero";
+import { esCero, esPositivo } from "../../../lib/dinero";
 import { fmtMoney, fmtNum } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-import { apiReportes, type DescuentosApi } from "../api";
+import { apiReportes, type DescuentosApi, type ModificacionesApi } from "../api";
 import { useColumnaSucursal, useExportar, useReporte } from "../contexto";
 import { bsResta, pct, plural, variacion } from "../formato";
 import { Cargador, Chip, Delta, FilaLista, KpiR, Nota, Tarjeta } from "../ui";
 import {
   hojasDescuentos,
+  medioDelCambio,
   porCajero,
+  queCambio,
   sinDescuentos,
   sobreVentas,
   sumaCantidades,
@@ -93,10 +95,15 @@ export default function Descuentos() {
               <PorCajero filas={porCajero(x)} />
               <UltimasAnulaciones lista={x.ultimasAnulaciones} total={anuladas} conLocal={conLocal} />
             </div>
+            {/* Las ventas a las que se les cambiaron productos después de
+                cobradas (con PIN): sólo si hubo alguna en el período. */}
+            {x.modificaciones && <VentasModificadas m={x.modificaciones} conLocal={conLocal} />}
             <Nota>
               Las anulaciones cuentan por el día de la venta y van a nombre de quien vendió, no de quien anuló. No hay
-              descuentos a mano en el sistema: lo que se ve son promociones y cupones. Las flechas comparan contra{" "}
-              {comparacion.contra}.
+              descuentos a mano en el sistema: lo que se ve son promociones y cupones.
+              {x.modificaciones &&
+                " Las ventas modificadas cuentan por el día del cambio y van a nombre de quien lo hizo; siempre las autoriza un encargado con su PIN."}{" "}
+              Las flechas comparan contra {comparacion.contra}.
             </Nota>
           </>
         );
@@ -150,6 +157,73 @@ function Celda({ monto, cantidad, uno, varios }: { monto: number; cantidad: numb
       <span className="block whitespace-nowrap font-bold tabular-nums text-texto">{fmtMoney(monto)}</span>
       <span className="block text-[11.5px] text-texto-3">{plural(cantidad, uno, varios)}</span>
     </>
+  );
+}
+
+/**
+ * Las ventas modificadas después de cobradas: cuánta plata se devolvió, quién
+ * hizo cada cambio, quién lo autorizó con su PIN y qué salió y qué entró del
+ * pedido. Es lo que el dueño mira para saber que nadie "achicó" una venta para
+ * quedarse con la diferencia.
+ */
+function VentasModificadas({ m, conLocal }: { m: ModificacionesApi; conLocal: boolean }) {
+  const subtitulo = [
+    plural(m.cantidad, "cambio", "cambios"),
+    esPositivo(m.devuelto) ? `${fmtMoney(m.devuelto)} devueltos a clientes` : null,
+    esPositivo(m.cobrado) ? `${fmtMoney(m.cobrado)} cobrados de más` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Tarjeta titulo="Ventas modificadas" subtitulo={subtitulo} cuerpo="">
+      {/* Quién hizo los cambios: primero el que más plata devolvió. */}
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 border-b border-borde-soft px-4 py-2.5 text-[12.5px] text-texto-2 sm:px-5">
+        {m.porCajero.map((c) => (
+          <li key={c.cajero}>
+            <span className="font-bold text-texto">{c.cajero}:</span> {plural(c.cantidad, "cambio", "cambios")}
+            {esPositivo(c.devuelto) && `, devolvió ${fmtMoney(c.devuelto)}`}
+            {esPositivo(c.cobrado) && `, cobró ${fmtMoney(c.cobrado)} más`}
+          </li>
+        ))}
+      </ul>
+      <div className="divide-y divide-borde-soft">
+        {m.ultimas.map((c, i) => {
+          const medio = medioDelCambio(c);
+          return (
+            <FilaLista
+              key={`${c.ventaId}-${i}`}
+              icono="edit"
+              tono={c.diferencia < 0 ? "rosa" : "verde"}
+              titulo={`Cambio · ${c.idVenta}`}
+              chip={
+                <>
+                  {conLocal && c.sucursal ? <Chip>{c.sucursal.nombre}</Chip> : null}
+                  {c.anulada ? <Chip tono="rojo">Anulada después</Chip> : null}
+                </>
+              }
+              linea={[c.cajero, c.fecha, c.motivo].filter(Boolean).join(" · ")}
+              linea2={`${queCambio(c)} · ${
+                c.autorizadoPor && c.autorizadoPor !== c.cajero ? `Autorizó ${c.autorizadoPor}` : "Con su propio PIN"
+              }`}
+              valor={
+                esCero(c.diferencia) ? "Sin diferencia" : c.diferencia < 0 ? bsResta(c.diferencia) : `+${fmtMoney(c.diferencia)}`
+              }
+              valorPie={
+                esCero(c.diferencia) ? undefined : `${c.diferencia < 0 ? "devuelto" : "cobrado"}${medio ? ` ${medio}` : ""}`
+              }
+              tonoValor={esCero(c.diferencia) ? "apagado" : c.diferencia < 0 ? "rojo" : "marca"}
+              // El dato es justo lo que se cortaría: qué salió y qué entró.
+              ajustar
+            />
+          );
+        })}
+      </div>
+      {m.cantidad > m.ultimas.length && (
+        <p className="border-t border-borde-soft px-4 py-2.5 text-[12px] text-texto-3 sm:px-5">
+          Se ven los {fmtNum(m.ultimas.length)} cambios más nuevos de {fmtNum(m.cantidad)}.
+        </p>
+      )}
+    </Tarjeta>
   );
 }
 
