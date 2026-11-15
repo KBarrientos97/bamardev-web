@@ -259,6 +259,16 @@ describe("el selector de plataforma", () => {
     );
   });
 
+  it("al cambiar de plataforma no queda a la vista lo de la anterior mientras llega lo nuevo", async () => {
+    mostrar();
+    await screen.findByText("lun 16 al jue 19 de nov");
+    reporte.mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.click(screen.getByRole("tab", { name: "PedidosYa" }));
+    await waitFor(() => expect(reporte).toHaveBeenLastCalledWith({ plataforma: "PEDIDOS_YA", periodo: 0, almacenId: null }));
+    expect(screen.queryByText("N° A-123")).not.toBeInTheDocument();
+    expect(screen.queryByText("Total de PedidosYa")).not.toBeInTheDocument();
+  });
+
   it("con una sola prendida no hay selector", async () => {
     sesion.features = ["pedidos_pedidosya"];
     mostrar();

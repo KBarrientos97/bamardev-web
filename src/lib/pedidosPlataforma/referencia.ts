@@ -8,16 +8,16 @@ import { NOMBRE_PLATAFORMA, type Plataforma } from "./tipos";
  * y el motivo sigue siendo VENTA o ANULACION.
  *
  * Dice «Pedido Yango» o «Pedido PedidosYa» si el apunte trae la plataforma
- * (`referenciaPlataforma`); si no la trae, «Pedido de plataforma»: el apunte
+ * (`plataforma`); si no la trae, «Pedido de plataforma»: el apunte
  * sólo guarda el id del pedido, y inventar una de las dos sería peor que
  * decir lo que sí se sabe.
  */
 export function etiquetaReferenciaStock(a: {
   referenciaTipo: string | null;
-  referenciaPlataforma?: Plataforma | null;
+  plataforma?: Plataforma | null;
 }): string | null {
   if (a.referenciaTipo !== "PEDIDO_PLATAFORMA") return null;
-  return a.referenciaPlataforma && NOMBRE_PLATAFORMA[a.referenciaPlataforma]
-    ? `Pedido ${NOMBRE_PLATAFORMA[a.referenciaPlataforma]}`
+  return a.plataforma && NOMBRE_PLATAFORMA[a.plataforma]
+    ? `Pedido ${NOMBRE_PLATAFORMA[a.plataforma]}`
     : "Pedido de plataforma";
 }

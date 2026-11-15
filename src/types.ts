@@ -895,10 +895,10 @@ export interface ApunteStock {
   referenciaId: number | null;
   /**
    * Con `referenciaTipo = "PEDIDO_PLATAFORMA"`: de cuál plataforma era el pedido.
-   * Opcional a propósito: el contrato (PLAN-PEDIDOS-PLATAFORMA §4.1) no lo
-   * pide y un backend que no lo mande se lee como «Pedido de plataforma».
+   * `null` si el pedido ya no existe; ausente en un backend anterior. En los dos
+   * casos se lee como «Pedido de plataforma».
    */
-  referenciaPlataforma?: "YANGO" | "PEDIDOS_YA" | null;
+  plataforma?: "YANGO" | "PEDIDOS_YA" | null;
 }
 
 export interface DetalleMovimientoInput {

@@ -294,8 +294,8 @@ describe("la cola con pedidos de plataforma junto a las ventas", () => {
 
 describe("la bitácora de stock dice de qué pedido salió", () => {
   it("«Pedido Yango» / «Pedido PedidosYa» cuando el apunte trae la plataforma", () => {
-    expect(etiquetaReferenciaStock({ referenciaTipo: "PEDIDO_PLATAFORMA", referenciaPlataforma: "YANGO" })).toBe("Pedido Yango");
-    expect(etiquetaReferenciaStock({ referenciaTipo: "PEDIDO_PLATAFORMA", referenciaPlataforma: "PEDIDOS_YA" })).toBe(
+    expect(etiquetaReferenciaStock({ referenciaTipo: "PEDIDO_PLATAFORMA", plataforma: "YANGO" })).toBe("Pedido Yango");
+    expect(etiquetaReferenciaStock({ referenciaTipo: "PEDIDO_PLATAFORMA", plataforma: "PEDIDOS_YA" })).toBe(
       "Pedido PedidosYa",
     );
   });

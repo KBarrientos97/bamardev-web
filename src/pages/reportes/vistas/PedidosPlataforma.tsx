@@ -62,6 +62,9 @@ export default function PedidosPlataforma() {
         ? api.reportePedidosPlataforma({ plataforma, periodo, almacenId })
         : new Promise<never>(() => {}),
     [plataforma, periodo, almacenId],
+    // Al cambiar de plataforma se descarta lo de la anterior: si no, un instante se
+    // veía «Total de PedidosYa» con los pedidos de Yango, atenuados.
+    { clave: plataforma },
   );
 
   // La hora que lleva el papel es la de mandar a imprimir, no la de abrir la
