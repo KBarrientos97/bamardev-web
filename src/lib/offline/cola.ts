@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { ApiError } from "../api";
 import { fechaNegocio } from "../agenda/horaAgenda";
 import type { Venta, VentaInput } from "../../types";
+import type { PedidoPlataformaInput, Plataforma } from "../pedidosPlataforma/tipos";
 import { almacenEnMemoria, almacenIndexedDb, type Almacen } from "./almacen";
 import { ambitoSesion } from "./sesionLocal";
 import { quitarVentaDelTurno } from "./turno";
@@ -30,6 +31,8 @@ export type CuerpoEncolado = VentaInput & {
 };
 
 export interface VentaEncolada {
+  /** Ausente en lo que ya estaba guardado antes del 15-nov: es una venta. */
+  tipo?: "VENTA";
   id: string;
   cuerpo: CuerpoEncolado;
   /** El ticket que se le mostró al cajero, para el historial. */
@@ -40,25 +43,68 @@ export interface VentaEncolada {
   ultimoError: string | null;
 }
 
+/**
+ * Lo que viaja al servidor de un pedido de Yango o PedidosYa tomado sin señal
+ * (PLAN-PEDIDOS-PLATAFORMA §5): el mismo cuerpo del POST, con la hora en que
+ * se tomó en el equipo y la marca `encolado` (el servidor respeta el precio
+ * del equipo, como con las ventas encoladas). Los precios van siempre: sin
+ * señal el servidor no los puede poner, pero sí aceptar los que el cajero vio.
+ */
+export type CuerpoPedidoEncolado = PedidoPlataformaInput & {
+  fechaCliente: string;
+  encolado: true;
+};
+
+/**
+ * Un pedido de plataforma esperando subir. Comparte la cola con las ventas
+ * (mismo orden de llegada, misma sincronización, mismo "sin señal"), pero NO
+ * es una venta: no cuenta para el cupo, no va al manifiesto del turno ni al
+ * cierre de caja, y no sale en el historial de ventas. Por eso las ventas se
+ * siguen leyendo con `useColaOffline` y éstos con `usePedidosEncolados`.
+ */
+export interface PedidoPlataformaEncolado {
+  tipo: "PEDIDO_PLATAFORMA";
+  /** El `clienteRequestId`: subirlo dos veces devuelve el mismo pedido. */
+  id: string;
+  cuerpo: CuerpoPedidoEncolado;
+  /** Lo que se le mostró al cajero, para avisar qué quedó sin subir. */
+  resumen: { plataforma: Plataforma; total: number; lineas: number };
+  estado: EstadoEncolada;
+  intentos: number;
+  creadoEn: string;
+  ultimoError: string | null;
+}
+
+/** Todo lo que espera en la cola, en el orden en que se tomó. */
+type Elemento = VentaEncolada | PedidoPlataformaEncolado;
+
+const esPedido = (e: Elemento): e is PedidoPlataformaEncolado => e.tipo === "PEDIDO_PLATAFORMA";
+
 let almacen: Almacen =
   typeof indexedDB === "undefined" ? almacenEnMemoria() : almacenIndexedDb;
 
 /** Para los tests (jsdom no tiene IndexedDB). */
 export function usarAlmacenCola(a: Almacen) {
   almacen = a;
-  estado = { ambito: null, ventas: [] };
+  estado = { ambito: null, ventas: [], pedidos: [], orden: [] };
   avisar();
 }
 
 const prefijo = (ambito: string) => `cola:${ambito}:`;
 // La clave empieza por la fecha: listar por prefijo ya las devuelve en el
 // orden en que se cobraron (FIFO, como Android con `creadoEn`).
-const clave = (ambito: string, v: Pick<VentaEncolada, "creadoEn" | "id">) =>
+const clave = (ambito: string, v: Pick<Elemento, "creadoEn" | "id">) =>
   `${prefijo(ambito)}${v.creadoEn}:${v.id}`;
 
 // ── Estado en memoria, para que las pantallas se enteren ─────────────────────
 
-let estado: { ambito: string | null; ventas: VentaEncolada[] } = { ambito: null, ventas: [] };
+let estado: {
+  ambito: string | null;
+  ventas: VentaEncolada[];
+  pedidos: PedidoPlataformaEncolado[];
+  /** Los dos juntos, en el orden en que se tomaron: es el de la sincronización. */
+  orden: Elemento[];
+} = { ambito: null, ventas: [], pedidos: [], orden: [] };
 const oyentes = new Set<() => void>();
 
 function avisar() {
@@ -79,21 +125,38 @@ export function useColaOffline(): VentaEncolada[] {
 }
 const SIN_VENTAS: VentaEncolada[] = [];
 
-/** Vuelve a leer la cola guardada (al abrir la app o cambiar de sesión). */
+/** Los pedidos de Yango y PedidosYa de la cola de esta sesión (los rechazados también). */
+export function usePedidosEncolados(): PedidoPlataformaEncolado[] {
+  const e = useSyncExternalStore(suscribir, leer, leer);
+  return e.ambito === ambitoSesion() ? e.pedidos : SIN_PEDIDOS;
+}
+const SIN_PEDIDOS: PedidoPlataformaEncolado[] = [];
+
+/**
+ * Vuelve a leer la cola guardada (al abrir la app o cambiar de sesión).
+ * Devuelve las VENTAS, como siempre: los pedidos de plataforma se leen con
+ * `usePedidosEncolados` y no cuentan donde se cuentan ventas (cupo, cierre).
+ */
 export async function cargarCola(): Promise<VentaEncolada[]> {
   const ambito = ambitoSesion();
   if (!ambito) {
-    estado = { ambito: null, ventas: [] };
+    estado = { ambito: null, ventas: [], pedidos: [], orden: [] };
     avisar();
     return [];
   }
-  const filas = await almacen.listar<VentaEncolada>(prefijo(ambito));
-  estado = { ambito, ventas: filas.map(([, v]) => v) };
+  const filas = await almacen.listar<Elemento>(prefijo(ambito));
+  const orden = filas.map(([, v]) => v);
+  estado = {
+    ambito,
+    ventas: orden.filter((e): e is VentaEncolada => !esPedido(e)),
+    pedidos: orden.filter(esPedido),
+    orden,
+  };
   avisar();
   return estado.ventas;
 }
 
-async function escribir(ambito: string, v: VentaEncolada) {
+async function escribir(ambito: string, v: Elemento) {
   await almacen.guardar(clave(ambito, v), v);
 }
 
@@ -121,6 +184,44 @@ export async function encolar(cuerpo: CuerpoEncolado, recibo: Venta): Promise<Ve
   return v;
 }
 
+/**
+ * Guarda un pedido de plataforma tomado sin señal. Igual que `encolar`: se
+ * resuelve cuando ya está escrito, y recién ahí se le dice al cajero que
+ * quedó guardado.
+ */
+export async function encolarPedidoPlataforma(
+  cuerpo: CuerpoPedidoEncolado,
+  total: number,
+): Promise<PedidoPlataformaEncolado> {
+  const ambito = ambitoSesion();
+  if (!ambito) throw new Error("Sin sesión no se puede guardar el pedido");
+  const p: PedidoPlataformaEncolado = {
+    tipo: "PEDIDO_PLATAFORMA",
+    id: cuerpo.clienteRequestId,
+    cuerpo,
+    resumen: { plataforma: cuerpo.plataforma, total, lineas: cuerpo.detalles.length },
+    estado: "PENDIENTE",
+    intentos: 0,
+    creadoEn: cuerpo.fechaCliente,
+    ultimoError: null,
+  };
+  // El mismo pedido reintentado sin señal no se encola dos veces: se reemplaza.
+  const previa = estado.pedidos.find((x) => x.id === p.id);
+  if (previa) await almacen.borrar(clave(ambito, previa));
+  await escribir(ambito, p);
+  await cargarCola();
+  return p;
+}
+
+/** Sacar un pedido rechazado de la lista, después de cargarlo a mano. */
+export async function descartarPedido(id: string) {
+  const ambito = ambitoSesion();
+  const p = estado.pedidos.find((x) => x.id === id);
+  if (!ambito || !p || p.estado !== "RECHAZADA") return;
+  await almacen.borrar(clave(ambito, p));
+  await cargarCola();
+}
+
 /** Sacar una rechazada de la lista, después de cargarla a mano. */
 export async function descartar(id: string) {
   const ambito = ambitoSesion();
@@ -133,8 +234,16 @@ export async function descartar(id: string) {
 // ── Qué cuenta como pendiente ────────────────────────────────────────────────
 
 /** Las que todavía van a subir: todo menos las rechazadas. */
-export function porSubir(ventas: VentaEncolada[]): VentaEncolada[] {
+export function porSubir<T extends { estado: EstadoEncolada }>(ventas: T[]): T[] {
   return ventas.filter((v) => v.estado !== "RECHAZADA");
+}
+
+/**
+ * ¿Queda algo por subir, venta o pedido? Para el motor: una cola que sólo
+ * tiene pedidos de plataforma también tiene que sincronizarse.
+ */
+export function hayPorSubir(): boolean {
+  return porSubir(estado.orden).length > 0;
 }
 
 /**
@@ -216,15 +325,28 @@ let enCurso: Promise<ResultadoSync> | null = null;
 export function sincronizar(
   enviar: (cuerpo: CuerpoEncolado) => Promise<Venta>,
   alSubir?: (venta: Venta) => void,
+  /**
+   * Cómo sube un pedido de plataforma. Sin esto los pedidos se dejan donde
+   * están: quien sólo sincroniza ventas no los toca.
+   */
+  enviarPedido?: (cuerpo: CuerpoPedidoEncolado) => Promise<unknown>,
 ): Promise<ResultadoSync> {
   enCurso ??= (async () => {
     const r: ResultadoSync = { subidas: 0, rechazadas: 0, quedan: 0 };
     try {
       const ambito = ambitoSesion();
       if (!ambito) return r;
-      const ventas = await cargarCola();
-      for (const v of porSubir(ventas)) {
+      await cargarCola();
+      for (const v of porSubir(estado.orden)) {
+        if (esPedido(v) && !enviarPedido) continue;
         try {
+          if (esPedido(v)) {
+            await enviarPedido!({ ...v.cuerpo, clienteRequestId: v.id, encolado: true });
+            await almacen.borrar(clave(ambito, v));
+            r.subidas++;
+            hayRespuesta();
+            continue;
+          }
           const subida = await enviar({ ...v.cuerpo, clienteRequestId: v.id, encolada: true });
           await almacen.borrar(clave(ambito, v));
           r.subidas++;
@@ -242,8 +364,9 @@ export function sincronizar(
           if (d === "rechazada") {
             r.rechazadas++;
             // Ya no va a existir en el servidor: declararla al cerrar trabaría
-            // la caja con VENTAS_SIN_CONFIRMAR (ver turno.ts).
-            await quitarVentaDelTurno(v.id);
+            // la caja con VENTAS_SIN_CONFIRMAR (ver turno.ts). Un pedido de
+            // plataforma nunca estuvo en el manifiesto: no es una venta.
+            if (!esPedido(v)) await quitarVentaDelTurno(v.id);
           } else if (e instanceof ApiError && e.status !== 0) hayRespuesta();
           if (d === "reintentarYParar") {
             if (e instanceof ApiError && e.status === 0) marcarSinSenal();
@@ -251,7 +374,8 @@ export function sincronizar(
           }
         }
       }
-      r.quedan = porSubir(await cargarCola()).length;
+      await cargarCola();
+      r.quedan = porSubir(estado.orden).length;
       return r;
     } finally {
       enCurso = null;

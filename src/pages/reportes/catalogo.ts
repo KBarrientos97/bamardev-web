@@ -62,6 +62,13 @@ export interface FichaReporte {
    * que harían creer que filtra por ellas.
    */
   fotoDeHoy?: boolean;
+  /**
+   * Trae su propio selector de período y no usa el de arriba: los pedidos de
+   * Yango y PedidosYa se miran por período de liquidación (jueves a miércoles,
+   * lunes a jueves…), que no es un rango de fechas libre. La barra de arriba
+   * no se dibuja y el encabezado no repite fechas que no filtran nada.
+   */
+  periodoPropio?: boolean;
   vista: LazyExoticComponent<ComponentType>;
 }
 
@@ -103,6 +110,7 @@ const v = {
   sinStock: lazy(() => import("./vistas/VendidoSinStock")),
   compras: lazy(() => import("./vistas/Compras")),
   insumos: lazy(() => import("./vistas/Insumos")),
+  pedidosPlataforma: lazy(() => import("./vistas/PedidosPlataforma")),
 };
 
 /** El catálogo entero, con los nombres del rubro. Qué se ve lo filtra `reportesVisibles`. */
@@ -269,6 +277,20 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
     // anulaciones de cada cajero: pide los dos niveles que leen esos datos.
     { id: "cajeros", titulo: "Ventas por cajero", descripcion: "Quién atendió, cuánto vendió y qué anuló", icono: "users", tono: "ambar", grupo: "operacion", ...OPERACION, vista: v.cajeros },
     { id: "caja", titulo: "Movimientos de caja", descripcion: "El efectivo que entró y salió sin una venta", icono: "dollar", tono: "gris", grupo: "operacion", permiso: "reportes.ver", vista: v.caja },
+    // Pedidos que se toman en el POS y paga la app de delivery (15-nov). No son
+    // ventas: no están en Ventas ni en el cierre. La sección pide
+    // `plataformas.ver` y alguna de las dos features, sin fallar abierta.
+    {
+      id: "pedidos-plataforma",
+      titulo: "Yango / PedidosYa",
+      descripcion: "Pedidos por período de liquidación",
+      icono: "truck",
+      tono: "ambar",
+      grupo: "operacion",
+      seccion: "pedidos_plataforma",
+      periodoPropio: true,
+      vista: v.pedidosPlataforma,
+    },
 
     // ── Inventario ──
     // Lo arma la sugerencia de compra (venta diaria, días que alcanza, cuánto

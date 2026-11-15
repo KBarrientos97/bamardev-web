@@ -11,6 +11,7 @@ import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
+import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
@@ -34,6 +35,7 @@ export default function PantallaVenta({
   bloqueoCobro,
   profesionales,
   lineasExtra,
+  plataformas,
 }: {
   productos: Producto[];
   categorias: Categoria[];
@@ -67,6 +69,12 @@ export default function PantallaVenta({
    * —todos los demás rubros— el carrito es el de siempre.
    */
   lineasExtra?: React.ReactNode;
+  /**
+   * Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §5): un botón por
+   * cada plataforma que este usuario puede cargar, junto a «Cobrar». Sin esto
+   * —casi todos los negocios— el carrito es el de siempre.
+   */
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -187,6 +195,20 @@ export default function PantallaVenta({
       profesionales={profesionales}
       lineasExtra={lineasExtra}
       notasAbiertas={notasAbiertas}
+      plataformas={
+        plataformas && plataformas.disponibles.length > 0
+          ? {
+              disponibles: plataformas.disponibles,
+              // Igual que cobrar: la nota que se estaba escribiendo se confirma
+              // antes de salir del carrito.
+              onElegir: (p) => {
+                confirmarNotasAbiertas();
+                setCarritoAbierto(false);
+                plataformas.onElegir(p);
+              },
+            }
+          : undefined
+      }
       onCobrar={() => {
         confirmarNotasAbiertas();
         setCarritoAbierto(false);
@@ -504,6 +526,7 @@ function PanelCarrito({
   profesionales,
   lineasExtra,
   notasAbiertas,
+  plataformas,
   onCobrar,
   onCerrar,
 }: {
@@ -515,6 +538,7 @@ function PanelCarrito({
   lineasExtra?: React.ReactNode;
   /** Lo escrito en las notas sin confirmar: ver PantallaVenta. */
   notasAbiertas: RefObject<Map<number, string>>;
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -665,6 +689,24 @@ function PanelCarrito({
               <p role="status" className="mt-1.5 text-center text-[12px] font-semibold text-warning-text">
                 {bloqueoCobro}
               </p>
+            )}
+            {/* Pedidos de Yango / PedidosYa: no se cobran, así que van como
+                alternativa a «Cobrar», más discretos. Un paquete sin cliente
+                (`bloqueoCobro`) tampoco se registra como pedido. */}
+            {plataformas && (
+              <div className="mt-2 flex gap-2">
+                {plataformas.disponibles.map((p) => (
+                  <Boton
+                    key={p}
+                    variante="ghost"
+                    onClick={() => plataformas.onElegir(p)}
+                    disabled={descuentos?.bloqueado || !!bloqueoCobro}
+                    className="min-w-0 flex-1 px-2"
+                  >
+                    <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
+                  </Boton>
+                ))}
+              </div>
             )}
           </div>
         </>

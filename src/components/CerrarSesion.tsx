@@ -5,7 +5,7 @@ import { useSedeDeCaja } from "../lib/useSedeDeCaja";
 import type { CajaAbierta } from "../types";
 import { apiTickets } from "../lib/apiTickets";
 import { sinEntregar } from "../pages/tickets/useTableroTickets";
-import { porSubir, sinSenal, useColaOffline } from "../lib/offline/cola";
+import { porSubir, sinSenal, useColaOffline, usePedidosEncolados } from "../lib/offline/cola";
 import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Boton, Modal } from "./ui";
@@ -162,7 +162,9 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
   const { usa: variasSedes, sede: sedeActiva, fijar: fijarSede } = useSedeDeCaja();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const pendientes = porSubir(useColaOffline()).length;
+  // Los pedidos de Yango y PedidosYa tomados sin internet también esperan en
+  // este equipo: salir sin subirlos se avisa igual que con una venta.
+  const pendientes = porSubir(useColaOffline()).length + porSubir(usePedidosEncolados()).length;
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState<"caja" | "despacho" | "sinSubir" | null>(null);
   const [quedan, setQuedan] = useState(0);

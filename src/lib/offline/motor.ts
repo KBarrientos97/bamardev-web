@@ -5,7 +5,7 @@ import { esFarmacia } from "../rubro";
 import { useAuth } from "../../store/AuthContext";
 import { useCupo } from "../../store/useCupo";
 import type { Venta } from "../../types";
-import { cargarCola, porSubir, sincronizar, type ResultadoSync } from "./cola";
+import { cargarCola, hayPorSubir, sincronizar, type ResultadoSync } from "./cola";
 import { claveCaja, claveCatalogo, conCopia } from "./copias";
 import { sedeDeCajaActual } from "./sesionLocal";
 import { ventaSinInternet } from "./modo";
@@ -27,7 +27,8 @@ let alSubirVenta: ((v: Venta) => void) | undefined;
 
 /** El botón "Sincronizar" y los disparadores pasan por acá. */
 export function sincronizarAhora(): Promise<ResultadoSync> {
-  return sincronizar((c) => api.crearVenta(c), alSubirVenta);
+  // Los pedidos de Yango y PedidosYa van en la misma vuelta y por la misma cola.
+  return sincronizar((c) => api.crearVenta(c), alSubirVenta, (c) => api.crearPedidoPlataforma(c));
 }
 
 /**
@@ -94,8 +95,8 @@ export function useMotorOffline() {
       for (const ms of REINTENTOS_AL_VOLVER_LA_RED) {
         temporizadores.push(
           setTimeout(async () => {
-            const cola = await cargarCola().catch(() => []);
-            if (porSubir(cola).length > 0) subir();
+            await cargarCola().catch(() => []);
+            if (hayPorSubir()) subir();
           }, ms),
         );
       }
@@ -105,8 +106,8 @@ export function useMotorOffline() {
     };
     const periodico = setInterval(async () => {
       if (document.visibilityState !== "visible") return;
-      const cola = await cargarCola().catch(() => []);
-      if (porSubir(cola).length > 0) subir();
+      await cargarCola().catch(() => []);
+      if (hayPorSubir()) subir();
     }, CADA_MS);
 
     window.addEventListener("online", alVolverLaRed);

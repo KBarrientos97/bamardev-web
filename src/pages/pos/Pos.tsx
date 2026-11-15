@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
+import { AvisoOk, Cargando, Confirmar, ErrorMsg, useAviso } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
 import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import {
@@ -33,6 +33,9 @@ import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { claveCaja, claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia, leerCopia } from "../../lib/offline/copias";
 import { venderOEncolar } from "../../lib/offline/ventas";
+import { plataformasQueRegistra } from "../../lib/pedidosPlataforma/acceso";
+import { registrarPedidoOEncolar } from "../../lib/pedidosPlataforma/registro";
+import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useSedeDeCaja } from "../../lib/useSedeDeCaja";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
 import { LATIDO_MS, latidoDeCaja } from "../../lib/offline/turno";
@@ -52,6 +55,7 @@ import { SelectorSedeCaja } from "./SelectorSedeCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
+import DialogoPedidoPlataforma from "./DialogoPedidoPlataforma";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
@@ -724,6 +728,73 @@ function PuntoDeVenta() {
     else void irASede(id);
   };
 
+  // ── Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §5) ──────────────
+  //
+  // Con el carrito armado, junto a «Cobrar»: no se cobra nada (la app de
+  // delivery le cobra al cliente y le paga al local), pero sí descuenta stock.
+  // Sólo en un pedido de mostrador: no cobrando una mesa, una cita o un
+  // paquete, ni armando un delivery o un recoger (esos pasan por otra pantalla
+  // con `tipoPedido` distinto de LOCAL). La feature es explícita (no falla
+  // abierta) y además hace falta `plataformas.registrar`.
+  const [pedidoPlataforma, setPedidoPlataforma] = useState<Plataforma | null>(null);
+  const [avisoPedido, setAvisoPedido] = useAviso();
+  // Su propia identidad, aparte de la del cobro: un reintento tras un 504
+  // devuelve el mismo pedido en vez de crear otro y descontar dos veces.
+  const intentoPedido = useIntentoDeCobro();
+  const plataformasDelPos = useMemo(
+    () =>
+      mesaCobrando || citaCobrando || vendePaquete || tipoPedido !== "LOCAL"
+        ? []
+        : plataformasQueRegistra(negocio?.features, usuario),
+    [mesaCobrando, citaCobrando, vendePaquete, tipoPedido, negocio?.features, usuario],
+  );
+  const lineasDelPedido = useMemo(
+    () =>
+      carritoVenta.lineas.map((l) => ({
+        clave: l.producto.id,
+        nombre: l.producto.nombre,
+        cantidad: l.cantidad,
+        precio: l.producto.precio,
+      })),
+    [carritoVenta.lineas],
+  );
+  // Sin descuentos ni promociones: el pedido va al precio del punto de venta.
+  const totalDelPedido = Math.round(lineasDelPedido.reduce((s, l) => s + l.precio * l.cantidad, 0) * 100) / 100;
+
+  const registrarPedido = useCallback(
+    async (plataforma: Plataforma, codigoExterno: string | undefined) => {
+      const detalles = carritoVenta.lineas.map((l) => ({ productoId: l.producto.id, cantidad: l.cantidad }));
+      const precios = new Map(carritoVenta.lineas.map((l) => [l.producto.id, l.producto.precio]));
+      const r = await registrarPedidoOEncolar(
+        {
+          clienteRequestId: intentoPedido.actual(huellaDeCobro(detalles, plataforma)),
+          plataforma,
+          ...(codigoExterno ? { codigoExterno } : {}),
+          // Con varias cajas abiertas el pedido dice a cuál sucursal va, como
+          // la venta: la cola lo sube tiempo después y la sede activa puede ser otra.
+          ...(variasSedes && almacenCaja != null ? { almacenId: almacenCaja } : {}),
+          detalles,
+        },
+        api.crearPedidoPlataforma,
+        precios,
+      );
+      intentoPedido.registrado();
+      // Sin señal el stock de la copia baja igual que con una venta encolada.
+      if (r.encolado) await descontarDeLaCopia(copiaCatalogo(almacenCaja), detalles);
+      setPedidoPlataforma(null);
+      limpiar();
+      const nombre = NOMBRE_PLATAFORMA[plataforma];
+      setAvisoPedido(
+        r.encolado
+          ? `Pedido de ${nombre} guardado sin internet: se sube solo cuando vuelva la conexión.`
+          : `Pedido de ${nombre} registrado`,
+      );
+      // El stock cambió: el catálogo tiene que reflejarlo.
+      productos.recargar();
+    },
+    [carritoVenta, intentoPedido, variasSedes, almacenCaja, limpiar, setAvisoPedido, productos],
+  );
+
   const cobrar = useCallback(
     async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[]; propinaMesa?: number }) => {
       setError("");
@@ -1305,6 +1376,11 @@ function PuntoDeVenta() {
         setPantalla("cobro");
       }}
       sucursalId={abierta.almacenId}
+      plataformas={
+        plataformasDelPos.length > 0
+          ? { disponibles: plataformasDelPos, onElegir: setPedidoPlataforma }
+          : undefined
+      }
       // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro
       // rebotaba recién al confirmar, en una pantalla donde no se lo elige.
       bloqueoCobro={
@@ -1449,6 +1525,22 @@ function PuntoDeVenta() {
         <div className="px-4 pt-3 empty:hidden">
           <AvisoSinSubir />
         </div>
+
+        {/* «Pedido de Yango registrado»: se borra solo, como los demás avisos. */}
+        {avisoPedido && (
+          <div role="status" className="px-4 pt-3">
+            <AvisoOk>{avisoPedido}</AvisoOk>
+          </div>
+        )}
+        {pedidoPlataforma && (
+          <DialogoPedidoPlataforma
+            plataforma={pedidoPlataforma}
+            lineas={lineasDelPedido}
+            total={totalDelPedido}
+            onClose={() => setPedidoPlataforma(null)}
+            onRegistrar={(codigo) => registrarPedido(pedidoPlataforma, codigo)}
+          />
+        )}
 
         {/* Cambiar de sede con una venta a medias: el carrito era con el stock y
             los precios de la otra, así que se vacía; antes se avisa. */}
