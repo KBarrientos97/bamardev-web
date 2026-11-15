@@ -11,6 +11,7 @@ import {
   estadoDelEquipo,
   estadoDePedido,
   etiquetaDeTurno,
+  FILTROS_ACTIVIDAD,
   filtrarActividad,
   grupoDeActividad,
   haceCuanto,
@@ -349,6 +350,16 @@ describe("Supervisión del local: la actividad", () => {
     expect(grupoDeActividad("CAJA_ABIERTA")).toBe("caja");
     expect(grupoDeActividad("CAJA_CERRADA")).toBe("caja");
     expect(grupoDeActividad("EFECTIVO")).toBe("efectivo");
+  });
+
+  it("una venta modificada (cambio de productos con PIN) se mira con las anuladas, en ámbar y con su ícono", () => {
+    // Las dos son ventas que alguien tocó después de cobrar.
+    expect(grupoDeActividad("MODIFICACION")).toBe("anulaciones");
+    expect(tonoDeActividad("MODIFICACION")).toBe("ambar");
+    expect(iconoDeActividad("MODIFICACION")).toBe("edit");
+    const lista = [renglon("venta-1", "VENTA"), renglon("cambio-3", "MODIFICACION"), renglon("anulacion-2", "ANULACION")];
+    expect(filtrarActividad(lista, "anulaciones").map((a) => a.id)).toEqual(["cambio-3", "anulacion-2"]);
+    expect(FILTROS_ACTIVIDAD.find((f) => f.clave === "anulaciones")?.etiqueta).toBe("Anulaciones y cambios");
   });
 
   it("un código que no se reconoce queda en Todo y en ningún filtro: no desaparece de la lista", () => {

@@ -525,7 +525,8 @@ export type FiltroActividad = "todo" | "ventas" | "anulaciones" | "pedidos" | "c
 export const FILTROS_ACTIVIDAD: { clave: FiltroActividad; etiqueta: string }[] = [
   { clave: "todo", etiqueta: "Todo" },
   { clave: "ventas", etiqueta: "Ventas" },
-  { clave: "anulaciones", etiqueta: "Anulaciones" },
+  // También las ventas modificadas (cambio de productos con PIN).
+  { clave: "anulaciones", etiqueta: "Anulaciones y cambios" },
   { clave: "pedidos", etiqueta: "Pedidos" },
   { clave: "caja", etiqueta: "Caja" },
   { clave: "efectivo", etiqueta: "Efectivo" },
@@ -543,6 +544,10 @@ export function grupoDeActividad(codigo: string): Exclude<FiltroActividad, "todo
     case "CREDITO":
       return "ventas";
     case "ANULACION":
+    // Una venta a la que se le cambiaron productos después de cobrada
+    // (15-nov) se mira junto con las anuladas: las dos son ventas que alguien
+    // tocó después de cobrar, con el PIN de un encargado.
+    case "MODIFICACION":
       return "anulaciones";
     case "PEDIDO":
       return "pedidos";
@@ -585,6 +590,10 @@ export function tonoDeActividad(codigo: string): TonoActividad {
       return "ambar";
     case "ANULACION":
       return "rosa";
+    // Una venta modificada: para mirar (puede haber salido plata del cajón),
+    // sin ser una anulación.
+    case "MODIFICACION":
+      return "ambar";
     case "PEDIDO":
       return "azul";
     default:
@@ -598,6 +607,7 @@ const ICONO_ACTIVIDAD: Record<string, string> = {
   VENTA: "billetera",
   CREDITO: "fileText",
   ANULACION: "x",
+  MODIFICACION: "edit",
   EFECTIVO: "swap",
   PEDIDO: "truck",
 };

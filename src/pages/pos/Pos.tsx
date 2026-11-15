@@ -64,6 +64,8 @@ import { consumoDeMesa, etiquetaMesa, itemsVivos } from "../salon/logicaSalon";
 import { avisoCuentaCambiada, cuerpoCobroDeMesa, esCuentaCambiada } from "../salon/cobroDeMesa";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
+import ModificarVenta from "./ModificarVenta";
+import type { PlataDelCambio } from "./cambioDeVenta";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
@@ -103,6 +105,8 @@ type Pantalla =
   | "recibo"
   | "pedidoOk"
   | "historial"
+  /** Cambiar los productos de una venta ya cobrada, con PIN (15-nov). */
+  | "modificar"
   | "cierre"
   | "cierreOk"
   /** Las cuentas que el salón mandó a caja. */
@@ -374,6 +378,16 @@ function PuntoDeVenta() {
 
   const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
+  /** La venta ya cobrada a la que se le están cambiando productos (15-nov). */
+  const [modificando, setModificando] = useState<Venta | null>(null);
+  /**
+   * El cambio que se acaba de guardar: el recibo de ESA venta dice "Venta
+   * modificada" y le recuerda a la cajera la plata que tiene que devolver.
+   * Lleva la venta y su versión para no pegarse a otro recibo.
+   */
+  const [cambioHecho, setCambioHecho] = useState<{ ventaId: number; veces: number; plata: PlataDelCambio } | null>(
+    null,
+  );
   // El recibo abierto desde el historial no se imprime solo (ver PantallaRecibo).
   const [reimpresion, setReimpresion] = useState(false);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
@@ -1152,8 +1166,56 @@ function PuntoDeVenta() {
           setReimpresion(true);
           setPantalla("recibo");
         }}
+        // Modificar una venta del turno: se abre con el catálogo recién
+        // pedido, para que el stock y los precios sean los de ahora.
+        onModificar={(v) => {
+          setError("");
+          productos.recargar();
+          setModificando(v);
+          setPantalla("modificar");
+        }}
       />
     );
+
+  if (pantalla === "modificar" && modificando) {
+    const volver = () => {
+      setModificando(null);
+      setPantalla("historial");
+    };
+    if (productos.cargando) return <Cargando texto="Cargando el catálogo…" />;
+    if (productos.error)
+      return (
+        <div className="space-y-3 p-5">
+          <ErrorMsg onReintentar={productos.recargar}>{productos.error}</ErrorMsg>
+          <button onClick={volver} className="text-sm font-semibold text-primary-700 underline">
+            Volver a las ventas del turno
+          </button>
+        </div>
+      );
+    return (
+      <ModificarVenta
+        // Otra venta, otro carrito: nada de la anterior queda pegado.
+        key={`${modificando.id}-${modificando.vecesModificada ?? 0}`}
+        venta={modificando}
+        productos={productos.datos ?? []}
+        categorias={categorias.datos ?? []}
+        formasPago={formasPago.datos ?? []}
+        sucursalId={abierta.almacenId}
+        onCancelar={volver}
+        onModificada={(actualizada, plata) => {
+          setModificando(null);
+          setCambioHecho({ ventaId: actualizada.id, veces: actualizada.vecesModificada ?? 0, plata });
+          // Como una venta recién cobrada: el recibo y la comanda salen de
+          // nuevo, que es lo que el cliente y la cocina necesitan ahora.
+          setVenta(actualizada);
+          setReimpresion(false);
+          setPantalla("recibo");
+          // El stock cambió: lo que salió del pedido volvió y lo nuevo bajó.
+          productos.recargar();
+        }}
+      />
+    );
+  }
 
   if (pantalla === "entrega")
     return (
@@ -1328,11 +1390,20 @@ function PuntoDeVenta() {
       </>
     );
 
-  if (pantalla === "recibo" && venta)
+  if (pantalla === "recibo" && venta) {
+    // Recién modificada (y no reabierta desde el historial): se dice.
+    const recienModificada =
+      !reimpresion &&
+      cambioHecho != null &&
+      cambioHecho.ventaId === venta.id &&
+      cambioHecho.veces === (venta.vecesModificada ?? 0)
+        ? cambioHecho.plata
+        : null;
     return (
       <PantallaRecibo
         venta={venta}
         reimpresion={reimpresion}
+        modificada={recienModificada}
         onNuevaVenta={() => {
           setVenta(null);
           setPantalla("venta");
@@ -1343,6 +1414,7 @@ function PuntoDeVenta() {
         }}
       />
     );
+  }
 
   if (pantalla === "pedidoOk" && venta)
     return (

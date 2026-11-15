@@ -245,6 +245,41 @@ export interface DescuentosApi {
     /** El local de la venta anulada (§9.3). */
     sucursal?: SucursalRef | null;
   }[];
+  /**
+   * Las ventas que se modificaron después de cobradas (cambio de productos con
+   * el PIN de un encargado, 15-nov). Sólo viene si hubo alguna en el período:
+   * un backend anterior, o un período sin cambios, no lo manda.
+   */
+  modificaciones?: ModificacionesApi;
+}
+
+export interface ModificacionesApi {
+  cantidad: number;
+  /** Lo que se le devolvió a los clientes: lo que hay que vigilar. */
+  devuelto: number;
+  /** Lo que los clientes pagaron de más por el cambio. */
+  cobrado: number;
+  /** Por quien HIZO el cambio. Primero el que más devolvió. */
+  porCajero: { cajero: string; cantidad: number; devuelto: number; cobrado: number }[];
+  /** Máx. 50, las más nuevas primero. `fecha` ya viene escrita ("12 oct · 21:30"). */
+  ultimas: {
+    fecha: string;
+    ventaId: number;
+    idVenta: string;
+    /** La venta se anuló después del cambio. */
+    anulada: boolean;
+    cajero: string;
+    autorizadoPor: string | null;
+    motivo: string;
+    totalAntes: number;
+    totalDespues: number;
+    /** Negativo = se devolvió; positivo = se cobró de más. */
+    diferencia: number;
+    pagos: { formaPagoId: number; formaPago: string; monto: number }[];
+    sale: { producto: string; cantidad: number }[];
+    entra: { producto: string; cantidad: number }[];
+    sucursal?: SucursalRef | null;
+  }[];
 }
 
 export interface MeserosApi {

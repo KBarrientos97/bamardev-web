@@ -1083,3 +1083,55 @@ describe("el recibo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
   });
 });
+
+describe("el recibo de una venta recién modificada (15-nov)", () => {
+  const dibujarModificada = (v: Venta, modificada: Parameters<typeof PantallaRecibo>[0]["modificada"]) =>
+    render(<PantallaRecibo venta={v} onNuevaVenta={() => {}} onHistorial={() => {}} modificada={modificada} />);
+
+  it("dice «Venta modificada» y le recuerda a la cajera la plata que tiene que devolver", () => {
+    dibujarModificada(venta({ vecesModificada: 1 }), {
+      diferencia: -5,
+      devolucion: { formaPagoId: 1, nombre: "Efectivo", saleDelCajon: true },
+    });
+    expect(screen.getByRole("heading", { name: "Venta modificada" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Devolvele Bs 5,00 al cliente en efectivo.");
+  });
+
+  it("si el cliente pagó de más, lo dice; y con número de pedido también", () => {
+    dibujarModificada(venta({ vecesModificada: 1, ticket: { numero: 72, estado: "PREPARANDO" } }), {
+      diferencia: 6,
+      devolucion: null,
+    });
+    expect(screen.getByRole("heading", { name: "Venta modificada" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("El cliente pagó Bs 6,00 de diferencia.");
+    // La cocina recibe el pedido como quedó: el botón es el de una venta recién cobrada.
+    expect(screen.getByRole("button", { name: "Imprimir recibo y comanda" })).toBeInTheDocument();
+  });
+
+  it("sin el aviso, la pantalla de siempre", () => {
+    dibujar(venta());
+    expect(screen.getByRole("heading", { name: "Venta registrada" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("cobrada por QR y devuelta en efectivo: el papel no dice «Efectivo recibido Bs 0,00» sino lo devuelto", () => {
+    dibujar(
+      venta({
+        total: 75,
+        pagos: [
+          { formaPagoId: 2, formaPago: "QR", monto: 80, recibido: 80, entregado: 0 },
+          { formaPagoId: 1, formaPago: "Efectivo", monto: -5, recibido: 0, entregado: 5 },
+        ],
+      }),
+    );
+    expect(screen.queryByText("Efectivo recibido")).not.toBeInTheDocument();
+    expect(screen.getByText("Monto QR").nextElementSibling).toHaveTextContent("Bs 80,00");
+    expect(screen.getByText("Devuelto en efectivo").nextElementSibling).toHaveTextContent("Bs 5,00");
+  });
+
+  it("en efectivo, lo de siempre: recibido y cambio, que ya incluye lo devuelto", () => {
+    dibujar(venta({ total: 75, pagos: [{ formaPagoId: 1, formaPago: "Efectivo", monto: 75, recibido: 100, entregado: 25 }] }));
+    expect(screen.getByText("Efectivo recibido").nextElementSibling).toHaveTextContent("Bs 100,00");
+    expect(screen.getByText("Cambio entregado").nextElementSibling).toHaveTextContent("Bs 25,00");
+  });
+});

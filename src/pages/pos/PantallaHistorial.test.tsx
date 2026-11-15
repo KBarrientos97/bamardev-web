@@ -954,3 +954,122 @@ describe("M6 (QA R2): los pendientes dicen de qué local son cuando hay varios",
     expect(screen.queryByText("Las Brisas")).not.toBeInTheDocument();
   });
 });
+
+describe("Modificar una venta ya cobrada (15-nov)", () => {
+  /** La venta de mostrador del turno abierto (la caja 1 de `montar`). */
+  const delTurno = { ...venta, cajaId: 1 } as Venta;
+  const onModificar = vi.fn();
+
+  async function abrir(completa: Venta, lista: Venta = completa) {
+    vi.mocked(api.getVentas).mockResolvedValue([lista]);
+    vi.mocked(api.getVenta).mockResolvedValue(completa);
+    render(
+      <MemoryRouter>
+        <PantallaHistorial
+          caja={{ id: 1 } as Caja}
+          onAtras={() => {}}
+          onCierre={() => {}}
+          onVerComprobante={() => {}}
+          onModificar={onModificar}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /T-0007/ }));
+    await screen.findByText("Pollo entero");
+  }
+
+  it("la venta de mostrador del turno se puede modificar, y se abre con la venta ENTERA", async () => {
+    await abrir(delTurno);
+    fireEvent.click(screen.getByRole("button", { name: "Modificar venta" }));
+    // La entera (con renglones, pagos y versión), no el resumen de la lista.
+    expect(onModificar).toHaveBeenCalledWith(delTurno);
+  });
+
+  it("sin el permiso de anular no se ofrece: es la misma puerta", async () => {
+    sesion.permisos = ["ventas.historial"];
+    await abrir(delTurno);
+    expect(screen.queryByRole("button", { name: "Modificar venta" })).not.toBeInTheDocument();
+  });
+
+  it("no se ofrece en una farmacia: su venta lleva lote y receta", async () => {
+    sesion.rubro = "FARMACIA";
+    await abrir(delTurno);
+    expect(screen.queryByRole("button", { name: "Modificar venta" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["de otro turno (la caja abierta es otra)", { cajaId: 99 }],
+    ["fiada", { credito: { id: 1, adelanto: 0, saldo: 80 } }],
+    ["de una mesa del salón", { mesa: "M1" }],
+    ["con descuento", { descuentoTotal: 5 }],
+    ["anulada", { estado: "ANULADO" }],
+    ["un pedido para recoger", { tipoPedido: "RECOGER", estadoEntrega: "ENTREGADO" }],
+  ])("no se ofrece en una venta %s", async (_caso, cambio) => {
+    await abrir({ ...delTurno, ...cambio } as Venta);
+    expect(screen.queryByRole("button", { name: "Modificar venta" })).not.toBeInTheDocument();
+  });
+
+  it("sin quien abra el cambio (otra pantalla que reusa el historial) tampoco", async () => {
+    vi.mocked(api.getVenta).mockResolvedValue(delTurno);
+    await abrirDetalle();
+    expect(screen.queryByRole("button", { name: "Modificar venta" })).not.toBeInTheDocument();
+  });
+
+  const modificada = {
+    ...delTurno,
+    total: 75,
+    vecesModificada: 1,
+    modificadaEn: "2026-09-30T19:10:00",
+    modificaciones: [
+      {
+        id: 3,
+        fecha: "2026-09-30T19:10:00",
+        usuario: "Cata Cajera",
+        autorizadoPor: "Ana Encargada",
+        motivo: "El cliente cambió de idea",
+        totalAntes: 80,
+        totalDespues: 75,
+        diferencia: -5,
+        pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: -5 }],
+        antes: [
+          { productoId: 1, producto: "Pollo entero", cantidad: 1, precio: 60, subtotal: 60, consumo: "MESA", nota: null },
+          { productoId: 2, producto: "Gaseosa 2L", cantidad: 1, precio: 20, subtotal: 20, consumo: "LLEVAR", nota: null },
+        ],
+        despues: [
+          { productoId: 1, producto: "Pollo entero", cantidad: 1, precio: 60, subtotal: 60, consumo: "MESA", nota: null },
+          { productoId: 3, producto: "Gaseosa 1L", cantidad: 1, precio: 15, subtotal: 15, consumo: "LLEVAR", nota: null },
+        ],
+      },
+    ],
+  } as Venta;
+
+  it("la lista marca la venta modificada, y el detalle cuenta el cambio entero", async () => {
+    await abrir(modificada, { ...venta, vecesModificada: 1 } as Venta);
+    // En la lista, sin abrir nada.
+    expect(screen.getByText("Modificada")).toBeInTheDocument();
+    const caja = screen.getByText("Venta modificada").parentElement!;
+    expect(caja).toHaveTextContent("de Bs 80,00 a Bs 75,00: se devolvieron Bs 5,00 en efectivo");
+    expect(caja).toHaveTextContent("Salió: 1× Gaseosa 2L");
+    expect(caja).toHaveTextContent("Entró: 1× Gaseosa 1L");
+    expect(caja).toHaveTextContent("Motivo: El cliente cambió de idea");
+    expect(caja).toHaveTextContent("Lo hizo Cata Cajera · autorizó Ana Encargada con su PIN");
+  });
+
+  it("una venta que nunca se modificó no dice nada de cambios", async () => {
+    await abrir(delTurno);
+    expect(screen.queryByText("Modificada")).not.toBeInTheDocument();
+    expect(screen.queryByText("Venta modificada")).not.toBeInTheDocument();
+  });
+
+  it("la plata devuelta en efectivo de una venta cobrada por QR se dice con palabras, no como un pago negativo", async () => {
+    await abrir({
+      ...modificada,
+      pagos: [
+        { formaPagoId: 11, formaPago: "QR", monto: 80 },
+        { formaPagoId: 10, formaPago: "Efectivo", monto: -5 },
+      ],
+    } as Venta);
+    const fila = screen.getByText("Devuelto en efectivo").parentElement!;
+    expect(fila).toHaveTextContent("− Bs 5,00");
+  });
+});

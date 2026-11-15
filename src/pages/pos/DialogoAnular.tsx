@@ -172,6 +172,17 @@ export function DialogoAnular({
                 salen de la caja. La anulación ya los descuenta del turno.
               </li>
             )}
+            {/* Una venta cobrada por QR a la que un cambio de productos ya le
+                devolvió la diferencia en efectivo (su pago en efectivo es
+                negativo): esa plata salió del cajón por una venta que deja
+                de existir, así que tiene que volver. */}
+            {enEfectivo < 0 && (
+              <li>
+                <span className="font-bold text-texto">{fmtMoney(-enEfectivo)} en efectivo</span> ya se le
+                devolvieron al modificar la venta: tienen que volver a la caja. Pedíselos, o descontalos de lo
+                que le devolvés por QR y reponelos en la caja.
+              </li>
+            )}
           </ul>
         )}
 
