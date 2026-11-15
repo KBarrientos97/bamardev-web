@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { Cargando, ErrorMsg, Vacio } from "../../components/ui";
@@ -57,6 +57,29 @@ export function Cargador<T>({
  * rojo en todos los negocios. Con el tema negro del billar, una flecha "buena"
  * del color de la marca no se distinguiría de una mala.
  */
+
+/**
+ * El tamaño del número principal de una tarjeta según cuántos caracteres tiene:
+ * «Bs 509.000,00» no entra en 22 px en una tarjeta de 320 px, y cortarlo con «…»
+ * esconde justo el dato (ronda 2 de QA de plataformas). Achica por tramos y, si
+ * aun así no entra, baja de renglón en el espacio de «Bs 509.000,00».
+ */
+export function claseDelValor(valor: ReactNode): string {
+  const largo = textoDe(valor).length;
+  if (largo > 14) return "text-[15px]";
+  if (largo > 11) return "text-[18px]";
+  if (largo > 8) return "text-[20px]";
+  return "text-[22px]";
+}
+
+/** El texto de un valor, aunque venga envuelto en un elemento (`<Apagado>Bs 0,00</Apagado>`). */
+function textoDe(nodo: ReactNode): string {
+  if (nodo == null || typeof nodo === "boolean") return "";
+  if (typeof nodo === "string" || typeof nodo === "number") return String(nodo);
+  if (Array.isArray(nodo)) return nodo.map(textoDe).join("");
+  if (isValidElement<{ children?: ReactNode }>(nodo)) return textoDe(nodo.props.children);
+  return "";
+}
 
 export type TonoR = "verde" | "ambar" | "rosa" | "azul" | "morado" | "gris";
 
@@ -178,9 +201,9 @@ export function KpiR({
     <div className="card min-w-0 p-4">
       <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-texto-3">
         {icono && <Icon name={icono} size={13} />}
-        <span className="truncate">{etiqueta}</span>
+        <span className="min-w-0 break-words">{etiqueta}</span>
       </p>
-      <p className={`mt-1.5 truncate text-[22px] font-extrabold leading-tight tabular-nums ${color}`}>{valor}</p>
+      <p className={`mt-1.5 break-words ${claseDelValor(valor)} font-extrabold leading-tight tabular-nums ${color}`}>{valor}</p>
       {(delta || pie) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-texto-3">
           {delta}
@@ -588,7 +611,7 @@ export function Cifras({ items }: { items: { etiqueta: string; valor: ReactNode;
         <div key={c.etiqueta} className="min-w-0 px-4 py-3 sm:px-5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">{c.etiqueta}</p>
           <p
-            className={`mt-0.5 truncate text-[20px] font-extrabold tabular-nums ${
+            className={`mt-0.5 break-words text-[20px] font-extrabold tabular-nums ${
               c.tono === "marca" ? "text-primary-700" : c.tono === "rojo" ? "text-rose-700" : "text-texto"
             }`}
           >

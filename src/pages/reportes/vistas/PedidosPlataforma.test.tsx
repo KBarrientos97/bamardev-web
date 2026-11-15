@@ -374,6 +374,14 @@ describe("imprimir el resumen del período", () => {
     expect(papel.textContent).toContain("A-125");
     expect(papel.textContent).toContain("Anulado: Error al cargar");
     expect(papel.textContent).toContain("No incluye 1 pedido anulado");
+    // La fila del anulado va tachada, pero no el motivo: se lee entero.
+    const marca = papel.querySelector(".marca") as HTMLElement;
+    expect(marca.textContent).toBe("Anulado: Error al cargar");
+    expect(marca.closest(".tachado")).toBeNull();
+    expect(marca.closest("td")?.style.textDecoration ?? "").toBe("");
+    expect(papel.querySelectorAll("tr.anulado .tachado").length).toBeGreaterThan(0);
+    // Y lo que no está anulado no lleva raya.
+    expect(papel.querySelectorAll("tr:not(.anulado) .tachado")).toHaveLength(0);
   });
 });
 

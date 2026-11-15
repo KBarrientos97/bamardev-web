@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fmtHora, fmtMoney } from "../../lib/format";
+import { fmtHora, fmtMoney, sinPuntoFinal } from "../../lib/format";
 import { descartar, useColaOffline } from "../../lib/offline/cola";
 import { ventaSinInternet } from "../../lib/offline/modo";
 import type { Venta } from "../../types";
@@ -59,7 +59,7 @@ export default function VentasSinSubir({ onVerTicket }: { onVerTicket: (v: Venta
               {rechazada && (
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-borde-soft pt-2 text-xs">
                   <p className="min-w-0 flex-1 text-danger-text">
-                    {v.ultimoError ?? "El servidor no la aceptó."} Volvé a cargarla a mano.
+                    {sinPuntoFinal(v.ultimoError ?? "El servidor no la aceptó")}. Volvé a cargarla a mano.
                   </p>
                   <button
                     type="button"

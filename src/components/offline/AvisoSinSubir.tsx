@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fmtMoney } from "../../lib/format";
+import { fmtMoney, sinPuntoFinal } from "../../lib/format";
 import { descartarPedido, porSubir, sinSenal, useColaOffline, usePedidosEncolados } from "../../lib/offline/cola";
 import { NOMBRE_PLATAFORMA } from "../../lib/pedidosPlataforma/tipos";
 import { ventaSinInternet } from "../../lib/offline/modo";
@@ -155,8 +155,8 @@ export default function AvisoSinSubir() {
               El pedido de {NOMBRE_PLATAFORMA[p.resumen.plataforma]} tomado sin internet no se pudo
               subir
             </b>{" "}
-            ({fmtMoney(p.resumen.total)}): {p.ultimoError ?? "el servidor no lo aceptó."} Volvé a
-            cargarlo a mano.
+            ({fmtMoney(p.resumen.total)}): {sinPuntoFinal(p.ultimoError ?? "el servidor no lo aceptó")}.
+            Volvé a cargarlo a mano.
           </p>
           <button
             type="button"

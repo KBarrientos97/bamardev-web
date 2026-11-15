@@ -136,3 +136,11 @@ export function iniciales(nombre: string | null | undefined): string {
   if (partes.length === 1) return partes[0].charAt(0).toUpperCase();
   return (partes[0].charAt(0) + partes[1].charAt(0)).toUpperCase();
 }
+
+/**
+ * El mensaje sin su punto final, para pegarle otra frase detrás («{mensaje}. Volvé
+ * a cargarlo a mano.»): el del servidor viene a veces con punto y a veces sin él.
+ */
+export function sinPuntoFinal(mensaje: string): string {
+  return mensaje.replace(/\.\s*$/, "");
+}
