@@ -893,6 +893,12 @@ export interface ApunteStock {
   usuario: { id: number; username: string; nombre: string | null } | null;
   referenciaTipo: string | null;
   referenciaId: number | null;
+  /**
+   * Con `referenciaTipo = "PEDIDO_PLATAFORMA"`: de cuál plataforma era el pedido.
+   * `null` si el pedido ya no existe; ausente en un backend anterior. En los dos
+   * casos se lee como «Pedido de plataforma».
+   */
+  plataforma?: "YANGO" | "PEDIDOS_YA" | null;
 }
 
 export interface DetalleMovimientoInput {

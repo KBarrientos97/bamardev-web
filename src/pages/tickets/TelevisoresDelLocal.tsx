@@ -30,6 +30,11 @@ import { Tarjeta } from "./piezas";
  * eligiendo qué va a mostrar. Después se le cambia o se la desconecta sin
  * subirse a tocarla.
  *
+ * Desde el 14-nov la TV también se conecta con la app BamarDev TV (repo
+ * `bamardev-tv`), que abre este mismo `/tv` sin escribir nada con el control.
+ * La ayuda nombra la app primero y deja la dirección para la TV que sólo tiene
+ * navegador: el código y los pasos son los mismos en las dos.
+ *
  * Va en Tickets y pedidos y en el Menú digital, con la misma lista: una TV
  * conectada puede pasar de los tickets al menú. Qué se le puede poner lo dice
  * el servidor (`opciones`), según los extras del negocio y los permisos.
@@ -91,7 +96,8 @@ export default function TelevisoresDelLocal({ enFila = false }: { enFila?: boole
   return (
     <Tarjeta titulo="TVs del local" accion={enFila ? botonConectar : undefined}>
       <p className="text-[13px] text-texto-2">
-        En el navegador de la TV abrí <b className="font-semibold text-texto">{direccion}</b>: muestra un código.
+        En la TV abrí la app <b className="whitespace-nowrap font-semibold text-texto">BamarDev TV</b> o, en el
+        navegador, <b className="font-semibold text-texto">{direccion}</b>: muestra un código.
         Tocá <b className="font-semibold text-texto">Conectar una TV</b> y escribilo acá.
       </p>
 

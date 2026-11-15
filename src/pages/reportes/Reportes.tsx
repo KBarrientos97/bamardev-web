@@ -182,7 +182,9 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
               )}
             </div>
           </header>
-          <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} corteMin={corteMin} />
+          {!ficha?.periodoPropio && (
+            <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} corteMin={corteMin} />
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -419,7 +421,7 @@ function EncabezadoReporte({
       <div className="min-w-0 flex-1 basis-48">
         <h2 className="truncate text-[22px] font-extrabold leading-tight text-texto">{titulo}</h2>
         <p className="text-[13px] text-texto-3">
-          {descripcion} · {ficha?.fotoDeHoy ? "al día de hoy" : textoRango(periodo.desde, periodo.hasta)}
+          {ficha?.periodoPropio ? descripcion : `${descripcion} · ${ficha?.fotoDeHoy ? "al día de hoy" : textoRango(periodo.desde, periodo.hasta)}`}
         </p>
       </div>
       {ayuda && <AyudaCalculo titulo={titulo} ayuda={ayuda} />}

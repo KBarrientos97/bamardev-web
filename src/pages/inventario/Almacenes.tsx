@@ -19,6 +19,7 @@ import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { esFarmacia, insumosSinStock, termino } from "../../lib/rubro";
 import { FuenteSucursalesCtx } from "../../lib/sucursalesCompartidas";
+import { etiquetaReferenciaStock } from "../../lib/pedidosPlataforma/referencia";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
@@ -745,6 +746,8 @@ function BitacoraDelAlmacen({ almacenId, sinInsumos }: { almacenId: number; sinI
                 </p>
                 <p className="truncate text-[12px] text-texto-3">
                   {MOTIVO_LEGIBLE[m.motivo] ?? m.motivo}
+                  {/* «Pedido Yango» / «Pedido PedidosYa»: el stock que bajó un pedido de plataforma. */}
+                  {etiquetaReferenciaStock(m) ? ` · ${etiquetaReferenciaStock(m)}` : ""}
                   {/* Sin autor = lo movió un proceso automático (el armado de un
                       combo, por ejemplo). Es un hecho, no un dato faltante. */}
                   {m.usuario ? ` · ${m.usuario.nombre || m.usuario.username}` : ""}

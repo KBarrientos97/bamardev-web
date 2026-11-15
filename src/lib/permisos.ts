@@ -180,6 +180,12 @@ export type Seccion =
   | "mi_produccion"
   /** Producción, no-shows, ocupación y retención de la agenda. */
   | "reportes_agenda"
+  /**
+   * El reporte de pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §3):
+   * no es una ruta propia sino una ficha de Reportes. Existe como sección para
+   * que dé entrada a Reportes a quien sólo tiene ése (como los de la agenda).
+   */
+  | "pedidos_plataforma"
   // ── Página del negocio (todas las verticales) ──
   /** "Mi página": el editor de la página pública del negocio. */
   | "mi_pagina"
@@ -379,6 +385,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   comisiones: { permiso: "comisiones.ver", alcance: "GENERAL", feature: "comisiones" },
   mi_produccion: { permiso: "comisiones.ver", alcance: "PROPIO", feature: "comisiones" },
   reportes_agenda: { permiso: "agenda.reportes", feature: "agenda" },
+  // Con cualquiera de las dos features (una por plataforma, extras que el
+  // operador prende por negocio); el permiso del reporte es `plataformas.ver`.
+  pedidos_plataforma: { permiso: "plataformas.ver", feature: "pedidos_yango", oFeature: "pedidos_pedidosya" },
   // ── Página del negocio, CRM y promociones ──
   mi_pagina: { permiso: "negocio.configurar", feature: "pagina_publica" },
   mis_enlaces: { permiso: "negocio.configurar", feature: "enlaces_cortos" },
@@ -448,7 +457,12 @@ const REQUISITOS: Record<Seccion, Requisito> = {
  * pierde un reporte por haberlos juntado. Adentro, cada reporte pide lo suyo
  * (`pages/reportes/catalogo.ts`).
  */
-export const SECCIONES_REPORTES: readonly Seccion[] = ["reportes", "reportes_agenda", "recetas_servicio"];
+export const SECCIONES_REPORTES: readonly Seccion[] = [
+  "reportes",
+  "reportes_agenda",
+  "recetas_servicio",
+  "pedidos_plataforma",
+];
 
 /** ¿Tiene la entrada Reportes? Con `puede` de la sesión (o `puedeVer` con un contexto). */
 export function veReportes(puede: (seccion: Seccion) => boolean): boolean {
@@ -493,6 +507,10 @@ const FEATURES_ESTRICTAS: Feature[] = [
   // de mostrador.
   "tickets_pedido",
   "menu_digital",
+  // Pedidos de Yango y PedidosYa (15-nov): extras que nadie tuvo antes; sin la
+  // feature en la lista no hay botón ni reporte, aunque la lista venga vacía.
+  "pedidos_yango",
+  "pedidos_pedidosya",
 ];
 
 /**

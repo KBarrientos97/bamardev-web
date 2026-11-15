@@ -14,6 +14,10 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "ventas.vender": "pos",
   "ventas.historial": "pos",
   "ventas.anular": "pos",
+  // Pedidos de Yango y PedidosYa (15-nov): cualquiera de las dos features los habilita.
+  "plataformas.registrar": "pedidos_yango",
+  "plataformas.ver": "pedidos_yango",
+  "plataformas.anular": "pedidos_yango",
   "ventas.ver_precios": null,
   "caja.operar": "caja",
   "caja.ver_todas": "caja",
@@ -118,6 +122,9 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
  */
 export const OTRAS_FEATURES_DE_PERMISO: Record<string, string[]> = {
   "recibo.configurar": ["menu_digital"],
+  "plataformas.registrar": ["pedidos_pedidosya"],
+  "plataformas.ver": ["pedidos_pedidosya"],
+  "plataformas.anular": ["pedidos_pedidosya"],
 };
 
 export const PLANTILLAS = {
@@ -125,6 +132,9 @@ export const PLANTILLAS = {
     "ventas.vender",
     "ventas.historial",
     "ventas.anular",
+    "plataformas.registrar",
+    "plataformas.ver",
+    "plataformas.anular",
     "ventas.ver_precios",
     "caja.operar",
     "caja.ver_todas",
@@ -214,6 +224,9 @@ export const PLANTILLAS = {
     "ventas.vender",
     "ventas.historial",
     "ventas.anular",
+    "plataformas.registrar",
+    "plataformas.ver",
+    "plataformas.anular",
     "ventas.ver_precios",
     "caja.operar",
     "caja.ver_todas",
@@ -291,6 +304,7 @@ export const PLANTILLAS = {
     "ventas.vender",
     "ventas.historial",
     "ventas.anular",
+    "plataformas.registrar",
     "ventas.ver_precios",
     "caja.operar",
     "credito.otorgar",
