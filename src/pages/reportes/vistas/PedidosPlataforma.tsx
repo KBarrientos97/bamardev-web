@@ -108,7 +108,11 @@ export default function PedidosPlataforma() {
         )}
       </div>
 
-      <section className="card flex flex-wrap items-center gap-3 px-3.5 py-3" aria-label="Período de liquidación">
+      {/* En el celular el período es lo que importa y tiene que leerse entero: va en
+          su propia fila entre las flechas (el texto baja de renglón en vez de cortarse
+          con «…») y «Imprimir resumen» queda abajo. Desde `sm`, todo en una fila. */}
+      <section className="card px-3.5 py-3 sm:flex sm:items-center sm:gap-3" aria-label="Período de liquidación">
+        <div className="flex min-w-0 items-center gap-3 sm:flex-1">
         <button
           type="button"
           onClick={() => setPeriodo((p) => Math.max(PERIODO_MAS_VIEJO, p - 1))}
@@ -120,10 +124,10 @@ export default function PedidosPlataforma() {
           <Icon name="arrowLeft" size={18} />
         </button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="truncate text-[16px] font-extrabold text-texto">
+          <p className="break-words text-[16px] font-extrabold leading-tight text-texto">
             {datos.datos?.periodo.etiqueta ?? "Cargando período…"}
           </p>
-          <p className="truncate text-[12.5px] text-texto-3">
+          <p className="mt-0.5 break-words text-[12.5px] leading-snug text-texto-3">
             {datos.datos ? textoDelPeriodo(datos.datos.periodo) : " "}
           </p>
         </div>
@@ -137,7 +141,14 @@ export default function PedidosPlataforma() {
         >
           <Icon name="arrowRight" size={18} />
         </button>
-        <Boton variante="ghost" icono="printer" onClick={imprimir} disabled={!datos.datos}>
+        </div>
+        <Boton
+          variante="ghost"
+          icono="printer"
+          onClick={imprimir}
+          disabled={!datos.datos}
+          className="mt-3 w-full sm:mt-0 sm:w-auto"
+        >
           Imprimir resumen
         </Boton>
       </section>
@@ -150,7 +161,9 @@ export default function PedidosPlataforma() {
             <div className="grid grid-cols-2 gap-3">
               <KpiR etiqueta="Pedidos" valor={fmtCantidad(r.cantidad)} icono="bolsa" />
               <KpiR
-                etiqueta={`Total de ${nombre}`}
+                // «Total» a secas: la plataforma ya está elegida arriba, y «Total de PedidosYa»
+                // se cortaba con «…» en una tarjeta de 320 px.
+                etiqueta="Total"
                 valor={fmtMoney(r.total)}
                 tono="marca"
                 icono="dollar"
@@ -285,7 +298,17 @@ function FilaPedido({
         ]
           .filter(Boolean)
           .join(" · ")}
-        linea2={anulado ? textoAnulado(p) : resumenDeLineas(p)}
+        // El anulado también dice qué llevaba (tachado) además de por qué se anuló.
+        linea2={
+          anulado ? (
+            <>
+              <span className="line-through">{resumenDeLineas(p)}</span>
+              <span className="block">{textoAnulado(p)}</span>
+            </>
+          ) : (
+            resumenDeLineas(p)
+          )
+        }
         valor={fmtMoney(p.total)}
         ajustar
       />

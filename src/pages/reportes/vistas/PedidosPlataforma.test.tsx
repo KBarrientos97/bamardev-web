@@ -140,7 +140,7 @@ describe("el reporte del período", () => {
     // «En curso: cierra el {día}, paga el {día}»
     expect(verTexto(/En curso: cierra el jue 19, paga el .*20\/11/)).toBeInTheDocument();
     expect(verTextos("Pedidos").length).toBeGreaterThan(0);
-    expect(verTexto("Total de Yango")).toBeInTheDocument();
+    expect(verTexto("Total")).toBeInTheDocument();
     expect(verTextos(/Bs.105,00/).length).toBeGreaterThan(0);
     expect(verTexto(/1 anulado · Bs.35,00 no suma/)).toBeInTheDocument();
   });
@@ -161,6 +161,9 @@ describe("el reporte del período", () => {
     expect(screen.getByText("Anulado")).toBeInTheDocument();
     expect(verTexto("Anulado: Error al cargar")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Anular el pedido A-125" })).not.toBeInTheDocument();
+    // También dice qué llevaba (tachado): los demás pedidos muestran sus líneas.
+    const lineas = screen.getAllByText("2× Arroz con leche L", SIN_PAPEL);
+    expect(lineas.some((e) => e.classList.contains("line-through"))).toBe(true);
     expect(screen.getByRole("button", { name: "Anular el pedido A-123" })).toBeInTheDocument();
   });
 
@@ -266,7 +269,6 @@ describe("el selector de plataforma", () => {
     fireEvent.click(screen.getByRole("tab", { name: "PedidosYa" }));
     await waitFor(() => expect(reporte).toHaveBeenLastCalledWith({ plataforma: "PEDIDOS_YA", periodo: 0, almacenId: null }));
     expect(screen.queryByText("N° A-123")).not.toBeInTheDocument();
-    expect(screen.queryByText("Total de PedidosYa")).not.toBeInTheDocument();
   });
 
   it("con una sola prendida no hay selector", async () => {
