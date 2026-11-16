@@ -2041,6 +2041,9 @@ function FormProductoCuerpo({
               setEligiendoIcono(false);
             }}
             onCerrar={() => setEligiendoIcono(false)}
+            // Borró en «Mis íconos» el que tenía puesto: queda sin ícono, como
+            // los demás productos que lo usaban.
+            onIconoBorrado={(llave) => setIcono((puesto) => (puesto === llave ? null : puesto))}
           />
         )}
 
