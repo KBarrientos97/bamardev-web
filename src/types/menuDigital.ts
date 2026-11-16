@@ -165,6 +165,46 @@ export interface AjustesRecibo {
    * diálogo, para mandar cada papel a su impresora.
    */
   alCobrar: { recibo: boolean; comanda: boolean; juntos: boolean };
+  /**
+   * El código de barras con el número de la venta al pie del recibo (16-nov).
+   * Lo dibuja sólo el papel de la app (celular o terminal): el de la web nunca
+   * lo tuvo y no cambia con ningún valor. El interruptor está igual en la web
+   * porque el diseño es uno solo y el dueño lo apaga desde la PC para sus
+   * terminales. De fábrica `true`, como el papel de la app hasta acá.
+   */
+  codigoBarras: boolean;
+  /**
+   * Letra gruesa (16-nov): todo el recibo y la comanda en peso fuerte y negro
+   * puro, para las térmicas que no marcan los grises ni la letra fina. La
+   * engruesa la clase `papel-negrita` (index.css). De fábrica `false`.
+   */
+  negrita: boolean;
+  /**
+   * La sucursal DE LA VENTA en la cabecera, debajo del nombre del negocio, con
+   * su dirección y su teléfono (16-nov). Se muestra también con un solo local.
+   * De fábrica `false`: la cabecera de siempre.
+   */
+  sucursal: boolean;
+  /**
+   * En las terminales Android con impresora propia, el recibo sale directo al
+   * cobrar, sin el diálogo de impresión de Android (16-nov). Como
+   * `codigoBarras`, lo usa sólo la app: la web lo guarda y muestra el
+   * interruptor para que el dueño lo prenda desde la PC, pero su papel y su
+   * impresión no cambian. De fábrica `false`.
+   */
+  impresionDirecta: boolean;
+}
+
+/**
+ * El local que va en un papel: el `almacen` de la venta o, en la vista previa
+ * de «Ticket y recibo», la `sucursal` de `GET /pantallas/recibo` (misma forma
+ * en el backend). La dirección y el teléfono vienen sólo si su ficha los tiene.
+ */
+export interface LocalDelRecibo {
+  id: number;
+  nombre: string;
+  direccion?: string | null;
+  telefono?: string | null;
 }
 
 export const RECIBO_DE_FABRICA: AjustesRecibo = {
@@ -189,4 +229,13 @@ export const RECIBO_DE_FABRICA: AjustesRecibo = {
   mostrarMensaje: true,
   mensaje: "¡Gracias por su compra!",
   alCobrar: { recibo: false, comanda: false, juntos: true },
+  // Los tres de la térmica de 58 mm (16-nov), con los valores del backend: cada
+  // uno en lo que el papel hacía hasta acá. Contra un backend que todavía no
+  // los manda, el recibo sale exactamente como antes.
+  codigoBarras: true,
+  negrita: false,
+  sucursal: false,
+  // El de las terminales con impresora (16-nov): apagado, la app imprime como
+  // siempre, con su diálogo.
+  impresionDirecta: false,
 };

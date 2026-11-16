@@ -383,6 +383,16 @@ export default function PantallaRecibo({
     return () => clearTimeout(id);
   }, [conTicket, reciboSinNumero, alCobrar, reimpresion, imprimir]);
   const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
+  // «Sucursal» del diseño (16-nov): el local DE LA VENTA en la cabecera,
+  // también con un solo local. Sin local en la venta (una vieja, o hecha sin
+  // internet), nada: ni renglón vacío ni la palabra. Arriba, la fila
+  // «Sucursal: X» de 2+ sucursales no se repite abajo.
+  const localArriba = r?.sucursal === true && venta.almacen?.nombre?.trim() ? venta.almacen : null;
+  // «Letra gruesa» (16-nov): el recibo y la comanda, en pantalla y al imprimir.
+  // `codigoBarras` e `impresionDirecta` no se miran acá a propósito: el papel
+  // de la web nunca tuvo código de barras, y la impresión es la del navegador;
+  // los dos son de la app y acá todo sale igual con cualquier valor.
+  const negrita = r?.negrita === true;
 
   // El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). Con
   // número de pedido el `id` pasa al envoltorio del recibo y la comanda.
@@ -390,7 +400,7 @@ export default function PantallaRecibo({
     <article
       id={conTicket ? undefined : "area-impresion"}
       ref={ticket}
-      className={`papel-letra card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "recibo-impreso print:max-w-none print:p-0" : ""}`}
+      className={`papel-letra card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "recibo-impreso print:max-w-none print:p-0" : ""}${negrita ? " papel-negrita" : ""}`}
       // La letra elegida en Configuración del recibo (`papel-letra`). Y el
       // rollo de 58 mm: el ticket se angosta al imprimir (index.css lee la
       // variable) y también en la pantalla.
@@ -400,7 +410,13 @@ export default function PantallaRecibo({
       }}
     >
       {r ? (
-        <CabeceraNegocio r={r} logo={conf?.logo ?? null} nombre={negocio?.nombre ?? "BamarDev"} sede={sede} />
+        <CabeceraNegocio
+          r={r}
+          logo={conf?.logo ?? null}
+          nombre={negocio?.nombre ?? "BamarDev"}
+          sede={sede}
+          local={localArriba}
+        />
       ) : (
         <header className="pb-2 text-center">
           <h2 className="text-base font-bold text-texto">
@@ -421,8 +437,9 @@ export default function PantallaRecibo({
           valor={venta.pendienteSync ? "SIN SINCRONIZAR" : (venta.comprobante ?? `#${venta.id}`)}
         />
         <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
-        {/* El local, sólo con 2+ sucursales: dónde se hizo la venta. */}
-        {sede && <FilaDato etiqueta={`${rotuloSede}:`} valor={sede.nombre} />}
+        {/* El local, sólo con 2+ sucursales: dónde se hizo la venta. Con
+            «Sucursal» prendida ya va en la cabecera: no se imprime dos veces. */}
+        {sede && !localArriba && <FilaDato etiqueta={`${rotuloSede}:`} valor={sede.nombre} />}
         {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
             mesa ni mesero (visto en QA). El cliente reconoce su cuenta por
             la mesa, y el mesero es a quien se le reclama. */}
@@ -690,6 +707,7 @@ export default function PantallaRecibo({
                   sede={sede?.nombre}
                   minutos={r?.minutosEstimados ?? 0}
                   tamano={r?.tamanoLetraComanda}
+                  negrita={negrita}
                 />
               </section>
             </div>

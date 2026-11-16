@@ -27,6 +27,7 @@ export default function ComandaCocina({
   sede,
   minutos = 0,
   tamano,
+  negrita = false,
 }: {
   venta: Venta;
   numero: number;
@@ -44,6 +45,12 @@ export default function ComandaCocina({
    * ahorre rollo con la chica. Sin diseño del recibo, la de siempre.
    */
   tamano?: TamanoLetra | null;
+  /**
+   * «Letra gruesa» del diseño (16-nov): todo lo que sale por esa impresora,
+   * también la comanda, en peso fuerte y negro puro (`papel-negrita`, en
+   * index.css). Sin ella, el papel de siempre.
+   */
+  negrita?: boolean;
 }) {
   const detalles = venta.detalles ?? [];
   const grupos = [
@@ -60,7 +67,7 @@ export default function ComandaCocina({
 
   return (
     <article
-      className="papel-letra comanda-impresa card mx-auto max-w-[320px] p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none"
+      className={`papel-letra comanda-impresa card mx-auto max-w-[320px] p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none${negrita ? " papel-negrita" : ""}`}
       style={estiloLetra(tamano)}
     >
       <header className="text-center">

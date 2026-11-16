@@ -113,6 +113,7 @@ export function CabeceraNegocio({
   logo,
   nombre,
   sede,
+  local,
 }: {
   r: AjustesRecibo;
   logo: string | null;
@@ -123,10 +124,21 @@ export function CabeceraNegocio({
    * Sin él, la cabecera de siempre.
    */
   sede?: { direccion?: string | null; telefono?: string | null } | null;
+  /**
+   * «Sucursal» del diseño prendido (16-nov): el local de la venta va debajo
+   * del nombre del negocio (y del lema), también con un solo local. Su nombre
+   * en un renglón propio y, debajo, su dirección y su teléfono, que reemplazan
+   * a los del negocio: una sola dirección por papel. Lo que su ficha no tiene
+   * sale del negocio, como siempre. Sin él (apagado, o una venta sin local), la
+   * cabecera de siempre.
+   */
+  local?: { nombre: string; direccion?: string | null; telefono?: string | null } | null;
 }) {
   const conLogo = r.logo && !!logo;
-  const direccion = sede?.direccion?.trim() || r.direccion;
-  const telefono = sede?.telefono?.trim() || r.telefono;
+  const nombreLocal = local?.nombre?.trim() || "";
+  const datosDe = nombreLocal ? local : sede;
+  const direccion = datosDe?.direccion?.trim() || r.direccion;
+  const telefono = datosDe?.telefono?.trim() || r.telefono;
   const contacto = [direccion, telefono ? `Tel. ${telefono}` : ""].filter(Boolean).join(" · ");
   return (
     <header className="pb-2 text-center">
@@ -154,6 +166,7 @@ export function CabeceraNegocio({
       )}
       {(!conLogo || r.nombre) && <h2 className="text-base font-bold text-texto">{nombre}</h2>}
       {r.lema && <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-texto-2">{r.lema}</p>}
+      {nombreLocal && <p className="mt-0.5 text-[12px] font-bold text-texto">{nombreLocal}</p>}
       {contacto && <p className="mt-0.5 text-[11px] text-texto-2">{contacto}</p>}
       {r.nit && <p className="text-[11px] text-texto-2">NIT: {r.nit}</p>}
     </header>
