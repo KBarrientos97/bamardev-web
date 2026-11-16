@@ -67,8 +67,11 @@ function OpcionTarjeta({
   c: Paleta;
 }) {
   return (
+    // `border-borde`: sin un color, el borde de Tailwind 4 es el del texto y la
+    // opción sin elegir salía con un marco casi negro, más marcado que la
+    // elegida (prueba de punta a punta, 16-nov). La elegida lo pisa con el acento.
     <label
-      className={`flex min-w-0 items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm ${
+      className={`flex min-w-0 items-start gap-2.5 rounded-xl border border-borde px-3 py-2.5 text-sm ${
         deshabilitada ? "cursor-not-allowed opacity-60" : "cursor-pointer"
       }`}
       style={{ borderColor: elegida ? c.acento : undefined, background: elegida ? c.tinte : undefined }}
@@ -532,7 +535,14 @@ function FilaFijado({
           </span>
         )}
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-sm font-semibold ${p.vendible ? "text-texto" : "text-texto-3"}`}>{p.nombre}</span>
+          {/* En dos renglones y no cortado en uno: en el celular, con las tres
+              flechas al lado, quedaba «Coca Cola p…» y no se sabía cuál era
+              (prueba de punta a punta, 16-nov). */}
+          <span
+            className={`line-clamp-2 text-sm font-semibold leading-snug [overflow-wrap:anywhere] ${p.vendible ? "text-texto" : "text-texto-3"}`}
+          >
+            {p.nombre}
+          </span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-texto-3">
             <span style={{ color: p.vendible ? c.oscuro : undefined }} className="font-semibold">
               {formatoPrecio(p.precio) ?? "Sin precio"}
@@ -541,14 +551,16 @@ function FilaFijado({
             {!p.vendible && <Badge tono="amarillo">No se muestra</Badge>}
           </span>
         </span>
-        <span className="flex shrink-0 items-center gap-1">
+        {/* En el celular, 32 de ancho (no 36): la fila va dentro de la tarjeta
+            y al nombre le quedaban 88 px. El alto sigue siendo de 36 para el dedo. */}
+        <span className="flex shrink-0 items-center gap-0.5 sm:gap-1">
           <button
             type="button"
             aria-label={`Subir ${p.nombre}`}
             title="Mover antes"
             disabled={guardando || primero}
             onClick={onSubir}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30"
+            className="flex h-9 w-8 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30 sm:w-9"
           >
             <Icon name="arrowUp" size={17} />
           </button>
@@ -558,7 +570,7 @@ function FilaFijado({
             title="Mover después"
             disabled={guardando || esUltimo}
             onClick={onBajar}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30"
+            className="flex h-9 w-8 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30 sm:w-9"
           >
             <Icon name="arrowDown" size={17} />
           </button>
@@ -568,7 +580,7 @@ function FilaFijado({
             title="Quitar de la página"
             disabled={guardando}
             onClick={onQuitar}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted hover:text-danger-text disabled:opacity-30"
+            className="flex h-9 w-8 items-center justify-center rounded-lg text-texto-2 hover:bg-muted hover:text-danger-text disabled:opacity-30 sm:w-9"
           >
             <Icon name="x" size={17} />
           </button>
