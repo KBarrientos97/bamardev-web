@@ -1,9 +1,18 @@
+import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Badge } from "../../components/ui";
 import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
+import MarcaPlataforma from "../../components/MarcaPlataforma";
+import { NOMBRE_PLATAFORMA } from "../../lib/pedidosPlataforma/tipos";
 import { BotonB, ChipFiltro, Fila } from "../billar/ui";
-import type { EfectivoSupervision, PedidoSupervision, SupervisionRestaurante, VentaSupervision } from "./api";
+import type {
+  EfectivoSupervision,
+  PedidoPlataformaSupervision,
+  PedidoSupervision,
+  SupervisionRestaurante,
+  VentaSupervision,
+} from "./api";
 import {
   buscarVentas,
   conDescuento,
@@ -28,19 +37,26 @@ import {
  * trae la misma respuesta), y abierta ofrece Anular a quien puede anular.
  */
 
-export type Pestana = "ventas" | "pedidos" | "efectivo";
+export type Pestana = "ventas" | "pedidos" | "plataformas" | "efectivo";
 
 const PESTANAS: { clave: Pestana; etiqueta: string }[] = [
   { clave: "ventas", etiqueta: "Ventas" },
   { clave: "pedidos", etiqueta: "Pedidos" },
+  // Sólo con las features prendidas (PLAN-PEDIDOS-PLATAFORMA §10.3): no son
+  // ventas ni pedidos en camino, van en su propio bloque con su marca.
+  { clave: "plataformas", etiqueta: "Yango / PedidosYa" },
   { clave: "efectivo", etiqueta: "Efectivo" },
 ];
 
 const VACIO: Record<Pestana, string> = {
   ventas: "Todavía no hay ventas en este turno.",
   pedidos: "No hay pedidos en camino.",
+  plataformas: "Todavía no hay pedidos de Yango ni de PedidosYa en este turno.",
   efectivo: "No se movió efectivo a mano en este turno.",
 };
+
+/** Cuántos pedidos de plataforma se ven de entrada y cuántos suma «Ver más» (hay turnos con cientos). */
+const PEDIDOS_DE_A = 10;
 
 export function Bloques({
   datos,
@@ -66,13 +82,14 @@ export function Bloques({
   /** Sin el permiso de anular no llega: el botón no existe (no se muestra uno que el servidor rechazaría). */
   onAnular?: (v: VentaSupervision) => void;
 }) {
+  const [cuantosPedidos, setCuantosPedidos] = useState(PEDIDOS_DE_A);
   const conteo = conteoDeBloques(datos);
-  const vacio = conteo[pestana] === 0;
+  const vacio = (conteo[pestana] ?? 0) === 0;
   const ventas = pestana === "ventas" ? buscarVentas(ventasOrdenadas(datos.ventas), busqueda) : [];
   return (
     <section aria-label="Lo que hizo la caja" className="card overflow-hidden">
       <div className="flex flex-wrap gap-2 border-b border-borde-soft px-4 py-3">
-        {PESTANAS.map((p) => (
+        {PESTANAS.filter((p) => p.clave !== "plataformas" || conteo.plataformas !== undefined).map((p) => (
           <ChipFiltro key={p.clave} activo={pestana === p.clave} etiqueta={p.etiqueta} cuenta={conteo[p.clave]} onClick={() => onPestana(p.clave)} />
         ))}
       </div>
@@ -115,6 +132,19 @@ export function Bloques({
             </ul>
           )}
         </>
+      ) : pestana === "plataformas" ? (
+        <ul className="divide-y divide-borde-soft">
+          {(datos.plataformas?.pedidos ?? []).slice(0, cuantosPedidos).map((p) => (
+            <FilaPedidoPlataforma key={p.id} p={p} ahora={ahora} />
+          ))}
+          {conteo.plataformas! > cuantosPedidos && (
+            <li className="p-3 text-center">
+              <BotonB onClick={() => setCuantosPedidos((n) => n + PEDIDOS_DE_A)}>
+                Ver más ({conteo.plataformas! - cuantosPedidos} más)
+              </BotonB>
+            </li>
+          )}
+        </ul>
       ) : pestana === "pedidos" ? (
         <ul className="divide-y divide-borde-soft">
           {datos.pedidos.map((p) => (
@@ -270,6 +300,46 @@ function FilaPedido({ p, ahora }: { p: PedidoSupervision; ahora: number }) {
         </p>
       </div>
       <span className="shrink-0 text-[14px] font-bold tabular-nums text-texto">{fmtMoney(p.total)}</span>
+    </li>
+  );
+}
+
+// ── Yango y PedidosYa ───────────────────────────────────────────────────────
+
+/**
+ * Un pedido de Yango o PedidosYa del turno (PLAN-PEDIDOS-PLATAFORMA §10.3). No
+ * es una venta: no entró a la caja ni suma a «Vendido». Con la marca de su
+ * plataforma, lo que llevaba y, si se anuló, quién y por qué (tachado).
+ */
+function FilaPedidoPlataforma({ p, ahora }: { p: PedidoPlataformaSupervision; ahora: number }) {
+  const anulado = p.anulado != null;
+  const cual = p.codigoExterno ? `N° ${p.codigoExterno}` : `Pedido #${p.id}`;
+  return (
+    <li id={`pedido-plataforma-${p.id}`} className="px-4 py-3 sm:px-5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-snug">
+            <span className="tabular-nums text-texto-3">{cuando(p.hora, ahora)}</span>
+            <b className="font-bold text-texto">{p.quien}</b>
+            <MarcaPlataforma plataforma={p.plataforma} />
+            <span className={`rounded bg-slate-100 px-1.5 py-px text-[12px] font-semibold text-texto-2 ${anulado ? "line-through" : ""}`}>{cual}</span>
+            {anulado && <Badge tono="rojo">Anulado</Badge>}
+          </p>
+          <p className="mt-0.5 text-[12px] text-texto-3">
+            {p.items.map((i) => `${fmtCantidad(i.cantidad)}× ${i.nombre}`).join(" · ") || `Pedido de ${NOMBRE_PLATAFORMA[p.plataforma]}`}
+          </p>
+          {p.anulado && (
+            <p className="mt-1.5 text-[12px] leading-snug text-rose-700">
+              Autorizó la anulación <b className="font-semibold">{p.anulado.por}</b> · {cuando(p.anulado.en, ahora)}
+              {p.anulado.motivo && <> · «{p.anulado.motivo}»</>}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-col items-end">
+          <span className={`text-[15px] font-extrabold tabular-nums ${anulado ? "line-through text-texto-3" : "text-texto"}`}>{fmtMoney(p.total)}</span>
+          <span className="text-[11px] font-semibold text-texto-3">No se cobra</span>
+        </div>
+      </div>
     </li>
   );
 }

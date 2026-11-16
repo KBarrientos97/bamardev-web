@@ -5,7 +5,7 @@ import { useSedeDeCaja } from "../lib/useSedeDeCaja";
 import type { CajaAbierta } from "../types";
 import { apiTickets } from "../lib/apiTickets";
 import { sinEntregar } from "../pages/tickets/useTableroTickets";
-import { porSubir, sinSenal, useColaOffline } from "../lib/offline/cola";
+import { porSubir, sinSenal, useColaOffline, usePedidosEncolados } from "../lib/offline/cola";
 import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Boton, Modal } from "./ui";
@@ -120,18 +120,56 @@ function textoSinEntregar(n: number): string {
     : `Quedan ${n} pedidos en Despacho sin entregar. Antes de cerrar sesión tienen que entregarse: si no, los clientes se quedan con su número y nadie los llama.`;
 }
 
-/** Con la caja abierta: no se puede cerrar hasta que suban (ver `PantallaCierre`). */
-function sinSubirConCaja(n: number): string {
-  return n === 1
-    ? "Además, hay 1 venta cobrada sin internet que todavía no subió: sube sola cuando vuelva la conexión, y recién ahí se puede cerrar la caja."
-    : `Además, hay ${n} ventas cobradas sin internet que todavía no subieron: suben solas cuando vuelva la conexión, y recién ahí se puede cerrar la caja.`;
+/**
+ * Lo que espera en el equipo: ventas cobradas y pedidos de Yango / PedidosYa
+ * tomados sin internet. Los avisos las distinguen: un pedido de plataforma no se
+ * cobra ni entra al cierre de caja, así que no «se cobró» ni frena el cierre.
+ */
+export interface SinSubir {
+  ventas: number;
+  pedidos: number;
+}
+
+const pedidosDe = (n: number) => `${n} ${n === 1 ? "pedido de plataforma" : "pedidos de plataforma"}`;
+
+/**
+ * Con la caja abierta: las ventas no dejan cerrar hasta que suban (ver
+ * `PantallaCierre`); los pedidos de plataforma no están en el cierre, sólo se avisan.
+ */
+export function sinSubirConCaja({ ventas, pedidos }: SinSubir): string {
+  const deVentas =
+    ventas === 1
+      ? "Además, hay 1 venta cobrada sin internet que todavía no subió: sube sola cuando vuelva la conexión, y recién ahí se puede cerrar la caja."
+      : `Además, hay ${ventas} ventas cobradas sin internet que todavía no subieron: suben solas cuando vuelva la conexión, y recién ahí se puede cerrar la caja.`;
+  if (pedidos === 0) return deVentas;
+  const deAplicacion =
+    pedidos === 1
+      ? "hay 1 pedido de plataforma tomado sin internet que todavía no subió: sube solo cuando vuelva la conexión"
+      : `hay ${pedidos} pedidos de plataforma tomados sin internet que todavía no subieron: suben solos cuando vuelva la conexión`;
+  return ventas === 0 ? `Además, ${deAplicacion}.` : `${deVentas} También ${deAplicacion}.`;
 }
 
 /** Sin caja abierta (o sin saberlo): se deja salir, pero sabiendo qué pasa con ellas. */
-function sinSubirAlSalir(n: number): string {
-  return n === 1
-    ? "Hay 1 venta cobrada sin internet que todavía no subió. Si cerrás sesión queda guardada en este equipo y sube recién cuando vuelvas a entrar con tu usuario y haya internet."
-    : `Hay ${n} ventas cobradas sin internet que todavía no subieron. Si cerrás sesión quedan guardadas en este equipo y suben recién cuando vuelvas a entrar con tu usuario y haya internet.`;
+export function sinSubirAlSalir({ ventas, pedidos }: SinSubir): string {
+  if (pedidos === 0) {
+    return ventas === 1
+      ? "Hay 1 venta cobrada sin internet que todavía no subió. Si cerrás sesión queda guardada en este equipo y sube recién cuando vuelvas a entrar con tu usuario y haya internet."
+      : `Hay ${ventas} ventas cobradas sin internet que todavía no subieron. Si cerrás sesión quedan guardadas en este equipo y suben recién cuando vuelvas a entrar con tu usuario y haya internet.`;
+  }
+  const que =
+    ventas === 0
+      ? pedidos === 1
+        ? `Hay ${pedidosDe(1)} tomado sin internet que todavía no subió.`
+        : `Hay ${pedidosDe(pedidos)} tomados sin internet que todavía no subieron.`
+      : `Hay ${ventas} ${ventas === 1 ? "venta cobrada" : "ventas cobradas"} y ${pedidosDe(pedidos)} sin subir, tomados sin internet.`;
+  const total = ventas + pedidos;
+  return `${que} Si cerrás sesión ${total === 1 ? "queda guardado" : "quedan guardados"} en este equipo y ${total === 1 ? "sube" : "suben"} recién cuando vuelvas a entrar con tu usuario y haya internet.`;
+}
+
+/** El título del aviso de salida, según qué espera. */
+function tituloSinSubir({ ventas, pedidos }: SinSubir): string {
+  if (pedidos === 0) return "Ventas sin subir";
+  return ventas === 0 ? "Pedidos sin subir" : "Ventas y pedidos sin subir";
 }
 
 /**
@@ -162,7 +200,13 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
   const { usa: variasSedes, sede: sedeActiva, fijar: fijarSede } = useSedeDeCaja();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const pendientes = porSubir(useColaOffline()).length;
+  // Los pedidos de Yango y PedidosYa tomados sin internet también esperan en
+  // este equipo: salir sin subirlos se avisa igual que con una venta.
+  const sinSubir: SinSubir = {
+    ventas: porSubir(useColaOffline()).length,
+    pedidos: porSubir(usePedidosEncolados()).length,
+  };
+  const pendientes = sinSubir.ventas + sinSubir.pedidos;
   const [revisando, setRevisando] = useState(false);
   const [aviso, setAviso] = useState<"caja" | "despacho" | "sinSubir" | null>(null);
   const [quedan, setQuedan] = useState(0);
@@ -247,7 +291,7 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
             No podés cerrar sesión con la caja abierta. Primero cerrá la caja: si no, el turno de hoy se
             mezcla con el de mañana.
           </p>
-          {pendientes > 0 && <p className="font-semibold text-warning-text">{sinSubirConCaja(pendientes)}</p>}
+          {pendientes > 0 && <p className="font-semibold text-warning-text">{sinSubirConCaja(sinSubir)}</p>}
         </div>
       </Modal>
     ) : aviso === "despacho" ? (
@@ -280,7 +324,7 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
     ) : aviso === "sinSubir" ? (
       <Modal
         abierto
-        titulo="Ventas sin subir"
+        titulo={tituloSinSubir(sinSubir)}
         onClose={cancelar}
         ancho="max-w-sm"
         acciones={
@@ -300,7 +344,7 @@ export function useCerrarSesion({ antesDeAvisar }: { antesDeAvisar?: () => void 
           </>
         }
       >
-        <p className="text-sm text-texto-2">{sinSubirAlSalir(pendientes)}</p>
+        <p className="text-sm text-texto-2">{sinSubirAlSalir(sinSubir)}</p>
       </Modal>
     ) : null;
 

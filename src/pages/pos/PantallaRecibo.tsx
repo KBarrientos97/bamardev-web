@@ -8,17 +8,19 @@ import { aCentavos, esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
 import { numeroTicket } from "../../lib/tickets/llamado";
-import { nombreServicio } from "../../lib/pedidosWeb/entrega";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 import ComandaCocina from "./ComandaCocina";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
+import { imprimeReciboSinNumero } from "../../lib/menuDigital/reglasRecibo";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "./PiezasRecibo";
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
-import { useLocalDelPapel, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
+import { useRotuloSucursal } from "../../lib/useHayVariasSucursales";
+import { useLocalEnElRecibo } from "../../lib/menuDigital/localEnElRecibo";
 import { abrirWhatsapp } from "../../lib/academia/vista";
+import { recordatorioDeLaPlata, type PlataDelCambio } from "./cambioDeVenta";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -37,10 +39,19 @@ export default function PantallaRecibo({
   onHistorial,
   etiquetaNueva = "Nueva venta",
   reimpresion = false,
+  modificada = null,
 }: {
   venta: Venta;
   onNuevaVenta: () => void;
   onHistorial: () => void;
+  /**
+   * La venta se acaba de MODIFICAR (cambio de productos con PIN, 15-nov): la
+   * pantalla dice "Venta modificada" y le recuerda a la cajera la plata que
+   * tiene que devolver o que cobró. Los papeles salen como en una venta
+   * recién cobrada: el cliente se lleva el recibo nuevo y la cocina la
+   * comanda nueva. Sin esto, la pantalla de siempre.
+   */
+  modificada?: PlataDelCambio | null;
   /** El botón principal: "Nueva venta" en el POS, "Cobrar a otro" en el instituto (A1). */
   etiquetaNueva?: string;
   /**
@@ -51,16 +62,21 @@ export default function PantallaRecibo({
   reimpresion?: boolean;
 }) {
   const { negocio, incluye, rubro } = useAuth();
-  // El local de la venta, sólo con 2+ sucursales (PLAN-SUCURSAL-TOTAL §1): con
-  // una sola el papel sale exactamente igual que siempre.
-  const sede = useLocalDelPapel(venta.almacen);
   // «Sucursal», o «Sede» en un instituto.
   const rotuloSede = useRotuloSucursal();
-  // El diseño del recibo (logo, datos del negocio, QR, pie): sólo en un
-  // negocio con las pantallas del local. Sin él, null, y el recibo sale
-  // como siempre (la línea de BamarDev del pie va en todos).
+  // El diseño del recibo (logo, datos del negocio, QR, pie): en un negocio
+  // con las pantallas del local o, desde el 15-nov, en el restaurante que lo
+  // configuró. Sin él, null, y el recibo sale como siempre (la línea de
+  // BamarDev del pie va en todos).
   const conf = useReciboNegocio();
   const r = conf?.recibo ?? null;
+  // El local de la venta, con la misma regla que la vista previa de «Ticket y
+  // recibo» (`useLocalEnElRecibo`): `sede` sólo con 2+ sucursales
+  // (PLAN-SUCURSAL-TOTAL §1; con una sola el papel sale exactamente igual que
+  // siempre); `localArriba`, en la cabecera con «Sucursal» prendida (16-nov),
+  // también con un solo local; `sedeEnFila`, la fila «Sucursal: X», que no se
+  // repite si ya va arriba. Sin local en la venta (vieja, o sin internet), nada.
+  const { sede, arriba: localArriba, fila: sedeEnFila } = useLocalEnElRecibo(r, venta.almacen);
 
   /**
    * El ticket que se rasteriza al compartir: se manda la MISMA vista que se
@@ -167,6 +183,9 @@ export default function PantallaRecibo({
   // de pagos: el cliente busca "Efectivo recibido" y "Cambio entregado".
   const efectivo = pagos.find((p) => /efectivo/i.test(p.formaPago ?? ""));
   const qr = pagos.find((p) => /qr|transfer/i.test(p.formaPago ?? ""));
+  // Efectivo en negativo: plata que SALIÓ del cajón por un cambio de productos
+  // en una venta que se había cobrado por otro medio (15-nov).
+  const efectivoDevuelto = !!efectivo && efectivo.monto < 0;
 
   // Belleza (QA PER-01): el pago guarda lo recibido de la VENTA (así el
   // backend calcula bien el vuelto), y la propina en efectivo va aparte. Pero
@@ -195,6 +214,10 @@ export default function PantallaRecibo({
   const metodo =
     venta.formasPago?.join(" + ") ||
     pagos
+      // Con qué PAGÓ: un pago en negativo es plata devuelta por ese medio (un
+      // cambio de productos en una venta cobrada por QR), no un medio de pago.
+      // Sólo los negativos: cualquier otro pago se lee como siempre.
+      .filter((p) => !(p.monto < 0))
       .map((p) => p.formaPago)
       .filter(Boolean)
       .join(" + ") ||
@@ -217,7 +240,17 @@ export default function PantallaRecibo({
       {incluye("recibo_pdf") && (
         <>
           {!conTicket && (
-            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+            <Boton
+              variante="ghost"
+              icono="printer"
+              onClick={() => {
+                // Si la cajera imprime antes de que llegue el diseño (la
+                // primera venta del día), la impresión sola sin número del
+                // restaurante sin tickets (15-nov) no sale otra vez.
+                yaImprimio.current = true;
+                window.print();
+              }}
+            >
               Imprimir
             </Boton>
           )}
@@ -308,7 +341,7 @@ export default function PantallaRecibo({
     window.addEventListener("afterprint", alTerminar);
     return () => window.removeEventListener("afterprint", alTerminar);
   }, [conTicket, imprimir]);
-  // "Imprimir solo al cobrar" (Configuración del recibo): el diálogo se abre
+  // "Imprimir solo al cobrar" (Configuración › Ticket y recibo): el diálogo se abre
   // apenas aparece la venta, una sola vez. Con Chrome en modo kiosco
   // (--kiosk-printing) ni siquiera hay diálogo: sale directo, cero toques. Si
   // el diseño llega tarde (la primera venta del día), no imprime a destiempo.
@@ -326,14 +359,25 @@ export default function PantallaRecibo({
         : ac.recibo
           ? "recibo"
           : "comanda";
+  // Sin número de pedido hay dos casos (15-nov, como la app). El negocio con
+  // tickets no imprime: es una venta de la cola sin internet y la comanda
+  // saldría sin el número. El restaurante que no usa tickets no tiene
+  // comanda: imprime el recibo del cliente, que es lo que prendió en «Imprimir
+  // solo al cobrar». Si lo único prendido es la comanda, nada.
+  const reciboSinNumero =
+    !conTicket && !!alCobrar && alCobrar !== "comanda" && imprimeReciboSinNumero(negocio?.features, rubro);
   useEffect(() => {
-    if (!conTicket || !alCobrar || reimpresion || yaImprimio.current) return;
+    if (!alCobrar || reimpresion || yaImprimio.current) return;
+    if (!conTicket && !reciboSinNumero) return;
     if (Date.now() - montada.current > 4000) return;
     // La marca va adentro del timeout: si el efecto se limpia antes (React lo
     // corre dos veces en desarrollo), la segunda vuelta todavía imprime.
     const id = setTimeout(() => {
       yaImprimio.current = true;
-      if (alCobrar === "separados") {
+      if (!conTicket) {
+        // El único papel de la pantalla es el recibo (`area-impresion`).
+        imprimir(null);
+      } else if (alCobrar === "separados") {
         despues.current = "comanda";
         imprimir("recibo");
       } else {
@@ -341,8 +385,13 @@ export default function PantallaRecibo({
       }
     }, 250);
     return () => clearTimeout(id);
-  }, [conTicket, alCobrar, reimpresion, imprimir]);
+  }, [conTicket, reciboSinNumero, alCobrar, reimpresion, imprimir]);
   const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
+  // «Letra gruesa» (16-nov): el recibo y la comanda, en pantalla y al imprimir.
+  // `codigoBarras` e `impresionDirecta` no se miran acá a propósito: el papel
+  // de la web nunca tuvo código de barras, y la impresión es la del navegador;
+  // los dos son de la app y acá todo sale igual con cualquier valor.
+  const negrita = r?.negrita === true;
 
   // El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). Con
   // número de pedido el `id` pasa al envoltorio del recibo y la comanda.
@@ -350,7 +399,7 @@ export default function PantallaRecibo({
     <article
       id={conTicket ? undefined : "area-impresion"}
       ref={ticket}
-      className={`papel-letra card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "recibo-impreso print:max-w-none print:p-0" : ""}`}
+      className={`papel-letra card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "recibo-impreso print:max-w-none print:p-0" : ""}${negrita ? " papel-negrita" : ""}`}
       // La letra elegida en Configuración del recibo (`papel-letra`). Y el
       // rollo de 58 mm: el ticket se angosta al imprimir (index.css lee la
       // variable) y también en la pantalla.
@@ -360,7 +409,13 @@ export default function PantallaRecibo({
       }}
     >
       {r ? (
-        <CabeceraNegocio r={r} logo={conf?.logo ?? null} nombre={negocio?.nombre ?? "BamarDev"} sede={sede} />
+        <CabeceraNegocio
+          r={r}
+          logo={conf?.logo ?? null}
+          nombre={negocio?.nombre ?? "BamarDev"}
+          sede={sede}
+          local={localArriba}
+        />
       ) : (
         <header className="pb-2 text-center">
           <h2 className="text-base font-bold text-texto">
@@ -381,8 +436,9 @@ export default function PantallaRecibo({
           valor={venta.pendienteSync ? "SIN SINCRONIZAR" : (venta.comprobante ?? `#${venta.id}`)}
         />
         <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
-        {/* El local, sólo con 2+ sucursales: dónde se hizo la venta. */}
-        {sede && <FilaDato etiqueta={`${rotuloSede}:`} valor={sede.nombre} />}
+        {/* El local, sólo con 2+ sucursales: dónde se hizo la venta. Con
+            «Sucursal» prendida ya va en la cabecera: no se imprime dos veces. */}
+        {sedeEnFila && <FilaDato etiqueta={`${rotuloSede}:`} valor={sedeEnFila.nombre} />}
         {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
             mesa ni mesero (visto en QA). El cliente reconoce su cuenta por
             la mesa, y el mesero es a quien se le reclama. */}
@@ -405,7 +461,7 @@ export default function PantallaRecibo({
             )}
             {venta.repartidor?.nombre && <FilaDato etiqueta="Repartidor:" valor={venta.repartidor.nombre} />}
             {!venta.repartidor && venta.entregaExterna && venta.tipoPedido === "DELIVERY" && (
-              <FilaDato etiqueta="Envío:" valor={`Envío por ${nombreServicio(venta.entregaExterna)}`} />
+              <FilaDato etiqueta="Envío:" valor="Delivery" />
             )}
             {venta.notaPedido && <FilaDato etiqueta="Nota:" valor={venta.notaPedido} />}
           </>
@@ -443,7 +499,7 @@ export default function PantallaRecibo({
           como un cobro de menos. */}
       {esPositivo(envio) && (
         <p className="mt-1 text-right text-xs text-texto-3">
-          {!venta.repartidor && venta.entregaExterna ? `El envío va por ${nombreServicio(venta.entregaExterna)}.` : "El envío lo cobra el repartidor."}
+          {!venta.repartidor && venta.entregaExterna ? "El envío va aparte." : "El envío lo cobra el repartidor."}
         </p>
       )}
 
@@ -458,7 +514,11 @@ export default function PantallaRecibo({
           <dt>Método de pago</dt>
           <dd className="font-bold text-texto">{metodo}</dd>
         </div>
-        {efectivo && (
+        {/* Un pago en efectivo NEGATIVO no es efectivo recibido: es la venta
+            cobrada por QR a la que un cambio de productos le devolvió la
+            diferencia en efectivo. Ahí no hay renglón de "recibido", y abajo
+            dice "Devuelto en efectivo". En cualquier otra venta, lo de siempre. */}
+        {efectivo && !efectivoDevuelto && (
           <div className="flex justify-between text-texto-2">
             <dt>
               Efectivo recibido
@@ -483,7 +543,7 @@ export default function PantallaRecibo({
         {cambio > 0 && (
           // Con `gap`: en el ticket de 320 px se leía "Cambio entregadoBs 27,00".
           <div className="flex justify-between gap-2 font-bold text-texto">
-            <dt>Cambio entregado</dt>
+            <dt>{efectivoDevuelto ? "Devuelto en efectivo" : "Cambio entregado"}</dt>
             <dd>{fmtMoney(cambio)}</dd>
           </div>
         )}
@@ -594,10 +654,11 @@ export default function PantallaRecibo({
                   <Icon name="check" size={24} strokeWidth={2.5} />
                 </span>
                 <div className="min-w-0">
-                  <h1 className="text-xl font-bold text-texto">Venta registrada</h1>
+                  <h1 className="text-xl font-bold text-texto">{modificada ? "Venta modificada" : "Venta registrada"}</h1>
                   <p className="text-[13px] text-texto-3">{venta.comprobante ?? `#${venta.id}`}</p>
                 </div>
               </div>
+              {modificada && <AvisoDelCambio cambio={modificada} />}
               <NumeroGrande numero={numero} detalles={detalles} />
               {ancha && (
                 <div className="mt-5 space-y-3">
@@ -645,6 +706,7 @@ export default function PantallaRecibo({
                   sede={sede?.nombre}
                   minutos={r?.minutosEstimados ?? 0}
                   tamano={r?.tamanoLetraComanda}
+                  negrita={negrita}
                 />
               </section>
             </div>
@@ -674,7 +736,7 @@ export default function PantallaRecibo({
             <Icon name={venta.pendienteSync ? "wifiOff" : "check"} size={28} strokeWidth={2.5} />
           </span>
           <h1 className="mt-3 text-lg font-bold text-texto">
-            {venta.pendienteSync ? "Venta guardada sin internet" : "Venta registrada"}
+            {venta.pendienteSync ? "Venta guardada sin internet" : modificada ? "Venta modificada" : "Venta registrada"}
           </h1>
           <p className="mt-0.5 text-[13px] text-texto-3">
             {/* Cobrada sin señal (app del iPhone): todavía no tiene número; se
@@ -684,6 +746,7 @@ export default function PantallaRecibo({
               ? "Se sube sola cuando vuelva la conexión. El número lo pone el sistema al subirla."
               : (venta.comprobante ?? `#${venta.id}`)}
           </p>
+          {modificada && <AvisoDelCambio cambio={modificada} />}
           {ancha && (
             <div className="mt-6 w-full max-w-sm space-y-3">
               {nueva("w-full")}
@@ -701,6 +764,24 @@ export default function PantallaRecibo({
       {avisoAbajo}
       {barraAbajo}
     </div>
+  );
+}
+
+/**
+ * Después de modificar una venta: lo que la cajera tiene que hacer con la
+ * plata, grande y antes que cualquier botón. En rojo si sale del cajón.
+ */
+function AvisoDelCambio({ cambio }: { cambio: PlataDelCambio }) {
+  const sale = cambio.diferencia < 0 && Math.abs(cambio.diferencia) >= 0.005;
+  return (
+    <p
+      role="status"
+      className={`mt-3 w-full rounded-xl px-3.5 py-2.5 text-center text-[14px] font-bold print:hidden ${
+        sale ? "bg-danger-bg text-danger-text" : "bg-primary-50 text-primary-700"
+      }`}
+    >
+      {recordatorioDeLaPlata(cambio)}
+    </p>
   );
 }
 

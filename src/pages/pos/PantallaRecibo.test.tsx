@@ -24,7 +24,7 @@ vi.mock("../../store/AuthContext", async () => {
   const { puede } = await import("../../lib/permisos");
   return {
     useAuth: () => ({
-      negocio: { nombre: "Negocio de prueba", sucursalesActivas: sesion.locales },
+      negocio: { nombre: "Negocio de prueba", sucursalesActivas: sesion.locales, features: sesion.features },
       usuario: { sucursalId: null },
       rubro: sesion.rubro,
       incluye: (c: Parameters<typeof puede>[1]) =>
@@ -1027,6 +1027,110 @@ describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
   });
 });
 
+describe("imprimir solo al cobrar sin tickets: sin número no hay comanda (15-nov)", () => {
+  // «Ticket y recibo» es de base en el restaurante desde el 15-nov. El que no
+  // usa tickets no tiene número ni comanda: lo que prendió en «Imprimir solo
+  // al cobrar» es el recibo del cliente, y antes nunca salía (se esperaba un
+  // número que no iba a llegar). Con tickets queda como estaba.
+  let impresos: string[];
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["pos", "caja", "recibo_pdf"];
+    vi.useFakeTimers();
+    impresos = [];
+    vi.spyOn(window, "print").mockImplementation(() => {
+      impresos.push(document.getElementById("area-impresion")?.tagName ?? "nada");
+    });
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const alCobrar = (recibo: boolean, comanda: boolean, juntos: boolean) => {
+    disenoRecibo.valor = {
+      recibo: { ...RECIBO_DE_FABRICA, alCobrar: { recibo, comanda, juntos } },
+      logo: null,
+      configurado: true,
+    };
+  };
+  const esperar = () =>
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+  it("el restaurante sin tickets imprime el recibo aunque la venta no tenga número", () => {
+    alCobrar(true, false, true);
+    dibujar(venta());
+    esperar();
+    // Una sola impresión, del único papel que hay: el recibo.
+    expect(impresos).toEqual(["ARTICLE"]);
+  });
+
+  it("con el recibo y la comanda prendidos (de cuando tenía tickets) sale sólo el recibo, una vez", () => {
+    alCobrar(true, true, false);
+    dibujar(venta());
+    esperar();
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual(["ARTICLE"]);
+  });
+
+  it("si lo único prendido es la comanda, no imprime nada", () => {
+    alCobrar(false, true, true);
+    dibujar(venta());
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+
+  it("si la cajera imprime a mano antes de que llegue el diseño, la impresión sola no se repite", () => {
+    // La primera venta del día: el diseño todavía no llegó y aprieta
+    // «Imprimir»; cuando llega (dentro de los 4 s), no sale otro recibo.
+    const pantalla = dibujar(venta());
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
+    expect(impresos).toEqual(["ARTICLE"]);
+    alCobrar(true, false, true);
+    pantalla.rerender(<PantallaRecibo venta={venta()} onNuevaVenta={() => {}} onHistorial={() => {}} />);
+    esperar();
+    expect(impresos).toEqual(["ARTICLE"]);
+  });
+
+  it("reabierto desde el historial no imprime solo", () => {
+    alCobrar(true, false, true);
+    dibujar(venta(), { reimpresion: true });
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+
+  it("con tickets, una venta sin número (la cola sin internet) sigue sin imprimir sola", () => {
+    sesion.features = ["pos", "caja", "recibo_pdf", "tickets_pedido"];
+    alCobrar(true, true, true);
+    dibujar(venta({ pendienteSync: true } as Partial<Venta>));
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+
+  it("con tickets y número, como estaba: sólo el recibo si es lo que eligió", () => {
+    sesion.features = ["pos", "caja", "recibo_pdf", "tickets_pedido"];
+    alCobrar(true, false, true);
+    dibujar(venta({ ticket: { numero: 72, estado: "PREPARANDO" } } as Partial<Venta>));
+    esperar();
+    expect(impresos).toEqual(["DIV"]);
+    expect(document.getElementById("area-impresion")?.dataset.imprimir).toBe("recibo");
+  });
+
+  it.each(["FARMACIA", "MINIMARKET", "BILLAR", "PELUQUERIA"])("%s: como siempre, sin número no imprime solo", (rubro) => {
+    sesion.rubro = rubro;
+    alCobrar(true, false, true);
+    dibujar(venta());
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+});
+
 describe("enviar el recibo por WhatsApp (Derick, 04-nov)", () => {
   it("abre WhatsApp con el chat del cliente y el detalle de la venta", () => {
     const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
@@ -1081,5 +1185,237 @@ describe("el recibo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
     sesion.locales = 3;
     dibujar(venta({ almacen: null }));
     expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
+  });
+});
+
+describe("código de barras, letra gruesa y sucursal (16-nov, para la térmica de 58 mm)", () => {
+  const NORTE = { id: 13, nombre: "Norte", direccion: "Calle Norte 45", telefono: "70000200" };
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+  });
+
+  /** Un diseño configurado, con los datos del negocio cargados. */
+  const conDiseno = (cambios: Partial<AjustesRecibo> = {}) => {
+    disenoRecibo.valor = {
+      recibo: { ...RECIBO_DE_FABRICA, direccion: "Av. Principal 1", telefono: "711 11111", ...cambios },
+      logo: null,
+      configurado: true,
+    };
+  };
+  /** El mismo diseño guardado antes de los cuatro (sin los campos), como lo manda un backend anterior. */
+  const disenoViejo = () => {
+    const viejo: Partial<AjustesRecibo> = { ...RECIBO_DE_FABRICA, direccion: "Av. Principal 1", telefono: "711 11111" };
+    delete viejo.codigoBarras;
+    delete viejo.negrita;
+    delete viejo.sucursal;
+    delete viejo.impresionDirecta;
+    disenoRecibo.valor = { recibo: viejo as AjustesRecibo, logo: null, configurado: true };
+  };
+  const html = (v: Venta) => {
+    const { container, unmount } = dibujar(v);
+    const salida = container.innerHTML;
+    unmount();
+    return salida;
+  };
+  const conNumero = (datos: Partial<Venta> = {}) => venta({ ticket: { numero: 72, estado: "PREPARANDO" }, ...datos });
+
+  it("los de fábrica son el papel de siempre: igual que un diseño guardado antes de los tres", () => {
+    for (const v of [venta(), conNumero(), venta({ almacen: NORTE })]) {
+      conDiseno();
+      const nuevo = html(v);
+      disenoViejo();
+      expect(nuevo).toBe(html(v));
+    }
+  });
+
+  it("imprimir directo en la terminal no cambia nada en la web: ni el papel ni cuándo ni qué imprime", () => {
+    // Es de la app (terminales con impresora propia). Acá la impresión es la
+    // del navegador, igual con cualquier valor.
+    vi.useFakeTimers();
+    const impresos: string[] = [];
+    const imprimir = vi.spyOn(window, "print").mockImplementation(() => {
+      const area = document.getElementById("area-impresion");
+      impresos.push(`${area?.tagName}:${area?.dataset.imprimir ?? "todo"}`);
+    });
+    const corrida = (impresionDirecta: boolean) => {
+      impresos.length = 0;
+      const salida: string[] = [];
+      for (const v of [venta(), conNumero()]) {
+        conDiseno({ impresionDirecta, alCobrar: { recibo: true, comanda: true, juntos: false } });
+        const { container, unmount } = dibujar(v);
+        act(() => {
+          vi.advanceTimersByTime(1000);
+          window.dispatchEvent(new Event("afterprint"));
+          vi.advanceTimersByTime(1000);
+        });
+        salida.push(container.innerHTML);
+        unmount();
+      }
+      return { impresos: [...impresos], salida };
+    };
+    try {
+      const apagado = corrida(false);
+      const prendido = corrida(true);
+      expect(prendido).toEqual(apagado);
+      // Y lo de siempre: sin número el recibo (no usa tickets), con número el
+      // recibo y, al cerrarse, la comanda.
+      expect(apagado.impresos).toEqual(["ARTICLE:todo", "DIV:recibo", "DIV:comanda"]);
+    } finally {
+      imprimir.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("el código de barras no cambia el papel de la web, ni prendido ni apagado: no lo lleva", () => {
+    // A propósito: lo dibuja sólo la app (celular o terminal). El interruptor
+    // existe en la web para apagarlo desde la PC; el papel de acá sale igual.
+    for (const v of [venta(), conNumero(), venta({ almacen: NORTE })]) {
+      conDiseno({ codigoBarras: true });
+      const con = html(v);
+      conDiseno({ codigoBarras: false });
+      expect(html(v)).toBe(con);
+    }
+  });
+
+  it("letra gruesa: el recibo y la comanda salen engrosados; apagada, como siempre", () => {
+    conDiseno({ negrita: true });
+    const { unmount } = dibujar(conNumero());
+    expect(document.querySelector(".recibo-impreso")).toHaveClass("papel-negrita");
+    expect(document.querySelector(".comanda-impresa")).toHaveClass("papel-negrita");
+    unmount();
+
+    // Sin número el papel es el área de impresión misma.
+    dibujar(venta());
+    expect(document.getElementById("area-impresion")).toHaveClass("papel-negrita");
+  });
+
+  it("letra gruesa apagada: ni el recibo ni la comanda la llevan", () => {
+    conDiseno({ negrita: false });
+    dibujar(conNumero());
+    expect(document.querySelector(".papel-negrita")).toBeNull();
+  });
+
+  it("sucursal prendida: el local de la venta va debajo del nombre del negocio, con SU dirección", () => {
+    // También con un solo local: el dueño la prendió.
+    sesion.locales = 1;
+    conDiseno({ sucursal: true, lema: "Postres" });
+    dibujar(venta({ almacen: NORTE }));
+    const cabecera = document.querySelector("#area-impresion header")!;
+    // Nombre del negocio, lema, la sucursal y su dirección, en ese orden.
+    expect(cabecera.textContent).toBe("Negocio de pruebaPostresNorteCalle Norte 45 · Tel. 70000200");
+    // Una sola dirección por papel: la del negocio no sale.
+    expect(document.body.textContent).not.toContain("Av. Principal 1");
+    expect(document.body.textContent).not.toContain("711 11111");
+  });
+
+  it("sucursal prendida con 2+ locales: la fila «Sucursal: X» no se repite abajo", () => {
+    sesion.locales = 2;
+    conDiseno({ sucursal: true });
+    dibujar(venta({ almacen: NORTE }));
+    expect(screen.queryByText("Sucursal:")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Norte")).toHaveLength(1);
+  });
+
+  it("lo que la ficha de la sucursal no tiene sale del negocio, como hoy", () => {
+    sesion.locales = 1;
+    conDiseno({ sucursal: true });
+    const { unmount } = dibujar(venta({ almacen: { id: 14, nombre: "Sur" } }));
+    expect(document.querySelector("#area-impresion header")!.textContent).toBe(
+      "Negocio de pruebaSurAv. Principal 1 · Tel. 711 11111",
+    );
+    unmount();
+
+    // Con sólo el teléfono en la ficha: la dirección del negocio y el teléfono del local.
+    dibujar(venta({ almacen: { id: 14, nombre: "Sur", telefono: "70000300" } }));
+    expect(document.querySelector("#area-impresion header")!.textContent).toBe(
+      "Negocio de pruebaSurAv. Principal 1 · Tel. 70000300",
+    );
+  });
+
+  it("sin local en la venta (vieja, o sin internet), nada: ni renglón vacío ni la palabra", () => {
+    for (const almacen of [null, undefined]) {
+      conDiseno({ sucursal: true });
+      const prendida = html(venta({ almacen }));
+      conDiseno({ sucursal: false });
+      expect(prendida).toBe(html(venta({ almacen })));
+    }
+  });
+
+  it("sucursal apagada con 2+ locales: la fila «Sucursal: X» y la dirección del local, como hoy", () => {
+    sesion.locales = 2;
+    conDiseno({ sucursal: false });
+    const apagada = html(venta({ almacen: NORTE }));
+    disenoViejo();
+    expect(html(venta({ almacen: NORTE }))).toBe(apagada);
+
+    conDiseno({ sucursal: false });
+    dibujar(venta({ almacen: NORTE }));
+    expect(screen.getByText("Sucursal:").nextElementSibling).toHaveTextContent("Norte");
+    expect(document.querySelector("#area-impresion header")!.textContent).toBe(
+      "Negocio de pruebaCalle Norte 45 · Tel. 70000200",
+    );
+  });
+
+  it("sin diseño (otros rubros, o el restaurante que nunca lo configuró) nada de esto aparece", () => {
+    sesion.locales = 1;
+    disenoRecibo.valor = null;
+    dibujar(venta({ almacen: NORTE }));
+    expect(document.querySelector(".papel-negrita")).toBeNull();
+    expect(screen.queryByText("Norte")).not.toBeInTheDocument();
+  });
+});
+
+describe("el recibo de una venta recién modificada (15-nov)", () => {
+  const dibujarModificada = (v: Venta, modificada: Parameters<typeof PantallaRecibo>[0]["modificada"]) =>
+    render(<PantallaRecibo venta={v} onNuevaVenta={() => {}} onHistorial={() => {}} modificada={modificada} />);
+
+  it("dice «Venta modificada» y le recuerda a la cajera la plata que tiene que devolver", () => {
+    dibujarModificada(venta({ vecesModificada: 1 }), {
+      diferencia: -5,
+      devolucion: { formaPagoId: 1, nombre: "Efectivo", saleDelCajon: true },
+    });
+    expect(screen.getByRole("heading", { name: "Venta modificada" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Devolvele Bs 5,00 al cliente en efectivo.");
+  });
+
+  it("si el cliente pagó de más, lo dice; y con número de pedido también", () => {
+    dibujarModificada(venta({ vecesModificada: 1, ticket: { numero: 72, estado: "PREPARANDO" } }), {
+      diferencia: 6,
+      devolucion: null,
+    });
+    expect(screen.getByRole("heading", { name: "Venta modificada" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("El cliente pagó Bs 6,00 de diferencia.");
+    // La cocina recibe el pedido como quedó: el botón es el de una venta recién cobrada.
+    expect(screen.getByRole("button", { name: "Imprimir recibo y comanda" })).toBeInTheDocument();
+  });
+
+  it("sin el aviso, la pantalla de siempre", () => {
+    dibujar(venta());
+    expect(screen.getByRole("heading", { name: "Venta registrada" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("cobrada por QR y devuelta en efectivo: el papel no dice «Efectivo recibido Bs 0,00» sino lo devuelto", () => {
+    dibujar(
+      venta({
+        total: 75,
+        pagos: [
+          { formaPagoId: 2, formaPago: "QR", monto: 80, recibido: 80, entregado: 0 },
+          { formaPagoId: 1, formaPago: "Efectivo", monto: -5, recibido: 0, entregado: 5 },
+        ],
+      }),
+    );
+    expect(screen.queryByText("Efectivo recibido")).not.toBeInTheDocument();
+    expect(screen.getByText("Monto QR").nextElementSibling).toHaveTextContent("Bs 80,00");
+    expect(screen.getByText("Devuelto en efectivo").nextElementSibling).toHaveTextContent("Bs 5,00");
+  });
+
+  it("en efectivo, lo de siempre: recibido y cambio, que ya incluye lo devuelto", () => {
+    dibujar(venta({ total: 75, pagos: [{ formaPagoId: 1, formaPago: "Efectivo", monto: 75, recibido: 100, entregado: 25 }] }));
+    expect(screen.getByText("Efectivo recibido").nextElementSibling).toHaveTextContent("Bs 100,00");
+    expect(screen.getByText("Cambio entregado").nextElementSibling).toHaveTextContent("Bs 25,00");
   });
 });

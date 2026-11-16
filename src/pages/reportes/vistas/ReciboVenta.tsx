@@ -5,7 +5,6 @@ import { compartirComoImagen } from "../../../lib/compartirTicket";
 import { aCentavos, esPositivo } from "../../../lib/dinero";
 import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney } from "../../../lib/format";
 import { mensajeRecibo } from "../../../lib/mensajeRecibo";
-import { nombreServicio } from "../../../lib/pedidosWeb/entrega";
 import { marcaConsumo } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
 import { useLocalDelPapel, useRotuloSucursal } from "../../../lib/useHayVariasSucursales";
@@ -220,7 +219,7 @@ function TicketVenta({ venta: v, negocio, rubro }: { venta: Venta; negocio: stri
           esta línea un TOTAL mayor que lo pagado se leía como un cobro de menos. */}
       {esPositivo(envio) && (
         <p className="mt-1 text-right text-xs text-texto-3">
-          {!v.repartidor && v.entregaExterna ? `El envío va por ${nombreServicio(v.entregaExterna)}.` : "El envío lo cobra el repartidor."}
+          {!v.repartidor && v.entregaExterna ? "El envío va aparte." : "El envío lo cobra el repartidor."}
         </p>
       )}
 

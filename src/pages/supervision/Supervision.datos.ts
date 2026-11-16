@@ -5,6 +5,7 @@ import type {
   CajaSupervision,
   CobradoPorMedio,
   EquipoSupervision,
+  PlataformasSupervision,
   SupervisionRestaurante,
   TurnoSupervision,
   VentaSupervision,
@@ -397,8 +398,25 @@ export function columnasDeKpis(n: number): string {
 }
 
 /** Cuántos renglones trae cada bloque, para el contador de su pestaña. */
-export function conteoDeBloques(api: Pick<SupervisionRestaurante, "ventas" | "pedidos" | "efectivo">) {
-  return { ventas: api.ventas.length, pedidos: api.pedidos.length, efectivo: api.efectivo.length };
+export function conteoDeBloques(api: Pick<SupervisionRestaurante, "ventas" | "pedidos" | "efectivo"> & { plataformas?: SupervisionRestaurante["plataformas"] }) {
+  return {
+    ventas: api.ventas.length,
+    pedidos: api.pedidos.length,
+    efectivo: api.efectivo.length,
+    // Sin el bloque (negocio sin las features o backend viejo) la pestaña no existe: no es un 0.
+    plataformas: api.plataformas ? api.plataformas.pedidos.length : undefined,
+  };
+}
+
+/**
+ * El bloque de Yango y PedidosYa si hay algo que mostrar: con `null`, ausente
+ * (backend viejo) o sin plataformas prendidas, la pantalla no dibuja nada
+ * nuevo. Con las features prendidas pero sin pedidos todavía sí: la tarjeta
+ * dice «0 pedidos» y el dueño sabe que el control existe.
+ */
+export function bloquePlataformas(api: Pick<SupervisionRestaurante, "plataformas">): PlataformasSupervision | null {
+  const p = api.plataformas;
+  return p && Array.isArray(p.resumen) && Array.isArray(p.pedidos) && p.resumen.length > 0 ? p : null;
 }
 
 // ── Las ventas ──────────────────────────────────────────────────────────────
@@ -525,7 +543,8 @@ export type FiltroActividad = "todo" | "ventas" | "anulaciones" | "pedidos" | "c
 export const FILTROS_ACTIVIDAD: { clave: FiltroActividad; etiqueta: string }[] = [
   { clave: "todo", etiqueta: "Todo" },
   { clave: "ventas", etiqueta: "Ventas" },
-  { clave: "anulaciones", etiqueta: "Anulaciones" },
+  // También las ventas modificadas (cambio de productos con PIN).
+  { clave: "anulaciones", etiqueta: "Anulaciones y cambios" },
   { clave: "pedidos", etiqueta: "Pedidos" },
   { clave: "caja", etiqueta: "Caja" },
   { clave: "efectivo", etiqueta: "Efectivo" },
@@ -543,8 +562,15 @@ export function grupoDeActividad(codigo: string): Exclude<FiltroActividad, "todo
     case "CREDITO":
       return "ventas";
     case "ANULACION":
+    // Una venta a la que se le cambiaron productos después de cobrada
+    // (15-nov) se mira junto con las anuladas: las dos son ventas que alguien
+    // tocó después de cobrar, con el PIN de un encargado.
+    case "MODIFICACION":
       return "anulaciones";
     case "PEDIDO":
+    // Un pedido de Yango o PedidosYa (16-nov): también es un pedido, aunque
+    // no se cobre en caja.
+    case "PEDIDO_PLATAFORMA":
       return "pedidos";
     case "CAJA_ABIERTA":
     case "CAJA_CERRADA":
@@ -585,6 +611,10 @@ export function tonoDeActividad(codigo: string): TonoActividad {
       return "ambar";
     case "ANULACION":
       return "rosa";
+    // Una venta modificada: para mirar (puede haber salido plata del cajón),
+    // sin ser una anulación.
+    case "MODIFICACION":
+      return "ambar";
     case "PEDIDO":
       return "azul";
     default:
@@ -598,8 +628,11 @@ const ICONO_ACTIVIDAD: Record<string, string> = {
   VENTA: "billetera",
   CREDITO: "fileText",
   ANULACION: "x",
+  MODIFICACION: "edit",
   EFECTIVO: "swap",
   PEDIDO: "truck",
+  // Una moto genérica: no es el logo de ninguna de las dos apps.
+  PEDIDO_PLATAFORMA: "moto",
 };
 
 /** El nombre del ícono de `components/Icon` de un renglón; lo que no se reconoce lleva "info". */

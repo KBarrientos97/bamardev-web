@@ -74,7 +74,55 @@ describe("iconosArticulo", () => {
     for (const llave of viejos) {
       expect(iconoPorLlave(llave)?.categoria, llave).toBe("polleria");
     }
-    expect(ICONOS_ARTICULO).toHaveLength(220);
+    expect(ICONOS_ARTICULO).toHaveLength(231);
+  });
+
+  it("los vasos de arroz con leche están al final de Comidas y se encuentran por el alias", () => {
+    // De chico a grande dentro de cada relleno; la condensada no se vende en C.
+    const arrozConLeche = [
+      "arroz_leche_dulce_leche_c", "arroz_leche_dulce_leche_m", "arroz_leche_dulce_leche_l", "arroz_leche_dulce_leche_xl",
+      "arroz_leche_condensada_m", "arroz_leche_condensada_l", "arroz_leche_condensada_xl",
+      "arroz_leche_nutella_c", "arroz_leche_nutella_m", "arroz_leche_nutella_l", "arroz_leche_nutella_xl",
+    ];
+    const comidas = iconosDeCategoria("comidas").map((i) => i.llave);
+    expect(comidas.slice(-12)).toEqual(["croissant", ...arrozConLeche]);
+    for (const llave of arrozConLeche) {
+      expect(iconoPorLlave(llave)?.src, llave).toMatch(/ic_art_.+\.webp/);
+    }
+    // La etiqueta es corta para que el tamaño entre en la grilla; "arroz con
+    // leche" no está en ninguna y aun así tiene que traer los once.
+    expect(buscarIconos("arroz con leche").map((i) => i.llave)).toEqual(arrozConLeche);
+    expect(buscarIconos("nutella").map((i) => i.llave)).toEqual(arrozConLeche.slice(7));
+    expect(buscarIconos("leche condensada").map((i) => i.llave)).toEqual(arrozConLeche.slice(4, 7));
+    // El dibujo de pollería sigue primero: lo usan productos que ya existen.
+    expect(buscarIconos("arroz").map((i) => i.llave)).toEqual(["arroz", ...arrozConLeche]);
+    // Un ícono sin alias se busca igual que antes.
+    expect(buscarIconos("croissant").map((i) => i.llave)).toEqual(["croissant"]);
+  });
+
+  it("el tamaño no queda solo en el renglón de abajo: espacio duro en Dulce de leche y Nutella (QA del 16-nov)", () => {
+    // «Dulce de leche C» partía «Dulce de leche / C» en la celda del selector.
+    // Con el espacio duro baja con la palabra de antes. En Condensada no: con
+    // el espacio duro «Condensada XL» no entra en la celda de 390 px.
+    const etiquetas = [
+      "arroz_leche_dulce_leche_c", "arroz_leche_dulce_leche_m", "arroz_leche_dulce_leche_l", "arroz_leche_dulce_leche_xl",
+      "arroz_leche_condensada_m", "arroz_leche_condensada_l", "arroz_leche_condensada_xl",
+      "arroz_leche_nutella_c", "arroz_leche_nutella_m", "arroz_leche_nutella_l", "arroz_leche_nutella_xl",
+    ].map((llave) => iconoPorLlave(llave)?.etiqueta);
+    expect(etiquetas).toEqual([
+      "Dulce de leche\u00A0C", "Dulce de leche\u00A0M", "Dulce de leche\u00A0L", "Dulce de leche\u00A0XL",
+      "Condensada M", "Condensada L", "Condensada XL",
+      "Nutella\u00A0C", "Nutella\u00A0M", "Nutella\u00A0L", "Nutella\u00A0XL",
+    ]);
+  });
+
+  it("el buscador trata el espacio duro como uno común", () => {
+    expect(buscarIconos("nutella c").map((i) => i.llave)).toEqual(["arroz_leche_nutella_c"]);
+    expect(buscarIconos("Dulce de leche M").map((i) => i.llave)).toEqual(["arroz_leche_dulce_leche_m"]);
+    expect(buscarIconos("dulce de leche xl").map((i) => i.llave)).toEqual(["arroz_leche_dulce_leche_xl"]);
+    expect(buscarIconos("condensada xl").map((i) => i.llave)).toEqual(["arroz_leche_condensada_xl"]);
+    // Y escrito con el espacio duro (pegado desde otro lado), también.
+    expect(buscarIconos("nutella\u00A0xl").map((i) => i.llave)).toEqual(["arroz_leche_nutella_xl"]);
   });
 
   it("los platos en foto están en Pollería y el buscador los trae junto a los dibujos", () => {

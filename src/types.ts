@@ -893,6 +893,12 @@ export interface ApunteStock {
   usuario: { id: number; username: string; nombre: string | null } | null;
   referenciaTipo: string | null;
   referenciaId: number | null;
+  /**
+   * Con `referenciaTipo = "PEDIDO_PLATAFORMA"`: de cuál plataforma era el pedido.
+   * `null` si el pedido ya no existe; ausente en un backend anterior. En los dos
+   * casos se lee como «Pedido de plataforma».
+   */
+  plataforma?: "YANGO" | "PEDIDOS_YA" | null;
 }
 
 export interface DetalleMovimientoInput {
@@ -1465,6 +1471,44 @@ export interface Venta {
    * sin él, el recibo sale como siempre.
    */
   ticket?: { numero: number; estado: EstadoTicket } | null;
+  /**
+   * Cuántas veces se modificó después de cobrada (cambio de productos con el
+   * PIN de un encargado, 15-nov) y cuándo fue la última. Sólo viene si se
+   * modificó; es además la versión que se manda al volver a modificarla.
+   */
+  vecesModificada?: number;
+  modificadaEn?: string | null;
+  /** El rastro de cada cambio, del más nuevo al más viejo. Sólo en `GET /ventas/:id`. */
+  modificaciones?: ModificacionVenta[];
+}
+
+/** Un renglón de la venta como quedó guardado en el rastro de un cambio. */
+export interface RenglonModificado {
+  productoId: number;
+  producto: string;
+  cantidad: number;
+  precio: number;
+  subtotal: number;
+  consumo: Consumo;
+  nota: string | null;
+}
+
+/** Un cambio de productos de una venta ya cobrada: qué había, qué quedó y la plata. */
+export interface ModificacionVenta {
+  id: number;
+  fecha: string;
+  /** Quién la hizo y quién la autorizó con su PIN. */
+  usuario: string | null;
+  autorizadoPor: string | null;
+  motivo: string;
+  totalAntes: number;
+  totalDespues: number;
+  /** Negativo = se le devolvió al cliente; positivo = pagó la diferencia. */
+  diferencia: number;
+  /** Por dónde se movió la diferencia (negativo = devuelto por ese medio). */
+  pagos: { formaPagoId: number; formaPago: string; monto: number }[];
+  antes: RenglonModificado[];
+  despues: RenglonModificado[];
 }
 
 /** Por qué una venta quedó "a revisar" (ver `lib/revisionVenta.ts`). */
@@ -1720,6 +1764,28 @@ export interface AnularVentaInput {
   autorizadorPin?: string;
   /** Por qué se anula: queda guardado con la venta. */
   motivo?: string;
+}
+
+/**
+ * Modificar una venta ya cobrada (`POST /ventas/:id/modificar`). El PIN y el
+ * motivo van siempre, como al anular.
+ */
+export interface ModificarVentaInput {
+  /** Cómo tiene que QUEDAR la venta. */
+  detalles: DetalleVentaInput[];
+  /** `vecesModificada` de la venta cuando se abrió (0 si nunca). */
+  version: number;
+  /** El total nuevo que vio la cajera: si el servidor calcula otro, rechaza. */
+  totalEsperado: number;
+  motivo: string;
+  autorizadorUsername?: string;
+  autorizadorPin: string;
+  /** Si el total sube: con qué paga el cliente la diferencia. */
+  pagos?: PagoInput[];
+  /** Si el total baja: por qué medio se le devuelve la diferencia. */
+  devolucionFormaPagoId?: number;
+  /** La misma en cada reintento del mismo cambio. */
+  clienteRequestId: string;
 }
 
 // ── Créditos (fiado) ────────────────────────────────────────────────────────

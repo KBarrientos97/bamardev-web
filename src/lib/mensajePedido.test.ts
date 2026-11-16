@@ -214,14 +214,16 @@ describe("mensajePedido con un servicio externo (PLAN-DELIVERY-EXTERNO)", () => 
     for (const desde of ["REPARTIDOR", "CAJA"] as const) {
       const t = mensajePedido(EXTERNO, "Pollos Don Omar", null, desde);
       expect(t).not.toMatch(/ya llegó|esperándote afuera/);
-      expect(t).toContain("🛵 ¡Tu pedido sale pronto con Yango!");
+      expect(t).toContain("🛵 ¡Tu pedido sale pronto!");
     }
   });
 
-  it("cuando ya salió, dice que va en camino con el servicio", () => {
+  it("cuando ya salió, dice que va en camino sin nombrar el servicio", () => {
     expect(mensajePedido({ ...EXTERNO, entregaExterna: "PedidosYa", salioEn: "2026-11-14T15:00:00.000Z" }, "El Ganadero", { tipoNegocio: "RESTAURANTE", variante: "POSTRES" }, "CAJA")).toContain(
-      "🛵 ¡Tu pedido ya va en camino con PedidosYa!",
+      "🛵 ¡Tu pedido ya va en camino!",
     );
+    // Al cliente no se le nombra el servicio (16-nov).
+    expect(mensajePedido(EXTERNO, "Pollos Don Omar", null, "CAJA")).not.toMatch(/Yango|PedidosYa/);
   });
 
   it("pedidoDeVenta lo toma de la venta sólo si no hay repartidor propio", () => {

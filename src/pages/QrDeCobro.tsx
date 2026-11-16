@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon";
 import { CargarQrCobro } from "../components/QrCobro";
 import { ErrorMsg } from "../components/ui";
 import { api } from "../lib/api";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../lib/configuracion";
 import { fmtFechaHora } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
 import { termino } from "../lib/rubro";
@@ -32,6 +33,10 @@ import { useAuth } from "../store/AuthContext";
  * una (casilla de abajo). Con un solo local, o para quien es de un local, esa
  * casilla y el selector no existen: la pantalla queda como siempre.
  */
+
+/** Un texto que no se parte al final del renglón: sus espacios, duros. */
+const sinCortes = (texto: string) => texto.replace(/\s/g, "\u00A0");
+
 export default function QrDeCobro() {
   const { usuario, rubro, vocabulario } = useAuth();
   const suc = useSucursales();
@@ -74,6 +79,9 @@ export default function QrDeCobro() {
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="QR de cobro"
+        // En el restaurante se llega desde la lista de Configuración (15-nov):
+        // la flecha vuelve ahí. En los demás rubros, el encabezado de siempre.
+        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
         subtitulo={
           porSucursal
             ? `El que ven los clientes cuando pagan por QR, en cada ${sucursal.toLowerCase()}`
@@ -135,8 +143,10 @@ export default function QrDeCobro() {
       {d?.imagen && d.actualizadoEn && (
         <p className="flex items-center gap-1.5 px-1 text-[13px] text-texto-3">
           <Icon name="clock" size={15} />
-          {/* Sin punto final: la hora ya termina en "p. m." */}
-          Lo puso {d.actualizadoPor ?? "alguien con permiso"} el {fmtFechaHora(d.actualizadoEn)}
+          {/* Sin punto final: la hora ya termina en "p. m.". La fecha y la
+              hora van pegadas (espacios duros): a 390 px «a. m.» quedaba sola
+              en el renglón de abajo (QA del 16-nov). */}
+          Lo puso {d.actualizadoPor ?? "alguien con permiso"} el {sinCortes(fmtFechaHora(d.actualizadoEn))}
         </p>
       )}
 

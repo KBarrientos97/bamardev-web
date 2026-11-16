@@ -7,6 +7,7 @@ import type {
   Almacen,
   AlmacenInput,
   AnularVentaInput,
+  ModificarVentaInput,
   ArticuloMovimiento,
   ImportarMedicamentosInput,
   RespuestaImportacion,
@@ -98,6 +99,13 @@ import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
 import { cabeceraDeSedeDeCaja } from "./sedeDeCaja";
+import type {
+  AnularPedidoPlataformaInput,
+  PedidoPlataforma,
+  PedidoPlataformaInput,
+  Plataforma,
+  ReportePedidosPlataforma,
+} from "./pedidosPlataforma/tipos";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -1019,6 +1027,40 @@ export const api = {
   getVenta: (id: number) => request<Venta>(`/ventas/${id}`),
   anularVenta: (id: number, input: AnularVentaInput = {}) =>
     request<Venta>(`/ventas/${id}/anular`, { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * Cambia los productos de una venta ya cobrada (misma venta, mismo
+   * comprobante) y cobra o devuelve la diferencia. Con PIN y motivo, siempre.
+   */
+  modificarVenta: (id: number, input: ModificarVentaInput) =>
+    request<Venta>(`/ventas/${id}/modificar`, { method: "POST", body: JSON.stringify(input) }),
+  // ── Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §4.1) ──────────
+  // No son ventas: no tocan la caja. Con `almacenId` la sucursal viaja
+  // también en la cabecera, como `crearVenta`: la cola sin señal lo sube
+  // tiempo después y la sede activa de ese momento puede ser otra.
+  crearPedidoPlataforma: (input: PedidoPlataformaInput) =>
+    request<PedidoPlataforma>("/pedidos-plataforma", {
+      method: "POST",
+      body: JSON.stringify(input),
+      ...(input.almacenId != null ? { headers: cabeceraSede(input.almacenId) } : {}),
+    }),
+  /** `periodo` 0 = el período de liquidación en curso; -1 = el anterior… hasta -60. */
+  reportePedidosPlataforma: (p: { plataforma: Plataforma; periodo: number; almacenId?: number | null }) =>
+    request<ReportePedidosPlataforma>(`/pedidos-plataforma/reporte${qs(p)}`),
+  anularPedidoPlataforma: (id: number, input: AnularPedidoPlataformaInput) =>
+    request<PedidoPlataforma>(`/pedidos-plataforma/${id}/anular`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Los de hoy (hora de Bolivia) que cargó este usuario, del más nuevo al más viejo. */
+  pedidosPlataformaDelTurno: () =>
+    request<{ pedidos: PedidoPlataforma[] }>("/pedidos-plataforma/del-turno"),
+  /**
+   * Los pedidos de una caja, anulados incluidos, del más nuevo al más viejo
+   * (§10.2): se mezclan con las ventas en «Ventas del turno». Pide
+   * `plataformas.registrar` y una feature de plataforma prendida (si no, 403).
+   */
+  pedidosPlataformaDeLaCaja: (cajaId: number) =>
+    request<{ pedidos: PedidoPlataforma[] }>(`/pedidos-plataforma/de-la-caja/${cajaId}`),
   getRepartidores: () => request<Repartidor[]>("/ventas/repartidores"),
   /** Un REPARTIDOR ve sólo los suyos; cajera y encargado ven todos. */
   getPedidosPendientes: () => request<Venta[]>("/ventas/pendientes"),

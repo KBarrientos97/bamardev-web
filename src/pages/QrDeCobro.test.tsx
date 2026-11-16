@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { QrCobroInfo } from "../lib/api";
 
@@ -10,6 +11,7 @@ import type { QrCobroInfo } from "../lib/api";
  */
 
 const est = vi.hoisted(() => ({
+  rubro: "RESTAURANTE",
   modo: "una" as "una" | "asignado" | "organizacion",
   respuesta: (_sede?: number): unknown => ({}),
   cambiarModo: vi.fn(async (_b: boolean) => ({ mismoEnTodas: true })),
@@ -32,7 +34,7 @@ vi.mock("../store/AuthContext", async () => {
   const { permisosDe } = await import("../test/sesiones");
   return {
     useAuth: () => ({
-      rubro: "RESTAURANTE",
+      rubro: est.rubro,
       vocabulario: null,
       negocio: { alias: "prueba", features: [] },
       usuario: { rol: "ADMIN", ...permisosDe("ADMIN") },
@@ -67,12 +69,19 @@ const info = (extra: Partial<QrCobroInfo> = {}): QrCobroInfo => ({
 });
 
 async function montar() {
-  render(<QrDeCobro />);
+  // Con router: en el restaurante el título lleva la flecha de vuelta a
+  // Configuración (15-nov), que es un enlace.
+  render(
+    <MemoryRouter>
+      <QrDeCobro />
+    </MemoryRouter>,
+  );
   await act(async () => {});
 }
 const ultimasProps = () => est.propsCargar[est.propsCargar.length - 1];
 
 beforeEach(() => {
+  est.rubro = "RESTAURANTE";
   est.modo = "una";
   est.respuesta = () => info();
   est.cambiarModo.mockClear();
@@ -88,6 +97,15 @@ describe("QR de cobro: pantalla", () => {
     expect(screen.getByText(/en todas las cajas/)).toBeInTheDocument();
     expect(ultimasProps().sucursalId ?? null).toBeNull();
     expect(ultimasProps().soloLectura).toBe(false);
+  });
+
+  it("la fecha y la hora de quién lo puso no se parten: «a. m.» no queda sola abajo (QA del 16-nov)", async () => {
+    await montar();
+    const linea = screen.getByText(/^Lo puso admin el /);
+    const fecha = linea.textContent!.replace(/^Lo puso admin el /, "");
+    // Todo con espacios duros: el renglón sólo se puede cortar antes de la fecha.
+    expect(fecha).toMatch(/^\d{2}\/\d{2}\/\d{4}\u00A0\d{2}:\d{2}/);
+    expect(fecha).not.toMatch(/[ \t]/);
   });
 
   it("un backend anterior (sin los campos nuevos) deja la pantalla como siempre", async () => {
@@ -179,4 +197,21 @@ describe("QR de cobro: pantalla", () => {
     expect(ultimasProps().soloLectura).toBe(false);
     expect(ultimasProps().sucursalId ?? null).toBeNull();
   });
+});
+
+describe("QR de cobro: la vuelta a Configuración (15-nov)", () => {
+  it("en el restaurante se llega desde la lista de Configuración y la flecha vuelve ahí", async () => {
+    await montar();
+    expect(screen.getByRole("link", { name: "Volver a Configuración" })).toHaveAttribute("href", "/configuracion");
+  });
+
+  it.each(["BILLAR", "FARMACIA", "MINIMARKET", "PELUQUERIA", "ACADEMIA"])(
+    "%s: el encabezado de siempre, sin flecha",
+    async (rubro) => {
+      est.rubro = rubro;
+      await montar();
+      expect(screen.getByRole("heading", { level: 1, name: "QR de cobro" })).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    },
+  );
 });

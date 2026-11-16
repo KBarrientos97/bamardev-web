@@ -99,8 +99,9 @@ export type Seccion =
   /** Menú digital: las TVs del menú y la ficha de cada plato. Del encargado. */
   | "menu_digital"
   /**
-   * Ticket y recibo: el logo, los datos del negocio en el recibo y el papel.
-   * La tienen los dos extras de pantallas (tickets y menú).
+   * Configuración › Ticket y recibo: el logo, los datos del negocio en el
+   * recibo y el papel. De base en el restaurante desde el 15-nov (antes, con
+   * los extras de pantallas).
    */
   | "config_recibo"
   /**
@@ -180,6 +181,12 @@ export type Seccion =
   | "mi_produccion"
   /** Producción, no-shows, ocupación y retención de la agenda. */
   | "reportes_agenda"
+  /**
+   * El reporte de pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §3):
+   * no es una ruta propia sino una ficha de Reportes. Existe como sección para
+   * que dé entrada a Reportes a quien sólo tiene ése (como los de la agenda).
+   */
+  | "pedidos_plataforma"
   // ── Página del negocio (todas las verticales) ──
   /** "Mi página": el editor de la página pública del negocio. */
   | "mi_pagina"
@@ -344,8 +351,15 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // El recibo y el logo, con su permiso desde el 31-oct (el backend pide lo
   // mismo para guardarlos). Antes entraba cualquiera que configurara una de
   // las pantallas, y el logo es también el de la página pública: quién lo
-  // cambia lo decide el dueño en Roles (Kevin). Con tickets o con el menú.
-  config_recibo: { permiso: "recibo.configurar", feature: "tickets_pedido", oFeature: "menu_digital" },
+  // cambia lo decide el dueño en Roles (Kevin).
+  //
+  // Sin feature desde el 15-nov, como en el backend (`c3e880f`) y en la app
+  // (`PermisosPantallas.veConfigRecibo`): todo restaurante imprime el papel
+  // del cliente, tenga TVs o no, y uno sin «Tickets y pedidos» ni «Menú
+  // digital» no tenía dónde poner su logo ni achicar el recibo. Lo que queda
+  // es el permiso y el rubro (`SOLO_EN_RUBRO`). El papel de quien nunca lo
+  // configuró no cambia: ver `aplicaDisenoRecibo`.
+  config_recibo: { permiso: "recibo.configurar", feature: null },
   // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
   // atender el mostrador. No se vende aparte.
   busqueda: { permiso: "catalogo.ver", feature: null },
@@ -379,6 +393,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   comisiones: { permiso: "comisiones.ver", alcance: "GENERAL", feature: "comisiones" },
   mi_produccion: { permiso: "comisiones.ver", alcance: "PROPIO", feature: "comisiones" },
   reportes_agenda: { permiso: "agenda.reportes", feature: "agenda" },
+  // Con cualquiera de las dos features (una por plataforma, extras que el
+  // operador prende por negocio); el permiso del reporte es `plataformas.ver`.
+  pedidos_plataforma: { permiso: "plataformas.ver", feature: "pedidos_yango", oFeature: "pedidos_pedidosya" },
   // ── Página del negocio, CRM y promociones ──
   mi_pagina: { permiso: "negocio.configurar", feature: "pagina_publica" },
   mis_enlaces: { permiso: "negocio.configurar", feature: "enlaces_cortos" },
@@ -448,7 +465,12 @@ const REQUISITOS: Record<Seccion, Requisito> = {
  * pierde un reporte por haberlos juntado. Adentro, cada reporte pide lo suyo
  * (`pages/reportes/catalogo.ts`).
  */
-export const SECCIONES_REPORTES: readonly Seccion[] = ["reportes", "reportes_agenda", "recetas_servicio"];
+export const SECCIONES_REPORTES: readonly Seccion[] = [
+  "reportes",
+  "reportes_agenda",
+  "recetas_servicio",
+  "pedidos_plataforma",
+];
 
 /** ¿Tiene la entrada Reportes? Con `puede` de la sesión (o `puedeVer` con un contexto). */
 export function veReportes(puede: (seccion: Seccion) => boolean): boolean {
@@ -493,6 +515,10 @@ const FEATURES_ESTRICTAS: Feature[] = [
   // de mostrador.
   "tickets_pedido",
   "menu_digital",
+  // Pedidos de Yango y PedidosYa (15-nov): extras que nadie tuvo antes; sin la
+  // feature en la lista no hay botón ni reporte, aunque la lista venga vacía.
+  "pedidos_yango",
+  "pedidos_pedidosya",
 ];
 
 /**

@@ -29,6 +29,12 @@ export interface TicketPedido {
   entregadoEn: string | null;
   comprobante: string | null;
   items: ItemTicket[];
+  /**
+   * La caja le cambió productos al pedido después de cobrarlo (15-nov): los
+   * `items` ya son los nuevos, y esto le avisa a la cocina que no es el que
+   * vio. Sólo viene si se cambió.
+   */
+  modificadoEn?: string | null;
 }
 
 /**

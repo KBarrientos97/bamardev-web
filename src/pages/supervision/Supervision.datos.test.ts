@@ -4,6 +4,7 @@ import {
   aMs,
   buscarVentas,
   columnasDeKpis,
+  bloquePlataformas,
   conteoDeBloques,
   cuando,
   equipoDeCaja,
@@ -11,6 +12,7 @@ import {
   estadoDelEquipo,
   estadoDePedido,
   etiquetaDeTurno,
+  FILTROS_ACTIVIDAD,
   filtrarActividad,
   grupoDeActividad,
   haceCuanto,
@@ -338,17 +340,43 @@ describe("Supervisión del local: pedidos y bloques", () => {
   it("cuántos renglones trae cada pestaña", () => {
     expect(conteoDeBloques({ ventas: [{} as never, {} as never], pedidos: [{} as never], efectivo: [] })).toEqual({ ventas: 2, pedidos: 1, efectivo: 0 });
   });
+
+  it("la pestaña de Yango / PedidosYa sólo existe si el backend manda el bloque (null o ausente: nada)", () => {
+    const base = { ventas: [], pedidos: [], efectivo: [] };
+    expect(conteoDeBloques(base).plataformas).toBeUndefined();
+    expect(conteoDeBloques({ ...base, plataformas: null }).plataformas).toBeUndefined();
+    expect(conteoDeBloques({ ...base, plataformas: { resumen: [], pedidos: [{} as never] } }).plataformas).toBe(1);
+  });
+
+  it("el bloque de plataformas se muestra con datos y no con null, ausente o sin plataformas", () => {
+    const lleno = { resumen: [{ plataforma: "YANGO" as const, cantidad: 0, total: 0, anulados: 0 }], pedidos: [] };
+    expect(bloquePlataformas({ plataformas: lleno })).toBe(lleno);
+    expect(bloquePlataformas({ plataformas: null })).toBeNull();
+    expect(bloquePlataformas({})).toBeNull();
+    expect(bloquePlataformas({ plataformas: { resumen: [], pedidos: [] } })).toBeNull();
+  });
 });
 
 describe("Supervisión del local: la actividad", () => {
   it("cada código cae en su filtro; una venta fiada es una venta", () => {
     expect(grupoDeActividad("VENTA")).toBe("ventas");
     expect(grupoDeActividad("CREDITO")).toBe("ventas");
+    expect(grupoDeActividad("PEDIDO_PLATAFORMA")).toBe("pedidos");
     expect(grupoDeActividad("ANULACION")).toBe("anulaciones");
     expect(grupoDeActividad("PEDIDO")).toBe("pedidos");
     expect(grupoDeActividad("CAJA_ABIERTA")).toBe("caja");
     expect(grupoDeActividad("CAJA_CERRADA")).toBe("caja");
     expect(grupoDeActividad("EFECTIVO")).toBe("efectivo");
+  });
+
+  it("una venta modificada (cambio de productos con PIN) se mira con las anuladas, en ámbar y con su ícono", () => {
+    // Las dos son ventas que alguien tocó después de cobrar.
+    expect(grupoDeActividad("MODIFICACION")).toBe("anulaciones");
+    expect(tonoDeActividad("MODIFICACION")).toBe("ambar");
+    expect(iconoDeActividad("MODIFICACION")).toBe("edit");
+    const lista = [renglon("venta-1", "VENTA"), renglon("cambio-3", "MODIFICACION"), renglon("anulacion-2", "ANULACION")];
+    expect(filtrarActividad(lista, "anulaciones").map((a) => a.id)).toEqual(["cambio-3", "anulacion-2"]);
+    expect(FILTROS_ACTIVIDAD.find((f) => f.clave === "anulaciones")?.etiqueta).toBe("Anulaciones y cambios");
   });
 
   it("un código que no se reconoce queda en Todo y en ningún filtro: no desaparece de la lista", () => {

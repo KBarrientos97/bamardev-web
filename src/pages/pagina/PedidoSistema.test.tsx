@@ -472,7 +472,7 @@ describe("la hoja del pedido con delivery por un servicio externo (PLAN-DELIVERY
     expect(screen.getByText("Se paga por QR antes de que salga")).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Efectivo" })).not.toBeInTheDocument();
     expect(screen.queryByText("¿Con cuánto pagás?")).not.toBeInTheDocument();
-    expect(screen.getByText("Te lo confirma el local (envío por Yango)")).toBeInTheDocument();
+    expect(screen.getByText("Te lo confirma el local")).toBeInTheDocument();
     expect(screen.queryByText(/≈ Bs/)).not.toBeInTheDocument();
 
     escribir("Tu nombre", "Lucía");
@@ -485,12 +485,13 @@ describe("la hoja del pedido con delivery por un servicio externo (PLAN-DELIVERY
     expect(cuerpo).not.toHaveProperty("pagaCon");
   });
 
-  it("con otro nombre de servicio, ese nombre", async () => {
+  it("con otro nombre de servicio, el cliente tampoco lo ve", async () => {
     servidor({ info: { ...INFO_EXT, entrega: { modo: "EXTERNO", servicio: "PedidosYa" } } });
     await montar();
     await abrirPedido();
     await screen.findByRole("button", { name: "Marcar mi casa" });
-    expect(screen.getByText("Te lo confirma el local (envío por PedidosYa)")).toBeInTheDocument();
+    expect(screen.getByText("Te lo confirma el local")).toBeInTheDocument();
+    expect(screen.queryByText(/PedidosYa|Yango/)).not.toBeInTheDocument();
   });
 
   it("para recoger se elige el pago como siempre (el QR fijo es sólo del delivery)", async () => {

@@ -236,6 +236,41 @@ input[type="number"] {
   zoom: var(--escala-letra, 1);
 }
 
+/* Letra gruesa (Configuración › Ticket y recibo, 16-nov): para la térmica que
+   no marca los grises ni la letra fina. Va en el recibo del cliente y en la
+   comanda, en la pantalla y en la impresión por igual (la vista previa es lo
+   que sale). Engruesa y oscurece; no agranda: el tamaño lo sigue mandando la
+   letra elegida (`--escala-letra`).
+   - El peso: el papel entero en 700, y lo que pedía menos (normal, medium,
+     semibold) también; lo que ya era más grueso (extrabold, black: el TOTAL,
+     el número del ticket) queda como estaba. Así lo heredado de un renglón
+     extrabold no baja a 700.
+   - Negro puro en todo el texto, también las etiquetas («Venta:», «Pago:»),
+     los "1 × Bs 56.00", el total en letras y el pie, que en gris casi no
+     salían.
+   - Las rayas, negras. Son bordes, no fondos: no dependen de que el diálogo
+     de impresión tenga prendido "Gráficos de fondo".
+   Con `!important` donde pisa una clase de Tailwind: así gana esté en la
+   capa que esté. Un texto más grueso es más ancho: ninguna pieza del papel
+   lleva `truncate`, así que pasa de renglón, no se corta. */
+.papel-negrita {
+  font-weight: 700;
+}
+.papel-negrita .font-normal,
+.papel-negrita .font-medium,
+.papel-negrita .font-semibold {
+  font-weight: 700 !important;
+}
+.papel-negrita,
+.papel-negrita * {
+  color: #000 !important;
+}
+.papel-negrita .border-borde,
+.papel-negrita .border-dashed,
+.papel-negrita .border-texto {
+  border-color: #000 !important;
+}
+
 /*
  * Impresión del ticket — rollo de 80 mm, igual que la app.
  *
@@ -347,5 +382,18 @@ input[type="number"] {
   #area-impresion .border-borde,
   #area-impresion .border-dashed {
     border-color: #9ca3af !important;
+  }
+
+  /* Con «Letra gruesa» (16-nov) las rayas van negras también en el papel:
+     el gris de arriba era justo lo que esa térmica no marca. Con el `#` para
+     ganarle a la regla de arriba; el papel puede ser el área misma (recibo
+     sin número) o estar adentro (recibo y comanda). */
+  #area-impresion .papel-negrita .border-borde,
+  #area-impresion .papel-negrita .border-dashed,
+  #area-impresion .papel-negrita .border-texto,
+  #area-impresion.papel-negrita .border-borde,
+  #area-impresion.papel-negrita .border-dashed,
+  #area-impresion.papel-negrita .border-texto {
+    border-color: #000 !important;
   }
 }

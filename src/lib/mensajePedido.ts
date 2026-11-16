@@ -1,6 +1,5 @@
 import type { Venta } from "../types";
 import { fmtMontoCliente } from "./format";
-import { nombreServicio } from "./pedidosWeb/entrega";
 
 /**
  * Lo que hace falta de un pedido para escribirle al cliente.
@@ -147,8 +146,8 @@ function lineaDeEntrega(p: PedidoParaMensaje, clasico: boolean, desde: DesdeMens
   // Un servicio externo no «llega a tu ubicación» con nuestro repartidor: ni el texto clásico
   // de Omar puede decirlo. La caja sí avisa quién lo lleva y en qué momento va.
   if (p.entregaExterna) {
-    const servicio = nombreServicio(p.entregaExterna);
-    return p.salioEn ? `🛵 ¡Tu pedido ya va en camino con ${servicio}!` : `🛵 ¡Tu pedido sale pronto con ${servicio}!`;
+    // Al cliente no se le nombra el servicio (16-nov): para él es su pedido que sale.
+    return p.salioEn ? "🛵 ¡Tu pedido ya va en camino!" : "🛵 ¡Tu pedido sale pronto!";
   }
   if (clasico) return YA_LLEGO;
   if (desde === "CAJA") return null;

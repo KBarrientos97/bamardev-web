@@ -553,7 +553,7 @@ function EditorPantalla({
               {animacion
                 ? `${animacion.escenas.length} ${animacion.escenas.length === 1 ? "escena" : "escenas"}`
                 : `${paginas.length} ${paginas.length === 1 ? "página" : "páginas"}`}
-              {!datos.logo && " · sin logo (se carga en Configuración del recibo)"}
+              {!datos.logo && " · sin logo (se carga en Configuración › Ticket y recibo)"}
             </p>
             {animacion && (
               <ControlesAnimacion
@@ -666,7 +666,7 @@ function EditorPantalla({
                 />
                 <span className="mt-1 block text-[12px] text-texto-3">
                   Vacío, sale el nombre del negocio.
-                  {!datos.logo && " Sin logo cargado sale sólo el nombre (el logo se carga en Configuración del recibo)."}
+                  {!datos.logo && " Sin logo cargado sale sólo el nombre (el logo se carga en Configuración › Ticket y recibo)."}
                   {datos.logo && !p.logo && " «Mostrar logo» está apagado: sale sólo el nombre."}
                 </span>
               </label>

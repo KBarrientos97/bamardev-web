@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { fmtMoney } from "../../lib/format";
-import { porSubir, sinSenal, useColaOffline } from "../../lib/offline/cola";
+import { fmtMoney, sinPuntoFinal } from "../../lib/format";
+import { descartarPedido, porSubir, sinSenal, useColaOffline, usePedidosEncolados } from "../../lib/offline/cola";
+import { NOMBRE_PLATAFORMA } from "../../lib/pedidosPlataforma/tipos";
 import { ventaSinInternet } from "../../lib/offline/modo";
 import { sincronizarAhora } from "../../lib/offline/motor";
 import { Icon } from "../Icon";
@@ -13,10 +14,16 @@ import { Icon } from "../Icon";
  * Las que el servidor rechazó también se avisan acá, en rojo: en Android
  * recién aparecían al cerrar la caja, y para entonces el cliente ya se fue.
  *
+ * Los pedidos de Yango y PedidosYa tomados sin internet (PLAN-PEDIDOS-PLATAFORMA)
+ * se avisan acá también, aparte: no son ventas, pero si el equipo se pierde
+ * antes de subirlos, el reporte de la plataforma queda corto y el stock
+ * descontado de menos.
+ *
  * Fuera de la app instalada (iPhone o compu) no dibuja nada.
  */
 export default function AvisoSinSubir() {
   const cola = useColaOffline();
+  const pedidos = usePedidosEncolados();
   const [subiendo, setSubiendo] = useState(false);
   const [resultado, setResultado] = useState("");
   // "Sin conexión" tiene que aparecer y desaparecer con la red, aunque no se
@@ -37,8 +44,17 @@ export default function AvisoSinSubir() {
   if (!ventaSinInternet()) return null;
   const pendientes = porSubir(cola);
   const rechazadas = cola.filter((v) => v.estado === "RECHAZADA");
+  const pedidosPendientes = porSubir(pedidos);
+  const pedidosRechazados = pedidos.filter((p) => p.estado === "RECHAZADA");
   const cortado = sinSenal();
-  if (pendientes.length === 0 && rechazadas.length === 0 && !cortado) return null;
+  if (
+    pendientes.length === 0 &&
+    rechazadas.length === 0 &&
+    pedidosPendientes.length === 0 &&
+    pedidosRechazados.length === 0 &&
+    !cortado
+  )
+    return null;
 
   async function subir() {
     setSubiendo(true);
@@ -47,7 +63,9 @@ export default function AvisoSinSubir() {
       const r = await sincronizarAhora();
       setResultado(
         r.subidas > 0
-          ? `${r.subidas} ${r.subidas === 1 ? "venta sincronizada" : "ventas sincronizadas"}.`
+          ? pedidosPendientes.length > 0
+            ? `${r.subidas} ${r.subidas === 1 ? "pendiente sincronizado" : "pendientes sincronizados"}.`
+            : `${r.subidas} ${r.subidas === 1 ? "venta sincronizada" : "ventas sincronizadas"}.`
           : r.quedan > 0
             ? "No se pudo subir todavía. Revisá tu conexión e intentá de nuevo."
             : "",
@@ -60,7 +78,7 @@ export default function AvisoSinSubir() {
   const monto = pendientes.reduce((s, v) => s + v.recibo.total, 0);
   return (
     <div className="space-y-2">
-      {(pendientes.length > 0 || cortado) && (
+      {(pendientes.length > 0 || pedidosPendientes.length > 0 || cortado) && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-warning/40 bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text"
@@ -76,15 +94,27 @@ export default function AvisoSinSubir() {
                 ({fmtMoney(monto)}), falta {pendientes.length === 1 ? "subirla" : "subirlas"}. Se
                 suben solas cuando vuelve la conexión, con la app abierta.
               </>
-            ) : (
+            ) : pedidosPendientes.length === 0 ? (
               <>
                 <b>Sin conexión.</b> Podés seguir cobrando: las ventas se guardan en el celular y
                 suben solas.
               </>
+            ) : null}
+            {pedidosPendientes.length > 0 && (
+              <span className={pendientes.length > 0 ? "mt-0.5 block" : undefined}>
+                <b>
+                  {pedidosPendientes.length}{" "}
+                  {pedidosPendientes.length === 1 ? "pedido de plataforma" : "pedidos de plataforma"} sin
+                  internet
+                </b>{" "}
+                ({fmtMoney(pedidosPendientes.reduce((s, p) => s + p.resumen.total, 0))}), falta{" "}
+                {pedidosPendientes.length === 1 ? "subirlo" : "subirlos"}. Se suben solos cuando vuelve
+                la conexión, con la app abierta.
+              </span>
             )}
             {resultado && <span className="mt-0.5 block font-semibold">{resultado}</span>}
           </p>
-          {pendientes.length > 0 && (
+          {(pendientes.length > 0 || pedidosPendientes.length > 0) && (
             <button
               type="button"
               onClick={() => void subir()}
@@ -113,6 +143,30 @@ export default function AvisoSinSubir() {
           </p>
         </div>
       )}
+      {pedidosRechazados.map((p) => (
+        <div
+          key={p.id}
+          role="alert"
+          className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl border border-danger-text/30 bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text"
+        >
+          <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
+          <p className="min-w-0 flex-1">
+            <b>
+              El pedido de {NOMBRE_PLATAFORMA[p.resumen.plataforma]} tomado sin internet no se pudo
+              subir
+            </b>{" "}
+            ({fmtMoney(p.resumen.total)}): {sinPuntoFinal(p.ultimoError ?? "el servidor no lo aceptó")}.
+            Volvé a cargarlo a mano.
+          </p>
+          <button
+            type="button"
+            onClick={() => void descartarPedido(p.id)}
+            className="rounded-lg border border-danger-text/40 bg-white px-2.5 py-1 text-xs font-semibold"
+          >
+            Ya lo cargué
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

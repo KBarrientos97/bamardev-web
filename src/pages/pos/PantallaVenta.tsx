@@ -11,6 +11,8 @@ import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
+import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
+import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
@@ -34,11 +36,19 @@ export default function PantallaVenta({
   bloqueoCobro,
   profesionales,
   lineasExtra,
+  plataformas,
+  modificacion,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
+  /**
+   * Se está modificando una venta ya cobrada (`ModificarVenta`, 15-nov): el
+   * carrito es el de esa venta y el pie no dice "Cobrar" sino lo que pasa con
+   * la diferencia. Sin esto —vender, que es lo de siempre— nada cambia.
+   */
+  modificacion?: ModoModificacion;
   /**
    * Por qué todavía no se puede cobrar (el botón queda apagado y se dice). Hoy
    * sólo lo usa el paquete de sesiones sin cliente (QA S2-07); sin esto el
@@ -67,6 +77,12 @@ export default function PantallaVenta({
    * —todos los demás rubros— el carrito es el de siempre.
    */
   lineasExtra?: React.ReactNode;
+  /**
+   * Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §5): un botón por
+   * cada plataforma que este usuario puede cargar, junto a «Cobrar». Sin esto
+   * —casi todos los negocios— el carrito es el de siempre.
+   */
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -186,7 +202,22 @@ export default function PantallaVenta({
       bloqueoCobro={bloqueoCobro}
       profesionales={profesionales}
       lineasExtra={lineasExtra}
+      modificacion={modificacion}
       notasAbiertas={notasAbiertas}
+      plataformas={
+        plataformas && plataformas.disponibles.length > 0
+          ? {
+              disponibles: plataformas.disponibles,
+              // Igual que cobrar: la nota que se estaba escribiendo se confirma
+              // antes de salir del carrito.
+              onElegir: (p) => {
+                confirmarNotasAbiertas();
+                setCarritoAbierto(false);
+                plataformas.onElegir(p);
+              },
+            }
+          : undefined
+      }
       onCobrar={() => {
         confirmarNotasAbiertas();
         setCarritoAbierto(false);
@@ -432,8 +463,12 @@ function TarjetaVenta({
           </div>
           {/* Tres renglones y no dos: en la compu (4 columnas) «Arroz con leche
               con dulce de leche – Mediano» quedaba «…con dulce de leche –…» y
-              la cajera no distinguía el tamaño, sólo por el precio (13-nov). */}
-          <h3 className="mt-2 line-clamp-3 text-[13px] font-bold leading-snug text-texto">
+              la cajera no distinguía el tamaño, sólo por el precio (13-nov).
+              Con `text-balance` (16-nov) los renglones se reparten parejo: la
+              letra del tamaño ya no queda sola abajo («Leche condensada / M»
+              pasa a «Leche / condensada M»). No suma renglones ni cambia el
+              alto; donde el navegador no lo sabe hacer, queda como antes. */}
+          <h3 className="mt-2 line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto">
             {p.nombre}
           </h3>
           <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
@@ -487,6 +522,20 @@ export interface ProfesionalesDelCarrito {
   onCambiar: (productoId: number, recursoId: number | null) => void;
 }
 
+/** Lo que cambia en el carrito cuando se modifica una venta ya cobrada. */
+export interface ModoModificacion {
+  /** El título del carrito: "Cambio de V-000012". */
+  titulo: string;
+  /** Debajo del total: lo que ya pagó y la diferencia a cobrar o devolver. */
+  resumen: React.ReactNode;
+  /** El botón: "Devolver Bs 3,00 · Continuar", "Cobrar Bs 4,00 de diferencia"… */
+  etiqueta: string;
+  /** Por qué todavía no se puede seguir ("Todavía no cambiaste nada"). */
+  bloqueo?: string | null;
+  /** Lo que dice el carrito vacío: dejar la venta sin nada es anularla. */
+  vacio: string;
+}
+
 export interface ExtraDescuentos {
   /** El total a cobrar (el neto que devolvió la cotización). */
   total: number;
@@ -503,7 +552,9 @@ function PanelCarrito({
   bloqueoCobro,
   profesionales,
   lineasExtra,
+  modificacion,
   notasAbiertas,
+  plataformas,
   onCobrar,
   onCerrar,
 }: {
@@ -513,8 +564,10 @@ function PanelCarrito({
   bloqueoCobro?: string | null;
   profesionales?: ProfesionalesDelCarrito;
   lineasExtra?: React.ReactNode;
+  modificacion?: ModoModificacion;
   /** Lo escrito en las notas sin confirmar: ver PantallaVenta. */
   notasAbiertas: RefObject<Map<number, string>>;
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -563,7 +616,7 @@ function PanelCarrito({
         <div className="flex items-center gap-2">
           <Icon name="cart" size={19} />
           <h2 className="text-[15px] font-bold text-texto">
-            Venta
+            {modificacion?.titulo ?? "Venta"}
             {!vacio && (
               <span className="ml-1.5 font-normal text-texto-3">
                 · {carrito.unidades} {carrito.unidades === 1 ? "ítem" : "ítems"}
@@ -598,9 +651,11 @@ function PanelCarrito({
             icono="cart"
             titulo="Carrito vacío"
             texto={
-              esFarmacia(rubro)
-                ? "Buscá o tocá un medicamento para agregarlo a la venta."
-                : "Tocá un producto para agregarlo a la venta."
+              modificacion
+                ? modificacion.vacio
+                : esFarmacia(rubro)
+                  ? "Buscá o tocá un medicamento para agregarlo a la venta."
+                  : "Tocá un producto para agregarlo a la venta."
             }
           />
         </div>
@@ -646,9 +701,10 @@ function PanelCarrito({
               </div>
               {descuentos?.nodo}
               <div className="flex justify-between border-t border-borde-soft pt-1.5 text-base font-extrabold text-texto">
-                <dt>Total</dt>
+                <dt>{modificacion ? "Total nuevo" : "Total"}</dt>
                 <dd>{fmtMoney(total)}</dd>
               </div>
+              {modificacion?.resumen}
             </dl>
 
             <Boton
@@ -656,15 +712,35 @@ function PanelCarrito({
                 if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
                 else onCobrar();
               }}
-              disabled={descuentos?.bloqueado || !!bloqueoCobro}
+              disabled={descuentos?.bloqueado || !!bloqueoCobro || !!modificacion?.bloqueo}
               className="mt-3 w-full"
             >
-              Cobrar {fmtMoney(total)}
+              {modificacion ? modificacion.etiqueta : `Cobrar ${fmtMoney(total)}`}
             </Boton>
-            {bloqueoCobro && (
+            {(bloqueoCobro || modificacion?.bloqueo) && (
               <p role="status" className="mt-1.5 text-center text-[12px] font-semibold text-warning-text">
-                {bloqueoCobro}
+                {bloqueoCobro || modificacion?.bloqueo}
               </p>
+            )}
+            {/* Pedidos de Yango / PedidosYa: no se cobran, así que van como
+                alternativa a «Cobrar», más discretos. Un paquete sin cliente
+                (`bloqueoCobro`) tampoco se registra como pedido. */}
+            {plataformas && (
+              <div className="mt-2 flex gap-2">
+                {plataformas.disponibles.map((p) => (
+                  <Boton
+                    key={p}
+                    variante="ghost"
+                    onClick={() => plataformas.onElegir(p)}
+                    disabled={descuentos?.bloqueado || !!bloqueoCobro}
+                    className="min-w-0 flex-1 px-2"
+                    // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
+                    style={{ color: colorDePlataforma(p), borderColor: colorDePlataforma(p) }}
+                  >
+                    <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
+                  </Boton>
+                ))}
+              </div>
             )}
           </div>
         </>

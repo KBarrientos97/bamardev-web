@@ -25,10 +25,25 @@ vi.mock("../../lib/pagina/imagen", async (original) => {
   const real = await original<typeof import("../../lib/pagina/imagen")>();
   return { ...real, prepararLogo, prepararFotoPlato };
 });
+/**
+ * Las features del negocio: con los dos extras, salvo en las pruebas de un
+ * restaurante sin tickets. `locales`: cuántas sucursales activas tiene (sin el
+ * dato, un solo local, como una sesión vieja).
+ */
+const auth = vi.hoisted(() => ({
+  features: ["menu_digital", "tickets_pedido"] as string[],
+  locales: undefined as number | undefined,
+}));
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
-    negocio: { id: 7, nombre: "Pollos de prueba", tipoNegocio: "RESTAURANTE", features: ["menu_digital", "tickets_pedido"] },
+    negocio: {
+      id: 7,
+      nombre: "Pollos de prueba",
+      tipoNegocio: "RESTAURANTE",
+      features: auth.features,
+      sucursalesActivas: auth.locales,
+    },
     rubro: "RESTAURANTE",
     puede: () => true,
     incluye: () => true,
@@ -139,6 +154,8 @@ function responder(ruta: string) {
 beforeEach(() => {
   request.mockReset();
   request.mockImplementation((ruta: string) => responder(ruta));
+  auth.features = ["menu_digital", "tickets_pedido"];
+  auth.locales = undefined;
 });
 
 describe("Menú digital", () => {
@@ -393,6 +410,268 @@ describe("Configuración del recibo", () => {
     const { recibo: cuerpo } = JSON.parse((guardado[1] as RequestInit).body as string);
     expect(cuerpo.tamanoLetra).toBe("s");
     expect(cuerpo.tamanoLetraComanda).toBe("l");
+  });
+});
+
+describe("Ticket y recibo: el nombre y la vuelta a la lista (15-nov)", () => {
+  async function abrir() {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+  }
+
+  it("se llama «Ticket y recibo» y no «Configuración», y la flecha vuelve a Configuración", async () => {
+    // En el menú se leía "Configuración" dos veces: el grupo y esta pantalla.
+    await abrir();
+    expect(screen.getByRole("heading", { level: 1, name: "Ticket y recibo" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Configuración" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver a Configuración" })).toHaveAttribute("href", "/configuracion");
+  });
+
+  it("con tickets queda como estaba: la comanda, su letra y los dos papeles", async () => {
+    await abrir();
+    expect(screen.getByText(/Diseñá tu recibo y la comanda/)).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Letra de la comanda" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Comanda de cocina" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Qué papel" })).toBeInTheDocument();
+    expect(screen.getByText(/Al registrar la venta se abre la impresión sola/)).toBeInTheDocument();
+  });
+});
+
+describe("Ticket y recibo sin tickets: sin número no hay comanda (15-nov)", () => {
+  // El restaurante sin TVs (o con sólo el menú digital) no saca número: la
+  // comanda, su letra y "los dos papeles" no harían nada.
+  async function abrir() {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+  }
+
+  it.each([
+    ["sin ningún extra", ["pos", "caja"]],
+    ["con sólo el menú digital", ["pos", "caja", "menu_digital"]],
+  ])("%s: no se ve nada de la comanda, y el texto no la nombra", async (_caso, features) => {
+    auth.features = features;
+    await abrir();
+    expect(screen.queryByRole("radiogroup", { name: "Letra de la comanda" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Comanda de cocina" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Qué papel" })).not.toBeInTheDocument();
+    expect(screen.queryByText("COMANDA · COCINA")).not.toBeInTheDocument();
+    expect(screen.getByText("Diseñá tu recibo y elegí el logo de tu negocio.")).toBeInTheDocument();
+    expect(screen.queryByText(/la comanda/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Al cobrar se abre la impresión del recibo sola, una vez\./)).toBeInTheDocument();
+    // Lo demás sigue: el recibo del cliente al cobrar, la letra del recibo y el papel.
+    expect(screen.getByRole("switch", { name: "Recibo del cliente" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Letra del recibo" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Ancho de la impresora" })).toBeInTheDocument();
+  });
+
+  it("aunque el recibo y la comanda vengan prendidos de antes, «Los dos papeles» no aparece", async () => {
+    auth.features = ["pos", "caja"];
+    request.mockImplementation(async (ruta: string) => {
+      const r = await responder(ruta);
+      if (ruta !== "/pantallas/recibo") return r;
+      const x = r as { recibo: Record<string, unknown> };
+      return { ...x, recibo: { ...x.recibo, alCobrar: { recibo: true, comanda: true, juntos: false } } };
+    });
+    await abrir();
+    expect(screen.queryByRole("radiogroup", { name: "Los dos papeles" })).not.toBeInTheDocument();
+  });
+
+  it("la vista previa es el recibo de una venta sin número, como sale al vender (QA del 16-nov)", async () => {
+    // Dibujaba el recuadro «TICKET N° 084» y «Venta:», que el papel de una
+    // venta sin número no lleva. Y el tiempo estimado, que sólo sale con número.
+    auth.features = ["pos", "caja"];
+    await abrir();
+    const previa = document.getElementById("area-impresion")!;
+    expect(within(previa).queryByText("TICKET N°")).not.toBeInTheDocument();
+    expect(within(previa).queryByText("084")).not.toBeInTheDocument();
+    expect(within(previa).getByText("Ticket:")).toBeInTheDocument();
+    expect(within(previa).queryByText("Venta:")).not.toBeInTheDocument();
+    expect(within(previa).queryByText("20–25 min")).not.toBeInTheDocument();
+    // Y el control del tiempo estimado no está: no haría nada en este negocio.
+    expect(screen.queryByText("Tiempo estimado de entrega")).not.toBeInTheDocument();
+  });
+
+  it("con tickets la vista previa queda como estaba: el número, «Venta:» y el tiempo estimado", async () => {
+    await abrir();
+    const previa = document.getElementById("area-impresion")!;
+    expect(within(previa).getByText("TICKET N°")).toBeInTheDocument();
+    expect(within(previa).getByText("Venta:")).toBeInTheDocument();
+    expect(within(previa).getByText("20–25 min")).toBeInTheDocument();
+    expect(screen.getByText("Tiempo estimado de entrega")).toBeInTheDocument();
+  });
+});
+
+describe("Ticket y recibo: código de barras, letra gruesa y sucursal (16-nov)", () => {
+  const NORTE = { id: 13, nombre: "Norte", direccion: "Calle Norte 45", telefono: "70000200" };
+  /** `GET /pantallas/recibo` de un backend nuevo: con la sucursal de quien entra. */
+  const conSucursal = () =>
+    request.mockImplementation(async (ruta: string) => {
+      const r = await responder(ruta);
+      return ruta === "/pantallas/recibo" ? { ...(r as object), sucursal: NORTE } : r;
+    });
+  async function abrir() {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+  }
+  /** Lo último que se mandó a guardar (pasados los 700 ms del guardado). */
+  async function ultimoGuardado() {
+    let recibo: Record<string, unknown> = {};
+    await waitFor(
+      () => {
+        const guardados = request.mock.calls.filter(
+          ([ruta, op]) => ruta === "/pantallas/recibo" && (op as RequestInit | undefined)?.method === "PATCH",
+        );
+        expect(guardados.length).toBeGreaterThan(0);
+        recibo = JSON.parse((guardados[guardados.length - 1][1] as RequestInit).body as string).recibo;
+      },
+      { timeout: 3000 },
+    );
+    return recibo;
+  }
+  const cabecera = () => document.querySelector("#area-impresion header")!;
+
+  it("los tres interruptores, con sus textos, y de fábrica como el papel de siempre", async () => {
+    // El recibo simulado es el de un backend que todavía no los manda.
+    await abrir();
+    expect(screen.getByRole("switch", { name: "Código de barras" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "Letra gruesa" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Sucursal" })).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByText("El código con el número de la venta, al pie del recibo que imprime la app (celular o terminal de ventas)."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Todo en negrita y bien negro, para impresoras térmicas que no marcan los grises ni la letra fina."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("El nombre y la dirección de la sucursal donde se vendió, debajo del nombre del negocio."),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".papel-negrita")).toBeNull();
+  });
+
+  it("letra gruesa: la vista previa del recibo y de la comanda se engruesa, y se guarda", async () => {
+    await abrir();
+    fireEvent.click(screen.getByRole("switch", { name: "Letra gruesa" }));
+    expect(document.querySelector("#area-impresion article")).toHaveClass("papel-negrita");
+    fireEvent.click(screen.getByRole("radio", { name: "Comanda de cocina" }));
+    expect(document.querySelector(".comanda-impresa")).toHaveClass("papel-negrita");
+    expect(await ultimoGuardado()).toMatchObject({ negrita: true, codigoBarras: true, sucursal: false });
+  });
+
+  it("sucursal: la vista previa pone la de quien entra debajo del nombre, con su dirección, y se guarda", async () => {
+    conSucursal();
+    await abrir();
+    expect(cabecera()).not.toHaveTextContent("Norte");
+    fireEvent.click(screen.getByRole("switch", { name: "Sucursal" }));
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedNorteCalle Norte 45 · Tel. 70000200");
+    // Una sola dirección: la del negocio ya no sale.
+    expect(cabecera()).not.toHaveTextContent("Av. Principal #123");
+    expect(await ultimoGuardado()).toMatchObject({ sucursal: true });
+  });
+
+  it("sucursal sin la de la vista previa (backend anterior): prendida no dibuja nada", async () => {
+    await abrir();
+    const antes = cabecera().textContent;
+    fireEvent.click(screen.getByRole("switch", { name: "Sucursal" }));
+    expect(cabecera().textContent).toBe(antes);
+  });
+
+  it("imprimir directo en la terminal: junto a lo de «Imprimir solo al cobrar», se guarda y la vista previa no cambia", async () => {
+    await abrir();
+    const interruptor = screen.getByRole("switch", { name: "Imprimir directo en la terminal" });
+    expect(interruptor).toHaveAttribute("aria-checked", "false");
+    expect(
+      screen.getByText(
+        "En las terminales de venta con impresora propia, el recibo sale directo, sin la vista previa de Android. En otros equipos no cambia nada.",
+      ),
+    ).toBeInTheDocument();
+    // En el mismo bloque que «Recibo del cliente» (qué se imprime al cobrar).
+    const bloque = screen.getByText("Imprimir solo al cobrar").parentElement!;
+    expect(within(bloque).getByRole("switch", { name: "Recibo del cliente" })).toBeInTheDocument();
+    expect(within(bloque).getByRole("switch", { name: "Imprimir directo en la terminal" })).toBeInTheDocument();
+
+    const antes = document.getElementById("area-impresion")!.innerHTML;
+    fireEvent.click(interruptor);
+    expect(document.getElementById("area-impresion")!.innerHTML).toBe(antes);
+    expect(await ultimoGuardado()).toMatchObject({ impresionDirecta: true });
+  });
+
+  it("código de barras: se guarda, y la vista previa de la web no cambia (su papel no lo lleva)", async () => {
+    conSucursal();
+    await abrir();
+    const antes = document.getElementById("area-impresion")!.innerHTML;
+    fireEvent.click(screen.getByRole("switch", { name: "Código de barras" }));
+    expect(screen.getByRole("switch", { name: "Código de barras" })).toHaveAttribute("aria-checked", "false");
+    expect(document.getElementById("area-impresion")!.innerHTML).toBe(antes);
+    expect(await ultimoGuardado()).toMatchObject({ codigoBarras: false });
+  });
+
+  // La vista previa dibuja lo que sale al vender (QA del 16-nov): con 2+
+  // sucursales y «Sucursal» apagada, el recibo de la caja ya traía la dirección
+  // del local en la cabecera y la fila «Sucursal: X»; la vista previa no.
+  // Misma regla que el papel (`useLocalEnElRecibo`).
+  const dosLocales = () => {
+    auth.features = ["menu_digital", "tickets_pedido", "multi_almacen"];
+    auth.locales = 2;
+  };
+  /** Las filas de datos de la vista previa del recibo, en orden: «Etiqueta valor». */
+  const filas = () =>
+    Array.from(document.querySelectorAll("#area-impresion article dl")[0].children).map(
+      (f) => `${f.children[0].textContent} ${f.children[1].textContent}`,
+    );
+
+  it("apagada con 2+ sucursales: la dirección de la sucursal arriba y la fila «Sucursal: X», como el papel", async () => {
+    dosLocales();
+    conSucursal();
+    await abrir();
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedCalle Norte 45 · Tel. 70000200");
+    expect(filas().slice(0, 3)).toEqual(["Venta: V-000009", expect.stringMatching(/^Fecha: /), "Sucursal: Norte"]);
+    // La comanda también dice de qué local es, como la de la caja.
+    fireEvent.click(screen.getByRole("radio", { name: "Comanda de cocina" }));
+    expect(within(document.querySelector(".comanda-impresa") as HTMLElement).getByText("Norte")).toBeInTheDocument();
+  });
+
+  it("prendida con 2+ sucursales: arriba, debajo del nombre, y la fila no se repite (como hasta hoy)", async () => {
+    dosLocales();
+    conSucursal();
+    await abrir();
+    fireEvent.click(screen.getByRole("switch", { name: "Sucursal" }));
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedNorteCalle Norte 45 · Tel. 70000200");
+    expect(filas().some((f) => f.startsWith("Sucursal:"))).toBe(false);
+  });
+
+  it.each([
+    ["un solo local", undefined],
+    // Con 2 sucursales activas pero sin el plan de varias, es de un local:
+    // el mismo criterio que el papel de la caja.
+    ["dos sucursales sin el plan de varias", 2],
+  ])("apagada con %s: la vista previa de siempre, sin fila ni dirección de la sucursal", async (_caso, locales) => {
+    auth.locales = locales as number | undefined;
+    conSucursal();
+    await abrir();
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedAv. Principal #123 · Tel. 700 00000");
+    expect(filas().some((f) => f.startsWith("Sucursal:"))).toBe(false);
+  });
+
+  it("apagada con 2+ sucursales y un backend que no manda la sucursal: la vista previa de siempre", async () => {
+    dosLocales();
+    await abrir();
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedAv. Principal #123 · Tel. 700 00000");
+    expect(filas().some((f) => f.startsWith("Sucursal:"))).toBe(false);
   });
 });
 

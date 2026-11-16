@@ -1,4 +1,11 @@
-import { RECIBO_DE_FABRICA, type AjustesRecibo, type EditorMenu, type PantallaMenu, type PlatoMenu } from "../types/menuDigital";
+import {
+  RECIBO_DE_FABRICA,
+  type AjustesRecibo,
+  type EditorMenu,
+  type LocalDelRecibo,
+  type PantallaMenu,
+  type PlatoMenu,
+} from "../types/menuDigital";
 import { request } from "./api";
 
 /**
@@ -11,8 +18,9 @@ export { urlPublica as urlApi } from "../publico/tv/apiTv";
 
 /**
  * Lo que el servidor todavía no manda, de fábrica. Un campo nuevo del recibo
- * (la letra, 5-nov) llega a la web antes que al backend de QA o de PROD: sin
- * esto el papel salía con `undefined` en vez de con la letra Normal.
+ * (la letra, 5-nov; el código de barras, la letra gruesa, la sucursal y la
+ * impresión directa, 16-nov) llega a la web antes que al backend de QA o de
+ * PROD: sin esto el papel salía con `undefined` en vez de con lo de siempre.
  */
 const conLoQueFalta = (r: AjustesRecibo): AjustesRecibo => ({ ...RECIBO_DE_FABRICA, ...r });
 
@@ -53,8 +61,21 @@ export const apiMenuDigital = {
   agotadosHoy: (sucursalId?: number | null) =>
     request<{ productoIds: number[] }>(`/menu-digital/agotados${deLocal(sucursalId)}`),
 
+  /**
+   * `configurado` (15-nov): si el negocio guardó su diseño o subió su logo. Un
+   * backend anterior no lo manda (ver `aplicaDisenoRecibo`).
+   *
+   * `sucursal` (16-nov): la de quien pide (o la principal, para el dueño), con
+   * su dirección; la usa sólo la vista previa de «Ticket y recibo». Un backend
+   * anterior no la manda: entonces la vista previa no la dibuja.
+   */
   recibo: () =>
-    request<{ recibo: AjustesRecibo; logo: string | null }>("/pantallas/recibo").then((x) => ({
+    request<{
+      recibo: AjustesRecibo;
+      logo: string | null;
+      configurado?: boolean;
+      sucursal?: LocalDelRecibo | null;
+    }>("/pantallas/recibo").then((x) => ({
       ...x,
       recibo: conLoQueFalta(x.recibo),
     })),

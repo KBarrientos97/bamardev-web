@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import CampoUbicacion from "../../components/CampoUbicacion";
 import { AvisoOk, Badge, Boton, Campo, Cargando, ErrorMsg, Input, useAviso } from "../../components/ui";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configuracion";
 import type { Ubicacion } from "../../lib/mapa";
 import { apiPagina } from "../../lib/pagina/apiPagina";
 import { paleta } from "../../lib/pagina/aspecto";
@@ -43,6 +44,9 @@ export default function FichasSucursales() {
       <EncabezadoPagina
         titulo={`Datos de las ${palabra}`}
         subtitulo="Dirección, ubicación en el mapa y horario de atención de cada una."
+        // En el restaurante se llega desde la lista de Configuración (15-nov):
+        // la flecha vuelve ahí. En los demás rubros, el encabezado de siempre.
+        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
       />
       <AvisoOk>{aviso}</AvisoOk>
       {carga.error ? (
@@ -140,8 +144,9 @@ function TarjetaFicha({ ficha, onGuardada }: { ficha: FichaSucursal; onGuardada:
         onCambio={setUbicacion}
         hint="El pin en el mapa de tu página y el destino de «Cómo llegar»."
       />
+      {/* Sin rótulo propio: `EditorHorario` ya trae «Horario de atención», y
+          con éste salía dos veces seguido (QA del 16-nov). */}
       <div>
-        <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Horario de atención</span>
         <EditorHorario nombre={ficha.nombre} valor={horario} c={COLOR} onCambio={setHorario} />
       </div>
       <div className="flex justify-end">

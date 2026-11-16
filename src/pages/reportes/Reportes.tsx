@@ -182,7 +182,9 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
               )}
             </div>
           </header>
-          <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} corteMin={corteMin} />
+          {!ficha?.periodoPropio && (
+            <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} corteMin={corteMin} />
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -358,7 +360,7 @@ function SelectorMovil({ grupos, ficha, conResumen }: { grupos: GrupoVisible[]; 
         <FichaIcono icono={ficha?.icono ?? "chart"} tono={ficha?.tono ?? "verde"} size={34} />
         <span className="min-w-0 flex-1">
           <span className="block text-[11px] font-bold uppercase tracking-wider text-texto-4">Reporte</span>
-          <span className="block truncate text-[15px] font-bold text-texto">{ficha?.titulo ?? "Resumen"}</span>
+          <span className="block break-words text-[15px] font-bold leading-tight text-texto">{ficha?.titulo ?? "Resumen"}</span>
         </span>
         <span className="text-[13px] font-semibold text-primary-700">Cambiar</span>
         <Icon name="chevronDown" size={16} />
@@ -419,7 +421,7 @@ function EncabezadoReporte({
       <div className="min-w-0 flex-1 basis-48">
         <h2 className="truncate text-[22px] font-extrabold leading-tight text-texto">{titulo}</h2>
         <p className="text-[13px] text-texto-3">
-          {descripcion} · {ficha?.fotoDeHoy ? "al día de hoy" : textoRango(periodo.desde, periodo.hasta)}
+          {ficha?.periodoPropio ? descripcion : `${descripcion} · ${ficha?.fotoDeHoy ? "al día de hoy" : textoRango(periodo.desde, periodo.hasta)}`}
         </p>
       </div>
       {ayuda && <AyudaCalculo titulo={titulo} ayuda={ayuda} />}

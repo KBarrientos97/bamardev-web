@@ -23,3 +23,50 @@ describe("la comanda de cocina con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)
     expect(sin).not.toContain("Sucursal");
   });
 });
+
+describe("la comanda de un pedido que se cambió después de cobrado (15-nov)", () => {
+  const cambiada = {
+    ...venta,
+    vecesModificada: 1,
+    modificadaEn: "2026-11-13T15:10:00.000Z",
+    detalles: [{ productoId: 2, producto: "Broaster cuarto", cantidad: 2, precio: 28, subtotal: 56, nota: null, consumo: "MESA" }],
+    modificaciones: [
+      {
+        id: 1,
+        fecha: "2026-11-13T15:10:00.000Z",
+        usuario: "Cata",
+        autorizadoPor: "Ana",
+        motivo: "El cliente cambió de idea",
+        totalAntes: 52,
+        totalDespues: 56,
+        diferencia: 4,
+        pagos: [],
+        antes: [{ productoId: 1, producto: "Brasa cuarto", cantidad: 2, precio: 26, subtotal: 52, consumo: "MESA", nota: null }],
+        despues: [{ productoId: 2, producto: "Broaster cuarto", cantidad: 2, precio: 28, subtotal: 56, consumo: "MESA", nota: null }],
+      },
+    ],
+  } as unknown as Venta;
+
+  it("avisa que es un CAMBIO y qué ya no va, para que la cocina no prepare los dos", () => {
+    render(<ComandaCocina venta={cambiada} numero={72} negocio="Pollos Don Omar" />);
+    expect(screen.getByText(/^PEDIDO CAMBIADO/)).toBeInTheDocument();
+    expect(screen.getByText("YA NO VA: 2× Brasa cuarto")).toBeInTheDocument();
+    // Abajo, el pedido como quedó.
+    expect(screen.getByText("Broaster cuarto")).toBeInTheDocument();
+  });
+
+  it("si sólo se agregó algo, no hay «ya no va»", () => {
+    const soloSuma = {
+      ...cambiada,
+      modificaciones: [{ ...cambiada.modificaciones![0], antes: [], despues: cambiada.modificaciones![0].despues }],
+    } as unknown as Venta;
+    render(<ComandaCocina venta={soloSuma} numero={72} negocio="Pollos Don Omar" />);
+    expect(screen.getByText(/^PEDIDO CAMBIADO/)).toBeInTheDocument();
+    expect(screen.queryByText(/YA NO VA/)).not.toBeInTheDocument();
+  });
+
+  it("una venta que nunca se modificó no dice nada", () => {
+    render(<ComandaCocina venta={venta} numero={72} negocio="Pollos Don Omar" />);
+    expect(screen.queryByText(/PEDIDO CAMBIADO/)).not.toBeInTheDocument();
+  });
+});

@@ -111,9 +111,9 @@ describe("los datos del pedido", () => {
     ]);
   });
 
-  it("un delivery por un servicio externo no tiene repartidor: dice «Por Yango», no deja el renglón vacío", () => {
+  it("un delivery por un servicio externo no tiene repartidor: dice «Delivery» sin nombrar el servicio, no deja el renglón vacío", () => {
     const d = datosPedido(pedido({ repartidor: null, entregaExterna: "Yango", estadoEntrega: "PENDIENTE" }))!;
-    expect(d.datos).toContainEqual({ etiqueta: "Envío", valor: "Por Yango" });
+    expect(d.datos).toContainEqual({ etiqueta: "Envío", valor: "Delivery" });
     expect(d.datos.some((x) => x.etiqueta === "Repartidor")).toBe(false);
     // Con repartidor propio manda el repartidor, aunque el campo del servicio viniera.
     expect(datosPedido(pedido({ entregaExterna: "Yango" }))!.datos).toContainEqual({ etiqueta: "Repartidor", valor: "Rodrigo" });
