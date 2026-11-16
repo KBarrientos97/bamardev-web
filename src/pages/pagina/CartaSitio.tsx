@@ -1,12 +1,11 @@
 import { useId, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { Paleta } from "../../lib/pagina/aspecto";
 import { categoriasDe, coincideBusqueda, partirCarta, TOPE_PORTADA } from "../../lib/pagina/carta";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
 import { estiloLetra, type Letra } from "../../lib/pagina/estilos";
 import type { TonosSitio } from "../../lib/pagina/sitio";
 import type { ItemCatalogoPublico } from "../../lib/pagina/tipos";
-import { SinFoto, VisorCatalogo, detalleItem, type AccionCatalogo } from "./CatalogoPagina";
+import { FotoItem, VisorCatalogo, detalleItem, type AccionCatalogo } from "./CatalogoPagina";
 
 /**
  * La carta del sitio del Profesional, como en el lienzo «Sitio Pro por rubro»
@@ -494,21 +493,9 @@ function AbrirItem({ it, onAbrir, children, style }: { it: ItemCatalogoPublico; 
 }
 
 function Foto({ it, t, alto, ancho, radio }: { it: ItemCatalogoPublico; t: TonosSitio; alto: number | string; ancho: number | string; radio: number }) {
-  const foto = urlDeImagen(it.fotoUrl);
   return (
     <span style={{ position: "relative", display: "block", flex: "none", width: ancho, height: alto, borderRadius: radio, overflow: "hidden", background: t.sinFotoFondo }}>
-      {foto ? (
-        <img
-          src={foto}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-        />
-      ) : (
-        <SinFoto item={it} fondo={t.sinFotoFondo} color={t.sinFotoTexto} tamano={typeof alto === "number" && alto < 100 ? 26 : 44} />
-      )}
+      <FotoItem item={it} fondo={t.sinFotoFondo} color={t.sinFotoTexto} tamano={typeof alto === "number" && alto < 100 ? 26 : 44} />
     </span>
   );
 }

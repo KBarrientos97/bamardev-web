@@ -20,6 +20,8 @@ export interface LineaPedido {
   cantidad: number;
   /** Para la miniatura del carrito; opcionales porque un pedido viejo guardado no los trae. */
   fotoUrl?: string | null;
+  /** La foto no tiene fondo: va entera sobre el tinte. Ausente (o un pedido viejo) = con fondo. */
+  fotoSinFondo?: boolean;
   icono?: string | null;
   /** Un servicio (un corte): va una sola vez, sin cantidad. */
   servicio?: boolean;
@@ -49,6 +51,7 @@ export function agregarLinea(lineas: LineaPedido[], item: ItemCatalogoPublico): 
       desde: item.precioDesde,
       cantidad: 1,
       fotoUrl: item.fotoUrl,
+      ...(item.fotoUrl && item.fotoSinFondo ? { fotoSinFondo: true } : {}),
       icono: item.icono ?? null,
       ...(item.servicioId != null ? { servicio: true } : {}),
     },

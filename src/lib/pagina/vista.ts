@@ -74,6 +74,9 @@ function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | n
   const publicadas = e.sucursales.filter((s) => s.publicarEnPagina);
   const principal = e.sucursales.find((s) => s.esPrincipal);
   const fuentes = publicadas.length ? publicadas : principal ? [principal] : [];
+  // «Imagen de cada producto: Foto» (16-nov): la foto del producto si tiene;
+  // si no, su ícono, como siempre. La vista previa usa la ruta de la TV.
+  const conFoto = e.pagina.catalogoImagen === "FOTO";
   const items: ItemCatalogoPublico[] = [];
   for (const x of [...(e.productosCatalogo ?? [])].filter((x) => x.vendible).sort((a, b) => a.orden - b.orden)) {
     const en = fuentes.map((s) => {
@@ -82,13 +85,16 @@ function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | n
       return { precio: precio != null && precio > 0 ? precio : null, disponible: f?.disponible ?? true };
     });
     if (en.length && !en.some((s) => s.disponible)) continue;
+    const foto = conFoto ? (x.foto ?? null) : null;
     const item: ItemCatalogoPublico = {
       id: x.id,
       titulo: x.nombre,
       descripcion: x.descripcion ?? null,
       precio: en.length ? en[0].precio : x.precio,
       precioDesde: false,
-      fotoUrl: null,
+      fotoUrl: foto,
+      // Como el backend: sólo presente con foto y sin fondo.
+      ...(foto && x.fotoSinFondo ? { fotoSinFondo: true } : {}),
       icono: x.icono,
       categoria: x.categoria,
     };

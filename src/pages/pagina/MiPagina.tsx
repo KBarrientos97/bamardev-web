@@ -735,7 +735,12 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
   const cambiarLimpio = (cambios: CambiosPagina) =>
     setBorrador((b) => {
       const nuevo: Record<string, unknown> = { ...b, ...cambios };
-      const guardado: Record<string, unknown> = { ...e.pagina, estiloClave: e.pagina.estiloClave ?? "CLASICO" };
+      const guardado: Record<string, unknown> = {
+        ...e.pagina,
+        estiloClave: e.pagina.estiloClave ?? "CLASICO",
+        // Un backend anterior no manda la imagen del catálogo: es el ícono.
+        catalogoImagen: e.pagina.catalogoImagen ?? "ICONO",
+      };
       for (const k of Object.keys(cambios)) if (nuevo[k] === guardado[k]) delete nuevo[k];
       return nuevo as CambiosPagina;
     });
@@ -1275,6 +1280,10 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
               c={c}
               sucursal={sede}
               onAviso={setAviso}
+              // La imagen de cada producto (16-nov) va al borrador, como el modo.
+              imagen={ajustes.catalogoImagen ?? "ICONO"}
+              onImagen={(v) => cambiarLimpio({ catalogoImagen: v })}
+              conMenuDigital={tieneFeature(negocioSesion?.features, "menu_digital")}
             />
           ) : (
             <CatalogoEditor

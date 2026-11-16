@@ -11,6 +11,7 @@ import type {
   FichaSucursal,
   ItemCatalogoEditor,
   ItemCatalogoInput,
+  OrdenBuscador,
   PaginaPublica,
   PlantillaSitio,
   ProductoFijado,
@@ -18,6 +19,12 @@ import type {
   Sitio,
   SucursalEditor,
 } from "./tipos";
+
+/** La foto de un producto después de subirla o quitarla (`/pagina/catalogo/productos/:id/foto`). */
+export interface FotoDeProducto {
+  foto: string | null;
+  fotoSinFondo: boolean;
+}
 
 /** El mismo origen del API que usa `lib/api.ts`. */
 export const BASE_API = import.meta.env.VITE_API_URL || "/api";
@@ -145,17 +152,33 @@ export const apiPagina = {
     request<ItemCatalogoEditor>(`/pagina/catalogo/${id}/foto`, { method: "DELETE" }),
 
   // ── Catálogo "Mis productos" ──
-  /** El selector: productos a la venta, por nombre (paginado en el backend). */
-  buscarProductosCatalogo: (q: string, offset = 0) => {
+  /**
+   * El selector: productos a la venta (paginado en el backend). Sin `orden`,
+   * por nombre, como siempre. Con `orden: "categoria"`, agrupados (los
+   * elaborados primero); `orden` en la respuesta dice el que se aplicó de
+   * verdad (con miles de productos el backend vuelve a por nombre). Un backend
+   * anterior ignora `orden` y no lo devuelve.
+   */
+  buscarProductosCatalogo: (q: string, offset = 0, opciones: { limite?: number; orden?: OrdenBuscador } = {}) => {
     const params = new URLSearchParams({ offset: String(offset) });
     if (q.trim()) params.set("q", q.trim());
-    return request<{ items: ProductoParaPagina[]; total: number; limite: number; offset: number }>(
+    if (opciones.limite) params.set("limite", String(opciones.limite));
+    if (opciones.orden) params.set("orden", opciones.orden);
+    return request<{ items: ProductoParaPagina[]; total: number; limite: number; offset: number; orden?: OrdenBuscador }>(
       `/pagina/catalogo/productos?${params.toString()}`,
     );
   },
   /** La lista entera de productos fijados, en el orden nuevo (fijar, quitar y ordenar). */
   fijarProductosCatalogo: (productoIds: number[]) =>
     request<ProductoFijado[]>("/pagina/catalogo/productos", { method: "PUT", body: json({ productoIds }) }),
+  /**
+   * La foto del producto desde «Mi página» (16-nov): es LA MISMA del menú
+   * digital, así que cambia también en la TV. Se guarda al toque.
+   */
+  subirFotoProducto: (productoId: number, archivo: Blob) =>
+    subirArchivo<FotoDeProducto>(`/pagina/catalogo/productos/${productoId}/foto`, archivo, nombreDeFoto(archivo)),
+  quitarFotoProducto: (productoId: number) =>
+    request<FotoDeProducto>(`/pagina/catalogo/productos/${productoId}/foto`, { method: "DELETE" }),
 
   // ── Mis enlaces ──
   enlaces: () => request<EnlaceCorto[]>("/enlaces"),
