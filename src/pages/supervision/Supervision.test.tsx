@@ -542,6 +542,28 @@ describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLAT
     expect(bloques().querySelector("#pedido-plataforma-31")).not.toBeNull();
   });
 
+  it("un turno con muchos pedidos se ve de a 10, con «Ver más (N más)»", async () => {
+    ver.mockImplementation(async () => {
+      const r = conActividad(respuesta());
+      const base = r.plataformas!.pedidos[0];
+      const muchos = Array.from({ length: 25 }, (_, i) => ({
+        ...base,
+        id: 500 + i,
+        codigoExterno: `SUP-${i}`,
+        anulado: i % 2 ? { en: AHORA - MIN, por: "Marta Admin", motivo: null } : null,
+      }));
+      return { ...r, plataformas: { ...r.plataformas!, pedidos: muchos } };
+    });
+    await montar();
+    fireEvent.click(within(bloques()).getByRole("button", { name: /Yango \/ PedidosYa/ }));
+    expect(within(bloques()).getAllByRole("listitem")).toHaveLength(10 + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Ver más (15 más)" }));
+    expect(within(bloques()).getAllByRole("listitem")).toHaveLength(20 + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Ver más (5 más)" }));
+    expect(within(bloques()).getAllByRole("listitem")).toHaveLength(25);
+    expect(screen.queryByRole("button", { name: /Ver más \(\d+ más\)/ })).toBeNull();
+  });
+
   it("con `plataformas: null` no se muestra nada nuevo", async () => {
     ver.mockImplementation(async () => ({ ...respuesta(), plataformas: null }));
     await montar();

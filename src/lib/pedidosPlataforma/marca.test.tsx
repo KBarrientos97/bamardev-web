@@ -20,6 +20,11 @@ describe("la marca de plataforma", () => {
     expect(["Naranja", "Amarillo"]).toContain(colorDeHex(colorDePlataforma("PEDIDOS_YA"))!.familia);
   });
 
+  it("son los mismos hex que Android: Rojo #C0262D y Naranja #B4501A", () => {
+    expect(colorDePlataforma("YANGO")).toBe("#C0262D");
+    expect(colorDePlataforma("PEDIDOS_YA")).toBe("#B4501A");
+  });
+
   it("la letra es el color pleno y el fondo una tinta suave del mismo", () => {
     const e = estiloDePlataforma("YANGO");
     expect(e.color).toBe(colorDePlataforma("YANGO"));

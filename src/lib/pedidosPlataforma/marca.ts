@@ -6,17 +6,19 @@ import type { Plataforma } from "./tipos";
  * propios ni los colores de marca de Yango y PedidosYa), PLAN-PEDIDOS-PLATAFORMA
  * §10.4:
  *
- *  - Yango: familia roja/rosa. Es Frambuesa (Rosa, tono medio) y no el Rojo:
- *    el rojo de la app es el de «Anulada» y el de los errores, y un pedido
- *    vivo no puede leerse como uno anulado.
- *  - PedidosYa: familia naranja (Naranja vivo).
+ *  - Yango: Rojo (familia roja), `#C0262D`.
+ *  - PedidosYa: Naranja (familia naranja), `#B4501A`.
+ *
+ * Son los mismos hex que usa Android, para que las dos apps coincidan. El
+ * rojo se parece al de «Anulada»: por eso la marca lleva SIEMPRE el nombre y
+ * un anulado va además tachado y con su badge.
  *
  * El color sólo acompaña: el texto «Yango» / «PedidosYa» va siempre. Las dos
  * claves superan 4.5:1 sobre blanco (ver `colores/paleta`), así que sirven de
  * letra sobre una tinta suave de sí mismas.
  */
 const CLAVE_DE_PALETA: Record<Plataforma, string> = {
-  YANGO: "FRAMBUESA",
+  YANGO: "ROJO",
   PEDIDOS_YA: "NARANJA",
 };
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Badge } from "../../components/ui";
 import { aCentavos } from "../../lib/dinero";
@@ -54,6 +55,9 @@ const VACIO: Record<Pestana, string> = {
   efectivo: "No se movió efectivo a mano en este turno.",
 };
 
+/** Cuántos pedidos de plataforma se ven de entrada y cuántos suma «Ver más» (hay turnos con cientos). */
+const PEDIDOS_DE_A = 10;
+
 export function Bloques({
   datos,
   ahora,
@@ -78,6 +82,7 @@ export function Bloques({
   /** Sin el permiso de anular no llega: el botón no existe (no se muestra uno que el servidor rechazaría). */
   onAnular?: (v: VentaSupervision) => void;
 }) {
+  const [cuantosPedidos, setCuantosPedidos] = useState(PEDIDOS_DE_A);
   const conteo = conteoDeBloques(datos);
   const vacio = (conteo[pestana] ?? 0) === 0;
   const ventas = pestana === "ventas" ? buscarVentas(ventasOrdenadas(datos.ventas), busqueda) : [];
@@ -129,9 +134,16 @@ export function Bloques({
         </>
       ) : pestana === "plataformas" ? (
         <ul className="divide-y divide-borde-soft">
-          {(datos.plataformas?.pedidos ?? []).map((p) => (
+          {(datos.plataformas?.pedidos ?? []).slice(0, cuantosPedidos).map((p) => (
             <FilaPedidoPlataforma key={p.id} p={p} ahora={ahora} />
           ))}
+          {conteo.plataformas! > cuantosPedidos && (
+            <li className="p-3 text-center">
+              <BotonB onClick={() => setCuantosPedidos((n) => n + PEDIDOS_DE_A)}>
+                Ver más ({conteo.plataformas! - cuantosPedidos} más)
+              </BotonB>
+            </li>
+          )}
         </ul>
       ) : pestana === "pedidos" ? (
         <ul className="divide-y divide-borde-soft">

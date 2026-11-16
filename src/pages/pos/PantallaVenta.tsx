@@ -734,11 +734,10 @@ function PanelCarrito({
                     onClick={() => plataformas.onElegir(p)}
                     disabled={descuentos?.bloqueado || !!bloqueoCobro}
                     className="min-w-0 flex-1 px-2"
+                    // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
+                    style={{ color: colorDePlataforma(p), borderColor: colorDePlataforma(p) }}
                   >
-                    {/* El tono de la plataforma (paleta única, §10.4): el nombre va siempre. */}
-                    <span style={{ color: colorDePlataforma(p) }}>
-                      <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
-                    </span>
+                    <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
                   </Boton>
                 ))}
               </div>
