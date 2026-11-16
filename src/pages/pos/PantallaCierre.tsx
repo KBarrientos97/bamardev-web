@@ -36,6 +36,8 @@ import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
 import { mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
+import ImprimirTicketCierre from "./ImprimirTicketCierre";
+import type { DatosTicketCierre } from "./ticketCierre";
 import ListaProductosVendidos from "./ListaProductosVendidos";
 import {
   documentoProductosVendidos,
@@ -69,7 +71,7 @@ export default function PantallaCierre({
   /** Recibir la plata de los meseros sin salir del cierre a buscarla. */
   onIrAEntregas?: () => void;
 }) {
-  const { incluye, rubro, puede } = useAuth();
+  const { incluye, rubro, puede, negocio, usuario } = useAuth();
   // El local de la caja, sólo con 2+ sucursales: quien cierra tiene que ver
   // de cuál es el arqueo que está firmando (PLAN-SUCURSAL-TOTAL, etapa 3).
   const sede = useLocalDelPapel(caja.almacen ? { nombre: caja.almacen } : null)?.nombre;
@@ -116,6 +118,15 @@ export default function PantallaCierre({
    * que el cajero verifique después de contar, no antes.
    */
   const esperado = r?.saldoEsperado ?? 0;
+  // El ticket de 58 mm (§4.2 de PLAN-ELGANADERO-16NOV): antes de cerrar lleva
+  // sólo el esperado; lo contado y la diferencia salen en el de después.
+  const ticketCierre: DatosTicketCierre = {
+    negocio: negocio?.nombre ?? "",
+    sede,
+    abrio: caja.fechaApertura,
+    cajero: usuario?.nombre?.trim() || usuario?.username,
+    esperado,
+  };
   // Se lee como se escribe en Bolivia, "2.258,90" (ver `montoTecleado`). El
   // campo de antes pasaba la coma a punto y leía con Number(): "2.258,90"
   // llegaba como "2.258.90", que no es un número, y "1.000" valía Bs 1 (QA de
@@ -409,6 +420,14 @@ export default function PantallaCierre({
                     onClick={() => setViendoProductos(true)}
                   />
                 )}
+                {rubro === "RESTAURANTE" && r.productos != null && (
+                  <ImprimirTicketCierre
+                    productos={r.productos}
+                    datos={ticketCierre}
+                    fila
+                    className="mb-2"
+                  />
+                )}
 
                 <div className="mb-2">
                   {/* Con lo que dice el campo: si el cajero corrige el monto a
@@ -488,6 +507,7 @@ export default function PantallaCierre({
           cajaId={caja.id}
           sede={sede}
           productos={vendidoDelArqueo ? r?.productos : undefined}
+          ticket={rubro === "RESTAURANTE" ? ticketCierre : undefined}
           onClose={() => setViendoProductos(false)}
         />
       )}
@@ -1114,6 +1134,18 @@ function ComprobanteCompleto({
   const r = caja.resumen;
   const [viendoProductos, setViendoProductos] = useState(false);
   const titulo = "mb-2 text-[12px] font-bold uppercase tracking-wide text-texto-4";
+  // El ticket de 58 mm de la caja ya cerrada: con lo contado y la diferencia (§4.2).
+  const { negocio } = useAuth();
+  const ticketCierre: DatosTicketCierre = {
+    negocio: negocio?.nombre ?? "",
+    sede,
+    abrio: caja.fechaApertura,
+    cerro: caja.fechaCierre,
+    cajero,
+    esperado: r?.saldoEsperado,
+    contado: caja.montoCierre,
+    diferencia: caja.montoDiferencia,
+  };
   return (
     <div className="flex min-h-full items-center justify-center p-5">
       <div className="w-full max-w-md text-center">
@@ -1207,6 +1239,14 @@ function ComprobanteCompleto({
             onClick={() => setViendoProductos(true)}
           />
         )}
+        {conLoVendido && rubro === "RESTAURANTE" && r?.productos && (
+          <ImprimirTicketCierre
+            productos={r.productos}
+            datos={ticketCierre}
+            fila
+            className="mt-2"
+          />
+        )}
 
         <Boton onClick={onSalir} className="mt-5 w-full">
           Volver
@@ -1218,6 +1258,7 @@ function ComprobanteCompleto({
           cajaId={caja.id}
           sede={sede}
           productos={r?.productos}
+          ticket={rubro === "RESTAURANTE" ? ticketCierre : undefined}
           onClose={() => setViendoProductos(false)}
         />
       )}
@@ -1298,6 +1339,7 @@ export function ProductosDelTurno({
   cajaId,
   sede,
   productos,
+  ticket,
   onClose,
 }: {
   cajaId: number;
@@ -1308,6 +1350,12 @@ export function ProductosDelTurno({
    * caja aunque no tenga reportes). Sin esto se pide a los reportes.
    */
   productos?: ReporteCierreProductos;
+  /**
+   * Los datos del turno para el «Ticket de cierre» de 58 mm (§4.2 de
+   * PLAN-ELGANADERO-16NOV). Con esto el modal ofrece «Imprimir ticket»; sin
+   * esto (Reportes › Cierres, el billar) no hay botón.
+   */
+  ticket?: DatosTicketCierre;
   onClose: () => void;
 }) {
   const remoto = useApi(
@@ -1358,9 +1406,12 @@ export function ProductosDelTurno({
       onClose={onClose}
       acciones={
         d && (d.lineas > 0 || plataformasDelTurno(d).length > 0) ? (
-          <Boton variante="ghost" icono="download" onClick={exportar} disabled={armando}>
-            {armando ? "Armando el PDF…" : "Exportar PDF"}
-          </Boton>
+          <>
+            {ticket && <ImprimirTicketCierre productos={d} datos={ticket} />}
+            <Boton variante="ghost" icono="download" onClick={exportar} disabled={armando}>
+              {armando ? "Armando el PDF…" : "Exportar PDF"}
+            </Boton>
+          </>
         ) : undefined
       }
     >
