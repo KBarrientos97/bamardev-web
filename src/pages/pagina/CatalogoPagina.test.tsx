@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LineaPedido } from "../../lib/pagina/pedido";
 import type { PaginaPublica } from "../../lib/pagina/tipos";
+import type { Pedido } from "../../lib/pagina/usePedido";
+import { LineaCarrito } from "./PedidoPagina";
 import VistaPagina from "./VistaPagina";
 
 /** El catálogo en la página pública: el carrusel y el visor que se abre al tocar. */
@@ -144,6 +147,59 @@ describe("catálogo de la página pública", () => {
     const soda = screen.getByText("Soda").closest("button")!;
     expect(soda.querySelector("img")).toBeNull();
     expect(soda).toHaveTextContent(/^SSoda/);
+  });
+
+  it("«Mis productos» con foto (16-nov): con fondo llena la tarjeta; sin fondo va entera sobre el tinte", () => {
+    montar({
+      catalogo: {
+        titulo: "Catálogo",
+        items: [
+          { id: 7, titulo: "Pollo entero", descripcion: null, precio: 120, precioDesde: false, fotoUrl: "/publico/pagina/bellavista/producto/7/foto?v=a", icono: "pollo_entero_brasa", categoria: "Pollos" },
+          { id: 8, titulo: "Soda", descripcion: null, precio: 15, precioDesde: false, fotoUrl: "/publico/pagina/bellavista/producto/8/foto?v=b", fotoSinFondo: true, icono: null, categoria: null },
+        ],
+      },
+    });
+    const pollo = screen.getByAltText("Pollo entero");
+    expect(pollo).toHaveAttribute("src", "/api/publico/pagina/bellavista/producto/7/foto?v=a");
+    expect(pollo.style.objectFit).toBe("cover");
+    const soda = screen.getByAltText("Soda");
+    expect(soda.style.objectFit).toBe("contain");
+    expect(soda.style.width).toBe("88%");
+    // El tinte detrás: el producto suelto no queda sobre un hueco.
+    expect(soda.parentElement!.style.background).not.toBe("");
+
+    // En el visor, la sin fondo también va entera sobre el tinte.
+    fireEvent.click(screen.getByRole("button", { name: "Ver Soda" }));
+    fireEvent.click(tarjeta("Soda"));
+    const enVisor = within(visor()).getByAltText("Soda");
+    expect(enVisor.style.objectFit).toBe("contain");
+    expect(enVisor.parentElement!.style.background).not.toBe("");
+  });
+
+  it("si la foto no carga, el ícono; si el ícono tampoco, la inicial: nunca la imagen rota", () => {
+    montar({
+      catalogo: {
+        titulo: "Catálogo",
+        items: [
+          { id: 7, titulo: "Pollo entero", descripcion: null, precio: 120, precioDesde: false, fotoUrl: "/publico/pagina/bellavista/producto/7/foto?v=a", icono: "pollo_entero_brasa", categoria: "Pollos" },
+        ],
+      },
+    });
+    const tarjetaPollo = screen.getByText("Pollo entero").closest("button")!;
+    fireEvent.error(screen.getByAltText("Pollo entero"));
+    const icono = tarjetaPollo.querySelector("img")!;
+    expect(icono).not.toBeNull();
+    expect(icono).not.toHaveAttribute("src", "/api/publico/pagina/bellavista/producto/7/foto?v=a");
+    // Un ícono propio del negocio viene del servidor: también puede fallar.
+    fireEvent.error(icono);
+    expect(tarjetaPollo.querySelector("img")).toBeNull();
+    expect(tarjetaPollo).toHaveTextContent(/^PPollo entero/);
+
+    // El visor tampoco deja la imagen rota.
+    fireEvent.click(tarjeta("Pollo entero"));
+    fireEvent.error(within(visor()).getByAltText("Pollo entero"));
+    expect(within(visor()).queryByAltText("Pollo entero")).not.toBeInTheDocument();
+    expect(within(visor()).getByRole("heading", { name: "Pollo entero" })).toBeInTheDocument();
   });
 
   it("muestra la sección con su título, las fotos y los precios formateados", () => {
@@ -295,5 +351,44 @@ describe("catálogo de la página pública", () => {
     expect(tarjeta("Plato 5")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
     expect(fila().style.transform).toContain("-2 *");
+  });
+});
+
+describe("la miniatura del carrito del pedido (16-nov)", () => {
+  const pedido = { lineas: [], agregar: vi.fn(), cambiar: vi.fn(), ajustar: vi.fn(), vaciar: vi.fn() } as unknown as Pedido;
+  const linea = (cambios: Partial<LineaPedido> = {}): LineaPedido => ({
+    id: 7,
+    titulo: "Pollo entero",
+    precio: 120,
+    desde: false,
+    cantidad: 1,
+    fotoUrl: "/publico/pagina/bellavista/producto/7/foto?v=a",
+    icono: "pollo_entero_brasa",
+    ...cambios,
+  });
+  const miniatura = (l: LineaPedido) => {
+    const { container } = render(
+      <ul>
+        <LineaCarrito l={l} fuerte="#5C1A40" tinte="#F5E6EE" pedido={pedido} />
+      </ul>,
+    );
+    return container.querySelector("li > span")!;
+  };
+
+  it("con fondo llena el cuadro; sin fondo va entera sobre el tinte", () => {
+    expect(miniatura(linea()).querySelector("img")!.style.objectFit).toBe("cover");
+    const sinFondo = miniatura(linea({ id: 8, fotoSinFondo: true })).querySelector("img")!;
+    expect(sinFondo.style.objectFit).toBe("contain");
+    expect(sinFondo.style.width).toBe("88%");
+  });
+
+  it("si la foto no carga, el ícono; si el ícono tampoco, la inicial", () => {
+    const caja = miniatura(linea());
+    fireEvent.error(caja.querySelector("img")!);
+    const icono = caja.querySelector("img")!;
+    expect(icono).not.toHaveAttribute("src", "/api/publico/pagina/bellavista/producto/7/foto?v=a");
+    fireEvent.error(icono);
+    expect(caja.querySelector("img")).toBeNull();
+    expect(caja).toHaveTextContent("P");
   });
 });
