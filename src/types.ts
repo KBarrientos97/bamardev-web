@@ -484,6 +484,35 @@ export interface Producto extends FichaFarmaceutica {
 }
 
 /**
+ * Un producto pausado en una sucursal (PLAN-ELGANADERO-16NOV §4.1): no se pide
+ * por la página ni se muestra en las TVs de ese local hasta que alguien lo
+ * reactive. La caja sólo avisa al venderlo.
+ */
+export interface ProductoPausado {
+  productoId: number;
+  nombre: string;
+  /** Desde cuándo está pausado (ISO). */
+  desde: string;
+  /** Quién lo pausó; null si ese usuario ya no existe. */
+  por: string | null;
+}
+
+/** `GET /productos/pausados`: los pausados de una sucursal y cómo se llama. */
+export interface PausadosDeSucursal {
+  sucursal: { id: number; nombre: string };
+  pausados: ProductoPausado[];
+}
+
+/** Lo que contestan `POST` y `DELETE /productos/:id/pausar`. */
+export interface EstadoPausa {
+  productoId: number;
+  sucursalId: number;
+  pausado: boolean;
+  desde?: string | null;
+  por?: string | null;
+}
+
+/**
  * Cuánto hay de un artículo en una sucursal (o depósito) y dónde está. Sin
  * costos: lo lee quien atiende, para decir "en la sucursal X sí hay".
  */

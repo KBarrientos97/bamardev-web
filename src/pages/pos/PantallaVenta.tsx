@@ -20,8 +20,13 @@ import { controlaStock, topeStock, type Carrito, type LineaCarrito } from "./use
 import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
 import { useArrastreGrilla } from "./useArrastreGrilla";
 import { useAgotadosHoy } from "../../lib/menuDigital/useAgotadosHoy";
+import { tienePermiso } from "../../lib/permisos";
+import HojaPausa, { textoVenderPausado } from "./HojaPausa";
+import { usePausados } from "./usePausados";
 
 const TODAS = "__todas__";
+/** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
+const PAUSADOS = "__pausados__";
 
 const idDe = (p: Producto) => p.id;
 
@@ -109,11 +114,30 @@ export default function PantallaVenta({
     [productos, orden],
   );
 
+  /**
+   * Lo PAUSADO en el local de la caja (PLAN-ELGANADERO-16NOV §4.1): no se pide
+   * por la página y acá sale en gris. Pausar y reactivar piden `productos.pausar`.
+   */
+  const pausados = usePausados(sucursalId, !esFarmacia(rubro));
+  const puedePausar = tienePermiso(usuario, "productos.pausar") && !esFarmacia(rubro);
+  const [hojaPausa, setHojaPausa] = useState<Producto | null>(null);
+  const [venderPausado, setVenderPausado] = useState<Producto | null>(null);
+  const cantidadPausados = useMemo(
+    () => ordenados.filter((p) => p.habilitado && pausados.ids.has(p.id)).length,
+    [ordenados, pausados.ids],
+  );
+  // Sin pausados no hay qué filtrar: se vuelve a «Todos» (se reactivó el último).
+  useEffect(() => {
+    if (cat === PAUSADOS && cantidadPausados === 0) setCat(TODAS);
+  }, [cat, cantidadPausados]);
+
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
     return ordenados.filter((p) => {
       if (!p.habilitado) return false;
-      if (cat !== TODAS && String(p.categoria?.id ?? "") !== cat) return false;
+      if (cat === PAUSADOS) {
+        if (!pausados.ids.has(p.id)) return false;
+      } else if (cat !== TODAS && String(p.categoria?.id ?? "") !== cat) return false;
       if (!texto) return true;
       // Ignora tildes: el cajero teclea "cafe" y el catálogo dice "Café".
       return (
@@ -122,7 +146,7 @@ export default function PantallaVenta({
         contiene(p.categoria?.nombre, texto)
       );
     });
-  }, [ordenados, q, cat]);
+  }, [ordenados, q, cat, pausados.ids]);
 
   /**
    * Guarda el orden que quedó en pantalla tras soltar una card.
@@ -271,6 +295,11 @@ export default function PantallaVenta({
                 {c.nombre}
               </ChipCat>
             ))}
+            {cantidadPausados > 0 && (
+              <ChipCat activo={cat === PAUSADOS} onClick={() => setCat(PAUSADOS)}>
+                Pausados ({cantidadPausados})
+              </ChipCat>
+            )}
           </div>
         </div>
 
@@ -279,7 +308,9 @@ export default function PantallaVenta({
             <Vacio
               icono="search"
               titulo="Sin productos"
-              texto={q ? "Probá con otro texto." : "No hay productos en esta categoría."}
+              texto={
+                q ? "Probá con otro texto." : cat === PAUSADOS ? "No hay productos pausados." : "No hay productos en esta categoría."
+              }
             />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -288,7 +319,14 @@ export default function PantallaVenta({
                   key={p.id}
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
-                  onAgregar={() => carrito.agregar(p)}
+                  // Un pausado no está en la página pero la caja lo puede tener:
+                  // pregunta antes de agregarlo. Ya en el carrito (ya dijo que
+                  // sí) los toques siguientes suman sin volver a preguntar.
+                  onAgregar={() =>
+                    pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0
+                      ? setVenderPausado(p)
+                      : carrito.agregar(p)
+                  }
                   onQuitar={() =>
                     carrito.setCantidad(p.id, (enCarrito.get(p.id) ?? 0) - 1)
                   }
@@ -297,6 +335,8 @@ export default function PantallaVenta({
                   // carrito: cobrar de más es peor que tener que tocar de nuevo.
                   ignorarClic={arrastre.ignorarClic}
                   agotadoHoy={agotadosHoy.has(p.id)}
+                  pausado={pausados.ids.has(p.id)}
+                  onMenu={puedePausar ? () => setHojaPausa(p) : undefined}
                 />
               ))}
             </ul>
@@ -329,6 +369,31 @@ export default function PantallaVenta({
           </span>
         </button>
       )}
+
+      {hojaPausa && (
+        <HojaPausa
+          producto={hojaPausa}
+          pausado={pausados.ids.has(hojaPausa.id)}
+          sucursal={pausados.sucursal}
+          sucursalId={sucursalId}
+          onClose={() => setHojaPausa(null)}
+          onCambio={(estaPausado) => {
+            pausados.marcar(hojaPausa.id, estaPausado);
+            pausados.recargar();
+          }}
+        />
+      )}
+      <Confirmar
+        abierto={venderPausado != null}
+        titulo="Producto pausado"
+        texto={venderPausado ? textoVenderPausado(venderPausado.nombre, pausados.sucursal) : ""}
+        etiquetaOk="Sí, venderlo"
+        onCancel={() => setVenderPausado(null)}
+        onOk={() => {
+          if (venderPausado) carrito.agregar(venderPausado);
+          setVenderPausado(null);
+        }}
+      />
 
       {carritoAbierto && (
         <div className="fixed inset-0 z-40 flex items-end lg:hidden">
@@ -376,12 +441,21 @@ function TarjetaVenta({
   arrastre,
   ignorarClic,
   agotadoHoy = false,
+  pausado = false,
+  onMenu,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
   /** Marcado "agotado hoy" en el Menú digital: no se ofrece aunque no tenga stock que contar. */
   agotadoHoy?: boolean;
+  /**
+   * Pausado en este local (§4.1): sale en gris con «Pausado», pero se puede
+   * vender (la caja pregunta antes). No es lo mismo que agotado: éste sí se bloquea.
+   */
+  pausado?: boolean;
+  /** El «⋯» que abre la hoja de pausar o reactivar; sólo con `productos.pausar`. */
+  onMenu?: () => void;
   onAgregar: () => void;
   onQuitar: () => void;
   /** Handlers y estilo del reordenamiento (ver useArrastreGrilla). */
@@ -422,11 +496,14 @@ function TarjetaVenta({
           elegido sin abrir el carrito es lo que evita cargarlo dos veces. */}
       <div
         className={[
-          "flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          "relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
           enCarrito
             ? "border-primary bg-primary-50 shadow-sm"
-            : "border-borde bg-white hover:shadow-md",
+            : pausado
+              ? "border-borde bg-slate-100 hover:shadow-md"
+              : "border-borde bg-white hover:shadow-md",
           agotado ? "opacity-50" : "",
+          pausado && !agotado ? "opacity-60 grayscale" : "",
         ].join(" ")}
       >
         <button
@@ -436,7 +513,7 @@ function TarjetaVenta({
           disabled={agotado}
           className="flex flex-1 flex-col text-left"
         >
-          <div className="flex items-start justify-between gap-1.5">
+          <div className={`flex items-start justify-between gap-1.5${onMenu ? " pr-7" : ""}`}>
             <IconoProducto
               nombre={p.nombre}
               icono={p.icono}
@@ -447,6 +524,8 @@ function TarjetaVenta({
                 ofrecerlo, no recién cuando se agota. Antes el número sólo
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
+            {/* Pausado y agotado a la vez: gana «Agotado», que sí frena la venta. */}
+            {pausado && !agotado && <Badge tono="gris">Pausado</Badge>}
             {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controla && (
@@ -475,6 +554,22 @@ function TarjetaVenta({
             {fmtMoney(p.precio)}
           </p>
         </button>
+
+        {onMenu && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!ignorarClic()) onMenu();
+            }}
+            // Sin esto, tocar el «⋯» empezaría el arrastre de la card.
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={pausado ? `Reactivar ${p.nombre}` : `Pausar ${p.nombre}`}
+            title={pausado ? "Reactivar" : "Pausar en esta sucursal"}
+            className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full text-texto-3 hover:bg-muted hover:text-texto"
+          >
+            <Icon name="more" size={18} />
+          </button>
+        )}
 
         {enCarrito && (
           <div className="mt-2 flex h-9 items-center justify-between rounded-full border border-primary bg-white px-1">

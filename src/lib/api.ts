@@ -1,5 +1,7 @@
 import type {
   Existencia,
+  EstadoPausa,
+  PausadosDeSucursal,
   ApunteStock,
   PrecioSucursal,
   PrecioSucursalInput,
@@ -549,6 +551,24 @@ export const api = {
     ),
   getProducto: (id: number, sucursalId?: number | null) =>
     request<Producto>(`/productos/${id}${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /**
+   * Los productos PAUSADOS en una sucursal (PLAN-ELGANADERO-16NOV §4.1). Lo
+   * lee todo el que ve el catálogo: sin el permiso de pausar la tarjeta sale
+   * igual en gris y avisa al venderla. Sin `sucursalId`, la del usuario o la principal.
+   */
+  productosPausados: (sucursalId?: number | null) =>
+    request<PausadosDeSucursal>(`/productos/pausados${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /** Pausa el producto en la sucursal (`productos.pausar`). Idempotente. */
+  pausarProducto: (id: number, sucursalId?: number | null) =>
+    request<EstadoPausa>(`/productos/${id}/pausar${qs({ sucursalId: sucursalId ?? undefined })}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  /** Lo reactiva: borra la pausa (y el «agotado hoy» si lo había). Idempotente. */
+  reactivarProducto: (id: number, sucursalId?: number | null) =>
+    request<EstadoPausa>(`/productos/${id}/pausar${qs({ sucursalId: sucursalId ?? undefined })}`, {
+      method: "DELETE",
+    }),
   /**
    * La búsqueda del mostrador: filtra y pagina en el servidor.
    *
