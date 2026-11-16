@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupervisionRestaurante } from "./api";
 import Supervision from "./Supervision";
+import { iconoDeActividad } from "./Supervision.datos";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -441,5 +442,118 @@ describe("Supervisión del local: el sondeo y los errores", () => {
     });
     expect(ver).toHaveBeenCalledTimes(2);
     expect(ver).toHaveBeenLastCalledWith(null, null);
+  });
+});
+
+describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLATAFORMA §10.3)", () => {
+  const plataformas = (): NonNullable<SupervisionRestaurante["plataformas"]> => ({
+    resumen: [
+      { plataforma: "YANGO", cantidad: 3, total: 120, anulados: 1 },
+      { plataforma: "PEDIDOS_YA", cantidad: 1, total: 40, anulados: 0 },
+    ],
+    pedidos: [
+      {
+        id: 31,
+        plataforma: "YANGO",
+        codigoExterno: "A-123",
+        total: 65,
+        hora: AHORA - 10 * MIN,
+        quien: "Rosa Quispe",
+        cajaId: 1,
+        items: [{ nombre: "Arroz con leche L", cantidad: 2, precio: 32.5, subtotal: 65 }],
+        anulado: null,
+      },
+      {
+        id: 30,
+        plataforma: "PEDIDOS_YA",
+        codigoExterno: null,
+        total: 40,
+        hora: AHORA - 25 * MIN,
+        quien: "Rosa Quispe",
+        cajaId: null,
+        items: [{ nombre: "Arroz con leche M", cantidad: 1, precio: 40, subtotal: 40 }],
+        anulado: { en: AHORA - 20 * MIN, por: "Marta Admin", motivo: "Error al cargar" },
+      },
+    ],
+  });
+  const conActividad = (r: SupervisionRestaurante): SupervisionRestaurante => ({
+    ...r,
+    plataformas: plataformas(),
+    actividad: [
+      {
+        id: "plataforma-31",
+        hora: AHORA - 10 * MIN,
+        quien: "Rosa Quispe",
+        texto: "Registró un pedido de Yango N° A-123 · Bs 65,00",
+        codigo: "PEDIDO_PLATAFORMA",
+      },
+      ...r.actividad,
+    ],
+  });
+
+  it("la tarjeta dice cantidad y total por plataforma, con su marca, y que no se cobra en caja", async () => {
+    ver.mockImplementation(async () => conActividad(respuesta()));
+    await montar();
+    const t = seccion("Yango / PedidosYa del turno");
+    expect(t).toHaveTextContent("No se cobra en caja");
+    expect(within(t).getByText("Yango")).toBeInTheDocument();
+    expect(within(t).getByText("PedidosYa")).toBeInTheDocument();
+    expect(t).toHaveTextContent(/Bs\s120,00/);
+    expect(t).toHaveTextContent("3 pedidos · 1 anulado");
+    expect(t).toHaveTextContent(/Bs\s40,00/);
+  });
+
+  it("no toca «Vendido» ni el cobrado por medio", async () => {
+    ver.mockImplementation(async () => conActividad(respuesta()));
+    await montar();
+    expect(kpi("Vendido en el turno")).toHaveTextContent(/Bs\s60,50/);
+    expect(seccion("Cobrado por medio")).not.toHaveTextContent(/Bs\s120,00|Yango/);
+  });
+
+  it("una pestaña propia lista los pedidos con su marca, el N° o «Pedido #id» y los anulados tachados", async () => {
+    ver.mockImplementation(async () => conActividad(respuesta()));
+    await montar();
+    fireEvent.click(within(bloques()).getByRole("button", { name: /Yango \/ PedidosYa/ }));
+    const filas = within(bloques()).getAllByRole("listitem");
+    expect(filas).toHaveLength(2);
+    expect(within(filas[0]).getByText("Yango")).toBeInTheDocument();
+    expect(filas[0]).toHaveTextContent("N° A-123");
+    expect(filas[0]).toHaveTextContent("2× Arroz con leche L");
+    expect(filas[0]).toHaveTextContent("No se cobra");
+    expect(within(filas[1]).getByText("PedidosYa")).toBeInTheDocument();
+    expect(within(filas[1]).getByText("Pedido #30")).toHaveClass("line-through");
+    expect(filas[1]).toHaveTextContent(/Autorizó la anulación Marta Admin.*Error al cargar/);
+  });
+
+  it("la actividad suma el renglón PEDIDO_PLATAFORMA, con un ícono de moto", async () => {
+    ver.mockImplementation(async () => conActividad(respuesta()));
+    await montar();
+    const renglon = screen.getByText(/Registró un pedido de Yango N° A-123/).closest("li")!;
+    expect(renglon.querySelector("svg")).not.toBeNull();
+    expect(iconoDeActividad("PEDIDO_PLATAFORMA")).toBe("moto");
+  });
+
+  it("con `plataformas: null` no se muestra nada nuevo", async () => {
+    ver.mockImplementation(async () => ({ ...respuesta(), plataformas: null }));
+    await montar();
+    expect(screen.queryByRole("heading", { name: /Yango/ })).toBeNull();
+    expect(within(bloques()).queryByRole("button", { name: /Yango/ })).toBeNull();
+  });
+
+  it("con un backend viejo (sin el campo) tampoco", async () => {
+    await montar();
+    expect(screen.queryByRole("heading", { name: /Yango/ })).toBeNull();
+    expect(within(bloques()).queryByRole("button", { name: /Yango/ })).toBeNull();
+  });
+
+  it("con las features prendidas pero sin pedidos: la tarjeta dice 0 pedidos y la pestaña, que no hay", async () => {
+    ver.mockImplementation(async () => ({
+      ...respuesta(),
+      plataformas: { resumen: [{ plataforma: "YANGO", cantidad: 0, total: 0, anulados: 0 }], pedidos: [] },
+    }));
+    await montar();
+    expect(seccion("Yango / PedidosYa del turno")).toHaveTextContent("0 pedidos");
+    fireEvent.click(within(bloques()).getByRole("button", { name: /Yango \/ PedidosYa/ }));
+    expect(bloques()).toHaveTextContent("Todavía no hay pedidos de Yango ni de PedidosYa");
   });
 });

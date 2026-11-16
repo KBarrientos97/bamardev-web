@@ -1,4 +1,5 @@
 import { request } from "../../lib/api";
+import type { Plataforma } from "../../lib/pedidosPlataforma/tipos";
 
 /**
  * La ruta de Supervisión del local (`GET /supervision`, backend del 12-nov) y
@@ -199,7 +200,7 @@ export interface Actividad {
   lugar?: string;
   autorizo?: string;
   motivo?: string;
-  /** CAJA_ABIERTA, CAJA_CERRADA, VENTA, CREDITO, ANULACION, EFECTIVO o PEDIDO: la pantalla le pone ícono y color. */
+  /** CAJA_ABIERTA, CAJA_CERRADA, VENTA, CREDITO, ANULACION, EFECTIVO, PEDIDO o PEDIDO_PLATAFORMA: la pantalla le pone ícono y color. */
   codigo: string;
   /** De qué es el renglón: la venta o la caja. */
   ref?: { sesion?: number; venta?: number; caja?: number };
@@ -208,6 +209,35 @@ export interface Actividad {
    * efectivo: antes de él, la lista no está completa.
    */
   fueraDelTope?: true;
+}
+
+/**
+ * Un pedido de Yango o PedidosYa del turno (PLAN-PEDIDOS-PLATAFORMA §10.3).
+ * No es una venta: no se cobra en caja y no suma a «Vendido» ni a los medios
+ * de pago. Va aparte, con su marca.
+ */
+export interface PedidoPlataformaSupervision {
+  id: number;
+  plataforma: Plataforma;
+  /** El N° de la app; null si no lo cargaron. */
+  codigoExterno: string | null;
+  total: number;
+  hora: number;
+  quien: string;
+  /** La caja donde se tomó; null en los de antes de que el pedido la guardara. */
+  cajaId: number | null;
+  items: { nombre: string; cantidad: number; precio: number; subtotal: number }[];
+  anulado: { en: number; por: string; motivo: string | null } | null;
+}
+
+/**
+ * Los pedidos de plataforma del turno. `cantidad` y `total` no cuentan los
+ * anulados (que van en `anulados`). Sólo vienen las plataformas prendidas.
+ */
+export interface PlataformasSupervision {
+  resumen: { plataforma: Plataforma; cantidad: number; total: number; anulados: number }[];
+  /** Del más nuevo al más viejo. */
+  pedidos: PedidoPlataformaSupervision[];
 }
 
 export interface SupervisionRestaurante {
@@ -225,6 +255,12 @@ export interface SupervisionRestaurante {
   pedidos: PedidoSupervision[];
   efectivo: EfectivoSupervision[];
   actividad: Actividad[];
+  /**
+   * Yango y PedidosYa del turno. `null` si el negocio no tiene ninguna de las
+   * dos features; AUSENTE con un backend anterior al 16-nov. En los dos casos
+   * la pantalla no muestra nada nuevo.
+   */
+  plataformas?: PlataformasSupervision | null;
 }
 
 // ── Las rutas ───────────────────────────────────────────────────────────────

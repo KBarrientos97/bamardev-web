@@ -11,6 +11,7 @@ import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
+import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
@@ -734,7 +735,10 @@ function PanelCarrito({
                     disabled={descuentos?.bloqueado || !!bloqueoCobro}
                     className="min-w-0 flex-1 px-2"
                   >
-                    <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
+                    {/* El tono de la plataforma (paleta única, §10.4): el nombre va siempre. */}
+                    <span style={{ color: colorDePlataforma(p) }}>
+                      <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
+                    </span>
                   </Boton>
                 ))}
               </div>

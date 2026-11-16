@@ -787,6 +787,10 @@ function PuntoDeVenta() {
           // Con varias cajas abiertas el pedido dice a cuál sucursal va, como
           // la venta: la cola lo sube tiempo después y la sede activa puede ser otra.
           ...(variasSedes && almacenCaja != null ? { almacenId: almacenCaja } : {}),
+          // La caja abierta del POS, como en la venta (§10.1): de ahí sale
+          // «Ventas del turno». La cola la sube con la que estaba abierta al
+          // tomarlo; el backend la descarta sin rechazar si ya no sirve.
+          ...(idCaja != null ? { cajaId: idCaja } : {}),
           detalles,
         },
         api.crearPedidoPlataforma,
@@ -806,7 +810,7 @@ function PuntoDeVenta() {
       // El stock cambió: el catálogo tiene que reflejarlo.
       productos.recargar();
     },
-    [carritoVenta, intentoPedido, variasSedes, almacenCaja, limpiar, setAvisoPedido, productos],
+    [carritoVenta, intentoPedido, variasSedes, almacenCaja, idCaja, limpiar, setAvisoPedido, productos],
   );
 
   const cobrar = useCallback(

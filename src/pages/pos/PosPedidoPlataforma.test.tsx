@@ -187,6 +187,8 @@ describe("registrar el pedido", () => {
     expect(cuerpo).toMatchObject({
       plataforma: "YANGO",
       codigoExterno: "A-123",
+      // La caja abierta del POS (§10.1): de ahí sale «Ventas del turno».
+      cajaId: 1,
       detalles: [{ productoId: 5, cantidad: 2 }],
     });
     expect(cuerpo.clienteRequestId).toBeTruthy();
