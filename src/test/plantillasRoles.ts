@@ -19,6 +19,8 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "plataformas.ver": "pedidos_yango",
   "plataformas.anular": "pedidos_yango",
   "ventas.ver_precios": null,
+  // Pausar un producto en la sucursal (16-nov): sin feature, en todos los rubros.
+  "productos.pausar": null,
   "caja.operar": "caja",
   "caja.ver_todas": "caja",
   "caja.movimientos": "movimientos_caja",
@@ -130,6 +132,7 @@ export const OTRAS_FEATURES_DE_PERMISO: Record<string, string[]> = {
 export const PLANTILLAS = {
   ADMIN: [
     "ventas.vender",
+    "productos.pausar",
     "ventas.historial",
     "ventas.anular",
     "plataformas.registrar",
@@ -222,6 +225,7 @@ export const PLANTILLAS = {
   ],
   SUPERVISOR: [
     "ventas.vender",
+    "productos.pausar",
     "ventas.historial",
     "ventas.anular",
     "plataformas.registrar",
@@ -302,6 +306,7 @@ export const PLANTILLAS = {
   ],
   CAJERO: [
     "ventas.vender",
+    "productos.pausar",
     "ventas.historial",
     "ventas.anular",
     "plataformas.registrar",
