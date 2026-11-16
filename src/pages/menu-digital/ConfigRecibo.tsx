@@ -7,7 +7,9 @@ import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configur
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
+import { useLocalEnElRecibo } from "../../lib/menuDigital/localEnElRecibo";
 import { usaTickets } from "../../lib/menuDigital/reglasRecibo";
+import { useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { olvidarReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { prepararLogo } from "../../lib/pagina/imagen";
 import { conMayuscula, marcaConsumo, termino } from "../../lib/rubro";
@@ -667,6 +669,12 @@ function VistaPrevia({
   sucursal: LocalDelRecibo | null;
 }) {
   const angosto = r.ancho === 58;
+  // El local, con la misma regla que el papel de la caja (`useLocalEnElRecibo`):
+  // con 2+ sucursales y «Sucursal» apagada, su dirección en la cabecera y la
+  // fila «Sucursal: X», como sale al vender (QA del 16-nov); prendida, arriba
+  // debajo del nombre. Con un solo local y apagada, la vista previa de siempre.
+  const { sede, arriba, fila } = useLocalEnElRecibo(r, sucursal);
+  const rotuloSede = useRotuloSucursal();
   const grupos = [
     { titulo: "EN MESA", lineas: (VENTA_EJEMPLO.detalles ?? []).filter((d) => d.consumo === "MESA") },
     { titulo: "PARA LLEVAR", lineas: (VENTA_EJEMPLO.detalles ?? []).filter((d) => d.consumo !== "MESA") },
@@ -696,14 +704,15 @@ function VistaPrevia({
               className={`papel-letra card mx-auto p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none ${angosto ? "max-w-[250px]" : "max-w-[320px]"}${r.negrita ? " papel-negrita" : ""}`}
               style={estiloLetra(r.tamanoLetra)}
             >
-              {/* Con «Sucursal» prendida, la de quien entra (o la principal),
-                  como saldría en una venta de ese local. El código de barras
-                  no se dibuja con ningún valor: el papel de la web no lo lleva. */}
-              <CabeceraNegocio r={r} logo={logo} nombre={negocio} local={r.sucursal ? sucursal : null} />
+              {/* La sucursal es la de quien entra (o la principal), como
+                  saldría en una venta de ese local. El código de barras no se
+                  dibuja con ningún valor: el papel de la web no lo lleva. */}
+              <CabeceraNegocio r={r} logo={logo} nombre={negocio} sede={sede} local={arriba} />
               {conTickets && <NumeroDelRecibo numero={84} />}
               <dl className="border-t border-dashed border-borde pt-2 text-xs">
                 <Dato etiqueta={conTickets ? "Venta:" : "Ticket:"} valor="V-000009" />
                 <Dato etiqueta="Fecha:" valor={fmtFechaHora(VENTA_EJEMPLO.fecha)} />
+                {fila && <Dato etiqueta={`${rotuloSede}:`} valor={fila.nombre} />}
                 {r.cajero && <Dato etiqueta="Cajero:" valor="Administrador" />}
                 <Dato etiqueta="Pago:" valor="Efectivo" />
               </dl>
@@ -739,6 +748,8 @@ function VistaPrevia({
               venta={VENTA_EJEMPLO}
               numero={84}
               negocio={negocio}
+              // Con 2+ sucursales la comanda de la caja dice de qué local es: acá igual.
+              sede={sede?.nombre}
               minutos={r.minutosEstimados}
               tamano={r.tamanoLetraComanda}
               negrita={r.negrita}

@@ -25,12 +25,25 @@ vi.mock("../../lib/pagina/imagen", async (original) => {
   const real = await original<typeof import("../../lib/pagina/imagen")>();
   return { ...real, prepararLogo, prepararFotoPlato };
 });
-/** Las features del negocio: con los dos extras, salvo en las pruebas de un restaurante sin tickets. */
-const auth = vi.hoisted(() => ({ features: ["menu_digital", "tickets_pedido"] as string[] }));
+/**
+ * Las features del negocio: con los dos extras, salvo en las pruebas de un
+ * restaurante sin tickets. `locales`: cuántas sucursales activas tiene (sin el
+ * dato, un solo local, como una sesión vieja).
+ */
+const auth = vi.hoisted(() => ({
+  features: ["menu_digital", "tickets_pedido"] as string[],
+  locales: undefined as number | undefined,
+}));
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
-    negocio: { id: 7, nombre: "Pollos de prueba", tipoNegocio: "RESTAURANTE", features: auth.features },
+    negocio: {
+      id: 7,
+      nombre: "Pollos de prueba",
+      tipoNegocio: "RESTAURANTE",
+      features: auth.features,
+      sucursalesActivas: auth.locales,
+    },
     rubro: "RESTAURANTE",
     puede: () => true,
     incluye: () => true,
@@ -142,6 +155,7 @@ beforeEach(() => {
   request.mockReset();
   request.mockImplementation((ruta: string) => responder(ruta));
   auth.features = ["menu_digital", "tickets_pedido"];
+  auth.locales = undefined;
 });
 
 describe("Menú digital", () => {
@@ -604,6 +618,60 @@ describe("Ticket y recibo: código de barras, letra gruesa y sucursal (16-nov)",
     expect(screen.getByRole("switch", { name: "Código de barras" })).toHaveAttribute("aria-checked", "false");
     expect(document.getElementById("area-impresion")!.innerHTML).toBe(antes);
     expect(await ultimoGuardado()).toMatchObject({ codigoBarras: false });
+  });
+
+  // La vista previa dibuja lo que sale al vender (QA del 16-nov): con 2+
+  // sucursales y «Sucursal» apagada, el recibo de la caja ya traía la dirección
+  // del local en la cabecera y la fila «Sucursal: X»; la vista previa no.
+  // Misma regla que el papel (`useLocalEnElRecibo`).
+  const dosLocales = () => {
+    auth.features = ["menu_digital", "tickets_pedido", "multi_almacen"];
+    auth.locales = 2;
+  };
+  /** Las filas de datos de la vista previa del recibo, en orden: «Etiqueta valor». */
+  const filas = () =>
+    Array.from(document.querySelectorAll("#area-impresion article dl")[0].children).map(
+      (f) => `${f.children[0].textContent} ${f.children[1].textContent}`,
+    );
+
+  it("apagada con 2+ sucursales: la dirección de la sucursal arriba y la fila «Sucursal: X», como el papel", async () => {
+    dosLocales();
+    conSucursal();
+    await abrir();
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedCalle Norte 45 · Tel. 70000200");
+    expect(filas().slice(0, 3)).toEqual(["Venta: V-000009", expect.stringMatching(/^Fecha: /), "Sucursal: Norte"]);
+    // La comanda también dice de qué local es, como la de la caja.
+    fireEvent.click(screen.getByRole("radio", { name: "Comanda de cocina" }));
+    expect(within(document.querySelector(".comanda-impresa") as HTMLElement).getByText("Norte")).toBeInTheDocument();
+  });
+
+  it("prendida con 2+ sucursales: arriba, debajo del nombre, y la fila no se repite (como hasta hoy)", async () => {
+    dosLocales();
+    conSucursal();
+    await abrir();
+    fireEvent.click(screen.getByRole("switch", { name: "Sucursal" }));
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedNorteCalle Norte 45 · Tel. 70000200");
+    expect(filas().some((f) => f.startsWith("Sucursal:"))).toBe(false);
+  });
+
+  it.each([
+    ["un solo local", undefined],
+    // Con 2 sucursales activas pero sin el plan de varias, es de un local:
+    // el mismo criterio que el papel de la caja.
+    ["dos sucursales sin el plan de varias", 2],
+  ])("apagada con %s: la vista previa de siempre, sin fila ni dirección de la sucursal", async (_caso, locales) => {
+    auth.locales = locales as number | undefined;
+    conSucursal();
+    await abrir();
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedAv. Principal #123 · Tel. 700 00000");
+    expect(filas().some((f) => f.startsWith("Sucursal:"))).toBe(false);
+  });
+
+  it("apagada con 2+ sucursales y un backend que no manda la sucursal: la vista previa de siempre", async () => {
+    dosLocales();
+    await abrir();
+    expect(cabecera().textContent).toBe("Pollos de pruebaBrasa y broastedAv. Principal #123 · Tel. 700 00000");
+    expect(filas().some((f) => f.startsWith("Sucursal:"))).toBe(false);
   });
 });
 

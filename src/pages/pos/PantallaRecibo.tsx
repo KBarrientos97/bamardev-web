@@ -18,7 +18,8 @@ import { imprimeReciboSinNumero } from "../../lib/menuDigital/reglasRecibo";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "./PiezasRecibo";
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
-import { useLocalDelPapel, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
+import { useRotuloSucursal } from "../../lib/useHayVariasSucursales";
+import { useLocalEnElRecibo } from "../../lib/menuDigital/localEnElRecibo";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import { recordatorioDeLaPlata, type PlataDelCambio } from "./cambioDeVenta";
 
@@ -62,9 +63,6 @@ export default function PantallaRecibo({
   reimpresion?: boolean;
 }) {
   const { negocio, incluye, rubro } = useAuth();
-  // El local de la venta, sólo con 2+ sucursales (PLAN-SUCURSAL-TOTAL §1): con
-  // una sola el papel sale exactamente igual que siempre.
-  const sede = useLocalDelPapel(venta.almacen);
   // «Sucursal», o «Sede» en un instituto.
   const rotuloSede = useRotuloSucursal();
   // El diseño del recibo (logo, datos del negocio, QR, pie): en un negocio
@@ -73,6 +71,13 @@ export default function PantallaRecibo({
   // BamarDev del pie va en todos).
   const conf = useReciboNegocio();
   const r = conf?.recibo ?? null;
+  // El local de la venta, con la misma regla que la vista previa de «Ticket y
+  // recibo» (`useLocalEnElRecibo`): `sede` sólo con 2+ sucursales
+  // (PLAN-SUCURSAL-TOTAL §1; con una sola el papel sale exactamente igual que
+  // siempre); `localArriba`, en la cabecera con «Sucursal» prendida (16-nov),
+  // también con un solo local; `sedeEnFila`, la fila «Sucursal: X», que no se
+  // repite si ya va arriba. Sin local en la venta (vieja, o sin internet), nada.
+  const { sede, arriba: localArriba, fila: sedeEnFila } = useLocalEnElRecibo(r, venta.almacen);
 
   /**
    * El ticket que se rasteriza al compartir: se manda la MISMA vista que se
@@ -383,11 +388,6 @@ export default function PantallaRecibo({
     return () => clearTimeout(id);
   }, [conTicket, reciboSinNumero, alCobrar, reimpresion, imprimir]);
   const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
-  // «Sucursal» del diseño (16-nov): el local DE LA VENTA en la cabecera,
-  // también con un solo local. Sin local en la venta (una vieja, o hecha sin
-  // internet), nada: ni renglón vacío ni la palabra. Arriba, la fila
-  // «Sucursal: X» de 2+ sucursales no se repite abajo.
-  const localArriba = r?.sucursal === true && venta.almacen?.nombre?.trim() ? venta.almacen : null;
   // «Letra gruesa» (16-nov): el recibo y la comanda, en pantalla y al imprimir.
   // `codigoBarras` e `impresionDirecta` no se miran acá a propósito: el papel
   // de la web nunca tuvo código de barras, y la impresión es la del navegador;
@@ -439,7 +439,7 @@ export default function PantallaRecibo({
         <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
         {/* El local, sólo con 2+ sucursales: dónde se hizo la venta. Con
             «Sucursal» prendida ya va en la cabecera: no se imprime dos veces. */}
-        {sede && !localArriba && <FilaDato etiqueta={`${rotuloSede}:`} valor={sede.nombre} />}
+        {sedeEnFila && <FilaDato etiqueta={`${rotuloSede}:`} valor={sedeEnFila.nombre} />}
         {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
             mesa ni mesero (visto en QA). El cliente reconoce su cuenta por
             la mesa, y el mesero es a quien se le reclama. */}
