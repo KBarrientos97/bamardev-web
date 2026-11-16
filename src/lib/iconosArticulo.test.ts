@@ -74,7 +74,30 @@ describe("iconosArticulo", () => {
     for (const llave of viejos) {
       expect(iconoPorLlave(llave)?.categoria, llave).toBe("polleria");
     }
-    expect(ICONOS_ARTICULO).toHaveLength(220);
+    expect(ICONOS_ARTICULO).toHaveLength(231);
+  });
+
+  it("los vasos de arroz con leche están al final de Comidas y se encuentran por el alias", () => {
+    // De chico a grande dentro de cada relleno; la condensada no se vende en C.
+    const arrozConLeche = [
+      "arroz_leche_dulce_leche_c", "arroz_leche_dulce_leche_m", "arroz_leche_dulce_leche_l", "arroz_leche_dulce_leche_xl",
+      "arroz_leche_condensada_m", "arroz_leche_condensada_l", "arroz_leche_condensada_xl",
+      "arroz_leche_nutella_c", "arroz_leche_nutella_m", "arroz_leche_nutella_l", "arroz_leche_nutella_xl",
+    ];
+    const comidas = iconosDeCategoria("comidas").map((i) => i.llave);
+    expect(comidas.slice(-12)).toEqual(["croissant", ...arrozConLeche]);
+    for (const llave of arrozConLeche) {
+      expect(iconoPorLlave(llave)?.src, llave).toMatch(/ic_art_.+\.webp/);
+    }
+    // La etiqueta es corta para que el tamaño entre en la grilla; "arroz con
+    // leche" no está en ninguna y aun así tiene que traer los once.
+    expect(buscarIconos("arroz con leche").map((i) => i.llave)).toEqual(arrozConLeche);
+    expect(buscarIconos("nutella").map((i) => i.llave)).toEqual(arrozConLeche.slice(7));
+    expect(buscarIconos("leche condensada").map((i) => i.llave)).toEqual(arrozConLeche.slice(4, 7));
+    // El dibujo de pollería sigue primero: lo usan productos que ya existen.
+    expect(buscarIconos("arroz").map((i) => i.llave)).toEqual(["arroz", ...arrozConLeche]);
+    // Un ícono sin alias se busca igual que antes.
+    expect(buscarIconos("croissant").map((i) => i.llave)).toEqual(["croissant"]);
   });
 
   it("los platos en foto están en Pollería y el buscador los trae junto a los dibujos", () => {

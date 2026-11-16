@@ -83,6 +83,12 @@ export interface IconoArticulo {
   src: string;
   etiqueta: string;
   categoria: ClaveCategoriaIcono;
+  /**
+   * Palabras por las que el buscador también encuentra el ícono aunque no
+   * estén en la etiqueta. No se muestran en ningún lado: sirven cuando la
+   * etiqueta tiene que ser corta para que entre en la grilla.
+   */
+  alias?: string;
 }
 
 /**
@@ -123,6 +129,16 @@ export interface IconoArticulo {
  * platos redondos se recortan con una elipse ajustada al canto, más lo que
  * asoma (papas, salchichas); el recorte a pulso del fondo les dejaba muescas
  * en el canto que en la TV se veían como un serrucho.
+ *
+ * Arroz con leche en foto (11): los vasos por relleno (dulce de leche, leche
+ * condensada, Nutella) y por tamaño (C, M, L, XL; la condensada no se vende en
+ * C), a 512 px como las demás fotos y recortados del fondo. La etiqueta es
+ * corta ("Nutella XL") porque en la grilla del selector va en dos renglones de
+ * unos 11 caracteres en el celular: con "Arroz con leche con Nutella XL" el
+ * tamaño quedaba cortado y los vasos de un relleno no se distinguían. Lo que se
+ * saca de la etiqueta va en `alias`, para que buscar "arroz con leche" los siga
+ * trayendo. Nutella M y Nutella XL usan el mismo recorte a propósito: las dos
+ * fotos de origen son el mismo vaso a otra escala, no es un error de copia.
  */
 const DATOS: Omit<IconoArticulo, "src">[] = [
   // Pollería
@@ -175,6 +191,19 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "copa_helado", etiqueta: "Copa de helado", categoria: "comidas" },
   { llave: "donas", etiqueta: "Donas", categoria: "comidas" },
   { llave: "croissant", etiqueta: "Croissant", categoria: "comidas" },
+  // Arroz con leche, por relleno y tamaño: cada vaso es un producto con su
+  // precio. La etiqueta corta entra en la grilla; el alias lo hace buscable.
+  { llave: "arroz_leche_dulce_leche_c", etiqueta: "Dulce de leche C", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_dulce_leche_m", etiqueta: "Dulce de leche M", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_dulce_leche_l", etiqueta: "Dulce de leche L", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_dulce_leche_xl", etiqueta: "Dulce de leche XL", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_condensada_m", etiqueta: "Condensada M", categoria: "comidas", alias: "arroz con leche condensada" },
+  { llave: "arroz_leche_condensada_l", etiqueta: "Condensada L", categoria: "comidas", alias: "arroz con leche condensada" },
+  { llave: "arroz_leche_condensada_xl", etiqueta: "Condensada XL", categoria: "comidas", alias: "arroz con leche condensada" },
+  { llave: "arroz_leche_nutella_c", etiqueta: "Nutella C", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_m", etiqueta: "Nutella M", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_l", etiqueta: "Nutella L", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_xl", etiqueta: "Nutella XL", categoria: "comidas", alias: "arroz con leche" },
   // Bebidas
   { llave: "gaseosa", etiqueta: "Gaseosa", categoria: "bebidas" },
   { llave: "jugo_caja", etiqueta: "Jugo en caja", categoria: "bebidas" },
@@ -396,14 +425,17 @@ export function iconosDeCategoria(clave: ClaveCategoriaIcono): IconoArticulo[] {
 }
 
 /**
- * Los íconos cuya etiqueta contiene el texto, sin distinguir mayúsculas ni
- * tildes ("cafe" encuentra "Café"). Texto vacío → ninguno: el selector
- * muestra entonces las secciones.
+ * Los íconos cuya etiqueta o alias contiene el texto, sin distinguir
+ * mayúsculas ni tildes ("cafe" encuentra "Café"). Etiqueta y alias se miran
+ * por separado: el texto no puede empezar en uno y seguir en el otro. Texto
+ * vacío → ninguno: el selector muestra entonces las secciones.
  */
 export function buscarIconos(texto: string): IconoArticulo[] {
   const aguja = normalizar(texto.trim());
   if (!aguja) return [];
-  return ICONOS_ARTICULO.filter((i) => normalizar(i.etiqueta).includes(aguja));
+  return ICONOS_ARTICULO.filter(
+    (i) => normalizar(i.etiqueta).includes(aguja) || (!!i.alias && normalizar(i.alias).includes(aguja)),
+  );
 }
 
 /**
