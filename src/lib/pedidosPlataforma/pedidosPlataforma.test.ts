@@ -148,6 +148,18 @@ describe("registrar un pedido: con señal, sin señal y en la web normal", () =>
     expect(new Date(rec[0].cuerpo.fechaCliente).getTime()).not.toBeNaN();
   });
 
+  it("la caja abierta viaja en vivo y también queda en la cola (§10.1)", async () => {
+    const vivo = vi.fn().mockResolvedValue(pedidoDelServidor);
+    fijarVentaSinInternet(true);
+    await registrarPedidoOEncolar(cuerpo({ cajaId: 41 }), vivo, precios);
+    expect(vivo.mock.calls[0][0]).toMatchObject({ cajaId: 41 });
+
+    const c = cuerpo({ cajaId: 41 });
+    await registrarPedidoOEncolar(c, vi.fn().mockRejectedValue(sinRed()), precios);
+    const rec = await leerEncolados();
+    expect(rec[0].cuerpo.cajaId).toBe(41);
+  });
+
   it("después de un corte, el siguiente pedido va directo a la cola (3 min)", async () => {
     fijarVentaSinInternet(true);
     const enviar = vi.fn().mockRejectedValue(sinRed());

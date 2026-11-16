@@ -32,7 +32,12 @@ import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajeP
 import { useHayVariasSucursales, useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { conCopia } from "../../lib/offline/copias";
 import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
-import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import { porSubir, useColaOffline, usePedidosEncolados } from "../../lib/offline/cola";
+import { plataformasQueRegistra, puedeAnularPedidos } from "../../lib/pedidosPlataforma/acceso";
+import type { PedidoPlataforma } from "../../lib/pedidosPlataforma/tipos";
+import DialogoAnularPedido from "../reportes/vistas/DialogoAnularPedido";
+import { DetallePedidoDelTurno, FilaPedidoDelTurno, PedidosSinSubir } from "./PedidosDelTurno";
+import { mezclarPorHora, pendientesDelTurno, resumenDePedidos, textoResumenPedidos } from "./mezclaDelTurno";
 import { motivosRevision, requiereRevision } from "../../lib/revisionVenta";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import VentasSinSubir from "../../components/offline/VentasSinSubir";
@@ -58,7 +63,7 @@ export default function PantallaHistorial({
    */
   onModificar?: (venta: Venta) => void;
 }) {
-  const { puede, negocio } = useAuth();
+  const { puede, negocio, usuario } = useAuth();
   const hayVariasSucursales = useHayVariasSucursales();
   // Con copia en la app del iPhone (Android: `historial_ventas_{caja}`): sin
   // señal se ve lo que ya había subido, más lo cobrado sin internet.
@@ -76,6 +81,36 @@ export default function PantallaHistorial({
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [entregando, setEntregando] = useState<Venta | null>(null);
 
+  // Los pedidos de Yango y PedidosYa de esta caja (PLAN-PEDIDOS-PLATAFORMA
+  // §10.2): se mezclan con las ventas pero NO son ventas y no suman a nada.
+  // La ruta pide `plataformas.registrar` y una de las dos features (si no, 403):
+  // sin eso el historial es el de siempre y ni se llama. Falla en silencio, como
+  // los créditos: un backend viejo (404) o un corte no tienen por qué esconder
+  // las ventas. Con copia, como las ventas, para verlos sin señal.
+  const conPlataformas = plataformasQueRegistra(negocio?.features, usuario).length > 0;
+  const pedidosPl = useApi(
+    () =>
+      conPlataformas
+        ? conCopia(`historial-plataformas:${caja.id}`, () => api.pedidosPlataformaDeLaCaja(caja.id)).catch(() => ({
+            pedidos: [] as PedidoPlataforma[],
+          }))
+        : Promise.resolve({ pedidos: [] as PedidoPlataforma[] }),
+    [conPlataformas, caja.id],
+  );
+  const pedidosDelTurno = conPlataformas ? (pedidosPl.datos?.pedidos ?? []) : [];
+  const colaPedidos = usePedidosEncolados();
+  const pendientesPl = conPlataformas ? pendientesDelTurno(colaPedidos, caja.id, pedidosDelTurno) : [];
+  // El resumen aparte (sin los anulados): lo de la cola cuenta como lo del servidor.
+  const resumenPl = textoResumenPedidos(
+    resumenDePedidos([
+      ...pedidosDelTurno,
+      ...pendientesPl.map((p) => ({ plataforma: p.resumen.plataforma, total: p.resumen.total, anuladoEn: null })),
+    ]),
+    fmtMoney,
+  );
+  const [pedidoAbierto, setPedidoAbierto] = useState<PedidoPlataforma | null>(null);
+  const [anulandoPedido, setAnulandoPedido] = useState<PedidoPlataforma | null>(null);
+
   const todas = ventas.datos ?? [];
   /**
    * Las marcadas "a revisar" (C1). El filtro es local, sobre la misma lista del
@@ -87,6 +122,8 @@ export default function PantallaHistorial({
   const [soloRevisar, setSoloRevisar] = useState(false);
   const filtrando = soloRevisar && aRevisar > 0;
   const lista = filtrando ? todas.filter(requiereRevision) : todas;
+  // Con el filtro de «a revisar» los pedidos no se mezclan: ninguno es una venta a revisar.
+  const filas = mezclarPorHora(lista, filtrando ? [] : pedidosDelTurno);
   // Las cobradas sin internet también son del turno: cuentan en el resumen,
   // como en Android (las rechazadas no, porque no van a llegar).
   const sinSubir = porSubir(useColaOffline()).map((v) => v.recibo);
@@ -154,6 +191,8 @@ export default function PantallaHistorial({
               {fmtMoney(totalVendido)}
               {esPositivo(fiado) && <span className="text-warning-text"> · {fmtMoney(fiado)} fiado</span>}
             </p>
+            {/* Aparte y sin sumar: no son ventas ni entraron a la caja. */}
+            {resumenPl && <p className="text-xs text-texto-3">{resumenPl} · no se cobran</p>}
           </div>
         </div>
         <Boton variante="ghost" icono="lock" onClick={onCierre}>
@@ -179,6 +218,7 @@ export default function PantallaHistorial({
           {/* Lo cobrado sin internet va primero, como en la app: es lo que
               todavía no está en el servidor (ni en el arqueo). */}
           <VentasSinSubir onVerTicket={(v) => onVerComprobante(v)} />
+          <PedidosSinSubir pedidos={pendientesPl} />
 
           {porEntregar.length > 0 && (
             <section>
@@ -270,7 +310,7 @@ export default function PantallaHistorial({
           <ErrorMsg>{ventas.error}</ErrorMsg>
           {ventas.cargando ? (
             <Cargando />
-          ) : lista.length === 0 ? (
+          ) : filas.length === 0 ? (
             <div className="card">
               <Vacio
                 icono="cart"
@@ -282,7 +322,17 @@ export default function PantallaHistorial({
             // En la PC, una sola tarjeta con renglones: diez tarjetas sueltas a
             // lo ancho se leen como el celular estirado.
             <ul className="space-y-2 lg:card lg:space-y-0 lg:divide-y lg:divide-borde-soft lg:overflow-hidden">
-              {lista.map((v) => {
+              {filas.map((fila) => {
+                if (fila.tipo === "pedido") {
+                  return (
+                    <FilaPedidoDelTurno
+                      key={`pl-${fila.pedido.id}`}
+                      p={fila.pedido}
+                      onAbrir={() => setPedidoAbierto(fila.pedido)}
+                    />
+                  );
+                }
+                const v = fila.venta;
                 // Sin cobrar todavía: no cuenta en lo vendido (ver arriba), y la
                 // fila tiene que decir por qué en vez del tilde verde de cobrada.
                 const sinCobrar = v.estado === "APROBADO" && porCobrarAlEntregar(v);
@@ -362,6 +412,28 @@ export default function PantallaHistorial({
           )}
         </section>
       </div>
+
+      {pedidoAbierto && !anulandoPedido && (
+        <DetallePedidoDelTurno
+          p={pedidoAbierto}
+          sucursal={hayVariasSucursales}
+          onClose={() => setPedidoAbierto(null)}
+          onAnular={puedeAnularPedidos(usuario) ? () => setAnulandoPedido(pedidoAbierto) : undefined}
+        />
+      )}
+      {anulandoPedido && (
+        <DialogoAnularPedido
+          pedido={anulandoPedido}
+          pideUsuario={!tienePermiso(usuario, "autorizar.pin")}
+          onClose={() => setAnulandoPedido(null)}
+          onAnulado={() => {
+            setAnulandoPedido(null);
+            setPedidoAbierto(null);
+            // Tachado ya, sin esperar: el pedido sigue en la lista pero anulado.
+            pedidosPl.recargar();
+          }}
+        />
+      )}
 
       {entregando && (
         <EntregarRecoger

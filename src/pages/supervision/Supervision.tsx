@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Desplegable } from "../../components/Desplegable";
 import { Icon, type NombreIcono } from "../../components/Icon";
+import MarcaPlataforma from "../../components/MarcaPlataforma";
 import { Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { esPositivo } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
@@ -13,6 +14,7 @@ import type { Actividad, CajaSupervision, SupervisionRestaurante, VentaSupervisi
 import { Bloques, type Pestana } from "./Bloques";
 import {
   COLOR_DIFERENCIA,
+  bloquePlataformas,
   columnasDeKpis,
   cuando,
   duracion,
@@ -127,6 +129,8 @@ export default function Supervision() {
   const tituloActividad = sinCaja ? "Actividad de hoy" : "Actividad del turno";
   const enElTurno = sinCaja ? "hoy" : "en el turno";
   const conCaja = cajeros.filter((c) => c.abierta).length;
+  // Yango y PedidosYa: con `null`, ausente (backend viejo) o sin plataformas, no se dibuja nada.
+  const plat = bloquePlataformas(datos);
 
   /** Abre una venta de la actividad en el bloque de Ventas (si todavía está en la lista). */
   const abrirVenta = (id: number) => {
@@ -138,7 +142,17 @@ export default function Supervision() {
     // Después de pintar: el renglón puede estar en otra pestaña y todavía no existir.
     setTimeout(() => document.getElementById(`venta-${id}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }), 0);
   };
+  /** Lleva al pedido de Yango o PedidosYa de un renglón de la actividad, en su pestaña. */
+  const abrirPedidoPlataforma = (id: number) => {
+    setPestana("plataformas");
+    setVentaAbierta(null);
+    setTimeout(() => document.getElementById(`pedido-plataforma-${id}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }), 0);
+  };
   const verDe = (a: Actividad): (() => void) | undefined => {
+    const pedidoPl = a.ref?.pedidoPlataforma;
+    if (pedidoPl != null) {
+      return datos.plataformas?.pedidos.some((p) => p.id === pedidoPl) ? () => abrirPedidoPlataforma(pedidoPl) : undefined;
+    }
     const venta = a.ref?.venta;
     if (venta == null || !datos.ventas.some((v) => v.id === venta)) return undefined;
     return () => abrirVenta(venta);
@@ -219,6 +233,27 @@ export default function Supervision() {
                 <p className="mt-2 text-[12px] text-texto-3">Una venta pagada con dos medios cuenta en los dos: la suma de cobros no es la de ventas.</p>
               )}
             </Tarjeta>
+
+            {/* Aparte de lo vendido: no se cobra en caja, no suma a «Vendido» ni a los medios de pago. */}
+            {plat && (
+              <Tarjeta icono="moto" titulo={`Yango / PedidosYa ${sinCaja ? "de hoy" : "del turno"}`} extra="No se cobra en caja" cuerpo="px-4 py-3 sm:px-5">
+                <dl className={`grid gap-2 text-[12px] ${columnas(plat.resumen.length)}`}>
+                  {plat.resumen.map((r) => (
+                    <div key={r.plataforma} className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">
+                      <dt>
+                        <MarcaPlataforma plataforma={r.plataforma} />
+                      </dt>
+                      <dd className="mt-1 break-words text-[14px] font-bold leading-tight tabular-nums text-texto">{fmtMoney(r.total)}</dd>
+                      <dd className="break-words text-[11px] leading-tight text-texto-3">
+                        {plural(r.cantidad, "pedido", "pedidos")}
+                        {r.anulados > 0 && <> · {plural(r.anulados, "anulado", "anulados")}</>}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-2 text-[12px] text-texto-3">La app de delivery le cobra al cliente y le paga al local después: esto no está en lo vendido ni en el cobrado por medio.</p>
+              </Tarjeta>
+            )}
 
             {cajeros.length > 0 && (
               <Tarjeta icono="users" titulo="Cajeros" extra={`${conCaja} con caja abierta de ${cajeros.length}`} cuerpo="p-0">
@@ -719,7 +754,7 @@ function RenglonActividad({ a, ahora, onVer }: { a: Actividad; ahora: number; on
         <button
           type="button"
           onClick={onVer}
-          aria-label={`Ver la venta: ${a.quien} · ${a.texto}`}
+          aria-label={`Ver ${a.ref?.pedidoPlataforma != null ? "el pedido" : "la venta"}: ${a.quien} · ${a.texto}`}
           className="flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:px-5"
         >
           {cuerpo}

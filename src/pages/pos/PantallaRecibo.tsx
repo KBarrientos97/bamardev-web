@@ -8,7 +8,6 @@ import { aCentavos, esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
 import { numeroTicket } from "../../lib/tickets/llamado";
-import { nombreServicio } from "../../lib/pedidosWeb/entrega";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
@@ -462,7 +461,7 @@ export default function PantallaRecibo({
             )}
             {venta.repartidor?.nombre && <FilaDato etiqueta="Repartidor:" valor={venta.repartidor.nombre} />}
             {!venta.repartidor && venta.entregaExterna && venta.tipoPedido === "DELIVERY" && (
-              <FilaDato etiqueta="Envío:" valor={`Envío por ${nombreServicio(venta.entregaExterna)}`} />
+              <FilaDato etiqueta="Envío:" valor="Delivery" />
             )}
             {venta.notaPedido && <FilaDato etiqueta="Nota:" valor={venta.notaPedido} />}
           </>
@@ -500,7 +499,7 @@ export default function PantallaRecibo({
           como un cobro de menos. */}
       {esPositivo(envio) && (
         <p className="mt-1 text-right text-xs text-texto-3">
-          {!venta.repartidor && venta.entregaExterna ? `El envío va por ${nombreServicio(venta.entregaExterna)}.` : "El envío lo cobra el repartidor."}
+          {!venta.repartidor && venta.entregaExterna ? "El envío va aparte." : "El envío lo cobra el repartidor."}
         </p>
       )}
 

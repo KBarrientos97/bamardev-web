@@ -1,5 +1,5 @@
 import { formatoPrecio } from "../pagina/catalogo";
-import { esExterno, nombreServicio } from "./entrega";
+import { esExterno } from "./entrega";
 import type { EstadoSeguimiento, Seguimiento } from "./tipos";
 
 /** Los estados terminales del seguimiento: dejan de refrescarse. */
@@ -48,7 +48,7 @@ export function fraseDe(
       }
       return s.tipo === "DELIVERY" ? "¡Aceptado! Lo estamos preparando." : "¡Aceptado! Lo estamos preparando: pasá a retirarlo en un rato.";
     case "EN_CAMINO":
-      return externo ? `Tu pedido va en camino con ${nombreServicio(s.entrega?.servicio)}` : "Tu pedido va en camino.";
+      return "Tu pedido va en camino.";
     case "ENTREGADO":
       return "Entregado. ¡Que lo disfrutes!";
     // Rechazado, vencido y cancelado dicen lo mismo acá: la tarjeta de abajo

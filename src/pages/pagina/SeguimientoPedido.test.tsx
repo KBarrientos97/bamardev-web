@@ -489,6 +489,8 @@ describe("el seguimiento con un servicio externo (PLAN-DELIVERY-EXTERNO §2.5)",
     expect(screen.getByText("Envío").nextElementSibling).toHaveTextContent("A confirmar");
     expect(screen.getByText("Total (sin el envío)").nextElementSibling).toHaveTextContent("Bs 100");
     expect(screen.getByText(/Se paga por QR antes de que salga/)).toBeInTheDocument();
+    expect(screen.getByText(/con el envío ya sumado/)).toBeInTheDocument();
+    expect(screen.queryByText(/Yango/)).not.toBeInTheDocument();
     // Sin moto ni mapa, y ni una palabra de «te llevan de cambio».
     expect(screen.queryByTestId("mapa")).not.toBeInTheDocument();
     expect(screen.queryByText(/de cambio/)).not.toBeInTheDocument();
@@ -520,26 +522,27 @@ describe("el seguimiento con un servicio externo (PLAN-DELIVERY-EXTERNO §2.5)",
     expect(screen.getByText("Pagaste con QR.")).toBeInTheDocument();
   });
 
-  it("En camino: va con el servicio, con botón para seguirlo si hay enlace, y sin moto", async () => {
+  it("En camino: sin nombrar el servicio, con botón para seguirlo si hay enlace, y sin moto", async () => {
     servidor({ ...EXTERNO, estado: "EN_CAMINO", envio: 9, total: 109, salioEn: "2026-11-14T15:00:00.000Z", enlaceSeguimiento: "https://yango.com/track/abc" });
     await montar();
-    expect((await screen.findAllByText("Tu pedido va en camino con Yango")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "Seguirlo en Yango" })).toHaveAttribute("href", "https://yango.com/track/abc");
+    expect((await screen.findAllByText("Tu pedido va en camino")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Seguir mi pedido" })).toHaveAttribute("href", "https://yango.com/track/abc");
     expect(screen.queryByTestId("mapa")).not.toBeInTheDocument();
     expect(screen.queryByText(/ubicación del repartidor/)).not.toBeInTheDocument();
   });
 
-  it("En camino con otro servicio y sin enlace: nombra al servicio y no hay botón", async () => {
+  it("En camino con otro servicio y sin enlace: no lo nombra y no hay botón", async () => {
     servidor({ ...EXTERNO, entrega: { modo: "EXTERNO", servicio: "PedidosYa" }, estado: "EN_CAMINO", envio: 9, total: 109, salioEn: "2026-11-14T15:00:00.000Z" });
     await montar();
-    expect((await screen.findAllByText("Tu pedido va en camino con PedidosYa")).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: /Seguirlo en/ })).not.toBeInTheDocument();
+    expect((await screen.findAllByText("Tu pedido va en camino")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/PedidosYa|Yango/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Seguir mi pedido/ })).not.toBeInTheDocument();
   });
 
   it("con repartidores propios nada de esto aparece (el pedido de siempre)", async () => {
     servidor({ estado: "EN_CAMINO", entrega: { modo: "PROPIO", servicio: null }, salioEn: "2026-11-13T20:10:00.000Z", repartidor: { nombre: "Pedro" } });
     await montar();
     expect(await screen.findByTestId("mapa")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Seguirlo en/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Seguir mi pedido/ })).not.toBeInTheDocument();
   });
 });

@@ -1054,6 +1054,13 @@ export const api = {
   /** Los de hoy (hora de Bolivia) que cargó este usuario, del más nuevo al más viejo. */
   pedidosPlataformaDelTurno: () =>
     request<{ pedidos: PedidoPlataforma[] }>("/pedidos-plataforma/del-turno"),
+  /**
+   * Los pedidos de una caja, anulados incluidos, del más nuevo al más viejo
+   * (§10.2): se mezclan con las ventas en «Ventas del turno». Pide
+   * `plataformas.registrar` y una feature de plataforma prendida (si no, 403).
+   */
+  pedidosPlataformaDeLaCaja: (cajaId: number) =>
+    request<{ pedidos: PedidoPlataforma[] }>(`/pedidos-plataforma/de-la-caja/${cajaId}`),
   getRepartidores: () => request<Repartidor[]>("/ventas/repartidores"),
   /** Un REPARTIDOR ve sólo los suyos; cajera y encargado ven todos. */
   getPedidosPendientes: () => request<Venta[]>("/ventas/pendientes"),

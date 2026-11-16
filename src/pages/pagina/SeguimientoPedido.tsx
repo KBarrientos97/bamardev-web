@@ -8,7 +8,7 @@ import { alDescansar, precargarMapa } from "../../lib/mapa";
 import { ErrorPedido, apiPedidoPublico } from "../../lib/pedidosWeb/apiPublica";
 import { olvidarPedidoEnCurso } from "../../lib/pedidosWeb/cliente";
 import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
-import { esExterno, nombreServicio, urlDeQr } from "../../lib/pedidosWeb/entrega";
+import { esExterno, urlDeQr } from "../../lib/pedidosWeb/entrega";
 import { esFinal, fraseDe, pasoActual, pasosDe } from "../../lib/pedidosWeb/estado";
 import type { Seguimiento } from "../../lib/pedidosWeb/tipos";
 import { FAMILIA, Trazo } from "./PedidoPagina";
@@ -195,9 +195,8 @@ export default function SeguimientoPedido() {
   const whatsapp = seg.whatsappLocal;
   const puedeCancelar = seg.estado === "RECIBIDO";
   const enCamino = seg.estado === "EN_CAMINO";
-  // Delivery por un servicio externo (Yango): se paga por QR antes de que salga y no hay moto (§2.5).
+  // Delivery por un servicio externo: al cliente no se le nombra el servicio (16-nov), sólo delivery. Se paga por QR antes de que salga y no hay moto (§2.5).
   const externo = seg.tipo === "DELIVERY" && esExterno(seg.entrega?.modo);
-  const servicio = nombreServicio(seg.entrega?.servicio);
   const pagoPendiente = externo && seg.estado === "ACEPTADO" && seg.pago?.pendiente ? seg.pago : null;
   // Hasta que la caja acepta, el envío es «a confirmar»: el total todavía no lo lleva.
   const envioAConfirmar = externo && seg.estado === "RECIBIDO";
@@ -297,14 +296,14 @@ export default function SeguimientoPedido() {
               />
             )}
             <p style={{ margin: 0, fontSize: 13, color: "#4B5563" }}>
-              Escaneá el QR con la app de tu banco y pagá el monto exacto. Cuando el local vea tu pago, tu pedido sale con {servicio}.
+              Escaneá el QR con la app de tu banco y pagá el monto exacto. Cuando el local vea tu pago, tu pedido sale.
             </p>
           </section>
         )}
 
         {enCamino && externo && (
           <section aria-label="Tu pedido va en camino" style={{ background: "#ffffff", border: "1px solid #E5E7EB", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Tu pedido va en camino con {servicio}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Tu pedido va en camino</p>
             {seg.enlaceSeguimiento && (
               <a
                 href={seg.enlaceSeguimiento}
@@ -312,7 +311,7 @@ export default function SeguimientoPedido() {
                 rel="noopener noreferrer"
                 style={{ borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none", padding: "0 14px", textAlign: "center" }}
               >
-                Seguirlo en {servicio}
+                Seguir mi pedido
               </a>
             )}
           </section>
@@ -378,7 +377,7 @@ export default function SeguimientoPedido() {
                     : "Pagaste en efectivo."
                   : externo
                     ? envioAConfirmar
-                      ? `Se paga por QR antes de que salga: cuando el local lo acepte, te mostramos el QR con el envío por ${servicio} ya sumado.`
+                      ? `Se paga por QR antes de que salga: cuando el local lo acepte, te mostramos el QR con el envío ya sumado.`
                       : "Se paga por QR antes de que salga."
                     : seg.formaPago === "QR"
                       ? `Pagás con QR al ${seg.tipo === "DELIVERY" ? "recibir" : "retirar"}.`

@@ -46,6 +46,12 @@ export interface PedidoPlataforma {
   fecha: string;
   almacen: { id: number; nombre: string };
   usuario: { id: number; nombre: string } | null;
+  /**
+   * La caja abierta del POS al tomarlo (PLAN-PEDIDOS-PLATAFORMA §10.1). `null`
+   * en los de antes de esa migración o si la caja no era de esa sucursal;
+   * ausente si el backend es viejo. De ahí sale «Ventas del turno».
+   */
+  cajaId?: number | null;
   total: number;
   /** Alguna línea dejó el stock en negativo: salió sin respaldo en el inventario. */
   sinStock: boolean;
@@ -60,6 +66,13 @@ export interface PedidoPlataformaInput {
   plataforma: Plataforma;
   codigoExterno?: string;
   almacenId?: number;
+  /**
+   * La caja abierta del POS, como en una venta (§10.1): el historial del turno
+   * lo muestra ahí. El backend la acepta sólo si es del negocio y de la misma
+   * sucursal; si no, la guarda en null sin rechazar el pedido. La cola también
+   * la manda, con la que estaba abierta al tomarlo.
+   */
+  cajaId?: number;
   /** Cuándo se tomó en el equipo (sólo lo manda la cola sin señal). */
   fechaCliente?: string;
   /** Viene de la cola: el servidor respeta el precio del equipo. */

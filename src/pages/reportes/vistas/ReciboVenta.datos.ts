@@ -1,6 +1,5 @@
 import { aCentavos } from "../../../lib/dinero";
 import { fmtFechaHora, fmtMoney } from "../../../lib/format";
-import { nombreServicio } from "../../../lib/pedidosWeb/entrega";
 import { tienePermiso } from "../../../lib/permisos";
 import { Telefono } from "../../../lib/telefono";
 import type { PagoVenta, Venta } from "../../../types";
@@ -118,7 +117,7 @@ export function datosPedido(
   if (domicilio) poner("Dirección", v.clienteDireccion);
   if (domicilio) {
     // Un delivery por un servicio externo no tiene repartidor propio: se dice quién lo lleva.
-    if (!v.repartidor && v.entregaExterna) poner("Envío", `Por ${nombreServicio(v.entregaExterna)}`);
+    if (!v.repartidor && v.entregaExterna) poner("Envío", "Delivery");
     else poner("Repartidor", v.repartidor?.nombre);
   }
   if (v.estadoEntrega === "ENTREGADO") poner("Entregado", v.entregadoEn ? fmtFechaHora(v.entregadoEn) : "Sí");

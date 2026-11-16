@@ -15,7 +15,7 @@ import {
 } from "../../lib/pedidosWeb/cliente";
 import { evaluarSucursales, motivoSinCobertura, type Evaluada } from "../../lib/pedidosWeb/sucursal";
 import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
-import { entregaDe, esExterno, nombreServicio, ofreceDelivery } from "../../lib/pedidosWeb/entrega";
+import { entregaDe, esExterno, ofreceDelivery } from "../../lib/pedidosWeb/entrega";
 import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
 import type { CuerpoPedido, FormaPagoWeb, InfoPedidos, TipoPedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { siteKeyTurnstile } from "../../lib/turnstile";
@@ -238,8 +238,8 @@ export default function PanelSistema({
   const tiposOfrecidos = info?.tipos ?? [];
   const aceptaDelivery = tiposOfrecidos.includes("DELIVERY") && conDelivery.length > 0;
   // Con un servicio externo el envío no se calcula por km: lo confirma el local al aceptar (§2.8).
+  // Al cliente no se le nombra el servicio (16-nov): para él es «delivery».
   const entrega = entregaDe(info);
-  const servicio = nombreServicio(entrega.servicio);
   const aceptaRecoger = tiposOfrecidos.includes("RECOGER");
   // Si el negocio hace sólo una de las dos, esa queda fija.
   const tipoReal: TipoPedidoWeb = tipo === "DELIVERY" && !aceptaDelivery && aceptaRecoger ? "RECOGER" : tipo === "RECOGER" && !aceptaRecoger && aceptaDelivery ? "DELIVERY" : tipo;
@@ -259,7 +259,7 @@ export default function PanelSistema({
         else if (!pin) detalle = "Marcá tu ubicación";
         else if (!e.delivery) detalle = "No hace delivery";
         else if (!e.dentroDeZona) detalle = "Queda lejos de tu dirección";
-        else if (externoEntrega) detalle = `Envío por ${servicio}`;
+        else if (externoEntrega) detalle = "Delivery";
         else detalle = `${e.distanciaKm?.toLocaleString("es-BO")} km · envío ≈ ${formatoPrecio(e.envio)}`;
         return { e, puede: e.atiende, detalle };
       });
@@ -267,7 +267,7 @@ export default function PanelSistema({
     return [...evaluadas]
       .sort((a, b) => a.indice - b.indice)
       .map((e) => ({ e, puede: e.sucursal.abierta, detalle: e.sucursal.abierta ? (e.sucursal.direccion ?? "") : TEXTO_SIN_PEDIDOS_AHORA }));
-  }, [evaluadas, tipoReal, pin, externoEntrega, servicio]);
+  }, [evaluadas, tipoReal, pin, externoEntrega]);
 
   let elegida: number | null = null;
   if (tipoReal === "DELIVERY") {
@@ -872,7 +872,7 @@ export default function PanelSistema({
               <div style={{ display: "flex", gap: 6 }}>
                 <dt>Envío</dt>
                 <dd style={{ margin: 0 }}>
-                  {externoEntrega ? `Te lo confirma el local (envío por ${servicio})` : envio != null ? `≈ ${formatoPrecio(envio)}` : "Marcá tu ubicación"}
+                  {externoEntrega ? "Te lo confirma el local" : envio != null ? `≈ ${formatoPrecio(envio)}` : "Marcá tu ubicación"}
                 </dd>
               </div>
             )}
