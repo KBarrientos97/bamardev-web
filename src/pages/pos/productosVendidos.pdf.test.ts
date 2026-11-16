@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReporteCierreProductos } from "../../types";
 import { documentoProductosVendidos } from "./productosVendidos";
 
@@ -90,5 +90,151 @@ describe("lo fiado en el PDF (11-nov)", () => {
     const doc = documentoProductosVendidos(TURNO, { subtitulo: "Turno #12" });
     expect(doc.resumen).toBe("3 productos · 12 unidades");
     expect(doc.notas).toHaveLength(1);
+  });
+});
+
+describe("los pedidos de Yango y PedidosYa en el PDF (§11)", () => {
+  const CON_PLATAFORMAS: ReporteCierreProductos = {
+    ...TURNO,
+    plataformas: [
+      {
+        plataforma: "YANGO",
+        pedidos: 3,
+        unidades: 5,
+        total: 85,
+        categorias: [
+          {
+            nombre: "POLLOS",
+            unidades: 5,
+            total: 85,
+            items: [
+              { productoId: 1, nombre: "Brasa medio", cantidad: 1, precio: 56, total: 56 },
+              { productoId: 4, nombre: "Brasa cuarto", cantidad: 4, precio: 7.25, total: 29, variosPrecios: true },
+            ],
+          },
+        ],
+      },
+      {
+        plataforma: "PEDIDOS_YA",
+        pedidos: 1,
+        unidades: 1,
+        total: 15,
+        categorias: [{ nombre: "BEBIDAS", unidades: 1, total: 15, items: [{ productoId: 3, nombre: "Coca Cola 1.5L", cantidad: 1, precio: 15, total: 15 }] }],
+      },
+    ],
+  };
+
+  it("cada plataforma va después del TOTAL VENDIDO, con su encabezado, la leyenda y sus categorías", () => {
+    const doc = documentoProductosVendidos(CON_PLATAFORMAS, { subtitulo: "Turno #12" });
+    const despues = doc.despuesDelTotal ?? [];
+    expect(despues.map((g) => g.titulo)).toEqual([
+      "Yango · 3 pedidos · 5 unidades · Bs 85,00",
+      "POLLOS",
+      "PedidosYa · 1 pedido · 1 unidad · Bs 15,00",
+      "BEBIDAS",
+    ]);
+    expect(despues[0].aclaracion).toBe("No se cobra en caja");
+    expect(despues[2].aclaracion).toBe("No se cobra en caja");
+    // El producto con el mismo formato que las ventas.
+    expect(despues[1].filas[0].detalle).toBe("Bs 56,00 c/u");
+    expect(despues[1].filas[1].detalle).toBe("varios precios");
+    expect(despues[1].filas[0].celdas.map((c) => c.texto)).toEqual(["1", "Bs 56,00"]);
+  });
+
+  it("no toca el total vendido ni las categorías de las ventas", () => {
+    const sin = documentoProductosVendidos(TURNO, { subtitulo: "Turno #12" });
+    const con = documentoProductosVendidos(CON_PLATAFORMAS, { subtitulo: "Turno #12" });
+    expect(con.total).toEqual(sin.total);
+    expect(con.total.celdas[1].texto).toBe("Bs 334,00");
+    expect(con.grupos).toEqual(sin.grupos);
+  });
+
+  it("el resumen suma la línea corta de pedidos y las notas dicen que van aparte", () => {
+    const doc = documentoProductosVendidos(CON_PLATAFORMAS, { subtitulo: "Turno #12" });
+    expect(doc.resumen).toBe("3 productos · 12 unidades · + Yango 3 · PedidosYa 1 pedidos");
+    expect(doc.notas?.[0]).toMatch(/no se cobran en caja y no suman al total vendido/);
+  });
+
+  it("sin el campo, o vacío, el PDF de siempre", () => {
+    const base = documentoProductosVendidos(TURNO, { subtitulo: "Turno #12" });
+    const vacio = documentoProductosVendidos({ ...TURNO, plataformas: [] }, { subtitulo: "Turno #12" });
+    expect(base.despuesDelTotal).toEqual([]);
+    expect(vacio).toEqual(base);
+    expect(base.resumen).toBe("3 productos · 12 unidades");
+    expect(base.notas).toHaveLength(1);
+  });
+});
+
+describe("por forma de pago en el PDF (§11 bis)", () => {
+  const cat = (nombre: string, unidades: number, total: number): ReporteCierreProductos["categorias"][number] => ({
+    nombre,
+    unidades,
+    total,
+    items: [{ productoId: 1, nombre: `${nombre} x`, cantidad: unidades, precio: total / unidades, total }],
+  });
+  const POR_MEDIO: ReporteCierreProductos = {
+    unidades: 10,
+    total: 170,
+    lineas: 2,
+    categorias: [cat("M", 7, 140), cat("Topping", 3, 30)],
+    porMedio: [
+      { medio: "EFECTIVO", nombre: "Efectivo", ventas: 4, unidades: 7, total: 140, categorias: [cat("M", 7, 140)] },
+      { medio: "FIADO", nombre: "Al fiado", ventas: 1, unidades: 3, total: 30, categorias: [cat("Topping", 3, 30)] },
+    ],
+    plataformas: [{ plataforma: "YANGO", pedidos: 1, unidades: 2, total: 40, categorias: [cat("M", 2, 40)] }],
+    todo: { unidades: 12, categorias: [{ nombre: "M", unidades: 9 }, { nombre: "Topping", unidades: 3 }] },
+  };
+
+  it("por defecto: secciones por medio, las plataformas y al final el total en caja y las unidades por categoría", () => {
+    const doc = documentoProductosVendidos(POR_MEDIO, { subtitulo: "Turno #12" });
+    expect(doc.grupos.map((g) => g.titulo)).toEqual([
+      "Efectivo · 4 ventas · 7 unidades · Bs 140,00",
+      "M",
+      "Al fiado · 1 venta · 3 unidades · Bs 30,00",
+      "Topping",
+      "Yango · 1 pedido · 2 unidades · Bs 40,00",
+      "M",
+    ]);
+    expect(doc.grupos[2].aclaracion).toBe("No entró al cajón");
+    expect(doc.total.etiqueta).toBe("TOTAL VENDIDO EN CAJA");
+    expect(doc.total.celdas[1].texto).toBe("Bs 170,00");
+    expect(doc.despuesDelTotal).toHaveLength(1);
+    expect(doc.despuesDelTotal?.[0].titulo).toBe("Total de unidades: 12");
+    expect(doc.despuesDelTotal?.[0].aclaracion).toBe("M 9 · Topping 3");
+  });
+
+  it("«Todo junto»: la lista de siempre, con las plataformas después del total", () => {
+    const doc = documentoProductosVendidos(POR_MEDIO, { subtitulo: "Turno #12", vista: "todo" });
+    expect(doc.grupos.map((g) => g.titulo)).toEqual(["M", "Topping"]);
+    expect(doc.total.etiqueta).toBe("TOTAL VENDIDO");
+    expect(doc.despuesDelTotal?.[0].titulo).toBe("Yango · 1 pedido · 2 unidades · Bs 40,00");
+  });
+
+  it("sin `porMedio`, el de siempre aunque se pida por medio", () => {
+    const { porMedio: _omitido, ...sinMedio } = POR_MEDIO;
+    const doc = documentoProductosVendidos(sinMedio, { subtitulo: "Turno #12", vista: "medio" });
+    expect(doc.total.etiqueta).toBe("TOTAL VENDIDO");
+    expect(doc.grupos.map((g) => g.titulo)).toEqual(["M", "Topping"]);
+  });
+});
+
+describe("el PDF por forma de pago se dibuja entero", () => {
+  it("arma el archivo con secciones, plataformas y resumen sin romperse", async () => {
+    const { bajarPdf } = await import("../../lib/pdf/tablaPdf");
+    const cat = { nombre: "M", unidades: 2, total: 40, items: [{ productoId: 1, nombre: "Arroz con leche M", cantidad: 2, precio: 20, total: 40 }] };
+    const d: ReporteCierreProductos = {
+      unidades: 2,
+      total: 40,
+      lineas: 1,
+      categorias: [cat],
+      porMedio: [{ medio: "QR", nombre: "QR", ventas: 1, unidades: 2, total: 40, categorias: [cat] }],
+      plataformas: [{ plataforma: "PEDIDOS_YA", pedidos: 1, unidades: 2, total: 40, categorias: [cat] }],
+      todo: { unidades: 4, categorias: [{ nombre: "M", unidades: 4 }] },
+    };
+    const crear = vi.fn(() => "blob:x");
+    vi.stubGlobal("URL", { ...URL, createObjectURL: crear, revokeObjectURL: vi.fn() });
+    await expect(bajarPdf("x.pdf", documentoProductosVendidos(d, { subtitulo: "Turno #1" }), "#0F7B5F")).resolves.toBeDefined();
+    expect(crear).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
