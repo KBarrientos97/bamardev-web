@@ -76,11 +76,13 @@ describe("BUG-pedidos-11 / BUG-cobro-5: Subtotal + Envío = TOTAL", () => {
     expect(screen.getByText("El envío lo cobra el repartidor.")).toBeInTheDocument();
   });
 
-  it("un delivery por un servicio externo dice quién lo lleva, no «lo cobra el repartidor»", () => {
+  it("un delivery por un servicio externo dice «Delivery» (el recibo es del cliente: no nombra el servicio), no «lo cobra el repartidor»", () => {
     dibujar(deliveryCobradoEnCaja({ repartidor: null, entregaExterna: "Yango" }));
     expect(screen.getByText("Envío:")).toBeInTheDocument();
-    expect(screen.getByText("Envío por Yango")).toBeInTheDocument();
-    expect(screen.getByText("El envío va por Yango.")).toBeInTheDocument();
+    // «Pedido: Delivery» y «Envío: Delivery».
+    expect(screen.getAllByText("Delivery")).toHaveLength(2);
+    expect(screen.getByText("El envío va aparte.")).toBeInTheDocument();
+    expect(screen.queryByText(/Yango/)).not.toBeInTheDocument();
     expect(screen.queryByText("El envío lo cobra el repartidor.")).not.toBeInTheDocument();
     expect(screen.queryByText("Repartidor:")).not.toBeInTheDocument();
   });

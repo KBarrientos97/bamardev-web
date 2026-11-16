@@ -108,9 +108,9 @@ describe("las frases del seguimiento con un servicio externo (§2.5)", () => {
     expect(fraseDe({ tipo: "DELIVERY", estado: "ACEPTADO", entrega: externo })).toBe("¡Pago recibido! Lo estamos preparando.");
   });
 
-  it("en camino: nombra al servicio, con Yango por defecto", () => {
-    expect(fraseDe({ tipo: "DELIVERY", estado: "EN_CAMINO", entrega: externo })).toBe("Tu pedido va en camino con Yango");
-    expect(fraseDe({ tipo: "DELIVERY", estado: "EN_CAMINO", entrega: { modo: "EXTERNO", servicio: "PedidosYa" } })).toBe("Tu pedido va en camino con PedidosYa");
+  it("en camino: no nombra al servicio (al cliente le llega «delivery»), ni el por defecto ni otro", () => {
+    expect(fraseDe({ tipo: "DELIVERY", estado: "EN_CAMINO", entrega: externo })).toBe("Tu pedido va en camino.");
+    expect(fraseDe({ tipo: "DELIVERY", estado: "EN_CAMINO", entrega: { modo: "EXTERNO", servicio: "PedidosYa" } })).toBe("Tu pedido va en camino.");
   });
 
   it("con repartidores propios, las frases de siempre", () => {
