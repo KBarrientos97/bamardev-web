@@ -37,7 +37,14 @@ import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
 import { mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
 import ListaProductosVendidos from "./ListaProductosVendidos";
-import { documentoProductosVendidos, textoProductos, textoUnidades } from "./productosVendidos";
+import {
+  documentoProductosVendidos,
+  plataformasDelTurno,
+  textoPedidosDePlataforma,
+  textoProductos,
+  textoUnidades,
+  type VistaProductos,
+} from "./productosVendidos";
 import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
 
 /**
@@ -551,6 +558,10 @@ function BotonProductosVendidos({
           <span className="block text-[12px] font-normal text-texto-3">
             {textoProductos(productos.lineas)} · {textoUnidades(productos.unidades)}
           </span>
+        )}
+        {/* Los pedidos de Yango y PedidosYa, aparte: no están en las unidades de arriba. */}
+        {rubro === "RESTAURANTE" && productos && textoPedidosDePlataforma(productos) && (
+          <span className="block text-[12px] font-normal text-texto-3">{textoPedidosDePlataforma(productos)}</span>
         )}
       </span>
       <Icon name="chevronRight" size={16} />
@@ -1310,6 +1321,8 @@ export function ProductosDelTurno({
   const { negocio } = useAuth();
   const [armando, setArmando] = useState(false);
   const [errorPdf, setErrorPdf] = useState(false);
+  // Por forma de pago o todo junto: el PDF sale como se está mirando (§11 bis).
+  const [vista, setVista] = useState<VistaProductos>("medio");
 
   /**
    * El PDF de lo vendido (6-nov, como la app desde el 5-nov): el CSV se abría
@@ -1327,6 +1340,7 @@ export function ProductosDelTurno({
         documentoProductosVendidos(d, {
           negocio: negocio?.nombre,
           subtitulo: `Turno #${cajaId}${sede ? ` · ${sede}` : ""}`,
+          vista,
         }),
       );
     } catch {
@@ -1343,7 +1357,7 @@ export function ProductosDelTurno({
       subtitulo={`Turno #${cajaId}${sede ? ` · ${sede}` : ""}`}
       onClose={onClose}
       acciones={
-        d && d.lineas > 0 ? (
+        d && (d.lineas > 0 || plataformasDelTurno(d).length > 0) ? (
           <Boton variante="ghost" icono="download" onClick={exportar} disabled={armando}>
             {armando ? "Armando el PDF…" : "Exportar PDF"}
           </Boton>
@@ -1356,12 +1370,12 @@ export function ProductosDelTurno({
         {/* Con error, sólo el error: "no se vendió nada" sería falso. */}
         {cargando ? (
           <Cargando />
-        ) : error ? null : !d || d.lineas === 0 ? (
+        ) : error ? null : !d || (d.lineas === 0 && plataformasDelTurno(d).length === 0) ? (
           <p className="py-6 text-center text-[13px] text-texto-3">
             En este turno todavía no se vendió nada.
           </p>
         ) : (
-          <ListaProductosVendidos d={d} />
+          <ListaProductosVendidos d={d} vista={vista} onVista={setVista} />
         )}
       </div>
     </Modal>

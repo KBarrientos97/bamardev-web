@@ -34,6 +34,20 @@ describe("dónde se corta la hoja del PDF", () => {
     ]);
   });
 
+  it("el encabezado de una sección (una plataforma) baja con su primera categoría y no queda solo al pie", () => {
+    const seccion: Renglon = {
+      tipo: "grupo",
+      alto: 20,
+      grupo: { titulo: "Yango", aclaracion: "No se cobra en caja", celdas: [], filas: [] },
+    };
+    // Entran 4 renglones por hoja: el total cierra la hoja y la sección no puede quedar sola abajo.
+    const hojas = repartirEnHojas([grupo("POLLOS"), fila("a"), fila("b"), total, seccion, grupo("BEBIDAS"), fila("c")], () => 100);
+    expect(hojas.map(nombres)).toEqual([
+      ["#POLLOS", "a", "b", "TOTAL"],
+      ["#Yango", "#BEBIDAS", "c"],
+    ]);
+  });
+
   it("los espacios finos de la hora no llegan al PDF", () => {
     expect(limpio("09:59 p. m.")).toBe("09:59 p. m.");
   });

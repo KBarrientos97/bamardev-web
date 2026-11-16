@@ -1,7 +1,9 @@
 import { aCentavos, esCero } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
-import type { DocumentoPdf } from "../../lib/pdf/tablaPdf";
-import type { FiadoDelTurno, ReporteCierreProductos } from "../../types";
+import type { DocumentoPdf, GrupoPdf } from "../../lib/pdf/tablaPdf";
+import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
+import { NOMBRE_PLATAFORMA } from "../../lib/pedidosPlataforma/tipos";
+import type { FiadoDelTurno, MedioVendido, PlataformaVendida, ReporteCierreProductos } from "../../types";
 
 /**
  * Las cuentas de la lista de lo vendido (`ListaProductosVendidos`) antes de
@@ -149,6 +151,83 @@ export function textoProductos(n: number): string {
   return `${fmtCantidad(n)} ${n === 1 ? "producto" : "productos"}`;
 }
 
+/** "1 pedido", "3 pedidos". */
+export function textoPedidos(n: number): string {
+  const t = fmtCantidad(n);
+  return `${t} ${t === "1" ? "pedido" : "pedidos"}`;
+}
+
+/** Lo que dice cada plataforma bajo su encabezado: no es plata de la caja. */
+export const LEYENDA_PLATAFORMA = "No se cobra en caja";
+
+/**
+ * Las plataformas con pedidos en el turno (PLAN-PEDIDOS-PLATAFORMA §11). El
+ * campo es opcional: contra un backend anterior, o sin pedidos, queda vacío y
+ * la lista se ve igual que siempre.
+ */
+export function plataformasDelTurno(d: Pick<ReporteCierreProductos, "plataformas">): PlataformaVendida[] {
+  return (d.plataformas ?? []).filter((p) => p.pedidos > 0 || p.unidades > 0);
+}
+
+/** «Yango · 3 pedidos · 5 unidades · Bs 85,00»: el encabezado de la sección de una plataforma. */
+export function textoEncabezadoPlataforma(p: PlataformaVendida): string {
+  const nombre = NOMBRE_PLATAFORMA[p.plataforma] ?? p.plataforma;
+  return `${nombre} · ${textoPedidos(p.pedidos)} · ${textoUnidades(p.unidades)} · ${fmtMoney(p.total)}`;
+}
+
+/**
+ * La línea corta del resumen del cierre: «+ Yango 3 · PedidosYa 1 pedidos».
+ * `null` si no hubo pedidos.
+ */
+export function textoPedidosDePlataforma(d: Pick<ReporteCierreProductos, "plataformas">): string | null {
+  const ps = plataformasDelTurno(d);
+  if (ps.length === 0) return null;
+  const partes = ps.map((p) => `${NOMBRE_PLATAFORMA[p.plataforma] ?? p.plataforma} ${fmtCantidad(p.pedidos)}`);
+  return `+ ${partes.join(" · ")} pedidos`;
+}
+
+/** "1 venta", "4 ventas". */
+export function textoVentas(n: number): string {
+  const t = fmtCantidad(n);
+  return `${t} ${t === "1" ? "venta" : "ventas"}`;
+}
+
+/** Las dos vistas de «Productos vendidos» (§11 bis). */
+export type VistaProductos = "medio" | "todo";
+
+/** Lo que dice el aviso bajo el encabezado de lo que se debe. */
+export const LEYENDA_FIADO = "No entró al cajón";
+
+/**
+ * Las secciones por forma de pago, si la lista se puede ver así (§11 bis):
+ * el backend las manda y no hay "Tiempo de mesa" (billar), que se cobra como
+ * un producto más y hoy se muestra aparte, arriba; partido por forma de pago
+ * no tendría dónde ir. Sin esto (un backend anterior) la lista es la de siempre.
+ */
+export function mediosDelTurno(d: Pick<ReporteCierreProductos, "porMedio">): MedioVendido[] {
+  const medios = (d.porMedio ?? []).filter((m) => m.ventas > 0 || m.unidades > 0);
+  const conTiempo = medios.some((m) => m.categorias.some((c) => c.items.some((i) => i.tiempoMesa)));
+  return conTiempo ? [] : medios;
+}
+
+/** «Efectivo · 4 ventas · 7 unidades · Bs 140,00»: el encabezado de la sección de una forma de pago. */
+export function textoEncabezadoMedio(m: MedioVendido): string {
+  return `${m.nombre} · ${textoVentas(m.ventas)} · ${textoUnidades(m.unidades)} · ${fmtMoney(m.total)}`;
+}
+
+/** «Total de unidades: 15». */
+export function textoTotalDeUnidades(n: number): string {
+  return `Total de unidades: ${fmtCantidad(n)}`;
+}
+
+/** «C 3 · M 5 · L 2 · Topping 4»: cuántas salieron de cada categoría, ventas y pedidos juntos. */
+export function textoUnidadesPorCategoria(d: Pick<ReporteCierreProductos, "todo">): string {
+  return (d.todo?.categorias ?? [])
+    .filter((c) => c.unidades > 0)
+    .map((c) => `${c.nombre} ${fmtCantidad(c.unidades)}`)
+    .join(" · ");
+}
+
 /** "1 mesa cobrada", "4 mesas cobradas". */
 export function textoMesasCobradas(n: number): string {
   const t = fmtCantidad(n);
@@ -185,20 +264,20 @@ export function renglonesVisibles(porGrupo: number[], limite?: number): { visibl
  */
 export function documentoProductosVendidos(
   d: ReporteCierreProductos,
-  o: { negocio?: string | null; subtitulo: string },
+  o: { negocio?: string | null; subtitulo: string; vista?: VistaProductos },
 ): DocumentoPdf {
   // El fiado va arriba, junto a cuántos productos (es lo primero que se mira
   // en el celular), y explicado en las notas; cada producto fiado lo dice en
   // su renglón. El TOTAL sigue siendo lo vendido, fiado incluido, como el
   // "Total vendido" del arqueo.
   const fiado = d.fiado && d.fiado.unidades > 0 ? d.fiado : null;
-  return {
-    titulo: "Productos vendidos",
-    negocio: o.negocio,
-    subtitulo: o.subtitulo,
-    resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}${fiado ? ` · ${textoAlFiado(fiado.unidades)}` : ""}`,
-    columnas: ["PRODUCTO", "CANT.", "TOTAL"],
-    grupos: d.categorias.map((c) => ({
+  const plataformas = plataformasDelTurno(d);
+  const medios = mediosDelTurno(d);
+  // Por forma de pago es la vista de entrada cuando el backend la manda (§11 bis).
+  const porMedio = medios.length > 0 && (o.vista ?? "medio") === "medio";
+  const deplataformas = textoPedidosDePlataforma(d);
+  const gruposDe = (categorias: ReporteCierreProductos["categorias"]): GrupoPdf[] =>
+    categorias.map((c) => ({
       titulo: c.nombre,
       celdas: [
         { texto: fmtCantidad(c.unidades), tono: "apagado" },
@@ -213,9 +292,69 @@ export function documentoProductosVendidos(
           celdas: [{ texto: fmtCantidad(i.cantidad) }, { texto: fmtMoney(i.total) }],
         };
       }),
-    })),
+    }));
+  const seccionesDePlataforma: GrupoPdf[] = plataformas.flatMap((p) => [
+    {
+      titulo: textoEncabezadoPlataforma(p),
+      color: colorDePlataforma(p.plataforma),
+      aclaracion: LEYENDA_PLATAFORMA,
+      celdas: [],
+      filas: [],
+    },
+    ...gruposDe(p.categorias),
+  ]);
+  const notaPlataformas = plataformas.length > 0
+    ? ["Los pedidos de Yango y PedidosYa van aparte: los paga la app de delivery, no se cobran en caja y no suman al total vendido."]
+    : [];
+  if (porMedio) {
+    // Una sección por forma de pago, después las plataformas y al final el
+    // resumen: el total en caja y las unidades de todo, por categoría.
+    const unidades = d.todo?.unidades;
+    const desglose = textoUnidadesPorCategoria(d);
+    return {
+      titulo: "Productos vendidos",
+      negocio: o.negocio,
+      subtitulo: o.subtitulo,
+      resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}${fiado ? ` · ${textoAlFiado(fiado.unidades)}` : ""}${deplataformas ? ` · ${deplataformas}` : ""}`,
+      columnas: ["PRODUCTO", "CANT.", "TOTAL"],
+      grupos: [
+        ...medios.flatMap((m) => [
+          {
+            titulo: textoEncabezadoMedio(m),
+            aclaracion: m.medio === "FIADO" ? LEYENDA_FIADO : "",
+            celdas: [],
+            filas: [],
+          } satisfies GrupoPdf,
+          ...gruposDe(m.categorias),
+        ]),
+        ...seccionesDePlataforma,
+      ],
+      total: { etiqueta: "TOTAL VENDIDO EN CAJA", celdas: [{ texto: "" }, { texto: fmtMoney(d.total) }] },
+      despuesDelTotal:
+        unidades != null
+          ? [{ titulo: textoTotalDeUnidades(unidades), aclaracion: desglose, celdas: [], filas: [] }]
+          : [],
+      notas: [
+        ...notaPlataformas,
+        ...(fiado ? [textoFiadoDelTurno(fiado)] : []),
+        ...(d.cobrosDeFiado && !esCero(d.cobrosDeFiado.total) ? [textoCobrosDeFiado(d.cobrosDeFiado.total)] : []),
+        "Es lo vendido en el turno, no lo que hay en el cajón. Un crédito cobrado hoy tampoco suma acá: ese producto ya se vendió antes.",
+      ],
+    };
+  }
+  return {
+    titulo: "Productos vendidos",
+    negocio: o.negocio,
+    subtitulo: o.subtitulo,
+    resumen: `${textoProductos(d.lineas)} · ${textoUnidades(d.unidades)}${fiado ? ` · ${textoAlFiado(fiado.unidades)}` : ""}${deplataformas ? ` · ${deplataformas}` : ""}`,
+    columnas: ["PRODUCTO", "CANT.", "TOTAL"],
+    grupos: gruposDe(d.categorias),
     total: { etiqueta: "TOTAL VENDIDO", celdas: [{ texto: "" }, { texto: fmtMoney(d.total) }] },
+    // Cada plataforma, aparte y después del total (§11): su encabezado y debajo
+    // sus categorías con el mismo formato que las ventas.
+    despuesDelTotal: seccionesDePlataforma,
     notas: [
+      ...notaPlataformas,
       ...(fiado ? [textoFiadoDelTurno(fiado)] : []),
       ...(d.cobrosDeFiado && !esCero(d.cobrosDeFiado.total) ? [textoCobrosDeFiado(d.cobrosDeFiado.total)] : []),
       "Es lo vendido en el turno, no lo que hay en el cajón. Un crédito cobrado hoy tampoco suma acá: ese producto ya se vendió antes.",

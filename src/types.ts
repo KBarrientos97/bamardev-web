@@ -6,6 +6,7 @@ import type { Tema } from "./lib/temas";
 import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
 import type { EntregaPedidosWeb, PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
+import type { Plataforma } from "./lib/pedidosPlataforma/tipos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -2472,41 +2473,86 @@ export interface ReporteMovimientosCaja {
   porMotivo?: { codigo: CodigoMotivoEfectivo; monto: number; cantidad: number }[];
 }
 
+/** Una categoría de «Productos vendidos» con sus productos, igual para las ventas y para cada plataforma. */
+export interface CategoriaVendida {
+  nombre: string;
+  unidades: number;
+  total: number;
+  items: {
+    nombre: string;
+    cantidad: number;
+    precio: number;
+    total: number;
+    /** El artículo (backend del 25-oct): la key de la fila, que el nombre se repite. */
+    productoId?: number;
+    /**
+     * Billar (25-oct): es el "Tiempo de mesa", no un producto que salió. La
+     * pantalla lo muestra aparte y no lo cuenta como unidades.
+     */
+    tiempoMesa?: boolean;
+    /**
+     * Se vendió a más de un precio unitario (backend del 25-oct): `precio` es
+     * el promedio y no se muestra como precio, aunque multiplique justo.
+     */
+    variosPrecios?: boolean;
+    /**
+     * De `cantidad`, lo que salió en ventas al fiado (backend del 11-nov).
+     * El producto está contado entero: salió ese día, la plata entra después.
+     * Sólo viene si es más que cero.
+     */
+    fiado?: number;
+  }[];
+}
+
+/**
+ * Lo que salió en los pedidos de una plataforma de delivery en ese turno
+ * (backend del 16-nov, PLAN-PEDIDOS-PLATAFORMA §11): pedidos vivos, sin los
+ * anulados. Lo paga la app de delivery, no la caja: no suma al total vendido.
+ */
+export interface PlataformaVendida {
+  plataforma: Plataforma;
+  pedidos: number;
+  unidades: number;
+  total: number;
+  categorias: CategoriaVendida[];
+}
+
+/**
+ * Las ventas del turno que se pagaron de una misma forma (backend del 16-nov,
+ * PLAN-PEDIDOS-PLATAFORMA §11 bis). Es una partición exacta de las ventas: la
+ * suma de `unidades` y `total` de todas las secciones da las de la respuesta.
+ */
+export interface MedioVendido {
+  /** Clave estable: 'EFECTIVO' | 'QR' | 'MIXTO' | 'FIADO' | 'OTRO:<nombre>'. */
+  medio: string;
+  /** Lo que se ve: «Efectivo», «QR», «Mixto», «Al fiado» o el nombre de la forma de pago. */
+  nombre: string;
+  ventas: number;
+  unidades: number;
+  total: number;
+  categorias: CategoriaVendida[];
+}
+
 /** Lo que salió del mostrador en un turno, agrupado por categoría. */
 export interface ReporteCierreProductos {
-  categorias: {
-    nombre: string;
-    unidades: number;
-    total: number;
-    items: {
-      nombre: string;
-      cantidad: number;
-      precio: number;
-      total: number;
-      /** El artículo (backend del 25-oct): la key de la fila, que el nombre se repite. */
-      productoId?: number;
-      /**
-       * Billar (25-oct): es el "Tiempo de mesa", no un producto que salió. La
-       * pantalla lo muestra aparte y no lo cuenta como unidades.
-       */
-      tiempoMesa?: boolean;
-      /**
-       * Se vendió a más de un precio unitario (backend del 25-oct): `precio` es
-       * el promedio y no se muestra como precio, aunque multiplique justo.
-       */
-      variosPrecios?: boolean;
-      /**
-       * De `cantidad`, lo que salió en ventas al fiado (backend del 11-nov).
-       * El producto está contado entero: salió ese día, la plata entra después.
-       * Sólo viene si es más que cero.
-       */
-      fiado?: number;
-    }[];
-  }[];
+  categorias: CategoriaVendida[];
   unidades: number;
   total: number;
   /** Productos DISTINTOS, no suma de unidades. */
   lineas: number;
+  /**
+   * Los pedidos de Yango y PedidosYa del turno, aparte (§11). Sólo las
+   * plataformas con algún pedido; ausente o vacío si no hubo. NO está dentro
+   * de `unidades`, `total` ni `lineas`.
+   */
+  plataformas?: PlataformaVendida[];
+  /**
+   * Las mismas ventas repartidas por forma de pago (§11 bis). Ausente en un
+   * backend anterior: la lista queda como siempre.
+   */
+  porMedio?: MedioVendido[];
+  /** Ventas y pedidos de plataforma juntos: cuántas unidades salieron y de qué categoría (§11 bis). */
+  todo?: { unidades: number; categorias: { nombre: string; unidades: number }[] };
   /** Lo que salió al fiado en el turno (backend del 11-nov). Sólo si hubo. */
   fiado?: FiadoDelTurno;
   /**
