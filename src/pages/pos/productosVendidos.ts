@@ -105,10 +105,14 @@ export function precioQueMultiplica(i: Pick<ItemVendido, "cantidad" | "precio" |
   return esCero(i.cantidad * i.precio - i.total) ? i.precio : null;
 }
 
-/** Un producto del backend como renglón. La key es el artículo: dos artículos distintos pueden llamarse igual. */
+/**
+ * Un producto del backend como renglón. La key es el artículo: dos artículos distintos pueden llamarse igual.
+ * Un producto borrado sale con `productoId: 0` (backend del 16-nov): no es un artículo, y dos borrados
+ * repetirían `p0`; sin un id real la key es el nombre con su posición.
+ */
 export function renglonVendido(i: ItemVendido, indice: number): RenglonVendido {
   return {
-    clave: i.productoId != null ? `p${i.productoId}` : `${i.nombre}-${indice}`,
+    clave: i.productoId != null && i.productoId > 0 ? `p${i.productoId}` : `${i.nombre}-${indice}`,
     nombre: i.nombre,
     cantidad: i.cantidad,
     precio: precioQueMultiplica(i),

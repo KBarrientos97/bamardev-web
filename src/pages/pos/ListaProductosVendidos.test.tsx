@@ -411,6 +411,43 @@ describe("por forma de pago y total de unidades (PLAN-PEDIDOS-PLATAFORMA §11 bi
     expect(screen.queryByRole("region", { name: /^Efectivo/ })).toBeNull();
   });
 
+  it("«Sin pago», una forma de pago propia (OTRO:) y dos productos borrados se muestran sin repetir keys", () => {
+    const errores = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sinCat = (id: number, n: string) => item(id, n, 1, 10);
+    const D: ReporteCierreProductos = {
+      unidades: 4,
+      total: 40,
+      lineas: 4,
+      categorias: [{ nombre: "Sin categoría", unidades: 4, total: 40, items: [sinCat(0, "Borrado A"), sinCat(0, "Borrado B")] }],
+      porMedio: [
+        {
+          medio: "SIN_PAGO",
+          nombre: "Sin pago",
+          ventas: 1,
+          unidades: 2,
+          total: 20,
+          categorias: [{ nombre: "Sin categoría", unidades: 2, total: 20, items: [sinCat(0, "Borrado A"), sinCat(0, "Borrado B")] }],
+        },
+        {
+          medio: "OTRO:Tarjeta",
+          nombre: "Tarjeta",
+          ventas: 2,
+          unidades: 2,
+          total: 20,
+          categorias: [{ nombre: "Sin categoría", unidades: 2, total: 20, items: [sinCat(0, "Borrado C"), sinCat(0, "Borrado D")] }],
+        },
+      ],
+      todo: { unidades: 4, total: 40, categorias: [{ nombre: "Sin categoría", unidades: 4 }] },
+    };
+    render(<ListaProductosVendidos d={D} />);
+    expect(screen.getByRole("region", { name: "Sin pago · 1 venta · 2 unidades · Bs 20,00" })).toHaveTextContent("Borrado B");
+    expect(screen.getByRole("region", { name: "Tarjeta · 2 ventas · 2 unidades · Bs 20,00" })).toHaveTextContent("Borrado D");
+    expect(screen.getByText("Total de unidades: 4")).toBeInTheDocument();
+    // React avisa por consola de las keys repetidas.
+    expect(errores.mock.calls.some((c) => String(c[0]).includes("same key"))).toBe(false);
+    errores.mockRestore();
+  });
+
   it("con tiempo de mesa (billar) no se parte por forma de pago", () => {
     const BILLAR_MEDIO: ReporteCierreProductos = {
       ...POR_MEDIO,
