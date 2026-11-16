@@ -2552,7 +2552,7 @@ export interface ReporteCierreProductos {
    */
   porMedio?: MedioVendido[];
   /** Ventas y pedidos de plataforma juntos: cuántas unidades salieron y de qué categoría (§11 bis). */
-  todo?: { unidades: number; categorias: { nombre: string; unidades: number }[] };
+  todo?: { unidades: number; total?: number; categorias: { nombre: string; unidades: number }[] };
   /** Lo que salió al fiado en el turno (backend del 11-nov). Sólo si hubo. */
   fiado?: FiadoDelTurno;
   /**
