@@ -142,7 +142,17 @@ export default function Supervision() {
     // Después de pintar: el renglón puede estar en otra pestaña y todavía no existir.
     setTimeout(() => document.getElementById(`venta-${id}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }), 0);
   };
+  /** Lleva al pedido de Yango o PedidosYa de un renglón de la actividad, en su pestaña. */
+  const abrirPedidoPlataforma = (id: number) => {
+    setPestana("plataformas");
+    setVentaAbierta(null);
+    setTimeout(() => document.getElementById(`pedido-plataforma-${id}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }), 0);
+  };
   const verDe = (a: Actividad): (() => void) | undefined => {
+    const pedidoPl = a.ref?.pedidoPlataforma;
+    if (pedidoPl != null) {
+      return datos.plataformas?.pedidos.some((p) => p.id === pedidoPl) ? () => abrirPedidoPlataforma(pedidoPl) : undefined;
+    }
     const venta = a.ref?.venta;
     if (venta == null || !datos.ventas.some((v) => v.id === venta)) return undefined;
     return () => abrirVenta(venta);
@@ -744,7 +754,7 @@ function RenglonActividad({ a, ahora, onVer }: { a: Actividad; ahora: number; on
         <button
           type="button"
           onClick={onVer}
-          aria-label={`Ver la venta: ${a.quien} · ${a.texto}`}
+          aria-label={`Ver ${a.ref?.pedidoPlataforma != null ? "el pedido" : "la venta"}: ${a.quien} · ${a.texto}`}
           className="flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:px-5"
         >
           {cuerpo}

@@ -486,6 +486,7 @@ describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLAT
         quien: "Rosa Quispe",
         texto: "Registró un pedido de Yango N° A-123 · Bs 65,00",
         codigo: "PEDIDO_PLATAFORMA",
+        ref: { pedidoPlataforma: 31 },
       },
       ...r.actividad,
     ],
@@ -531,6 +532,14 @@ describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLAT
     const renglon = screen.getByText(/Registró un pedido de Yango N° A-123/).closest("li")!;
     expect(renglon.querySelector("svg")).not.toBeNull();
     expect(iconoDeActividad("PEDIDO_PLATAFORMA")).toBe("moto");
+  });
+
+  it("tocar el renglón de un pedido de plataforma abre la pestaña de Yango / PedidosYa", async () => {
+    ver.mockImplementation(async () => conActividad(respuesta()));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Ver el pedido: Rosa Quispe · Registró un pedido de Yango/ }));
+    expect(screen.getByRole("button", { name: /Yango \/ PedidosYa/ })).toHaveAttribute("aria-pressed", "true");
+    expect(bloques().querySelector("#pedido-plataforma-31")).not.toBeNull();
   });
 
   it("con `plataformas: null` no se muestra nada nuevo", async () => {

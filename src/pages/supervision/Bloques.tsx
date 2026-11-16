@@ -303,7 +303,7 @@ function FilaPedidoPlataforma({ p, ahora }: { p: PedidoPlataformaSupervision; ah
   const anulado = p.anulado != null;
   const cual = p.codigoExterno ? `N° ${p.codigoExterno}` : `Pedido #${p.id}`;
   return (
-    <li className="px-4 py-3 sm:px-5">
+    <li id={`pedido-plataforma-${p.id}`} className="px-4 py-3 sm:px-5">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-snug">

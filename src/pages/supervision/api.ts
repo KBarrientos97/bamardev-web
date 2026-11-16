@@ -203,7 +203,7 @@ export interface Actividad {
   /** CAJA_ABIERTA, CAJA_CERRADA, VENTA, CREDITO, ANULACION, EFECTIVO, PEDIDO o PEDIDO_PLATAFORMA: la pantalla le pone ícono y color. */
   codigo: string;
   /** De qué es el renglón: la venta o la caja. */
-  ref?: { sesion?: number; venta?: number; caja?: number };
+  ref?: { sesion?: number; venta?: number; caja?: number; pedidoPlataforma?: number };
   /**
    * Quedó afuera del tope de renglones y está sólo porque es de la caja o del
    * efectivo: antes de él, la lista no está completa.
