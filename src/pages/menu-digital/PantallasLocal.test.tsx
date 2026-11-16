@@ -596,7 +596,7 @@ describe("Ticket y recibo: código de barras, letra gruesa y sucursal (16-nov)",
     expect(interruptor).toHaveAttribute("aria-checked", "false");
     expect(
       screen.getByText(
-        "En las terminales de venta con impresora propia, el recibo sale solo al cobrar, sin la vista previa de Android. En otros equipos no cambia nada.",
+        "En las terminales de venta con impresora propia, el recibo sale directo, sin la vista previa de Android. En otros equipos no cambia nada.",
       ),
     ).toBeInTheDocument();
     // En el mismo bloque que «Recibo del cliente» (qué se imprime al cobrar).

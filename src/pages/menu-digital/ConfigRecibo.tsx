@@ -329,7 +329,7 @@ function AjustesDelRecibo({
               porque el diseño es uno solo y el dueño lo prende desde la PC. */}
           <SiNo
             etiqueta="Imprimir directo en la terminal"
-            detalle="En las terminales de venta con impresora propia, el recibo sale solo al cobrar, sin la vista previa de Android. En otros equipos no cambia nada."
+            detalle="En las terminales de venta con impresora propia, el recibo sale directo, sin la vista previa de Android. En otros equipos no cambia nada."
             activo={r.impresionDirecta}
             onCambiar={(v) => cambiar({ impresionDirecta: v })}
           />
