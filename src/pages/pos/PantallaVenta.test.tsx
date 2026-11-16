@@ -242,6 +242,16 @@ describe("el carrito de bamardev-restaurant no cambia", () => {
     // El renglón del carrito es el <p>; el <h3> es la tarjeta de la grilla.
     expect(screen.getByText("1/4 Pollo", { selector: "p" }).textContent).toBe("1/4 Pollo");
   });
+
+  it("el nombre de la tarjeta reparte sus renglones parejo, sin cambiar cuántos entran (16-nov)", async () => {
+    // «Leche condensada M» dejaba la M sola abajo; `text-balance` la baja con
+    // la palabra de antes. Sigue con su tope de tres renglones.
+    sesion.rubro = "RESTAURANTE";
+    await montar([med({ id: 7, nombre: "Leche condensada M", manejaLote: false })]);
+    const nombre = screen.getByText("Leche condensada M", { selector: "h3" });
+    expect(nombre).toHaveClass("text-balance");
+    expect(nombre).toHaveClass("line-clamp-3");
+  });
 });
 
 describe("QA PER-07b: el profesional de cada línea (belleza con agenda)", () => {

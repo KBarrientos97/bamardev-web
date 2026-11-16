@@ -122,4 +122,13 @@ describe("Configuración: la lista del restaurante", () => {
     // Sin «…»: el texto no se corta, baja de renglón.
     expect(recibo.innerHTML).not.toContain("truncate");
   });
+
+  it("con el teclado, el foco del navegador, como los botones de la web (QA del 16-nov)", () => {
+    // El anillo verde claro propio casi no se veía: la tarjeta no apaga el
+    // contorno de foco ni lo reemplaza.
+    abrir();
+    for (const tarjeta of within(screen.getByRole("list")).getAllByRole("link")) {
+      expect(tarjeta.className).not.toMatch(/outline-none|focus-visible:ring/);
+    }
+  });
 });

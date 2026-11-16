@@ -28,10 +28,13 @@ export default function Configuracion() {
         {opciones.map((o) => (
           <li key={o.a}>
             {/* Toda la tarjeta es el enlace: en una terminal con pantalla
-                chica, la flecha sola era un blanco muy chico (como la app). */}
+                chica, la flecha sola era un blanco muy chico (como la app).
+                Con el foco de teclado del navegador, el mismo de los botones
+                de la web (`Boton`): el anillo verde claro casi no se veía (QA
+                del 16-nov). */}
             <Link
               to={o.a}
-              className="card flex min-h-16 items-center gap-3 p-4 outline-none transition-colors hover:border-primary-200 hover:bg-primary-50/40 focus-visible:ring-2 focus-visible:ring-primary-100"
+              className="card flex min-h-16 items-center gap-3 p-4 transition-colors hover:border-primary-200 hover:bg-primary-50/40"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
                 <Icon name={o.icono} size={20} />

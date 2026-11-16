@@ -99,6 +99,15 @@ describe("QR de cobro: pantalla", () => {
     expect(ultimasProps().soloLectura).toBe(false);
   });
 
+  it("la fecha y la hora de quién lo puso no se parten: «a. m.» no queda sola abajo (QA del 16-nov)", async () => {
+    await montar();
+    const linea = screen.getByText(/^Lo puso admin el /);
+    const fecha = linea.textContent!.replace(/^Lo puso admin el /, "");
+    // Todo con espacios duros: el renglón sólo se puede cortar antes de la fecha.
+    expect(fecha).toMatch(/^\d{2}\/\d{2}\/\d{4}\u00A0\d{2}:\d{2}/);
+    expect(fecha).not.toMatch(/[ \t]/);
+  });
+
   it("un backend anterior (sin los campos nuevos) deja la pantalla como siempre", async () => {
     est.modo = "organizacion";
     est.respuesta = () => info();

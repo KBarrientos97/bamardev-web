@@ -33,6 +33,10 @@ import { useAuth } from "../store/AuthContext";
  * una (casilla de abajo). Con un solo local, o para quien es de un local, esa
  * casilla y el selector no existen: la pantalla queda como siempre.
  */
+
+/** Un texto que no se parte al final del renglón: sus espacios, duros. */
+const sinCortes = (texto: string) => texto.replace(/\s/g, "\u00A0");
+
 export default function QrDeCobro() {
   const { usuario, rubro, vocabulario } = useAuth();
   const suc = useSucursales();
@@ -139,8 +143,10 @@ export default function QrDeCobro() {
       {d?.imagen && d.actualizadoEn && (
         <p className="flex items-center gap-1.5 px-1 text-[13px] text-texto-3">
           <Icon name="clock" size={15} />
-          {/* Sin punto final: la hora ya termina en "p. m." */}
-          Lo puso {d.actualizadoPor ?? "alguien con permiso"} el {fmtFechaHora(d.actualizadoEn)}
+          {/* Sin punto final: la hora ya termina en "p. m.". La fecha y la
+              hora van pegadas (espacios duros): a 390 px «a. m.» quedaba sola
+              en el renglón de abajo (QA del 16-nov). */}
+          Lo puso {d.actualizadoPor ?? "alguien con permiso"} el {sinCortes(fmtFechaHora(d.actualizadoEn))}
         </p>
       )}
 

@@ -69,6 +69,19 @@ describe("Configuración › Sucursales", () => {
     expect(guardar()).toBeDisabled();
   });
 
+  it.each(["PELUQUERIA", "RESTAURANTE", "FARMACIA", "MINIMARKET", "BILLAR"])(
+    "%s: «Horario de atención» sale una vez por sucursal, no dos seguidas (QA del 16-nov)",
+    async (rubro) => {
+      sesion.rubro = rubro;
+      vi.mocked(apiPagina.fichasSucursal).mockResolvedValue([ficha(), ficha({ id: 11, nombre: "Norte", esPrincipal: false })]);
+      await montar();
+      for (const nombre of ["Centro", "Norte"]) {
+        const f = screen.getByRole("region", { name: `Ficha de ${nombre}` });
+        expect(within(f).getAllByText("Horario de atención"), nombre).toHaveLength(1);
+      }
+    },
+  );
+
   it("guarda sólo lo que cambió, al toque", async () => {
     vi.mocked(apiPagina.guardarFichaSucursal).mockResolvedValue(ficha({ telefono: "33445566" }));
     await montar();

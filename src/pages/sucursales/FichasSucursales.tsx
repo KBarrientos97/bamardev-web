@@ -144,8 +144,9 @@ function TarjetaFicha({ ficha, onGuardada }: { ficha: FichaSucursal; onGuardada:
         onCambio={setUbicacion}
         hint="El pin en el mapa de tu página y el destino de «Cómo llegar»."
       />
+      {/* Sin rótulo propio: `EditorHorario` ya trae «Horario de atención», y
+          con éste salía dos veces seguido (QA del 16-nov). */}
       <div>
-        <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Horario de atención</span>
         <EditorHorario nombre={ficha.nombre} valor={horario} c={COLOR} onCambio={setHorario} />
       </div>
       <div className="flex justify-end">

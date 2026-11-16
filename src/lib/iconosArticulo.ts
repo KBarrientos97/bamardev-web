@@ -193,17 +193,23 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "croissant", etiqueta: "Croissant", categoria: "comidas" },
   // Arroz con leche, por relleno y tamaño: cada vaso es un producto con su
   // precio. La etiqueta corta entra en la grilla; el alias lo hace buscable.
-  { llave: "arroz_leche_dulce_leche_c", etiqueta: "Dulce de leche C", categoria: "comidas", alias: "arroz con leche" },
-  { llave: "arroz_leche_dulce_leche_m", etiqueta: "Dulce de leche M", categoria: "comidas", alias: "arroz con leche" },
-  { llave: "arroz_leche_dulce_leche_l", etiqueta: "Dulce de leche L", categoria: "comidas", alias: "arroz con leche" },
-  { llave: "arroz_leche_dulce_leche_xl", etiqueta: "Dulce de leche XL", categoria: "comidas", alias: "arroz con leche" },
+  // Con un espacio duro (\u00A0) antes del tamaño en Dulce de leche y Nutella
+  // (QA del 16-nov): en la celda del selector la letra quedaba sola en el
+  // segundo renglón («Dulce de leche / C»); así baja con la palabra de antes
+  // («Dulce de / leche C»). En Condensada no: «Condensada XL» pegado no entra
+  // en la celda de 390 px y el `line-clamp` lo cortaría. El buscador trata el
+  // espacio duro como uno común (ver `buscarIconos`).
+  { llave: "arroz_leche_dulce_leche_c", etiqueta: "Dulce de leche\u00A0C", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_dulce_leche_m", etiqueta: "Dulce de leche\u00A0M", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_dulce_leche_l", etiqueta: "Dulce de leche\u00A0L", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_dulce_leche_xl", etiqueta: "Dulce de leche\u00A0XL", categoria: "comidas", alias: "arroz con leche" },
   { llave: "arroz_leche_condensada_m", etiqueta: "Condensada M", categoria: "comidas", alias: "arroz con leche condensada" },
   { llave: "arroz_leche_condensada_l", etiqueta: "Condensada L", categoria: "comidas", alias: "arroz con leche condensada" },
   { llave: "arroz_leche_condensada_xl", etiqueta: "Condensada XL", categoria: "comidas", alias: "arroz con leche condensada" },
-  { llave: "arroz_leche_nutella_c", etiqueta: "Nutella C", categoria: "comidas", alias: "arroz con leche" },
-  { llave: "arroz_leche_nutella_m", etiqueta: "Nutella M", categoria: "comidas", alias: "arroz con leche" },
-  { llave: "arroz_leche_nutella_l", etiqueta: "Nutella L", categoria: "comidas", alias: "arroz con leche" },
-  { llave: "arroz_leche_nutella_xl", etiqueta: "Nutella XL", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_c", etiqueta: "Nutella\u00A0C", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_m", etiqueta: "Nutella\u00A0M", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_l", etiqueta: "Nutella\u00A0L", categoria: "comidas", alias: "arroz con leche" },
+  { llave: "arroz_leche_nutella_xl", etiqueta: "Nutella\u00A0XL", categoria: "comidas", alias: "arroz con leche" },
   // Bebidas
   { llave: "gaseosa", etiqueta: "Gaseosa", categoria: "bebidas" },
   { llave: "jugo_caja", etiqueta: "Jugo en caja", categoria: "bebidas" },
@@ -429,12 +435,17 @@ export function iconosDeCategoria(clave: ClaveCategoriaIcono): IconoArticulo[] {
  * mayúsculas ni tildes ("cafe" encuentra "Café"). Etiqueta y alias se miran
  * por separado: el texto no puede empezar en uno y seguir en el otro. Texto
  * vacío → ninguno: el selector muestra entonces las secciones.
+ *
+ * El espacio duro de algunas etiquetas («Nutella\u00A0C», para que el tamaño
+ * no quede solo en la grilla) cuenta como un espacio común: "nutella c"
+ * encuentra el vaso chico.
  */
 export function buscarIconos(texto: string): IconoArticulo[] {
-  const aguja = normalizar(texto.trim());
+  const comoTexto = (s: string) => normalizar(s.replace(/\u00A0/g, " "));
+  const aguja = comoTexto(texto.trim());
   if (!aguja) return [];
   return ICONOS_ARTICULO.filter(
-    (i) => normalizar(i.etiqueta).includes(aguja) || (!!i.alias && normalizar(i.alias).includes(aguja)),
+    (i) => comoTexto(i.etiqueta).includes(aguja) || (!!i.alias && comoTexto(i.alias).includes(aguja)),
   );
 }
 

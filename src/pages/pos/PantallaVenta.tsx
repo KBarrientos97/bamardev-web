@@ -462,8 +462,12 @@ function TarjetaVenta({
           </div>
           {/* Tres renglones y no dos: en la compu (4 columnas) «Arroz con leche
               con dulce de leche – Mediano» quedaba «…con dulce de leche –…» y
-              la cajera no distinguía el tamaño, sólo por el precio (13-nov). */}
-          <h3 className="mt-2 line-clamp-3 text-[13px] font-bold leading-snug text-texto">
+              la cajera no distinguía el tamaño, sólo por el precio (13-nov).
+              Con `text-balance` (16-nov) los renglones se reparten parejo: la
+              letra del tamaño ya no queda sola abajo («Leche condensada / M»
+              pasa a «Leche / condensada M»). No suma renglones ni cambia el
+              alto; donde el navegador no lo sabe hacer, queda como antes. */}
+          <h3 className="mt-2 line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto">
             {p.nombre}
           </h3>
           <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
