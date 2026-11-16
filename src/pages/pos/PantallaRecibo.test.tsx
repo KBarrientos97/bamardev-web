@@ -24,7 +24,7 @@ vi.mock("../../store/AuthContext", async () => {
   const { puede } = await import("../../lib/permisos");
   return {
     useAuth: () => ({
-      negocio: { nombre: "Negocio de prueba", sucursalesActivas: sesion.locales },
+      negocio: { nombre: "Negocio de prueba", sucursalesActivas: sesion.locales, features: sesion.features },
       usuario: { sucursalId: null },
       rubro: sesion.rubro,
       incluye: (c: Parameters<typeof puede>[1]) =>
@@ -1024,6 +1024,110 @@ describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
       vi.advanceTimersByTime(1000);
     });
     expect(impresos).toEqual([undefined]);
+  });
+});
+
+describe("imprimir solo al cobrar sin tickets: sin número no hay comanda (15-nov)", () => {
+  // «Ticket y recibo» es de base en el restaurante desde el 15-nov. El que no
+  // usa tickets no tiene número ni comanda: lo que prendió en «Imprimir solo
+  // al cobrar» es el recibo del cliente, y antes nunca salía (se esperaba un
+  // número que no iba a llegar). Con tickets queda como estaba.
+  let impresos: string[];
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["pos", "caja", "recibo_pdf"];
+    vi.useFakeTimers();
+    impresos = [];
+    vi.spyOn(window, "print").mockImplementation(() => {
+      impresos.push(document.getElementById("area-impresion")?.tagName ?? "nada");
+    });
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const alCobrar = (recibo: boolean, comanda: boolean, juntos: boolean) => {
+    disenoRecibo.valor = {
+      recibo: { ...RECIBO_DE_FABRICA, alCobrar: { recibo, comanda, juntos } },
+      logo: null,
+      configurado: true,
+    };
+  };
+  const esperar = () =>
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+  it("el restaurante sin tickets imprime el recibo aunque la venta no tenga número", () => {
+    alCobrar(true, false, true);
+    dibujar(venta());
+    esperar();
+    // Una sola impresión, del único papel que hay: el recibo.
+    expect(impresos).toEqual(["ARTICLE"]);
+  });
+
+  it("con el recibo y la comanda prendidos (de cuando tenía tickets) sale sólo el recibo, una vez", () => {
+    alCobrar(true, true, false);
+    dibujar(venta());
+    esperar();
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual(["ARTICLE"]);
+  });
+
+  it("si lo único prendido es la comanda, no imprime nada", () => {
+    alCobrar(false, true, true);
+    dibujar(venta());
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+
+  it("si la cajera imprime a mano antes de que llegue el diseño, la impresión sola no se repite", () => {
+    // La primera venta del día: el diseño todavía no llegó y aprieta
+    // «Imprimir»; cuando llega (dentro de los 4 s), no sale otro recibo.
+    const pantalla = dibujar(venta());
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir" }));
+    expect(impresos).toEqual(["ARTICLE"]);
+    alCobrar(true, false, true);
+    pantalla.rerender(<PantallaRecibo venta={venta()} onNuevaVenta={() => {}} onHistorial={() => {}} />);
+    esperar();
+    expect(impresos).toEqual(["ARTICLE"]);
+  });
+
+  it("reabierto desde el historial no imprime solo", () => {
+    alCobrar(true, false, true);
+    dibujar(venta(), { reimpresion: true });
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+
+  it("con tickets, una venta sin número (la cola sin internet) sigue sin imprimir sola", () => {
+    sesion.features = ["pos", "caja", "recibo_pdf", "tickets_pedido"];
+    alCobrar(true, true, true);
+    dibujar(venta({ pendienteSync: true } as Partial<Venta>));
+    esperar();
+    expect(impresos).toEqual([]);
+  });
+
+  it("con tickets y número, como estaba: sólo el recibo si es lo que eligió", () => {
+    sesion.features = ["pos", "caja", "recibo_pdf", "tickets_pedido"];
+    alCobrar(true, false, true);
+    dibujar(venta({ ticket: { numero: 72, estado: "PREPARANDO" } } as Partial<Venta>));
+    esperar();
+    expect(impresos).toEqual(["DIV"]);
+    expect(document.getElementById("area-impresion")?.dataset.imprimir).toBe("recibo");
+  });
+
+  it.each(["FARMACIA", "MINIMARKET", "BILLAR", "PELUQUERIA"])("%s: como siempre, sin número no imprime solo", (rubro) => {
+    sesion.rubro = rubro;
+    alCobrar(true, false, true);
+    dibujar(venta());
+    esperar();
+    expect(impresos).toEqual([]);
   });
 });
 

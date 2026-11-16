@@ -2,6 +2,7 @@ import { useState } from "react";
 import { EncabezadoPagina } from "../../components/filtros";
 import { AvisoOk, Cargando, Confirmar, ErrorMsg, useAviso } from "../../components/ui";
 import { apiTickets } from "../../lib/apiTickets";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configuracion";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { ConfigTickets as Config, NumeracionTickets } from "../../types/tickets";
@@ -44,7 +45,7 @@ function textoEntregados(n: number): string {
 }
 
 export default function ConfigTickets() {
-  const { fijarUsaDespacho } = useAuth();
+  const { fijarUsaDespacho, rubro } = useAuth();
   const estado = useApi(() => apiTickets.config(), []);
   const [apagando, setApagando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -88,6 +89,8 @@ export default function ConfigTickets() {
       <EncabezadoPagina
         titulo="Tickets y despacho"
         subtitulo="Cómo se numeran los pedidos y si se usa la pantalla de Despacho."
+        // Se llega desde la lista de Configuración (15-nov): la flecha vuelve ahí.
+        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
       />
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>

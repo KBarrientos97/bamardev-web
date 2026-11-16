@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon";
 import { CargarQrCobro } from "../components/QrCobro";
 import { ErrorMsg } from "../components/ui";
 import { api } from "../lib/api";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../lib/configuracion";
 import { fmtFechaHora } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
 import { termino } from "../lib/rubro";
@@ -74,6 +75,9 @@ export default function QrDeCobro() {
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="QR de cobro"
+        // En el restaurante se llega desde la lista de Configuración (15-nov):
+        // la flecha vuelve ahí. En los demás rubros, el encabezado de siempre.
+        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
         subtitulo={
           porSucursal
             ? `El que ven los clientes cuando pagan por QR, en cada ${sucursal.toLowerCase()}`

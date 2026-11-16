@@ -25,10 +25,12 @@ vi.mock("../../lib/pagina/imagen", async (original) => {
   const real = await original<typeof import("../../lib/pagina/imagen")>();
   return { ...real, prepararLogo, prepararFotoPlato };
 });
+/** Las features del negocio: con los dos extras, salvo en las pruebas de un restaurante sin tickets. */
+const auth = vi.hoisted(() => ({ features: ["menu_digital", "tickets_pedido"] as string[] }));
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
-    negocio: { id: 7, nombre: "Pollos de prueba", tipoNegocio: "RESTAURANTE", features: ["menu_digital", "tickets_pedido"] },
+    negocio: { id: 7, nombre: "Pollos de prueba", tipoNegocio: "RESTAURANTE", features: auth.features },
     rubro: "RESTAURANTE",
     puede: () => true,
     incluye: () => true,
@@ -139,6 +141,7 @@ function responder(ruta: string) {
 beforeEach(() => {
   request.mockReset();
   request.mockImplementation((ruta: string) => responder(ruta));
+  auth.features = ["menu_digital", "tickets_pedido"];
 });
 
 describe("Menú digital", () => {
@@ -393,6 +396,80 @@ describe("Configuración del recibo", () => {
     const { recibo: cuerpo } = JSON.parse((guardado[1] as RequestInit).body as string);
     expect(cuerpo.tamanoLetra).toBe("s");
     expect(cuerpo.tamanoLetraComanda).toBe("l");
+  });
+});
+
+describe("Ticket y recibo: el nombre y la vuelta a la lista (15-nov)", () => {
+  async function abrir() {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+  }
+
+  it("se llama «Ticket y recibo» y no «Configuración», y la flecha vuelve a Configuración", async () => {
+    // En el menú se leía "Configuración" dos veces: el grupo y esta pantalla.
+    await abrir();
+    expect(screen.getByRole("heading", { level: 1, name: "Ticket y recibo" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Configuración" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver a Configuración" })).toHaveAttribute("href", "/configuracion");
+  });
+
+  it("con tickets queda como estaba: la comanda, su letra y los dos papeles", async () => {
+    await abrir();
+    expect(screen.getByText(/Diseñá tu recibo y la comanda/)).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Letra de la comanda" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Comanda de cocina" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Qué papel" })).toBeInTheDocument();
+    expect(screen.getByText(/Al registrar la venta se abre la impresión sola/)).toBeInTheDocument();
+  });
+});
+
+describe("Ticket y recibo sin tickets: sin número no hay comanda (15-nov)", () => {
+  // El restaurante sin TVs (o con sólo el menú digital) no saca número: la
+  // comanda, su letra y "los dos papeles" no harían nada.
+  async function abrir() {
+    const { default: ConfigRecibo } = await import("./ConfigRecibo");
+    render(
+      <MemoryRouter>
+        <ConfigRecibo />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Brasa y broasted");
+  }
+
+  it.each([
+    ["sin ningún extra", ["pos", "caja"]],
+    ["con sólo el menú digital", ["pos", "caja", "menu_digital"]],
+  ])("%s: no se ve nada de la comanda, y el texto no la nombra", async (_caso, features) => {
+    auth.features = features;
+    await abrir();
+    expect(screen.queryByRole("radiogroup", { name: "Letra de la comanda" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Comanda de cocina" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Qué papel" })).not.toBeInTheDocument();
+    expect(screen.queryByText("COMANDA · COCINA")).not.toBeInTheDocument();
+    expect(screen.getByText("Diseñá tu recibo y elegí el logo de tu negocio.")).toBeInTheDocument();
+    expect(screen.queryByText(/la comanda/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Al cobrar se abre la impresión del recibo sola, una vez\./)).toBeInTheDocument();
+    // Lo demás sigue: el recibo del cliente al cobrar, la letra del recibo y el papel.
+    expect(screen.getByRole("switch", { name: "Recibo del cliente" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Letra del recibo" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Ancho de la impresora" })).toBeInTheDocument();
+  });
+
+  it("aunque el recibo y la comanda vengan prendidos de antes, «Los dos papeles» no aparece", async () => {
+    auth.features = ["pos", "caja"];
+    request.mockImplementation(async (ruta: string) => {
+      const r = await responder(ruta);
+      if (ruta !== "/pantallas/recibo") return r;
+      const x = r as { recibo: Record<string, unknown> };
+      return { ...x, recibo: { ...x.recibo, alCobrar: { recibo: true, comanda: true, juntos: false } } };
+    });
+    await abrir();
+    expect(screen.queryByRole("radiogroup", { name: "Los dos papeles" })).not.toBeInTheDocument();
   });
 });
 

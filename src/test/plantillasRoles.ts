@@ -92,8 +92,10 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "tickets.despachar": "tickets_pedido",
   "tickets.configurar": "tickets_pedido",
   "menu_digital.editar": "menu_digital",
-  // El recibo y el logo (31-oct): también con el menú (OTRAS_FEATURES_DE_PERMISO).
-  "recibo.configurar": "tickets_pedido",
+  // El recibo y el logo (31-oct). De base desde el 15-nov (backend `c3e880f`):
+  // sin feature, atado a la vertical GASTRONOMIA como `controlados.libro` a
+  // farmacia. Hasta ahí valía con los tickets o con el menú digital.
+  "recibo.configurar": null,
   // Educación (PLAN-ACADEMIAS-TECNICO §5.2).
   "academia.ver": "academia",
   "academia.configurar": "academia",
@@ -117,11 +119,9 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
 
 /**
  * Otras features que también habilitan un permiso (`otrasFeatures` del
- * catálogo): alcanza con una. El recibo y el logo valen con los tickets o con
- * el menú digital.
+ * catálogo): alcanza con una. El recibo y el logo las usaban hasta el 15-nov.
  */
 export const OTRAS_FEATURES_DE_PERMISO: Record<string, string[]> = {
-  "recibo.configurar": ["menu_digital"],
   "plataformas.registrar": ["pedidos_pedidosya"],
   "plataformas.ver": ["pedidos_pedidosya"],
   "plataformas.anular": ["pedidos_pedidosya"],

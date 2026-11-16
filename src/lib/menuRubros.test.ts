@@ -403,10 +403,11 @@ describe("menú: Pantallas (tickets y despacho)", () => {
 });
 
 /**
- * Configuración (el recibo y el logo), con su permiso desde el 31-oct: el
- * logo es también el de la página pública y quién lo cambia lo decide el
- * dueño en Roles (Kevin). Antes entraba cualquiera que configurara la TV de
- * tickets o el menú.
+ * Configuración › Ticket y recibo (el recibo y el logo), con su permiso desde
+ * el 31-oct: el logo es también el de la página pública y quién lo cambia lo
+ * decide el dueño en Roles (Kevin). Antes entraba cualquiera que configurara
+ * la TV de tickets o el menú. Desde el 15-nov es de base en el restaurante
+ * (ver abajo y `menuConfiguracion.test.ts`).
  */
 describe("menú: Configuración del recibo y el logo", () => {
   const CON = ["pos", "caja", "catalogo", "usuarios", "tickets_pedido", "menu_digital"];
@@ -427,8 +428,26 @@ describe("menú: Configuración del recibo y el logo", () => {
   it("con uno solo de los dos extras el dueño la ve igual", () => {
     expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja", "menu_digital"]), "config_recibo")).toBe(true);
     expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja", "tickets_pedido"]), "config_recibo")).toBe(true);
-    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(false);
   });
+
+  it("y sin ninguno también: desde el 15-nov el recibo es de base en el restaurante", () => {
+    // Cambió a propósito (backend `c3e880f`, Android `ff2aa5c`): hasta acá un
+    // restaurante sin «Tickets y pedidos» ni «Menú digital» daba false, y el
+    // dueño que vende desde una terminal con impresora, sin TVs, no tenía
+    // dónde poner su logo ni achicar el recibo.
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("SUPERVISOR", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(true);
+    // La caja lo usa al cobrar, pero no lo cambia.
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(false);
+  });
+
+  it.each(["FARMACIA", "MINIMARKET", "BILLAR", "PELUQUERIA", "ACADEMIA"])(
+    "%s no lo tiene, ni con los extras: es del restaurante",
+    (rubro) => {
+      expect(puedeVer(ctxDe("ADMIN", rubro, ["pos", "caja"]), "config_recibo")).toBe(false);
+      expect(puedeVer(ctxDe("ADMIN", rubro, ["pos", "caja", "tickets_pedido", "menu_digital"]), "config_recibo")).toBe(false);
+    },
+  );
 });
 
 /**

@@ -99,8 +99,9 @@ export type Seccion =
   /** Menú digital: las TVs del menú y la ficha de cada plato. Del encargado. */
   | "menu_digital"
   /**
-   * Ticket y recibo: el logo, los datos del negocio en el recibo y el papel.
-   * La tienen los dos extras de pantallas (tickets y menú).
+   * Configuración › Ticket y recibo: el logo, los datos del negocio en el
+   * recibo y el papel. De base en el restaurante desde el 15-nov (antes, con
+   * los extras de pantallas).
    */
   | "config_recibo"
   /**
@@ -350,8 +351,15 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // El recibo y el logo, con su permiso desde el 31-oct (el backend pide lo
   // mismo para guardarlos). Antes entraba cualquiera que configurara una de
   // las pantallas, y el logo es también el de la página pública: quién lo
-  // cambia lo decide el dueño en Roles (Kevin). Con tickets o con el menú.
-  config_recibo: { permiso: "recibo.configurar", feature: "tickets_pedido", oFeature: "menu_digital" },
+  // cambia lo decide el dueño en Roles (Kevin).
+  //
+  // Sin feature desde el 15-nov, como en el backend (`c3e880f`) y en la app
+  // (`PermisosPantallas.veConfigRecibo`): todo restaurante imprime el papel
+  // del cliente, tenga TVs o no, y uno sin «Tickets y pedidos» ni «Menú
+  // digital» no tenía dónde poner su logo ni achicar el recibo. Lo que queda
+  // es el permiso y el rubro (`SOLO_EN_RUBRO`). El papel de quien nunca lo
+  // configuró no cambia: ver `aplicaDisenoRecibo`.
+  config_recibo: { permiso: "recibo.configurar", feature: null },
   // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
   // atender el mostrador. No se vende aparte.
   busqueda: { permiso: "catalogo.ver", feature: null },

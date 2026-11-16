@@ -2,11 +2,19 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../store/AuthContext";
 import type { AjustesRecibo } from "../../types/menuDigital";
 import { apiMenuDigital } from "../apiMenuDigital";
+import { aplicaDisenoRecibo, pideDisenoRecibo } from "./reglasRecibo";
 
 export interface ReciboNegocio {
   recibo: AjustesRecibo;
   /** Ruta del logo (relativa al API), o null si no hay. */
   logo: string | null;
+  /**
+   * Si el negocio guardó su diseño o subió su logo (backend `c3e880f`,
+   * 15-nov). Un restaurante sin los extras de las TVs imprime con el diseño
+   * sólo con `true` (ver `aplicaDisenoRecibo`). Un backend anterior no lo
+   * manda: queda como no configurado, que es lo seguro.
+   */
+  configurado?: boolean;
 }
 
 /**
@@ -30,21 +38,26 @@ export function olvidarReciboNegocio(valor?: ReciboNegocio, negocioId?: number) 
 }
 
 /**
- * El diseño del recibo y el logo del negocio, sólo si tiene alguno de los
- * extras de pantallas (tickets o menú digital). Sin ellos devuelve null y el
- * recibo sale como siempre, sin pedir nada al servidor.
+ * El diseño del recibo y el logo del negocio, o null: el recibo sale como
+ * siempre.
+ *
+ * Con alguno de los extras de pantallas (tickets o menú digital), como hasta
+ * el 15-nov. Desde entonces también en todo restaurante, porque «Ticket y
+ * recibo» es de base ahí; pero sin los extras se usa sólo si el negocio lo
+ * configuró, así el que nunca abrió la pantalla imprime idéntico a antes. En
+ * los demás rubros no se pide nada al servidor.
  */
 export function useReciboNegocio(): ReciboNegocio | null {
-  const { negocio } = useAuth();
-  const features = negocio?.features ?? [];
-  const activo = features.includes("tickets_pedido") || features.includes("menu_digital");
+  const { negocio, rubro } = useAuth();
+  const features = negocio?.features;
+  const pide = pideDisenoRecibo(features, rubro);
   const negocioId = negocio?.id;
   const [valor, setValor] = useState<ReciboNegocio | null>(() =>
-    activo && guardado && guardado.negocioId === negocioId ? guardado.valor : null,
+    pide && guardado && guardado.negocioId === negocioId ? guardado.valor : null,
   );
 
   useEffect(() => {
-    if (!activo || negocioId == null) return;
+    if (!pide || negocioId == null) return;
     const previo = guardado && guardado.negocioId === negocioId ? guardado : null;
     if (previo) {
       setValor(previo.valor);
@@ -63,7 +76,8 @@ export function useReciboNegocio(): ReciboNegocio | null {
     return () => {
       vivo = false;
     };
-  }, [activo, negocioId]);
+  }, [pide, negocioId]);
 
-  return activo ? valor : null;
+  if (!pide || !valor) return null;
+  return aplicaDisenoRecibo(features, rubro, valor.configurado) ? valor : null;
 }

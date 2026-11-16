@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe, PERMISOS_NUEVOS, type Plantilla } from "../test/sesiones";
+import { opcionesConfiguracion } from "./configuracion";
 import { aplanar, construirMenu, type NodoMenu } from "./menu";
 import { puedeVer, rutaInicial } from "./permisos";
 
@@ -76,6 +77,9 @@ function pantallas(plantilla: Plantilla, features: string[]) {
     .sort();
 }
 
+/** «Configuración» del restaurante (15-nov): una entrada que abre la lista, sin hijos. */
+const CONFIGURACION = "Configuración /configuracion";
+
 const INVENTARIO_OMAR = [
   "Inventario /inventario",
   "Artículos /inventario/productos",
@@ -142,18 +146,13 @@ const HOY = {
         // arma la carpeta Configuración. Finanzas vuelve a un solo hijo.
         // Desde el 09-nov, además, «Inventario y stock» (pedido de Kevin: la
         // otra mitad de la configuración, para vender sin stock). Es una
-        // pantalla más y nada cambia mientras el control siga prendido. Al ser
-        // el primer hijo visible sin los extras de pantallas, la carpeta lleva
-        // ahí.
-        items: [
-          "Usuarios /usuarios",
-          "Cuentas por cobrar /creditos",
-          "Reportes /reportes",
-          "Configuración /configuracion/inventario",
-          "  Inventario y stock /configuracion/inventario",
-          "  Datos de las sucursales /configuracion/sucursales",
-          "  QR de cobro /configuracion/qr-cobro",
-        ],
+        // pantalla más y nada cambia mientras el control siga prendido.
+        // Desde el 15-nov (Kevin: "Android y web deben quedar igual") la
+        // carpeta pasó a ser UNA entrada, «Configuración», que abre la lista
+        // con esas tres y «Ticket y recibo», de base en el restaurante (ver
+        // `menuConfiguracion.test.ts`). Las pantallas son las mismas más el
+        // recibo; cambia dónde se entra.
+        items: ["Usuarios /usuarios", "Cuentas por cobrar /creditos", "Reportes /reportes", CONFIGURACION],
       },
     ],
   },
@@ -189,12 +188,10 @@ const HOY = {
           "  Cuentas por cobrar /creditos",
           "  Gastos operativos /gastos",
           "Reportes /reportes",
-          // Lo que se arma una vez, abajo.
+          // Lo que se arma una vez, abajo. «Configuración» es la lista desde
+          // el 15-nov (ver OMAR_ADMIN).
           "Mesas del salón /mesas",
-          "Configuración /configuracion/inventario",
-          "  Inventario y stock /configuracion/inventario",
-          "  Datos de las sucursales /configuracion/sucursales",
-          "  QR de cobro /configuracion/qr-cobro",
+          CONFIGURACION,
         ],
       },
     ],
@@ -228,18 +225,24 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
     // de cobro (04-nov, pedido de Kevin), e Inventario y stock (09-nov, pedido
     // de Kevin: vender sin stock; prendido, nada cambia), y la Supervisión
     // del local (12-nov: mirar a los cajeros en vivo; el cajero no la ve).
-    const SUCURSALES = "Datos de las sucursales /configuracion/sucursales";
-    const QR = "QR de cobro /configuracion/qr-cobro";
-    const STOCK = "Inventario y stock /configuracion/inventario";
+    // Desde el 15-nov esas tres de configuración se abren desde la lista
+    // «Configuración», con «Ticket y recibo» (de base en el restaurante; su
+    // recibo no cambia mientras no lo configure, ver `reglasRecibo.test.ts`).
     const SUPERVISION = "Supervisión /supervision-local";
     expect(pantallas("ADMIN", OMAR)).toEqual(
-      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES, QR, STOCK, SUPERVISION].sort(),
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", CONFIGURACION, SUPERVISION].sort(),
     );
     expect(pantallas("ADMIN", COMPLETO)).toEqual(
-      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES, QR, STOCK, SUPERVISION].sort(),
+      [...PANTALLAS_06_OCT.COMPLETO_ADMIN, CONFIGURACION, SUPERVISION].sort(),
     );
-    // El cajero, igual que siempre: es a quien se supervisa.
+    const EN_LA_LISTA = ["Ticket y recibo", "QR de cobro", "Inventario y stock", "Datos de las sucursales"];
+    for (const plan of [OMAR, COMPLETO]) {
+      const { ctx } = menuDe("ADMIN", plan);
+      expect(opcionesConfiguracion((s) => puedeVer(ctx, s), ctx.rubro).map((o) => o.titulo)).toEqual(EN_LA_LISTA);
+    }
+    // El cajero, igual que siempre: es a quien se supervisa, y no configura nada.
     expect(pantallas("CAJERO", OMAR)).not.toContain(SUPERVISION);
+    expect(pantallas("CAJERO", OMAR)).not.toContain(CONFIGURACION);
   });
 
   it("los permisos nuevos sólo le suman la pantalla de Roles, al lado de Usuarios", () => {
@@ -258,10 +261,7 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
                 "  Roles /roles",
                 "Cuentas por cobrar /creditos",
                 "Reportes /reportes",
-                "Configuración /configuracion/inventario",
-                "  Inventario y stock /configuracion/inventario",
-                "  Datos de las sucursales /configuracion/sucursales",
-                "  QR de cobro /configuracion/qr-cobro",
+                CONFIGURACION,
               ],
             }
           : b,

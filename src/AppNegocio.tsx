@@ -11,6 +11,7 @@ import Layout from "./components/Layout";
 import { RUTA_CAJA, RUTA_COBRAR, RUTA_CONFIG_RAPIDA, RUTA_SEDES } from "./lib/academia/vista";
 import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
+import { RUTA_CONFIGURACION, veConfiguracion } from "./lib/configuracion";
 import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
 import Creditos from "./pages/Creditos";
@@ -93,6 +94,8 @@ const TicketsPedidos = lazy(() => import("./pages/tickets/TicketsPedidos"));
 const Despacho = lazy(() => import("./pages/tickets/Despacho"));
 const MenuDigital = lazy(() => import("./pages/menu-digital/MenuDigital"));
 const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
+// «Configuración» del restaurante (15-nov): la lista de sus opciones.
+const Configuracion = lazy(() => import("./pages/configuracion/Configuracion"));
 const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
 const ConfigTickets = lazy(() => import("./pages/tickets/ConfigTickets"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
@@ -156,6 +159,17 @@ function RedirigeConBusqueda({ a }: { a: string }) {
 function ProtegidaReportes({ children }: { children: React.ReactNode }) {
   const { puede } = useAuth();
   if (!veReportes(puede)) return <Inicio />;
+  return <>{children}</>;
+}
+
+/**
+ * La lista de Configuración (15-nov) se abre con al menos una opción que esa
+ * persona vea, y sólo en el restaurante: si no, al inicio, como cualquier ruta
+ * que no existe.
+ */
+function ProtegidaConfiguracion({ children }: { children: React.ReactNode }) {
+  const { puede, rubro } = useAuth();
+  if (!veConfiguracion(puede, rubro)) return <Inicio />;
   return <>{children}</>;
 }
 
@@ -745,7 +759,21 @@ function Rutas() {
           }
         />
 
-        {/* El recibo, el logo y los datos del negocio (extras de pantallas). */}
+        {/* «Configuración» del restaurante (15-nov): la lista con sus opciones.
+            En los demás rubros no existe y vuelve al inicio, como antes. */}
+        <Route
+          path={RUTA_CONFIGURACION}
+          element={
+            <ProtegidaConfiguracion>
+              <Suspense fallback={null}>
+                <Configuracion />
+              </Suspense>
+            </ProtegidaConfiguracion>
+          }
+        />
+
+        {/* Configuración › Ticket y recibo: el recibo, el logo y los datos del
+            negocio. De base en el restaurante desde el 15-nov. */}
         <Route
           path="/configuracion/recibo"
           element={

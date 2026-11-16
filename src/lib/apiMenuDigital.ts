@@ -53,8 +53,12 @@ export const apiMenuDigital = {
   agotadosHoy: (sucursalId?: number | null) =>
     request<{ productoIds: number[] }>(`/menu-digital/agotados${deLocal(sucursalId)}`),
 
+  /**
+   * `configurado` (15-nov): si el negocio guardó su diseño o subió su logo. Un
+   * backend anterior no lo manda (ver `aplicaDisenoRecibo`).
+   */
   recibo: () =>
-    request<{ recibo: AjustesRecibo; logo: string | null }>("/pantallas/recibo").then((x) => ({
+    request<{ recibo: AjustesRecibo; logo: string | null; configurado?: boolean }>("/pantallas/recibo").then((x) => ({
       ...x,
       recibo: conLoQueFalta(x.recibo),
     })),

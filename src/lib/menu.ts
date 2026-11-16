@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
 import { PESTANAS_CONFIG_ACADEMIA, RUTA_CAJA } from "./academia/vista";
+import { configuracionEnLista, RUTA_CONFIGURACION, SECCIONES_CONFIGURACION } from "./configuracion";
 import { SECCIONES_REPORTES, type Seccion } from "./permisos";
 import { conMayuscula, termino, type Termino, type Vocabulario } from "./rubro";
 
@@ -92,6 +93,88 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
   pantallas: "Pantallas",
   stock: "Stock",
   administracion: "Administración",
+};
+
+/**
+ * Configuración: un grupo sin pantalla propia. En un salón tiene un solo hijo
+ * (las reglas del negocio) y se ve suelto, como siempre; en una farmacia o un
+ * billar junta los datos de las sucursales y el QR de cobro; en un instituto,
+ * las carreras y los ajustes académicos.
+ *
+ * El restaurante no lo usa desde el 15-nov: ve UNA entrada que abre la lista
+ * (`CONFIGURACION_RESTAURANTE`, abajo). Aparte de `ITEMS` para poder
+ * reemplazarlo sin tocar el menú de los demás rubros.
+ */
+const GRUPO_CONFIGURACION: ItemNav & { bloque: Bloque } = {
+  a: "/configuracion/negocio",
+  label: "Configuración",
+  icono: "settings",
+  bloque: "administracion",
+  hijos: [
+    // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
+    // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
+    { a: "/configuracion/negocio", label: "Configuración", icono: "settings", seccion: "config_negocio" },
+    // El recibo, el logo y los datos del negocio. Éste y los dos de abajo
+    // existen sólo en el restaurante, que desde el 15-nov los abre desde su
+    // lista y no desde este grupo; quedan con el nombre de su pantalla.
+    { a: "/configuracion/recibo", label: "Ticket y recibo", icono: "printer", seccion: "config_recibo" },
+    // La otra mitad de la configuración del restaurante (09-nov): si el
+    // stock frena la venta, y el conteo para volver a controlarlo.
+    { a: "/configuracion/inventario", label: "Inventario y stock", icono: "box", seccion: "config_inventario" },
+    // Si se usa Despacho y cómo se numeran los tickets (10-nov): el dueño lo
+    // busca en Configuración, no en las pantallas de la TV.
+    { a: "/configuracion/tickets", label: "Tickets y despacho", icono: "ticket", seccion: "config_tickets" },
+    // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
+    {
+      a: "/configuracion/sucursales",
+      // No "Sucursales" a secas: en farmacia así se llama Almacenes.
+      label: "Datos de las sucursales",
+      etiqueta: (palabra) => `Datos de las ${palabra("sucursales")}`,
+      icono: "pin",
+      seccion: "config_sucursales",
+    },
+    // La cuenta a la que entra la plata por QR. Antes sólo se cambiaba desde
+    // la apertura de una caja (el dueño, 18-oct: "no es el lugar") y después
+    // colgó de Finanzas; desde el 08-nov va con la configuración general,
+    // para todos los rubros (el instituto, que no tiene este grupo, la lleva
+    // en "Mi negocio").
+    { a: "/configuracion/qr-cobro", label: "QR de cobro", icono: "qr", seccion: "qr_cobro" },
+    // E17: carreras, materias y planes de pago.
+    {
+      a: "/configuracion/carreras",
+      label: "Cursos y planes",
+      etiqueta: (palabra) => `${conMayuscula(palabra("carreras"))} y planes`,
+      icono: "birrete",
+      seccion: "academia_carreras",
+    },
+    {
+      a: "/configuracion/academia",
+      label: "Ajustes académicos",
+      icono: "perillas",
+      seccion: "academia_ajustes",
+    },
+  ],
+};
+
+/**
+ * La «Configuración» del restaurante (15-nov, como en la app): una sola
+ * entrada, sin hijos, que lleva a la lista (`/configuracion`) con Ticket y
+ * recibo, Tickets y despacho, QR de cobro, Inventario y stock y Datos de las
+ * sucursales. Antes era el grupo de arriba, con un hijo «Configuración» que se
+ * leía "Configuración › Configuración", y el recibo venía con los extras de
+ * las TVs: el dueño de un restaurante sin TVs no encontraba su logo.
+ *
+ * Se ve si la persona ve alguna de las opciones (la misma regla que filtraba
+ * los hijos del grupo), y sin `exacto`: queda encendida en la lista y en cada
+ * una de sus pantallas, que cuelgan de `/configuracion/`.
+ */
+const CONFIGURACION_RESTAURANTE: ItemNav & { bloque: Bloque } = {
+  a: RUTA_CONFIGURACION,
+  label: "Configuración",
+  icono: "settings",
+  seccion: SECCIONES_CONFIGURACION[0],
+  tambien: SECCIONES_CONFIGURACION.slice(1),
+  bloque: "administracion",
 };
 
 /**
@@ -426,59 +509,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "mesas_billar",
     bloque: "administracion",
   },
-  // Configuración: un grupo sin pantalla propia. En un salón tiene un solo
-  // hijo (las reglas del negocio) y se ve suelto, como siempre; en un
-  // instituto junta las carreras y los ajustes académicos.
-  {
-    a: "/configuracion/negocio",
-    label: "Configuración",
-    icono: "settings",
-    bloque: "administracion",
-    hijos: [
-      // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
-      // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
-      { a: "/configuracion/negocio", label: "Configuración", icono: "settings", seccion: "config_negocio" },
-      // El recibo, el logo y los datos del negocio (extras de pantallas del
-      // restaurante). En un restaurante es el único hijo y se ve suelto,
-      // como "Configuración", que es lo que es.
-      { a: "/configuracion/recibo", label: "Configuración", icono: "settings", seccion: "config_recibo" },
-      // La otra mitad de la configuración del restaurante (09-nov): si el
-      // stock frena la venta, y el conteo para volver a controlarlo.
-      { a: "/configuracion/inventario", label: "Inventario y stock", icono: "box", seccion: "config_inventario" },
-      // Si se usa Despacho y cómo se numeran los tickets (10-nov): el dueño lo
-      // busca en Configuración, no en las pantallas de la TV.
-      { a: "/configuracion/tickets", label: "Tickets y despacho", icono: "ticket", seccion: "config_tickets" },
-      // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
-      {
-        a: "/configuracion/sucursales",
-        // No "Sucursales" a secas: en farmacia así se llama Almacenes.
-        label: "Datos de las sucursales",
-        etiqueta: (palabra) => `Datos de las ${palabra("sucursales")}`,
-        icono: "pin",
-        seccion: "config_sucursales",
-      },
-      // La cuenta a la que entra la plata por QR. Antes sólo se cambiaba desde
-      // la apertura de una caja (el dueño, 18-oct: "no es el lugar") y después
-      // colgó de Finanzas; desde el 08-nov va con la configuración general,
-      // para todos los rubros (el instituto, que no tiene este grupo, la lleva
-      // en "Mi negocio").
-      { a: "/configuracion/qr-cobro", label: "QR de cobro", icono: "qr", seccion: "qr_cobro" },
-      // E17: carreras, materias y planes de pago.
-      {
-        a: "/configuracion/carreras",
-        label: "Cursos y planes",
-        etiqueta: (palabra) => `${conMayuscula(palabra("carreras"))} y planes`,
-        icono: "birrete",
-        seccion: "academia_carreras",
-      },
-      {
-        a: "/configuracion/academia",
-        label: "Ajustes académicos",
-        icono: "perillas",
-        seccion: "academia_ajustes",
-      },
-    ],
-  },
+  GRUPO_CONFIGURACION,
 ];
 
 /** Un ítem de `ITEMS` por su ruta: el menú del instituto reusa los generales. */
@@ -713,13 +744,30 @@ export function puedeEnMenu(
   return (s) => (s === "despacho" && usaDespacho === false ? false : puede(s));
 }
 
+/**
+ * El del restaurante: `ITEMS` con su «Configuración» de una entrada en lugar
+ * del grupo (15-nov). Todo lo demás, idéntico y en el mismo orden.
+ */
+const ITEMS_RESTAURANTE = ITEMS.map((i) => (i === GRUPO_CONFIGURACION ? CONFIGURACION_RESTAURANTE : i));
+
+/**
+ * Qué árbol arma cada rubro. Una rama por rubro sólo donde el menú es otro:
+ * el instituto tiene el suyo, y el restaurante cambia una sola entrada (la
+ * Configuración en lista). Los demás rubros, `ITEMS` tal cual.
+ */
+function itemsDelRubro(rubro: string | undefined): (ItemNav & { bloque: Bloque })[] {
+  if (rubro === "ACADEMIA") return ITEMS_ACADEMIA;
+  if (configuracionEnLista(rubro)) return ITEMS_RESTAURANTE;
+  return ITEMS;
+}
+
 export function construirMenu(
   puede: (s: Seccion) => boolean,
   rubro: string | undefined,
   vocabulario?: Vocabulario,
 ): BloqueMenu[] {
   const bloques: BloqueMenu[] = [];
-  for (const i of rubro === "ACADEMIA" ? ITEMS_ACADEMIA : ITEMS) {
+  for (const i of itemsDelRubro(rubro)) {
     const nodos = filtrar([i], puede, rubro, vocabulario);
     if (nodos.length === 0) continue;
     const ultimo = bloques[bloques.length - 1];

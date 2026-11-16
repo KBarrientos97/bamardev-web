@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Boton, Confirmar, ErrorMsg } from "../../components/ui";
 import { apiMenuDigital, urlApi } from "../../lib/apiMenuDigital";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configuracion";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
+import { usaTickets } from "../../lib/menuDigital/reglasRecibo";
 import { olvidarReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import { prepararLogo } from "../../lib/pagina/imagen";
 import { marcaConsumo } from "../../lib/rubro";
@@ -16,9 +19,13 @@ import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, 
 import { PestanasTickets, Segmentado, SiNo, Tarjeta } from "../tickets/piezas";
 
 /**
- * Configuración (extras de pantallas del restaurante): cómo sale el recibo del
- * cliente y la comanda, y el logo y los datos del negocio que van en el
- * recibo y en las TVs.
+ * Configuración › Ticket y recibo: cómo sale el recibo del cliente y la
+ * comanda, y el logo y los datos del negocio que van en el recibo y en las TVs.
+ *
+ * De base en el restaurante desde el 15-nov (antes, con los extras de
+ * pantallas). Sin tickets no hay número ni comanda: la letra de la comanda, su
+ * impresión al cobrar y "los dos papeles" no se muestran, porque no harían
+ * nada (como la app, `ConfigReciboFragment.conTickets`).
  *
  * La vista previa de la derecha usa las mismas piezas que el recibo de la
  * caja: lo que se diseña acá es lo que sale. Los cambios se guardan solos y
@@ -34,7 +41,8 @@ const OPCIONES_LETRA: { valor: TamanoLetra; texto: string }[] = [
 ];
 
 export default function ConfigRecibo() {
-  const { negocio } = useAuth();
+  const { negocio, rubro } = useAuth();
+  const conTickets = usaTickets(negocio?.features, rubro);
   const [pestana, setPestana] = useState<Pestana>("recibo");
   /** El papel de la vista previa: cambiar la letra de uno lo muestra. */
   const [papel, setPapel] = useState<Papel>("recibo");
@@ -50,6 +58,12 @@ export default function ConfigRecibo() {
   const pendiente = useRef<AjustesRecibo | null>(null);
   const logoActual = useRef(logo);
   logoActual.current = logo;
+  /**
+   * Si el negocio ya configuró su recibo (lo que dice el backend al cargar, o
+   * algo guardado o subido acá). Va en lo que se le pasa a la caja de este
+   * equipo: un restaurante sin TVs imprime con el diseño sólo así.
+   */
+  const configurado = useRef(false);
 
   const cargar = useCallback(() => {
     setError("");
@@ -58,6 +72,7 @@ export default function ConfigRecibo() {
       .then((x) => {
         setR(x.recibo);
         setLogo(x.logo);
+        configurado.current = x.configurado === true;
         setCargado(true);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cargar el diseño del recibo"));
@@ -74,7 +89,10 @@ export default function ConfigRecibo() {
       void apiMenuDigital
         .guardarRecibo(sinGuardar)
         .then((ok) => {
-          if (negocioId != null) olvidarReciboNegocio({ recibo: ok, logo: logoActual.current }, negocioId);
+          configurado.current = true;
+          if (negocioId != null) {
+            olvidarReciboNegocio({ recibo: ok, logo: logoActual.current, configurado: true }, negocioId);
+          }
         })
         .catch(() => undefined);
     };
@@ -95,8 +113,11 @@ export default function ConfigRecibo() {
         .guardarRecibo(nuevo)
         .then((guardadoOk) => {
           setGuardado("guardado");
+          configurado.current = true;
           // La caja tiene el diseño guardado en memoria: que tome el nuevo.
-          if (negocio?.id != null) olvidarReciboNegocio({ recibo: guardadoOk, logo }, negocio.id);
+          if (negocio?.id != null) {
+            olvidarReciboNegocio({ recibo: guardadoOk, logo, configurado: true }, negocio.id);
+          }
         })
         .catch(() => setGuardado("error"));
     }, 700);
@@ -104,18 +125,39 @@ export default function ConfigRecibo() {
 
   const alCambiarLogo = (nuevo: string | null) => {
     setLogo(nuevo);
-    if (negocio?.id != null) olvidarReciboNegocio({ recibo: actual.current, logo: nuevo }, negocio.id);
+    // Subir el logo también es configurar el recibo (lo mismo que cuenta el backend).
+    if (nuevo != null) configurado.current = true;
+    if (negocio?.id != null) {
+      olvidarReciboNegocio({ recibo: actual.current, logo: nuevo, configurado: configurado.current }, negocio.id);
+    }
   };
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-[1300px] px-4 py-5 sm:px-6">
         <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-texto">Configuración</h1>
-            <p className="mt-0.5 text-sm text-texto-3">
-              Diseñá tu recibo y la comanda, y elegí el logo que se ve en el recibo y en las pantallas.
-            </p>
+          <div className="flex min-w-0 items-start gap-3">
+            {/* La vuelta a la lista de Configuración (15-nov), el mismo botón
+                que `EncabezadoPagina` les pone a las demás opciones. */}
+            {configuracionEnLista(rubro) && (
+              <Link
+                to={VOLVER_A_CONFIGURACION.a}
+                aria-label={VOLVER_A_CONFIGURACION.etiqueta}
+                title={VOLVER_A_CONFIGURACION.etiqueta}
+                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-borde bg-white text-texto-2 transition-colors hover:bg-muted"
+              >
+                <Icon name="arrowLeft" size={18} />
+              </Link>
+            )}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-texto">Ticket y recibo</h1>
+              <p className="mt-0.5 text-sm text-texto-3">
+                {conTickets
+                  ? "Diseñá tu recibo y la comanda, y elegí el logo que se ve en el recibo y en las pantallas."
+                  : // Sin tickets no hay comanda: no se la nombra.
+                    "Diseñá tu recibo y elegí el logo de tu negocio."}
+              </p>
+            </div>
           </div>
           <PestanasTickets<Pestana>
             opciones={[
@@ -134,12 +176,19 @@ export default function ConfigRecibo() {
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_400px]">
           <div className="min-w-0 space-y-4">
             {pestana === "recibo" ? (
-              <AjustesDelRecibo r={r} cambiar={cambiar} guardado={guardado} verPapel={setPapel} />
+              <AjustesDelRecibo r={r} cambiar={cambiar} guardado={guardado} verPapel={setPapel} conTickets={conTickets} />
             ) : (
               <LogoYDatos r={r} cambiar={cambiar} logo={logo} onLogo={alCambiarLogo} guardado={guardado} />
             )}
           </div>
-          <VistaPrevia r={r} logo={logo} negocio={negocio?.nombre ?? "Tu negocio"} papel={papel} onPapel={setPapel} />
+          <VistaPrevia
+            r={r}
+            logo={logo}
+            negocio={negocio?.nombre ?? "Tu negocio"}
+            papel={conTickets ? papel : "recibo"}
+            onPapel={setPapel}
+            conComanda={conTickets}
+          />
         </div>
       </div>
     </div>
@@ -153,11 +202,14 @@ function AjustesDelRecibo({
   cambiar,
   guardado,
   verPapel,
+  conTickets,
 }: {
   r: AjustesRecibo;
   cambiar: (p: Partial<AjustesRecibo>) => void;
   guardado: "" | "guardando" | "guardado" | "error";
   verPapel: (p: Papel) => void;
+  /** Si el negocio saca número de pedido: sin él no hay comanda que configurar. */
+  conTickets: boolean;
 }) {
   const { rubro } = useAuth();
   return (
@@ -188,24 +240,29 @@ function AjustesDelRecibo({
             opciones={OPCIONES_LETRA}
           />
         </Fila>
-        <Fila etiqueta="Letra de la comanda" detalle="La que lee la cocina">
-          <Segmentado
-            etiqueta="Letra de la comanda"
-            valor={r.tamanoLetraComanda}
-            onCambiar={(v) => {
-              cambiar({ tamanoLetraComanda: v });
-              verPapel("comanda");
-            }}
-            opciones={OPCIONES_LETRA}
-          />
-        </Fila>
+        {conTickets && (
+          <Fila etiqueta="Letra de la comanda" detalle="La que lee la cocina">
+            <Segmentado
+              etiqueta="Letra de la comanda"
+              valor={r.tamanoLetraComanda}
+              onCambiar={(v) => {
+                cambiar({ tamanoLetraComanda: v });
+                verPapel("comanda");
+              }}
+              opciones={OPCIONES_LETRA}
+            />
+          </Fila>
+        )}
         {/* Cada papel por su lado (Kevin, 29-oct): la caja y la cocina pueden
             tener cada una su impresora. Con los dos, juntos en una impresión
-            o uno detrás del otro, para elegir la impresora de cada uno. */}
+            o uno detrás del otro, para elegir la impresora de cada uno. Sin
+            tickets no hay comanda: queda sólo el recibo del cliente. */}
         <div className="mt-1 border-t border-borde pt-3">
           <p className="text-sm font-semibold text-texto">Imprimir solo al cobrar</p>
           <p className="mt-0.5 text-[12px] text-texto-3">
-            Al registrar la venta se abre la impresión sola. Con Chrome en modo kiosco sale directo, sin tocar nada.
+            {conTickets
+              ? "Al registrar la venta se abre la impresión sola. Con Chrome en modo kiosco sale directo, sin tocar nada."
+              : "Al cobrar se abre la impresión del recibo sola, una vez. Con Chrome en modo kiosco sale directo, sin tocar nada."}
           </p>
           <SiNo
             etiqueta="Recibo del cliente"
@@ -213,13 +270,15 @@ function AjustesDelRecibo({
             activo={r.alCobrar.recibo}
             onCambiar={(v) => cambiar({ alCobrar: { ...r.alCobrar, recibo: v } })}
           />
-          <SiNo
-            etiqueta="Comanda de cocina"
-            detalle="El papel con el número y lo que hay que preparar"
-            activo={r.alCobrar.comanda}
-            onCambiar={(v) => cambiar({ alCobrar: { ...r.alCobrar, comanda: v } })}
-          />
-          {r.alCobrar.recibo && r.alCobrar.comanda && (
+          {conTickets && (
+            <SiNo
+              etiqueta="Comanda de cocina"
+              detalle="El papel con el número y lo que hay que preparar"
+              activo={r.alCobrar.comanda}
+              onCambiar={(v) => cambiar({ alCobrar: { ...r.alCobrar, comanda: v } })}
+            />
+          )}
+          {conTickets && r.alCobrar.recibo && r.alCobrar.comanda && (
             <Fila
               etiqueta="Los dos papeles"
               detalle={
@@ -530,12 +589,15 @@ function VistaPrevia({
   negocio,
   papel,
   onPapel,
+  conComanda,
 }: {
   r: AjustesRecibo;
   logo: string | null;
   negocio: string;
   papel: Papel;
   onPapel: (p: Papel) => void;
+  /** Sin tickets no hay comanda: la vista previa muestra sólo el recibo, sin elegir papel. */
+  conComanda: boolean;
 }) {
   const angosto = r.ancho === 58;
   const grupos = [
@@ -545,17 +607,19 @@ function VistaPrevia({
   return (
     <aside className="lg:sticky lg:top-4 lg:self-start">
       <div className="rounded-3xl bg-muted p-4">
-        <div className="mb-3 flex justify-center">
-          <Segmentado<Papel>
-            etiqueta="Qué papel"
-            valor={papel}
-            onCambiar={onPapel}
-            opciones={[
-              { valor: "recibo", texto: "Recibo del cliente" },
-              { valor: "comanda", texto: "Comanda de cocina" },
-            ]}
-          />
-        </div>
+        {conComanda && (
+          <div className="mb-3 flex justify-center">
+            <Segmentado<Papel>
+              etiqueta="Qué papel"
+              valor={papel}
+              onCambiar={onPapel}
+              opciones={[
+                { valor: "recibo", texto: "Recibo del cliente" },
+                { valor: "comanda", texto: "Comanda de cocina" },
+              ]}
+            />
+          </div>
+        )}
         {/* La vista previa es lo único imprimible de esta pantalla: "Imprimir
             prueba" saca este papel en la impresora elegida. */}
         {angosto && <HojaAngosta />}

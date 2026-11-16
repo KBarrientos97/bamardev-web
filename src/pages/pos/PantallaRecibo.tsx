@@ -14,6 +14,7 @@ import type { Venta } from "../../types";
 import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 import ComandaCocina from "./ComandaCocina";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
+import { imprimeReciboSinNumero } from "../../lib/menuDigital/reglasRecibo";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "./PiezasRecibo";
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
@@ -66,9 +67,10 @@ export default function PantallaRecibo({
   const sede = useLocalDelPapel(venta.almacen);
   // «Sucursal», o «Sede» en un instituto.
   const rotuloSede = useRotuloSucursal();
-  // El diseño del recibo (logo, datos del negocio, QR, pie): sólo en un
-  // negocio con las pantallas del local. Sin él, null, y el recibo sale
-  // como siempre (la línea de BamarDev del pie va en todos).
+  // El diseño del recibo (logo, datos del negocio, QR, pie): en un negocio
+  // con las pantallas del local o, desde el 15-nov, en el restaurante que lo
+  // configuró. Sin él, null, y el recibo sale como siempre (la línea de
+  // BamarDev del pie va en todos).
   const conf = useReciboNegocio();
   const r = conf?.recibo ?? null;
 
@@ -234,7 +236,17 @@ export default function PantallaRecibo({
       {incluye("recibo_pdf") && (
         <>
           {!conTicket && (
-            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+            <Boton
+              variante="ghost"
+              icono="printer"
+              onClick={() => {
+                // Si la cajera imprime antes de que llegue el diseño (la
+                // primera venta del día), la impresión sola sin número del
+                // restaurante sin tickets (15-nov) no sale otra vez.
+                yaImprimio.current = true;
+                window.print();
+              }}
+            >
               Imprimir
             </Boton>
           )}
@@ -325,7 +337,7 @@ export default function PantallaRecibo({
     window.addEventListener("afterprint", alTerminar);
     return () => window.removeEventListener("afterprint", alTerminar);
   }, [conTicket, imprimir]);
-  // "Imprimir solo al cobrar" (Configuración del recibo): el diálogo se abre
+  // "Imprimir solo al cobrar" (Configuración › Ticket y recibo): el diálogo se abre
   // apenas aparece la venta, una sola vez. Con Chrome en modo kiosco
   // (--kiosk-printing) ni siquiera hay diálogo: sale directo, cero toques. Si
   // el diseño llega tarde (la primera venta del día), no imprime a destiempo.
@@ -343,14 +355,25 @@ export default function PantallaRecibo({
         : ac.recibo
           ? "recibo"
           : "comanda";
+  // Sin número de pedido hay dos casos (15-nov, como la app). El negocio con
+  // tickets no imprime: es una venta de la cola sin internet y la comanda
+  // saldría sin el número. El restaurante que no usa tickets no tiene
+  // comanda: imprime el recibo del cliente, que es lo que prendió en «Imprimir
+  // solo al cobrar». Si lo único prendido es la comanda, nada.
+  const reciboSinNumero =
+    !conTicket && !!alCobrar && alCobrar !== "comanda" && imprimeReciboSinNumero(negocio?.features, rubro);
   useEffect(() => {
-    if (!conTicket || !alCobrar || reimpresion || yaImprimio.current) return;
+    if (!alCobrar || reimpresion || yaImprimio.current) return;
+    if (!conTicket && !reciboSinNumero) return;
     if (Date.now() - montada.current > 4000) return;
     // La marca va adentro del timeout: si el efecto se limpia antes (React lo
     // corre dos veces en desarrollo), la segunda vuelta todavía imprime.
     const id = setTimeout(() => {
       yaImprimio.current = true;
-      if (alCobrar === "separados") {
+      if (!conTicket) {
+        // El único papel de la pantalla es el recibo (`area-impresion`).
+        imprimir(null);
+      } else if (alCobrar === "separados") {
         despues.current = "comanda";
         imprimir("recibo");
       } else {
@@ -358,7 +381,7 @@ export default function PantallaRecibo({
       }
     }, 250);
     return () => clearTimeout(id);
-  }, [conTicket, alCobrar, reimpresion, imprimir]);
+  }, [conTicket, reciboSinNumero, alCobrar, reimpresion, imprimir]);
   const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
 
   // El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). Con

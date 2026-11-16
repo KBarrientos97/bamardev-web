@@ -4,6 +4,7 @@ import { EncabezadoPagina } from "../../components/filtros";
 import IconoProducto from "../../components/IconoProducto";
 import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Input, useAviso } from "../../components/ui";
 import { api } from "../../lib/api";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configuracion";
 import { parsearMonto } from "../../lib/dinero";
 import { fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
@@ -33,6 +34,7 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
  * prendido y nada cambia mientras nadie lo apague.
  */
 export default function ConfigInventario() {
+  const { rubro } = useAuth();
   const estado = useApi(() => api.controlStock(), []);
   // Con 2+ locales, el conteo de cada uno se carga por separado, también con el
   // control ya prendido (PLAN-SUCURSAL-TOTAL, etapa 3).
@@ -86,6 +88,8 @@ export default function ConfigInventario() {
       <EncabezadoPagina
         titulo="Inventario y stock"
         subtitulo="Elegí si el stock frena las ventas. Sirve para el local que todavía no contó su mercadería."
+        // Se llega desde la lista de Configuración (15-nov): la flecha vuelve ahí.
+        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
       />
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>

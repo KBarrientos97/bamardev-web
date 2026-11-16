@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import CampoUbicacion from "../../components/CampoUbicacion";
 import { AvisoOk, Badge, Boton, Campo, Cargando, ErrorMsg, Input, useAviso } from "../../components/ui";
+import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configuracion";
 import type { Ubicacion } from "../../lib/mapa";
 import { apiPagina } from "../../lib/pagina/apiPagina";
 import { paleta } from "../../lib/pagina/aspecto";
@@ -43,6 +44,9 @@ export default function FichasSucursales() {
       <EncabezadoPagina
         titulo={`Datos de las ${palabra}`}
         subtitulo="Dirección, ubicación en el mapa y horario de atención de cada una."
+        // En el restaurante se llega desde la lista de Configuración (15-nov):
+        // la flecha vuelve ahí. En los demás rubros, el encabezado de siempre.
+        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
       />
       <AvisoOk>{aviso}</AvisoOk>
       {carga.error ? (
