@@ -1,3 +1,4 @@
+import { urlIconoPropio } from "./iconosPropios";
 import type { Rubro } from "./rubro";
 import { normalizar } from "./texto";
 
@@ -45,6 +46,16 @@ export type ClaveCategoriaIcono = (typeof CATEGORIAS_ICONO)[number]["clave"];
 export type CategoriaIcono = (typeof CATEGORIAS_ICONO)[number];
 
 /**
+ * La sección de los íconos que subió el negocio («Mis íconos», 16-nov). Va
+ * aparte de `CATEGORIAS_ICONO` a propósito: no es parte del catálogo
+ * empaquetado (no tiene íconos fijos ni una pestaña del catálogo) y el selector
+ * la dibuja arriba de todas.
+ */
+export const SECCION_PROPIOS = "propios";
+/** Una sección del selector: las del catálogo o «Mis íconos». */
+export type ClaveSeccionIcono = ClaveCategoriaIcono | typeof SECCION_PROPIOS;
+
+/**
  * Con qué sección abre el selector según el rubro del negocio. Es sólo el
  * punto de partida: se muestran SIEMPRE todas, porque un minimarket que vende
  * salteñas o una farmacia que vende agua tienen que poder elegirlas.
@@ -82,7 +93,8 @@ export interface IconoArticulo {
   llave: string;
   src: string;
   etiqueta: string;
-  categoria: ClaveCategoriaIcono;
+  /** La sección del selector. `"propios"`: un ícono que subió el negocio (`mio:…`). */
+  categoria: ClaveSeccionIcono;
   /**
    * Palabras por las que el buscador también encuentra el ícono aunque no
    * estén en la etiqueta. No se muestran en ningún lado: sirven cuando la
@@ -140,7 +152,7 @@ export interface IconoArticulo {
  * trayendo. Nutella M y Nutella XL usan el mismo recorte a propósito: las dos
  * fotos de origen son el mismo vaso a otra escala, no es un error de copia.
  */
-const DATOS: Omit<IconoArticulo, "src">[] = [
+const DATOS: Omit<IconoDelCatalogo, "src">[] = [
   // Pollería
   { llave: "economico_pollo_broaster", etiqueta: "Broaster económico", categoria: "polleria" },
   { llave: "cuarto_pollo_broaster", etiqueta: "Broaster cuarto", categoria: "polleria" },
@@ -402,26 +414,41 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "archivador", etiqueta: "Archivador", categoria: "educacion" },
 ];
 
-export const ICONOS_ARTICULO: IconoArticulo[] = DATOS.map((d) => ({ ...d, src: urlDe(d.llave) }));
+/** Un ícono del catálogo empaquetado: siempre en una de sus secciones. */
+type IconoDelCatalogo = IconoArticulo & { categoria: ClaveCategoriaIcono };
+
+export const ICONOS_ARTICULO: IconoDelCatalogo[] = DATOS.map((d) => ({ ...d, src: urlDe(d.llave) }));
 
 const POR_LLAVE = new Map(ICONOS_ARTICULO.map((i) => [i.llave, i]));
 
-/** El ícono con esa llave, o null si es vacía o desconocida. */
+/** Lo que se lee donde se nombra un ícono propio (el formulario del artículo). */
+export const ETIQUETA_ICONO_PROPIO = "Ícono propio";
+
+/**
+ * El ícono con esa llave, o null si es vacía o desconocida. Una llave propia
+ * (`mio:<token>`) se resuelve a la imagen que subió el negocio, sin preguntarle
+ * nada al servidor: así la dibuja igual cualquier lugar que ya resuelve
+ * íconos (el POS, la TV, la página pública). Si la imagen no carga (sin
+ * internet, o el ícono se borró), `IconoProducto` cae al monograma.
+ */
 export function iconoPorLlave(llave: string | null | undefined): IconoArticulo | null {
   if (!llave || !llave.trim()) return null;
+  const propia = urlIconoPropio(llave);
+  if (propia) return { llave, src: propia, etiqueta: ETIQUETA_ICONO_PROPIO, categoria: SECCION_PROPIOS };
   return POR_LLAVE.get(llave) ?? null;
 }
 
 /**
  * Con qué sección abre el selector. Si el producto ya tiene ícono, la de ese
  * ícono: al editar hay que ver cuál está puesto, aunque sea de otro rubro (un
- * minimarket que eligió la salteña). Si no, la del rubro; y si el rubro no se
- * conoce, la primera. Mismo criterio que Android.
+ * minimarket que eligió la salteña), y si es uno propio, «Mis íconos». Si no,
+ * la del rubro; y si el rubro no se conoce, la primera. Mismo criterio que
+ * Android.
  */
 export function categoriaInicial(
   actual: string | null | undefined,
   rubro: string | null | undefined,
-): ClaveCategoriaIcono {
+): ClaveSeccionIcono {
   return iconoPorLlave(actual)?.categoria ?? categoriaDelRubro(rubro);
 }
 

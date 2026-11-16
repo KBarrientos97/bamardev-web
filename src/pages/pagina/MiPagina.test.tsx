@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EstadoEditor, ItemCatalogoEditor } from "../../lib/pagina/tipos";
+import type { EstadoEditor, ItemCatalogoEditor, ProductoFijado } from "../../lib/pagina/tipos";
 
 /** "Mi página" con la API simulada: editar, ver la vista previa y guardar. */
 
@@ -30,15 +30,23 @@ vi.mock("../../lib/pagina/apiPagina", () => ({
     borrarFotoCatalogo: vi.fn(),
     buscarProductosCatalogo: vi.fn(),
     fijarProductosCatalogo: vi.fn(),
+    subirFotoProducto: vi.fn(),
+    quitarFotoProducto: vi.fn(),
   },
 }));
 
-// jsdom no tiene canvas: la foto "achicada" es un blob cualquiera.
+// jsdom no tiene canvas: la foto "achicada" es un blob cualquiera. La del
+// producto dice que le sacó el fondo sólo si se lo pidieron.
 vi.mock("../../lib/pagina/imagen", () => ({
   prepararImagen: vi.fn(async () => new Blob(["x"], { type: "image/webp" })),
+  prepararFotoPlato: vi.fn(async (_f: File, sacarFondo: boolean) => ({
+    blob: new Blob(["x"], { type: "image/webp" }),
+    fondoQuitado: sacarFondo,
+  })),
 }));
 
 import { apiPagina } from "../../lib/pagina/apiPagina";
+import { prepararFotoPlato } from "../../lib/pagina/imagen";
 import MiPagina from "./MiPagina";
 
 const MUESTRAS = [
@@ -889,6 +897,8 @@ describe("Mi página: horario (se carga en la ficha; acá sólo se muestra o no)
 });
 
 describe("Mi página: el catálogo es armado a mano o «Mis productos»", () => {
+  // El orden del selector se recuerda en el navegador: cada prueba arranca de cero.
+  beforeEach(() => localStorage.removeItem("bamardev.pagina.ordenSelector"));
   const fijado = (id: number, nombre: string, orden: number, vendible = true) => ({
     id,
     nombre,
@@ -965,14 +975,15 @@ describe("Mi página: el catálogo es armado a mano o «Mis productos»", () => 
       fireEvent.click(screen.getByRole("button", { name: "Elegir productos" }));
       await act(async () => {});
       const dialogo = screen.getByRole("dialog", { name: "Elegir productos" });
-      expect(apiPagina.buscarProductosCatalogo).toHaveBeenCalledWith("", 0);
+      // 16-nov: la lista abre por categoría (un backend anterior lo ignora y queda por nombre).
+      expect(apiPagina.buscarProductosCatalogo).toHaveBeenCalledWith("", 0, { orden: "categoria" });
       expect(within(dialogo).getByRole("checkbox", { name: "Pollo entero" })).toBeChecked();
 
       fireEvent.change(within(dialogo).getByLabelText("Buscar productos"), { target: { value: "soda" } });
       await act(async () => {
         vi.advanceTimersByTime(300);
       });
-      expect(apiPagina.buscarProductosCatalogo).toHaveBeenLastCalledWith("soda", 0);
+      expect(apiPagina.buscarProductosCatalogo).toHaveBeenLastCalledWith("soda", 0, { orden: "categoria" });
 
       fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Soda 2 L" }));
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
@@ -998,6 +1009,326 @@ describe("Mi página: el catálogo es armado a mano o «Mis productos»", () => 
     await act(async () => {});
     expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2]);
   });
+});
+
+describe("Mi página: «Mis productos» con marcar todo, ordenar y foto (16-nov)", () => {
+  beforeEach(() => localStorage.removeItem("bamardev.pagina.ordenSelector"));
+  type Producto = { id: number; nombre: string; precio: number; icono: null; categoria: string | null; elaborado?: boolean };
+  const prod = (id: number, nombre: string, categoria: string | null, elaborado?: boolean): Producto => ({
+    id,
+    nombre,
+    precio: 10 * id,
+    icono: null,
+    categoria,
+    ...(elaborado === undefined ? {} : { elaborado }),
+  });
+  const fijo = (
+    id: number,
+    nombre: string,
+    orden: number,
+    categoria: string | null = "Pollos",
+    extra: Partial<ProductoFijado> = {},
+  ): ProductoFijado => ({
+    ...prod(id, nombre, categoria),
+    orden,
+    vendible: true,
+    ...extra,
+  });
+  const conLista = (lista: ProductoFijado[], cambios: Partial<EstadoEditor["pagina"]> = {}, tope = 60): EstadoEditor => ({
+    ...estado({ catalogoModo: "PRODUCTOS", ...cambios }),
+    productosVendibles: 10,
+    topeProductos: tope,
+    productosCatalogo: lista,
+  });
+  const pagina = (items: Producto[], total = items.length, orden?: "nombre" | "categoria") => ({
+    items,
+    total,
+    limite: 30,
+    offset: 0,
+    ...(orden ? { orden } : {}),
+  });
+  /** El PUT devuelve la lista en el orden pedido, como el backend. */
+  const guardaEnOrden = (lista: ProductoFijado[]) =>
+    vi.mocked(apiPagina.fijarProductosCatalogo).mockImplementation(async (ids: number[]) =>
+      ids.map((id, i) => ({ ...lista.find((p) => p.id === id)!, orden: i + 1 })),
+    );
+  /** Deja correr el temporizador del buscador (0 ms sin texto) y las respuestas. */
+  const esperar = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+  // Consultas por texto o etiqueta, no por rol: el editor entero es grande y
+  // calcular el rol de cada elemento hace lentas estas pruebas.
+  const abrirSelector = async () => {
+    fireEvent.click(screen.getByText("Elegir productos"));
+    await esperar();
+    return screen.getByLabelText("Elegir productos");
+  };
+  const abrirOrdenar = () => {
+    fireEvent.click(screen.getByText("Ordenar"));
+    return screen.getByLabelText("Ordenar productos");
+  };
+  const nombresEnOrden = () =>
+    Array.from(document.querySelectorAll('ol[aria-label="Productos en tu página"] button[aria-label^="Quitar "]')).map((b) =>
+      b.getAttribute("aria-label")!.replace(/^Quitar (.*) de la página$/, "$1"),
+    );
+
+  it("«Marcar todos» sin búsqueda: pide hasta el tope, suma al final y avisa; lleno, la casilla desmarca", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(
+      conLista([fijo(1, "Pollo entero", 1), fijo(2, "Pollo viejo", 2, "Pollos", { vendible: false })], {}, 4),
+    );
+    // La lista viene de a poco (5 en total); para marcar se piden hasta el tope de una vez.
+    vi.mocked(apiPagina.buscarProductosCatalogo).mockImplementation(async (_q, _desde, op) =>
+      op?.limite
+        ? pagina([prod(1, "Pollo entero", "Pollos"), prod(3, "Agua", null), prod(4, "Fanta", null), prod(5, "Soda", null)], 5)
+        : pagina([prod(1, "Pollo entero", "Pollos"), prod(3, "Agua", null)], 5),
+    );
+    vi.mocked(apiPagina.fijarProductosCatalogo).mockResolvedValue([]);
+    await montar();
+    const dialogo = await abrirSelector();
+    const todo = within(dialogo).getByRole("checkbox", { name: "Marcar todos" });
+    // Uno de los que se ven ya está elegido: a medias.
+    expect(todo).not.toBeChecked();
+    expect(todo).toBePartiallyChecked();
+
+    fireEvent.click(todo);
+    await esperar();
+    expect(apiPagina.buscarProductosCatalogo).toHaveBeenLastCalledWith("", 0, { limite: 4, orden: "categoria" });
+    expect(within(dialogo).getByText("Se marcaron 2: llegaste al máximo de 4.")).toBeInTheDocument();
+    expect(within(dialogo).getByText("4 de 4 elegidos")).toBeInTheDocument();
+
+    // Lleno ya no se puede sumar: la misma casilla desmarca (el que hoy no se vende queda).
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Desmarcar todos" }));
+    await esperar();
+    expect(within(dialogo).getByText("1 de 4 elegidos")).toBeInTheDocument();
+    expect(within(dialogo).getByRole("checkbox", { name: "Pollo entero" })).not.toBeChecked();
+
+    // Lo nuevo va al final, en el orden de la lista.
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Marcar todos" }));
+    await esperar();
+    expect(within(dialogo).getByText("Se marcaron 3: llegaste al máximo de 4.")).toBeInTheDocument();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenCalledWith([2, 1, 3, 4]);
+  }, 15_000);
+
+  it("«Marcar» con búsqueda: sólo los que coinciden; marcados todos, la casilla desmarca esos mismos", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(apiPagina.estado).mockResolvedValue(conLista([fijo(1, "Pollo entero", 1), fijo(2, "Soda", 2, "Bebidas")]));
+      vi.mocked(apiPagina.buscarProductosCatalogo).mockImplementation(async (q) =>
+        q === "pollo"
+          ? pagina([prod(1, "Pollo entero", "Pollos"), prod(7, "Pollo frito", "Pollos")])
+          : pagina([prod(1, "Pollo entero", "Pollos"), prod(7, "Pollo frito", "Pollos"), prod(2, "Soda", "Bebidas")]),
+      );
+      vi.mocked(apiPagina.fijarProductosCatalogo).mockResolvedValue([]);
+      await montar();
+      const dialogo = await abrirSelector();
+      fireEvent.change(within(dialogo).getByLabelText("Buscar productos"), { target: { value: "pollo" } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      const coinciden = within(dialogo).getByRole("checkbox", { name: "Marcar los 2 que coinciden" });
+      expect(coinciden).toBePartiallyChecked();
+      fireEvent.click(coinciden);
+      await act(async () => {});
+      // Ya estaban todos a la vista: no hizo falta pedir nada más.
+      expect(apiPagina.buscarProductosCatalogo).toHaveBeenCalledTimes(2);
+      const marcados = within(dialogo).getByRole("checkbox", { name: "Desmarcar los 2 que coinciden" });
+      expect(marcados).toBeChecked();
+      expect(within(dialogo).getByText("3 de 60 elegidos")).toBeInTheDocument();
+
+      fireEvent.click(marcados);
+      await act(async () => {});
+      expect(within(dialogo).getByRole("checkbox", { name: "Pollo entero" })).not.toBeChecked();
+      expect(within(dialogo).getByRole("checkbox", { name: "Pollo frito" })).not.toBeChecked();
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+      await act(async () => {});
+      // La Soda no coincidía: queda.
+      expect(apiPagina.fijarProductosCatalogo).toHaveBeenCalledWith([2]);
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  it("la lista del selector va por categoría con títulos, o A–Z, y recuerda la elección", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista([fijo(1, "Pollo entero", 1)]));
+    vi.mocked(apiPagina.buscarProductosCatalogo).mockImplementation(async (_q, _desde, op) =>
+      op?.orden === "categoria"
+        ? pagina([prod(1, "Pollo entero", "Pollos"), prod(5, "Ensalada", "Pollos"), prod(3, "Bolsa", null)], 3, "categoria")
+        : pagina([prod(3, "Bolsa", null), prod(5, "Ensalada", "Pollos"), prod(1, "Pollo entero", "Pollos")], 3, "nombre"),
+    );
+    await montar();
+    let dialogo = await abrirSelector();
+    expect(within(dialogo).getByRole("radio", { name: "Por categoría" })).toHaveAttribute("aria-checked", "true");
+    expect(within(dialogo).getByRole("heading", { name: "Pollos" })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("heading", { name: "Sin categoría" })).toBeInTheDocument();
+
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "A–Z" }));
+    await esperar();
+    expect(apiPagina.buscarProductosCatalogo).toHaveBeenLastCalledWith("", 0, { orden: "nombre" });
+    expect(within(dialogo).queryByRole("heading", { name: "Pollos" })).not.toBeInTheDocument();
+    // Sin títulos, cada uno dice su categoría.
+    expect(within(dialogo).getAllByText("Pollos")).toHaveLength(2);
+
+    fireEvent.click(within(dialogo).getByText("Cancelar"));
+    dialogo = await abrirSelector();
+    expect(apiPagina.buscarProductosCatalogo).toHaveBeenLastCalledWith("", 0, { orden: "nombre" });
+    expect(within(dialogo).getByRole("radio", { name: "A–Z" })).toHaveAttribute("aria-checked", "true");
+  }, 15_000);
+
+  it("si el backend no pudo agrupar (miles de productos), la lista va plana", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista([fijo(1, "Pollo entero", 1)]));
+    vi.mocked(apiPagina.buscarProductosCatalogo).mockResolvedValue(
+      pagina([prod(3, "Bolsa", null), prod(1, "Pollo entero", "Pollos")], 2, "nombre"),
+    );
+    await montar();
+    const dialogo = await abrirSelector();
+    expect(apiPagina.buscarProductosCatalogo).toHaveBeenCalledWith("", 0, { orden: "categoria" });
+    expect(within(dialogo).queryByRole("heading", { name: "Pollos" })).not.toBeInTheDocument();
+    expect(within(dialogo).getByText("Pollos")).toBeInTheDocument();
+  }, 15_000);
+
+  it("«Ordenar» A–Z guarda la lista y «Deshacer» la vuelve; las flechas siguen ahí", async () => {
+    const lista = [fijo(3, "Soda", 1, "Bebidas"), fijo(1, "Arroz con leche", 2, "Postres"), fijo(2, "Pollo entero", 3)];
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista(lista));
+    guardaEnOrden(lista);
+    await montar();
+    const dialogo = abrirOrdenar();
+    expect(within(dialogo).getByText("Después podés seguir acomodando con las flechas.")).toBeInTheDocument();
+    fireEvent.click(within(dialogo).getByRole("radio", { name: /^Alfabético/ }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Aplicar" }));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([1, 2, 3]);
+    expect(screen.queryByLabelText("Ordenar productos")).not.toBeInTheDocument();
+    expect(nombresEnOrden()).toEqual(["Arroz con leche", "Pollo entero", "Soda"]);
+    // Las flechas y la ✕ de cada producto quedan, como siempre.
+    expect(screen.getByLabelText("Subir Arroz con leche")).toBeDisabled();
+    expect(screen.getByLabelText("Bajar Arroz con leche")).toBeEnabled();
+    expect(screen.getByLabelText("Subir Soda")).toBeEnabled();
+    expect(screen.getByLabelText("Quitar Soda de la página")).toBeEnabled();
+
+    fireEvent.click(screen.getByText("Deshacer"));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([3, 1, 2]);
+    expect(nombresEnOrden()).toEqual(["Soda", "Arroz con leche", "Pollo entero"]);
+    expect(screen.queryByText("Deshacer")).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("«Deshacer» vale hasta el próximo cambio de la lista", async () => {
+    const lista = [fijo(3, "Soda", 1, "Bebidas"), fijo(1, "Arroz con leche", 2, "Postres"), fijo(2, "Pollo entero", 3)];
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista(lista));
+    guardaEnOrden(lista);
+    await montar();
+    const dialogo = abrirOrdenar();
+    fireEvent.click(within(dialogo).getByRole("radio", { name: /^Alfabético/ }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Aplicar" }));
+    await act(async () => {});
+    expect(screen.getByText("Deshacer")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Bajar Arroz con leche"));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2, 1, 3]);
+    expect(screen.queryByText("Deshacer")).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("«Ordenar» por categoría: las elaboradas primero, se elige cuál va antes y A–Z adentro", async () => {
+    const lista = [
+      fijo(1, "Coca-Cola", 1, "Bebidas", { elaborado: false }),
+      fijo(2, "Pollo entero", 2, "Pollos", { elaborado: true }),
+      fijo(3, "Agua", 3, "Bebidas", { elaborado: false }),
+      fijo(4, "Medio pollo", 4, "Pollos", { elaborado: true }),
+    ];
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista(lista));
+    guardaEnOrden(lista);
+    await montar();
+    let dialogo = abrirOrdenar();
+    expect(within(dialogo).getByRole("radio", { name: /^Por categoría/ })).toBeChecked();
+    const categorias = () =>
+      Array.from(document.querySelectorAll('ol[aria-label="Orden de las categorías"] > li')).map(
+        (li) => li.querySelector("span.block")?.textContent,
+      );
+    expect(categorias()).toEqual(["Pollos", "Bebidas"]);
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Aplicar" }));
+    await act(async () => {});
+    // Dentro de cada una, como estaban.
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2, 4, 1, 3]);
+
+    // Ya agrupada: abre con el orden que tiene, y así como está no hay nada que aplicar.
+    dialogo = abrirOrdenar();
+    expect(categorias()).toEqual(["Pollos", "Bebidas"]);
+    expect(within(dialogo).getByRole("button", { name: "Aplicar" })).toBeDisabled();
+    expect(within(dialogo).getByText("La lista ya está en este orden.")).toBeInTheDocument();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Bajar la categoría Pollos" }));
+    expect(categorias()).toEqual(["Bebidas", "Pollos"]);
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "A–Z" }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Aplicar" }));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([3, 1, 4, 2]);
+    expect(nombresEnOrden()).toEqual(["Agua", "Coca-Cola", "Medio pollo", "Pollo entero"]);
+  }, 15_000);
+
+  it("«Imagen de cada producto» va al borrador como el modo, y la vista previa usa la foto", async () => {
+    const lista = [fijo(1, "Pollo entero", 1, "Pollos", { foto: "/publico/pantallas/foto/1/abc", fotoSinFondo: false })];
+    // Un backend anterior no manda `catalogoImagen`: es el ícono.
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista(lista));
+    await montar();
+    // El texto de la etiqueta es el título pegado a su explicación.
+    const icono = () => screen.getByLabelText(/^ÍconoEl ícono/);
+    const foto = () => screen.getByLabelText(/^FotoLa foto del producto/);
+    const guardarCambios = () => screen.getByText("Guardar cambios").closest("button")!;
+    expect(icono()).toBeChecked();
+    expect(within(previa()).queryByAltText("Pollo entero")).not.toBeInTheDocument();
+
+    fireEvent.click(foto());
+    expect(within(previa()).getByAltText("Pollo entero")).toHaveAttribute("src", "/api/publico/pantallas/foto/1/abc");
+    // Volver a como estaba no deja nada sin guardar.
+    fireEvent.click(icono());
+    expect(guardarCambios()).toBeDisabled();
+
+    fireEvent.click(foto());
+    vi.mocked(apiPagina.guardar).mockResolvedValue(conLista(lista, { catalogoImagen: "FOTO" }));
+    fireEvent.click(guardarCambios());
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ catalogoImagen: "FOTO" });
+  }, 15_000);
+
+  it("con «Foto», subir y quitar la foto de un producto va al toque y se ve en la fila y en la vista previa", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conLista([fijo(1, "Pollo entero", 1)], { catalogoImagen: "FOTO" }));
+    vi.mocked(apiPagina.subirFotoProducto)
+      .mockResolvedValueOnce({ foto: "/publico/pantallas/foto/1/h1", fotoSinFondo: true })
+      .mockResolvedValueOnce({ foto: "/publico/pantallas/foto/1/h2", fotoSinFondo: false });
+    vi.mocked(apiPagina.quitarFotoProducto).mockResolvedValue({ foto: null, fotoSinFondo: false });
+    await montar();
+    expect(screen.getByText(/si la cambiás acá, también cambia en tu menú digital/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Subir una foto de Pollo entero")).toBeInTheDocument();
+    expect(screen.queryByText("Quitar foto")).not.toBeInTheDocument();
+
+    const archivo = new File(["x"], "pollo.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Elegir la foto de Pollo entero"), { target: { files: [archivo] } });
+    await act(async () => {});
+    expect(prepararFotoPlato).toHaveBeenLastCalledWith(archivo, true);
+    expect(apiPagina.subirFotoProducto).toHaveBeenCalledWith(1, expect.any(Blob));
+    expect(screen.getByLabelText("Cambiar la foto de Pollo entero")).toBeInTheDocument();
+    expect(screen.getByText(/Le sacamos el fondo/)).toBeInTheDocument();
+    expect(within(previa()).getByAltText("Pollo entero")).toHaveAttribute("src", "/api/publico/pantallas/foto/1/h1");
+
+    // Con su fondo, sin elegir el archivo de nuevo.
+    fireEvent.click(screen.getByText("Dejarlo con su fondo"));
+    await act(async () => {});
+    expect(prepararFotoPlato).toHaveBeenLastCalledWith(archivo, false);
+    expect(screen.getByText(/Quedó con su fondo/)).toBeInTheDocument();
+    expect(within(previa()).getByAltText("Pollo entero")).toHaveAttribute("src", "/api/publico/pantallas/foto/1/h2");
+
+    fireEvent.click(screen.getByText("Quitar foto"));
+    await act(async () => {});
+    expect(apiPagina.quitarFotoProducto).toHaveBeenCalledWith(1);
+    expect(screen.getByLabelText("Subir una foto de Pollo entero")).toBeInTheDocument();
+    expect(screen.queryByText("Quitar foto")).not.toBeInTheDocument();
+    expect(within(previa()).queryByAltText("Pollo entero")).not.toBeInTheDocument();
+    // La foto no pasa por el borrador.
+    expect(apiPagina.guardar).not.toHaveBeenCalled();
+    expect(apiPagina.fijarProductosCatalogo).not.toHaveBeenCalled();
+  }, 15_000);
 });
 
 describe("Mi página: borrador (PLAN-PAGINA-WEB §4.2)", () => {

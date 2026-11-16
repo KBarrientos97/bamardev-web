@@ -1239,7 +1239,7 @@ export const RESPUESTAS: Respuesta[] = [
         "items": [
           "Entrá a **Marketing** → **Mi página**. Arriba de todo, en **Apariencia**, elegí el **Estilo** (confirmalo con **Usar este estilo**), subí tu logo y tu portada (**Subir logo**, **Subir foto**) y elegí color, forma de los botones y letra.",
           "En **Presentación** escribí la **Descripción corta** (por ejemplo: \"Pollo a la brasa y broaster desde 2009\") y, si querés, elegí el **Botón principal**, el botón grande de arriba.",
-          "En el **Catálogo**, en **¿Qué muestra tu catálogo?**, elegí **Mis productos** y tocá **Elegir productos**: marcá los platos que querés mostrar y tocá **Guardar**. El precio sale del sistema y se actualiza solo.",
+          "En el **Catálogo**, en **¿Qué muestra tu catálogo?**, elegí **Mis productos** y tocá **Elegir productos**: marcá los platos que querés mostrar (o **Marcar todos**) y tocá **Guardar**. El precio sale del sistema y se actualiza solo; con **Ordenar** los acomodás de la A a la Z o por categoría.",
           "En **Redes y botones** tocá **Red social** o **Botón** para agregar tu WhatsApp, Facebook e Instagram. En **Sucursales en la página** cargá el horario y el mapa de cada local.",
           "La primera vez tocá **Guardar cambios** (la vista previa te muestra cómo queda) y, cuando esté lista, **Publicar**. Si ya estaba publicada, lo que cambiás queda como **Cambios sin publicar**: tocá **Publicar cambios** para que se vea, o **Descartar** para volver a lo publicado."
         ]

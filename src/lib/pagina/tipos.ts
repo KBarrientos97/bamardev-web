@@ -171,6 +171,12 @@ export interface ItemCatalogoPublico {
   /** Ruta relativa al API o URL absoluta: pasa por `urlDeImagen`. */
   fotoUrl: string | null;
   /**
+   * Sólo en "Mis productos" con «Imagen de cada producto: Foto» (16-nov): la
+   * foto no tiene fondo (se le sacó al subirla). Se dibuja entera sobre el
+   * tinte, como el ícono, en vez de llenar la caja. Ausente = con fondo.
+   */
+  fotoSinFondo?: boolean;
+  /**
    * Sólo en "Mis productos": la llave del ícono del artículo (la misma del
    * POS), que la web resuelve a su imagen. Sin foto subida, es lo que se ve.
    */
@@ -492,6 +498,12 @@ export interface AjustesPagina {
    * (13-oct). Uno u otro. Opcional: un backend anterior no lo manda (= MANUAL).
    */
   catalogoModo?: ModoCatalogo;
+  /**
+   * En "Mis productos", qué imagen lleva cada producto (16-nov): su ícono o su
+   * foto (la del menú digital; sin foto, el ícono). Viaja como `catalogoModo`.
+   * Opcional: un backend anterior no lo manda (= ICONO).
+   */
+  catalogoImagen?: ImagenCatalogo;
   /** "Pedí por WhatsApp" (IDEAS/6 #1). Opcional: un backend anterior no lo manda. */
   pedidosWhatsapp?: boolean;
   /** «Recibir pedidos en el sistema» (13-nov). Opcional por lo mismo. */
@@ -549,6 +561,12 @@ export interface ItemCatalogoEditor {
 /** Los dos modos del catálogo de la página, excluyentes. */
 export type ModoCatalogo = "MANUAL" | "PRODUCTOS";
 
+/** La imagen de cada producto en "Mis productos": el ícono (como siempre) o la foto. */
+export type ImagenCatalogo = "ICONO" | "FOTO";
+
+/** Cómo ordena el buscador del selector: por nombre (el de siempre) o agrupado por categoría. */
+export type OrdenBuscador = "nombre" | "categoria";
+
 /** Un producto del sistema como lo ofrece el selector (`GET /pagina/catalogo/productos`). */
 export interface ProductoParaPagina {
   /** El id del producto: es lo que se manda al fijar. */
@@ -558,6 +576,11 @@ export interface ProductoParaPagina {
   precio: number | null;
   icono: string | null;
   categoria: string | null;
+  /**
+   * Plato, servicio o combo: no se guarda en stock (`tipoProducto` distinto de
+   * ALMACENABLE). Ordena las categorías. Opcional: un backend anterior no lo manda.
+   */
+  elaborado?: boolean;
 }
 
 /** Un producto fijado en la página (`GET /pagina` y `PUT /pagina/catalogo/productos`). */
@@ -565,6 +588,13 @@ export interface ProductoFijado extends ProductoParaPagina {
   orden: number;
   /** false = fijado pero hoy no sale (inactivo o dado de baja); vuelve si lo reactivan. */
   vendible: boolean;
+  /**
+   * La foto del producto, la misma del menú digital (`/publico/pantallas/foto/…`,
+   * relativa al API). Con «Imagen: Foto», la lista y la vista previa la usan.
+   * Opcionales: un backend anterior no los manda (= sin foto).
+   */
+  foto?: string | null;
+  fotoSinFondo?: boolean;
   /** Lo que la página muestra al tocarlo. Opcional: un backend anterior no lo manda. */
   descripcion?: string | null;
   /**
@@ -648,6 +678,7 @@ export type CambiosPagina = Partial<
     | "mostrarReservar"
     | "catalogoTitulo"
     | "catalogoModo"
+    | "catalogoImagen"
     | "pedidosWhatsapp"
     | "pedidosSistema"
     | "mostrarCursos"

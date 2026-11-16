@@ -625,6 +625,10 @@ export default function Productos() {
           setEditando(null);
           recargar();
         }}
+        // Se borró un ícono propio: los artículos que lo tenían quedaron sin
+        // ícono. Sin volver a pedir la lista, detrás del formulario seguían con
+        // la foto (el navegador la guarda para siempre: su URL no cambia).
+        onIconoBorrado={recargar}
       />
 
       <Confirmar
@@ -1146,6 +1150,7 @@ function FormProducto({
   sucursalFiltradaId,
   onClose,
   onGuardado,
+  onIconoBorrado,
 }: {
   abierto: boolean;
   producto: Producto | null;
@@ -1158,6 +1163,8 @@ function FormProducto({
   sucursalFiltradaId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
+  /** Se borró un ícono propio desde el selector: la lista tiene que volver a pedirse. */
+  onIconoBorrado?: () => void;
 }) {
   // La clave remonta el formulario al cambiar de artículo: así los estados
   // internos arrancan siempre desde el producto que se está editando.
@@ -1173,6 +1180,7 @@ function FormProducto({
       sucursalFiltradaId={sucursalFiltradaId}
       onClose={onClose}
       onGuardado={onGuardado}
+      onIconoBorrado={onIconoBorrado}
     />
   );
 }
@@ -1186,6 +1194,7 @@ function FormProductoCuerpo({
   sucursalFiltradaId,
   onClose,
   onGuardado,
+  onIconoBorrado,
 }: {
   producto: Producto | null;
   categorias: Categoria[];
@@ -1195,6 +1204,7 @@ function FormProductoCuerpo({
   sucursalFiltradaId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
+  onIconoBorrado?: () => void;
 }) {
   const esEdicion = !!producto;
   const { incluye, rubro, vocabulario } = useAuth();
@@ -2041,6 +2051,12 @@ function FormProductoCuerpo({
               setEligiendoIcono(false);
             }}
             onCerrar={() => setEligiendoIcono(false)}
+            // Borró en «Mis íconos» el que tenía puesto: queda sin ícono, como
+            // los demás productos que lo usaban.
+            onIconoBorrado={(llave) => {
+              setIcono((puesto) => (puesto === llave ? null : puesto));
+              onIconoBorrado?.();
+            }}
           />
         )}
 

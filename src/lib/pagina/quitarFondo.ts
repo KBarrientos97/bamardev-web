@@ -81,6 +81,13 @@ export interface OpcionesFondo {
    * platos.ts) y un fondo que no es de un color (una mesa) no se toca.
    */
   platos?: boolean;
+  /**
+   * Sólo un fondo liso: con el borde ruidoso o de tres colores (una mesa, una
+   * pared de madera) no se toca nada, como en la foto de un plato, pero sin
+   * buscar platos. La foto de un producto para un ícono propio (16-nov): un
+   * vaso sobre madera salía con la mitad de la madera borrada a parches.
+   */
+  soloFondoLiso?: boolean;
 }
 /** Con esta parte del borde de un mismo color (o de dos o tres), es un fondo. */
 const BORDE_PAREJO = 0.8;
@@ -290,7 +297,9 @@ export function quitarFondo(p: Pixeles, opciones: OpcionesFondo = {}): Resultado
   const fondo = coloresDelFondo(p, borde);
   if (!fondo) return { tipo: "sin-cambios" };
   const ruido = ruidoDelBorde(p, borde, fondo);
-  if (opciones.platos && (ruido > RUIDO_MAXIMO_PLATO || fondo.length >= MAX_COLORES_FONDO)) return { tipo: "sin-cambios" };
+  if ((opciones.platos || opciones.soloFondoLiso) && (ruido > RUIDO_MAXIMO_PLATO || fondo.length >= MAX_COLORES_FONDO)) {
+    return { tipo: "sin-cambios" };
+  }
   const tol =
     opciones.tolerancia === "segun-ruido"
       ? // Cuatro veces el ruido: un JPG de los cuadritos (ruido ~8) vuelve a

@@ -789,8 +789,14 @@ export function LineaCarrito({
   /** Si ese local no puede servir esta línea hoy: el aviso que se le muestra (pedidos al sistema). */
   agotado?: string;
 }) {
-  const foto = urlDeImagen(l.fotoUrl ?? null);
-  const icono = foto ? null : iconoPorLlave(l.icono);
+  // Lo que no carga (una foto, un ícono propio del servidor) pasa a lo que
+  // sigue: foto → ícono → inicial. Nunca la imagen rota del navegador.
+  const [fallaron, setFallaron] = useState<string[]>([]);
+  const fallar = (src: string) => setFallaron((antes) => (antes.includes(src) ? antes : [...antes, src]));
+  const fotoUrl = urlDeImagen(l.fotoUrl ?? null);
+  const foto = fotoUrl && !fallaron.includes(fotoUrl) ? fotoUrl : null;
+  const delIcono = iconoPorLlave(l.icono);
+  const icono = foto || !delIcono || fallaron.includes(delIcono.src) ? null : delIcono;
   const subtotal = subtotalLinea(l);
   const redondo: CSSProperties = {
     width: 34,
@@ -827,18 +833,20 @@ export function LineaCarrito({
             src={foto}
             alt=""
             loading="lazy"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              display: "block",
-            }}
+            onError={() => fallar(foto)}
+            // Sin fondo, el producto entero sobre el tinte (como el ícono, más grande).
+            style={
+              l.fotoSinFondo
+                ? { width: "88%", height: "88%", objectFit: "contain", display: "block" }
+                : { width: "100%", height: "100%", objectFit: "cover", display: "block" }
+            }
           />
         ) : icono ? (
           <img
             src={icono.src}
             alt=""
             loading="lazy"
+            onError={() => fallar(icono.src)}
             style={{
               width: "74%",
               height: "74%",

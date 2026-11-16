@@ -20,7 +20,10 @@ export default function IconoProducto({
   className = "",
 }: {
   nombre: string;
-  /** Llave del catálogo de íconos; null o desconocida cae al monograma. */
+  /**
+   * Llave del catálogo de íconos o de uno propio del negocio (`mio:…`, la foto
+   * que subió); null o desconocida cae al monograma.
+   */
   icono?: string | null;
   /** Nombre de la categoría: decide el color del monograma. */
   categoria?: string | null;

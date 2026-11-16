@@ -116,6 +116,17 @@ describe("servicios en el pedido", () => {
   });
 });
 
+describe("la foto en el carrito (16-nov)", () => {
+  it("una foto sin fondo lo lleva a la línea; con fondo, o sin foto, la línea queda como siempre", () => {
+    const sinFondo = agregarLinea([], { ...item(1, "Soda", 15), fotoUrl: "/publico/x/1/foto?v=a", fotoSinFondo: true });
+    expect(sinFondo[0]).toMatchObject({ fotoUrl: "/publico/x/1/foto?v=a", fotoSinFondo: true });
+    const conFondo = agregarLinea([], { ...item(2, "Pollo", 100), fotoUrl: "/publico/x/2/foto?v=b" });
+    expect(conFondo[0]).not.toHaveProperty("fotoSinFondo");
+    // Sin foto no hay nada que decir del fondo.
+    expect(agregarLinea([], { ...item(3, "Agua", 8), fotoSinFondo: true })[0]).not.toHaveProperty("fotoSinFondo");
+  });
+});
+
 describe("avisoDeQuitados", () => {
   const l = (id: number, titulo: string) => ({ id, titulo, precio: 10, desde: false, cantidad: 1 });
   it("nombra el producto que sale al cambiar de local (sesion 2)", () => {

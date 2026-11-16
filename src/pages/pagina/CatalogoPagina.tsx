@@ -246,10 +246,14 @@ export function SelectorSucursalCatalogo({
 /**
  * Sin foto: el ícono del producto si lo tiene ("Mis productos", el mismo del
  * POS) o, si no, el tinte del color de la página con la inicial del título.
+ * Si el ícono no carga (un ícono propio del negocio viene del servidor), la
+ * inicial: nunca la imagen rota del navegador. Se recuerda QUÉ imagen falló,
+ * como en `IconoProducto`: otro ícono se vuelve a intentar.
  */
 export function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fondo: string; color: string; tamano: number }) {
   const icono = iconoPorLlave(item.icono);
-  if (icono) {
+  const [fallo, setFallo] = useState<string | null>(null);
+  if (icono && fallo !== icono.src) {
     return (
       <div
         aria-hidden="true"
@@ -262,6 +266,7 @@ export function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPubl
           loading="lazy"
           decoding="async"
           draggable={false}
+          onError={() => setFallo(icono.src)}
           style={{ width: "72%", height: "72%", objectFit: "contain", display: "block" }}
         />
       </div>
@@ -284,6 +289,60 @@ export function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPubl
     >
       {item.titulo.trim().charAt(0).toUpperCase()}
     </div>
+  );
+}
+
+/** La foto sin fondo ocupa casi toda la caja: es el producto suelto, no se recorta. */
+const LADO_SIN_FONDO = "88%";
+
+/**
+ * La imagen de un ítem dentro de su caja (que es `position: relative`, tiene
+ * su tamaño y `overflow: hidden`). La foto la llena (`cover`), como siempre.
+ * La foto sin fondo de «Mis productos» (16-nov) no se recorta: va entera
+ * sobre el tinte, como el ícono pero más grande. Sin foto, o si la foto no
+ * carga, el ícono o la inicial (`SinFoto`).
+ */
+export function FotoItem({
+  item,
+  fondo,
+  color,
+  tamano,
+  alt = "",
+}: {
+  item: ItemCatalogoPublico;
+  fondo: string;
+  color: string;
+  /** El tamaño de la inicial, si no hay foto ni ícono. */
+  tamano: number;
+  alt?: string;
+}) {
+  const foto = urlDeImagen(item.fotoUrl);
+  const [fallo, setFallo] = useState<string | null>(null);
+  const caja: CSSProperties = { position: "absolute", inset: 0 };
+  if (foto && fallo !== foto) {
+    const img = (estilo: CSSProperties) => (
+      <img
+        src={foto}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        onError={() => setFallo(foto)}
+        style={{ display: "block", ...estilo }}
+      />
+    );
+    return item.fotoSinFondo ? (
+      <span style={{ ...caja, background: fondo, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {img({ width: LADO_SIN_FONDO, height: LADO_SIN_FONDO, objectFit: "contain" })}
+      </span>
+    ) : (
+      img({ ...caja, width: "100%", height: "100%", objectFit: "cover" })
+    );
+  }
+  return (
+    <span style={{ ...caja, display: "block" }}>
+      <SinFoto item={item} fondo={fondo} color={color} tamano={tamano} />
+    </span>
   );
 }
 
@@ -496,7 +555,6 @@ function Carrusel({
           >
             {items.map((it, i) => {
               const precio = formatoPrecio(it.precio, it.precioDesde);
-              const foto = urlDeImagen(it.fotoUrl);
               const visible = i >= inicio && i < inicio + porVista;
               return (
                 <button
@@ -547,18 +605,7 @@ function Carrusel({
                       borderRadius: a.arco ? "50% 50% 0 0 / 40% 40% 0 0" : undefined,
                     }}
                   >
-                    {foto ? (
-                      <img
-                        src={foto}
-                        alt={it.titulo}
-                        loading="lazy"
-                        decoding="async"
-                        draggable={false}
-                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                      />
-                    ) : (
-                      <SinFoto item={it} fondo={a.sinFotoFondo} color={a.sinFotoTexto} tamano={56} />
-                    )}
+                    <FotoItem item={it} fondo={a.sinFotoFondo} color={a.sinFotoTexto} tamano={56} alt={it.titulo} />
                   </div>
                   <div
                     style={{
@@ -687,7 +734,6 @@ function ListaMenu({
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
       {items.map((it, i) => {
-        const foto = urlDeImagen(it.fotoUrl);
         const numero = formatoPrecio(it.precio);
         return (
           <li key={it.id} style={{ borderTop: i === 0 ? undefined : `1px dashed ${a.linea ?? GRIS.borde}` }}>
@@ -723,19 +769,7 @@ function ListaMenu({
                   background: a.sinFotoFondo,
                 }}
               >
-                {foto ? (
-                  <img
-                    src={foto}
-                    alt=""
-                    width={72}
-                    height={72}
-                    loading="lazy"
-                    decoding="async"
-                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                ) : (
-                  <SinFoto item={it} fondo={a.sinFotoFondo} color={a.sinFotoTexto} tamano={28} />
-                )}
+                <FotoItem item={it} fondo={a.sinFotoFondo} color={a.sinFotoTexto} tamano={28} />
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                 <strong style={{ fontSize: 15, lineHeight: 1.3, overflowWrap: "anywhere", ...a.tituloItem }}>{it.titulo}</strong>
@@ -819,6 +853,8 @@ export function VisorCatalogo({
   const cerrar = useRef<HTMLButtonElement>(null);
   const toque = useRef<{ x: number; y: number } | null>(null);
   const deslizo = useRef(false);
+  // La foto que no cargó: en su lugar, el ícono o la inicial (no la imagen rota).
+  const [fallo, setFallo] = useState<string | null>(null);
   const item = items[indice];
   const n = items.length;
   const hayAnterior = indice > 0;
@@ -906,7 +942,8 @@ export function VisorCatalogo({
   };
 
   const precio = formatoPrecio(item.precio, item.precioDesde);
-  const foto = urlDeImagen(item.fotoUrl);
+  const fotoUrl = urlDeImagen(item.fotoUrl);
+  const foto = fotoUrl && fallo !== fotoUrl ? fotoUrl : null;
   const href = accion?.href(item);
 
   return (
@@ -952,13 +989,39 @@ export function VisorCatalogo({
           touchAction: "pan-y",
         }}
       >
-        {foto ? (
+        {foto && item.fotoSinFondo ? (
+          // Sin fondo: el producto suelto sobre el tinte, como el ícono pero
+          // más grande (sobre el fondo oscuro del visor, uno oscuro no se vería).
+          <div
+            style={{
+              width: "min(82%, 420px)",
+              maxHeight: "100%",
+              aspectRatio: "1 / 1",
+              borderRadius: 16,
+              background: c.tinte,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img
+              key={item.id}
+              src={foto}
+              alt={item.titulo}
+              decoding="async"
+              draggable={false}
+              onError={() => setFallo(foto)}
+              style={{ width: "90%", height: "90%", objectFit: "contain", display: "block", userSelect: "none" }}
+            />
+          </div>
+        ) : foto ? (
           <img
             key={item.id}
             src={foto}
             alt={item.titulo}
             decoding="async"
             draggable={false}
+            onError={() => setFallo(foto)}
             style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block", borderRadius: 8, userSelect: "none" }}
           />
         ) : (
