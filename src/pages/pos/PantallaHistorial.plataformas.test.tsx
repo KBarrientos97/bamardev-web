@@ -8,7 +8,7 @@ import type { Caja, Venta } from "../../types";
 /**
  * Los pedidos de Yango y PedidosYa en «Ventas del turno»
  * (PLAN-PEDIDOS-PLATAFORMA §10.2): mezclados por hora con las ventas, con su
- * marca y «No se cobra», anulados tachados, SIN sumar a los totales del turno;
+ * marca, anulados tachados, SIN sumar a los totales del turno;
  * el detalle y «Anular» sólo con `plataformas.anular`; los de la cola con su
  * marca; y sin las features, ni se llama a la ruta.
  */
@@ -117,7 +117,7 @@ beforeEach(() => {
 });
 
 describe("pedidos mezclados con las ventas", () => {
-  it("salen como filas propias, por hora, con marca de plataforma y «No se cobra»", async () => {
+  it("salen como filas propias, por hora, con marca de plataforma y sin leyenda de cobro", async () => {
     montar();
     await screen.findByRole("button", { name: /Ver el pedido de Yango N° A-31/ });
     expect(api.pedidosPlataformaDeLaCaja).toHaveBeenCalledWith(1);
@@ -134,7 +134,7 @@ describe("pedidos mezclados con las ventas", () => {
 
     const fila = screen.getByRole("button", { name: /Ver el pedido de Yango N° A-31/ });
     expect(within(fila).getByText("Yango")).toBeInTheDocument();
-    expect(within(fila).getByText("No se cobra")).toBeInTheDocument();
+    expect(within(fila).queryByText(/No se cobra/)).toBeNull();
     // «Pedido #id» cuando no cargaron el N° de la app.
     const sinCodigo = screen.getByRole("button", { name: /Ver el pedido de PedidosYa Pedido #30/ });
     expect(within(sinCodigo).getByText("PedidosYa")).toBeInTheDocument();
@@ -162,14 +162,15 @@ describe("pedidos mezclados con las ventas", () => {
 });
 
 describe("el detalle de un pedido", () => {
-  it("muestra las líneas, quién lo registró, la hora y que no se cobra", async () => {
+  it("muestra las líneas, quién lo registró, la hora y la nota de la app de delivery", async () => {
     montar();
     fireEvent.click(await screen.findByRole("button", { name: /Ver el pedido de Yango N° A-31/ }));
     const d = await screen.findByRole("dialog", { name: "Pedido de Yango" });
     expect(within(d).getByText("Arroz con leche L")).toBeInTheDocument();
     expect(within(d).getByText("2×")).toBeInTheDocument();
     expect(within(d).getByText("Ana Rojas")).toBeInTheDocument();
-    expect(within(d).getByText(/No se cobra ni entra a la caja/)).toBeInTheDocument();
+    expect(within(d).getByText(/le cobra al cliente y le paga al local después/)).toBeInTheDocument();
+    expect(within(d).queryByText(/No se cobra/)).toBeNull();
   });
 
   it("con plataformas.anular ofrece «Anular», que abre el diálogo con motivo y PIN, y recarga la lista", async () => {

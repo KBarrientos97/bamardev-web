@@ -193,7 +193,7 @@ export default function PantallaHistorial({
               {esPositivo(fiado) && <span className="text-warning-text"> · {fmtMoney(fiado)} fiado</span>}
             </p>
             {/* Aparte y sin sumar: no son ventas ni entraron a la caja. */}
-            {resumenPl && <p className="text-xs text-texto-3">{resumenPl} · no se cobran</p>}
+            {resumenPl && <p className="text-xs text-texto-3">{resumenPl}</p>}
           </div>
         </div>
         <Boton variante="ghost" icono="lock" onClick={onCierre}>

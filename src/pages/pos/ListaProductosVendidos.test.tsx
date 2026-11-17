@@ -273,12 +273,12 @@ describe("los pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §11)", () =
     ],
   };
 
-  it("una sección por plataforma con su marca, pedidos, unidades, total y la leyenda", () => {
+  it("una sección por plataforma con su marca, pedidos, unidades, y total", () => {
     render(<ListaProductosVendidos d={CON_PLATAFORMAS} />);
     const yango = screen.getByRole("region", { name: "Yango · 3 pedidos · 5 unidades · Bs 85,00" });
     expect(yango).toHaveTextContent("3 pedidos · 5 unidades");
     expect(yango).toHaveTextContent("Bs 85,00");
-    expect(yango).toHaveTextContent("No se cobra en caja");
+    expect(yango).not.toHaveTextContent(/No se cobra/);
     expect(yango.querySelector('[data-plataforma="YANGO"]')).toHaveTextContent("Yango");
     expect(yango).toHaveTextContent("Brasa medio");
     expect(yango).toHaveTextContent("4 u × Bs 7,25");

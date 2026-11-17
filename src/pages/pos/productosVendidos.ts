@@ -161,9 +161,6 @@ export function textoPedidos(n: number): string {
   return `${t} ${t === "1" ? "pedido" : "pedidos"}`;
 }
 
-/** Lo que dice cada plataforma bajo su encabezado: no es plata de la caja. */
-export const LEYENDA_PLATAFORMA = "No se cobra en caja";
-
 /**
  * Las plataformas con pedidos en el turno (PLAN-PEDIDOS-PLATAFORMA §11). El
  * campo es opcional: contra un backend anterior, o sin pedidos, queda vacío y
@@ -301,14 +298,14 @@ export function documentoProductosVendidos(
     {
       titulo: textoEncabezadoPlataforma(p),
       color: colorDePlataforma(p.plataforma),
-      aclaracion: LEYENDA_PLATAFORMA,
+      aclaracion: "",
       celdas: [],
       filas: [],
     },
     ...gruposDe(p.categorias),
   ]);
   const notaPlataformas = plataformas.length > 0
-    ? ["Los pedidos de Yango y PedidosYa van aparte: los paga la app de delivery, no se cobran en caja y no suman al total vendido."]
+    ? ["Los pedidos de Yango y PedidosYa van aparte: los paga la app de delivery y no suman al total vendido."]
     : [];
   if (porMedio) {
     // Una sección por forma de pago, después las plataformas y al final el

@@ -133,8 +133,8 @@ describe("los pedidos de Yango y PedidosYa en el PDF (§11)", () => {
       "PedidosYa · 1 pedido · 1 unidad · Bs 15,00",
       "BEBIDAS",
     ]);
-    expect(despues[0].aclaracion).toBe("No se cobra en caja");
-    expect(despues[2].aclaracion).toBe("No se cobra en caja");
+    expect(despues[0].aclaracion).toBe("");
+    expect(despues[2].aclaracion).toBe("");
     // El producto con el mismo formato que las ventas.
     expect(despues[1].filas[0].detalle).toBe("Bs 56,00 c/u");
     expect(despues[1].filas[1].detalle).toBe("varios precios");
@@ -152,7 +152,7 @@ describe("los pedidos de Yango y PedidosYa en el PDF (§11)", () => {
   it("el resumen suma la línea corta de pedidos y las notas dicen que van aparte", () => {
     const doc = documentoProductosVendidos(CON_PLATAFORMAS, { subtitulo: "Turno #12" });
     expect(doc.resumen).toBe("3 productos · 12 unidades · + Yango 3 · PedidosYa 1 pedidos");
-    expect(doc.notas?.[0]).toMatch(/no se cobran en caja y no suman al total vendido/);
+    expect(doc.notas?.[0]).toMatch(/los paga la app de delivery y no suman al total vendido/);
   });
 
   it("sin el campo, o vacío, el PDF de siempre", () => {

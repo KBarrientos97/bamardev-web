@@ -155,10 +155,10 @@ export function lineasTicketCierre(d: ReporteCierreProductos, o: DatosTicketCier
   }
   lineas.push(RAYA);
 
-  // Lo de las apps no está en la caja: «(no se cobra)» se dice una vez, en el primer bloque.
-  plataformas.forEach(({ p, items }, n) => {
+  // Lo de las apps no está en la caja: van bajo su propio nombre, aparte de lo vendido.
+  plataformas.forEach(({ p, items }) => {
     const nombre = (NOMBRE_PLATAFORMA[p.plataforma] ?? p.plataforma).toUpperCase();
-    lineas.push(recortar(`${nombre} ${cantidadTicket(p.pedidos)} ped${n === 0 ? " (no se cobra)" : ""}`, COLUMNAS_TICKET));
+    lineas.push(recortar(`${nombre} ${cantidadTicket(p.pedidos)} ped`, COLUMNAS_TICKET));
     for (const it of items) lineas.push(renglonDeProducto(it, ancho));
   });
   if (plataformas.length > 0) lineas.push(RAYA);

@@ -84,7 +84,7 @@ const DEL_PLAN = [
   "  Efectivo                210.00",
   "  QR                       55.00",
   "--------------------------------",
-  "YANGO 2 ped (no se cobra)",
+  "YANGO 2 ped",
   " 3 Nutella L               75.00",
   "PEDIDOSYA 1 ped",
   " 1 Leche condensada XL     35.00",
