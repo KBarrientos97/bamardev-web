@@ -2150,7 +2150,7 @@ function FormProductoCuerpo({
               type="checkbox"
               checked={soloAgregado}
               onChange={(e) => setSoloAgregado(e.target.checked)}
-              className="h-4 w-4 rounded border-borde accent-primary"
+              className="h-4 w-4 shrink-0 rounded border-borde accent-primary"
             />
             <span className="text-sm text-texto-2">
               Sólo como agregado

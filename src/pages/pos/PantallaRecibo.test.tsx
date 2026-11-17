@@ -1419,3 +1419,35 @@ describe("el recibo de una venta recién modificada (15-nov)", () => {
     expect(screen.getByText("Cambio entregado").nextElementSibling).toHaveTextContent("Bs 25,00");
   });
 });
+
+describe("un vaso con toppings en el ticket (PLAN-AGREGADOS §7.3)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  const conToppings = () =>
+    venta({
+      total: 25,
+      detalles: [
+        { id: 501, lineaPadreId: null, incluido: false, productoId: 12, producto: "Arroz con leche M", cantidad: 1, precio: 20, subtotal: 20, nota: null, consumo: "MESA" },
+        { id: 502, lineaPadreId: 501, incluido: true, productoId: 32, producto: "Oreo", cantidad: 1, precio: 0, subtotal: 0, nota: null, consumo: "MESA" },
+        { id: 503, lineaPadreId: 501, incluido: true, productoId: 31, producto: "Chubi", cantidad: 1, precio: 0, subtotal: 0, nota: null, consumo: "MESA" },
+        { id: 504, lineaPadreId: 501, incluido: false, productoId: 33, producto: "Canela", cantidad: 1, precio: 5, subtotal: 5, nota: null, consumo: "MESA" },
+      ],
+    });
+
+  it("las hijas van indentadas bajo el vaso: los incluidos lo dicen y el extra lleva su precio", () => {
+    dibujar(conToppings());
+    expect(screen.getByText("Arroz con leche M")).toBeInTheDocument();
+    expect(screen.getByText("+ Oreo")).toBeInTheDocument();
+    expect(screen.getByText("+ Chubi")).toBeInTheDocument();
+    expect(screen.getAllByText("incluido")).toHaveLength(2);
+    const canela = screen.getByText("+ Canela").parentElement!;
+    expect(canela).toHaveTextContent(/Bs\s?5/);
+  });
+
+  it("las hijas no suman marcas de mesa o llevar: sólo el vaso la lleva", () => {
+    dibujar(conToppings());
+    expect(screen.getAllByText("M")).toHaveLength(1);
+  });
+});

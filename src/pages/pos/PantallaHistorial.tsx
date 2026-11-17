@@ -796,7 +796,7 @@ function DetalleVenta({
             <ul className="divide-y divide-borde-soft">
               {agruparHijas(v.detalles ?? []).map(({ linea: d, hijas }, i) => (
                 <li key={i} className="flex items-start justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[13px] text-texto">
                       <span className="font-bold">{fmtNum(d.cantidad)}×</span> {nombreDeLinea(d, v)}
                     </p>

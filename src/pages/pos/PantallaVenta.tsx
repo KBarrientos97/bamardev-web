@@ -1042,27 +1042,6 @@ function FilaCarrito({
           <span className="mt-1 flex flex-wrap items-center gap-1.5 empty:mt-0">
             <ChipsCondicion producto={l.producto} />
           </span>
-          {/* Los toppings debajo del vaso, como en el recibo: los incluidos lo
-              dicen y los extras llevan su precio. Tocarlos reabre la hoja. */}
-          {l.vista && l.vista.hijas.length > 0 && (
-            <button
-              type="button"
-              onClick={onEditarAgregados}
-              disabled={!onEditarAgregados}
-              aria-label={`Cambiar los toppings de ${l.producto.nombre}`}
-              className="mt-1 block w-full rounded-lg text-left enabled:hover:bg-muted"
-            >
-              {l.vista.hijas.map((h) => (
-                <span key={`${h.productoId}-${h.incluido}`} className="flex justify-between gap-2 text-xs text-texto-3">
-                  <span className="min-w-0 truncate">
-                    + {h.cantidad > 1 ? `${h.cantidad} × ` : ""}
-                    {h.nombre}
-                  </span>
-                  <span className="shrink-0 font-semibold">{h.incluido ? "incluido" : fmtMoney(h.subtotal)}</span>
-                </span>
-              ))}
-            </button>
-          )}
         </div>
 
         {venta ? (
@@ -1098,6 +1077,28 @@ function FilaCarrito({
           {fmtMoney(precioUnidad * l.cantidad)}
         </span>
       </div>
+
+      {/* Los toppings debajo del vaso, como en el recibo: los incluidos lo
+          dicen y los extras llevan su precio. Tocarlos reabre la hoja. */}
+      {l.vista && l.vista.hijas.length > 0 && (
+        <button
+          type="button"
+          onClick={onEditarAgregados}
+          disabled={!onEditarAgregados}
+          aria-label={`Cambiar los toppings de ${l.producto.nombre}`}
+          className="mt-1.5 block w-full rounded-lg px-1 text-left enabled:hover:bg-muted"
+        >
+          {l.vista.hijas.map((h) => (
+            <span key={`${h.productoId}-${h.incluido}`} className="flex justify-between gap-2 text-xs text-texto-3">
+              <span className="min-w-0 truncate">
+                + {h.cantidad > 1 ? `${h.cantidad} × ` : ""}
+                {h.nombre}
+              </span>
+              <span className="shrink-0 font-semibold">{h.incluido ? "incluido" : fmtMoney(h.subtotal)}</span>
+            </span>
+          ))}
+        </button>
+      )}
 
       {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
           dos renglones. */}

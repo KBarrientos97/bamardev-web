@@ -8,8 +8,10 @@ export interface LineaDelCobro {
   clave: string | number;
   nombre: string;
   cantidad: number;
-  /** Precio por unidad. */
+  /** Precio por unidad (con los toppings extra, si los lleva). */
   precio: number;
+  /** Los toppings del vaso en una línea («+ Oreo, Chubi»), si los lleva. */
+  agregados?: string;
 }
 
 /**
@@ -86,6 +88,7 @@ function DetalleDelCobro({ lineas, total }: { lineas: LineaDelCobro[]; total: nu
                 <p className="text-[13px] text-texto-3">
                   {fmtCantidad(l.cantidad)} × {fmtMoney(l.precio)}
                 </p>
+                {l.agregados && <p className="text-[13px] text-texto-3">{l.agregados}</p>}
               </div>
               <p className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(l.precio * l.cantidad)}</p>
             </li>

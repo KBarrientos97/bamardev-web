@@ -70,3 +70,22 @@ describe("la comanda de un pedido que se cambió después de cobrado (15-nov)", 
     expect(screen.queryByText(/PEDIDO CAMBIADO/)).not.toBeInTheDocument();
   });
 });
+
+describe("la comanda de un vaso con toppings (PLAN-AGREGADOS §7.3)", () => {
+  const conToppings = {
+    ...venta,
+    detalles: [
+      { id: 501, lineaPadreId: null, productoId: 12, producto: "Arroz con leche M", cantidad: 1, precio: 20, subtotal: 20, nota: null, consumo: "LLEVAR" },
+      { id: 502, lineaPadreId: 501, incluido: true, productoId: 32, producto: "Oreo", cantidad: 2, precio: 0, subtotal: 0, nota: null, consumo: "LLEVAR" },
+      { id: 503, lineaPadreId: 501, incluido: false, productoId: 33, producto: "Canela", cantidad: 1, precio: 5, subtotal: 5, nota: null, consumo: "LLEVAR" },
+    ],
+  } as unknown as Venta;
+
+  it("la cocina lee los toppings debajo del vaso y «productos» cuenta sólo vasos", () => {
+    render(<ComandaCocina venta={conToppings} numero={72} negocio="El Ganadero" />);
+    expect(screen.getByText("Arroz con leche M")).toBeInTheDocument();
+    expect(screen.getByText("2 × Oreo")).toBeInTheDocument();
+    expect(screen.getByText("Canela")).toBeInTheDocument();
+    expect(screen.getByText("1 producto")).toBeInTheDocument();
+  });
+});

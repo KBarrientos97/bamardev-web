@@ -1294,6 +1294,7 @@ function PuntoDeVenta() {
           nombre: l.producto.nombre,
           cantidad: l.cantidad,
           precio: l.producto.precio + (l.vista?.extraPorUnidad ?? 0),
+          agregados: textoDeAgregados(l.vista),
         }));
     return (
       <>
