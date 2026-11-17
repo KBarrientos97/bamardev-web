@@ -71,6 +71,24 @@ export function efectivoDelTurno(r: Pick<ResumenCaja, "efectivo" | "cambioEntreg
   };
 }
 
+/**
+ * Las formas de pago del turno con el efectivo en lo COBRADO cuando hubo plata
+ * devuelta por ventas modificadas (ver `efectivoDelTurno`): lo devuelto va en
+ * su propio renglón, así que acá no se resta otra vez. El renglón del efectivo
+ * sale de `efectivo + devuelto` y no del de la forma de pago: si el pago en
+ * efectivo de la venta quedó en cero, el servidor lo borra y la forma ni
+ * viene; y si no se cobró nada en efectivo, no hay renglón. Sin devoluciones,
+ * las del servidor tal cual.
+ */
+export function formasCobradas(
+  r: Pick<ResumenCaja, "porFormaPago" | "efectivo" | "cambioEntregado" | "devueltoEfectivo">,
+): { nombre: string; monto: number }[] {
+  const { cobrado, devuelto } = efectivoDelTurno(r);
+  if (!(devuelto > 0)) return r.porFormaPago;
+  const otras = r.porFormaPago.filter((f) => !esEfectivo(f.nombre));
+  return cobrado !== 0 ? [{ nombre: "Efectivo", monto: cobrado }, ...otras] : otras;
+}
+
 export interface FilaVendido {
   etiqueta: string;
   monto: number;
@@ -87,15 +105,8 @@ export function vendidoDelTurno(r: ResumenCaja): { filas: FilaVendido[]; total: 
   // Con plata devuelta por ventas modificadas, «En efectivo» dice lo que se
   // cobró y lo devuelto va en su renglón, en negativo: las filas siguen
   // sumando el total vendido (ver `efectivoDelTurno`).
-  const { cobrado, devuelto } = efectivoDelTurno(r);
-  // El renglón del efectivo sale de `efectivo + devuelto` y no del de la forma
-  // de pago: si el pago en efectivo de la venta quedó en cero, el servidor lo
-  // borra y la forma de pago ni viene.
-  const porForma =
-    devuelto > 0
-      ? [{ nombre: "Efectivo", monto: cobrado }, ...r.porFormaPago.filter((f) => !esEfectivo(f.nombre))]
-      : r.porFormaPago;
-  const formas = [...porForma]
+  const { devuelto } = efectivoDelTurno(r);
+  const formas = [...formasCobradas(r)]
     .filter((f) => f.monto !== 0)
     // El efectivo primero: es el renglón que se compara con el cajón.
     .sort((a, b) => Number(esEfectivo(b.nombre)) - Number(esEfectivo(a.nombre)));

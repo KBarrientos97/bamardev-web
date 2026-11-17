@@ -35,7 +35,13 @@ import type {
 import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
-import { efectivoDelTurno, ETIQUETA_DEVUELTO, mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
+import {
+  efectivoDelTurno,
+  ETIQUETA_DEVUELTO,
+  formasCobradas,
+  mediosDelTurno,
+  vendidoDelTurno,
+} from "./movimientoDelTurno";
 import ImprimirTicketCierre from "./ImprimirTicketCierre";
 import type { DatosTicketCierre } from "./ticketCierre";
 import ListaProductosVendidos from "./ListaProductosVendidos";
@@ -297,7 +303,10 @@ export default function PantallaCierre({
                       etiqueta={`Ventas (${r.cantidadVentas})`}
                       valor={r.totalVentas}
                     />
-                    {r.porFormaPago.map((f) => (
+                    {/* Con plata devuelta por ventas modificadas, el efectivo
+                        va en lo cobrado: lo devuelto resta en su renglón de
+                        abajo, no dos veces (ver `formasCobradas`). */}
+                    {formasCobradas(r).map((f) => (
                       <Fila key={f.nombre} etiqueta={f.nombre} valor={f.monto} sangria />
                     ))}
                     {/* El vuelto de verdad, y lo devuelto por ventas

@@ -824,6 +824,8 @@ describe("17-nov: plata devuelta en efectivo por ventas modificadas", () => {
       "Ingresos de efectivo",
       "Egresos de efectivo",
     ]);
+    // El efectivo va en lo cobrado (15 + 5): lo devuelto resta una sola vez, abajo.
+    expect(filas[2][1]).toMatch(/20,00/);
     expect(filas[3][1]).toMatch(/-30,00/);
     expect(filas[4][1]).toMatch(/-5,00/);
   });
