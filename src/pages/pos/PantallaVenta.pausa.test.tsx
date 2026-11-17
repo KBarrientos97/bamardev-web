@@ -214,6 +214,36 @@ describe("la hoja de pausar", () => {
   });
 });
 
+describe("17-nov: dentro de «Pausados», tocar el producto es para reactivarlo (como la app)", () => {
+  it("con el permiso abre la hoja de reactivar, sin preguntar «¿Venderlo igual?» ni agregarlo", async () => {
+    vi.mocked(api.productosPausados).mockResolvedValue(lista([1]));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Pausados (1)" }));
+    fireEvent.click(screen.getByRole("heading", { name: "Nutella L" }));
+    expect(await screen.findByRole("dialog", { name: "Reactivar producto" })).toBeInTheDocument();
+    expect(screen.queryByText(/¿Venderlo igual\?/)).not.toBeInTheDocument();
+    expect(carrito.agregar).not.toHaveBeenCalled();
+  });
+
+  it("sin el permiso queda como antes: pregunta si venderlo igual", async () => {
+    sesion.permisos = ["ventas.vender"];
+    vi.mocked(api.productosPausados).mockResolvedValue(lista([1]));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Pausados (1)" }));
+    fireEvent.click(screen.getByRole("heading", { name: "Nutella L" }));
+    expect(screen.getByText(/está pausado en Plazuela Fátima/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Reactivar producto" })).not.toBeInTheDocument();
+  });
+
+  it("fuera de «Pausados» no cambia: pregunta antes de venderlo", async () => {
+    vi.mocked(api.productosPausados).mockResolvedValue(lista([1]));
+    await montar();
+    fireEvent.click(screen.getByRole("heading", { name: "Nutella L" }));
+    expect(screen.getByText(/está pausado en Plazuela Fátima/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Reactivar producto" })).not.toBeInTheDocument();
+  });
+});
+
 describe("un backend sin la ruta (o sin conexión)", () => {
   it("la grilla sale como siempre, sin chip ni gris", async () => {
     vi.mocked(api.productosPausados).mockRejectedValue(new Error("Not Found"));

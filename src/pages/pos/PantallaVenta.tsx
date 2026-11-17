@@ -107,9 +107,11 @@ export default function PantallaVenta({
   /**
    * Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §5): un botón por
    * cada plataforma que este usuario puede cargar, junto a «Cobrar». Sin esto
-   * —casi todos los negocios— el carrito es el de siempre.
+   * —casi todos los negocios— el carrito es el de siempre. `alVolver` llega
+   * sólo si se eligió desde la hoja del carrito del celular: quien abre el
+   * diálogo lo llama si se sale sin registrar, y la hoja se vuelve a abrir.
    */
-  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma, alVolver?: () => void) => void };
   /**
    * Los toppings del local (PLAN-AGREGADOS §7.4): con ellos, un producto que
    * lleva grupo dice «Incluye 2 toppings» y al tocarlo abre su hoja. Sin esto
@@ -271,10 +273,15 @@ export default function PantallaVenta({
    * no está en la página pero la caja lo puede tener: pregunta antes de
    * agregarlo. Ya en el carrito (ya dijo que sí) los toques siguientes suman
    * sin volver a preguntar.
+   *
+   * Dentro del chip «Pausados», quien puede pausar lo está mirando para
+   * reactivarlo: tocarlo abre la hoja de reactivar, como en la app (17-nov).
+   * Sin el permiso, o fuera de ese chip, todo sigue igual.
    */
   const tocarProducto = (p: Producto) => {
     if (quieto) return;
-    if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
+    if (cat === PAUSADOS && puedePausar && pausados.ids.has(p.id)) setHojaPausa(p);
+    else if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
     else pedirAgregar(p);
   };
   /** El «−» de la tarjeta baja la última línea de ese producto (puede haber varias con toppings). */
@@ -388,8 +395,13 @@ export default function PantallaVenta({
               onElegir: (p) => {
                 if (quieto) return;
                 confirmarNotasAbiertas();
+                // En el celular el carrito es una hoja que se cierra para dejar
+                // ver el diálogo; si se vuelve sin registrar el pedido, se
+                // vuelve a abrir, como en la app (17-nov).
+                const enLaHoja = carritoAbierto;
                 setCarritoAbierto(false);
-                plataformas.onElegir(p);
+                if (enLaHoja) plataformas.onElegir(p, () => setCarritoAbierto(true));
+                else plataformas.onElegir(p);
               },
             }
           : undefined
@@ -496,6 +508,9 @@ export default function PantallaVenta({
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
                   onAgregar={() => tocarProducto(p)}
+                  // El «+» suma siempre, también dentro de «Pausados» (ahí
+                  // tocar la tarjeta es para reactivarla), como en la app.
+                  onMas={() => pedirAgregar(p)}
                   onQuitar={() => quitarUna(p)}
                   incluye={textoIncluyeDe(catalogoAgregados, p.id)}
                   arrastre={arrastre.props(p.id)}
@@ -662,10 +677,13 @@ function TarjetaVenta({
   onMenu,
   incluye,
   conIcono = true,
+  onMas,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /** El «+» del stepper; sin esto hace lo mismo que tocar la tarjeta. */
+  onMas?: () => void;
   /**
    * El ícono del producto (Configuración › Punto de venta). Sin él, la tarjeta
    * es nombre y precio. De fábrica va, como siempre.
@@ -860,7 +878,7 @@ function TarjetaVenta({
             <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
             <button
               onClick={() => {
-                if (!ignorarClic()) onAgregar();
+                if (!ignorarClic()) (onMas ?? onAgregar)();
               }}
               disabled={alTope}
               aria-label="Uno más"

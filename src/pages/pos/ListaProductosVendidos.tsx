@@ -136,8 +136,11 @@ export default function ListaProductosVendidos({
   );
 }
 
-/** «Por forma de pago | Todo junto»: dos botones, el elegido con `aria-pressed`. */
-function SelectorDeVista({ vista, onElegir }: { vista: VistaProductos; onElegir: (v: VistaProductos) => void }) {
+/**
+ * «Por forma de pago | Todo junto»: dos botones, el elegido con `aria-pressed`.
+ * Lo usa también el arqueo de Reportes con costos (`ProductosDelArqueo`).
+ */
+export function SelectorDeVista({ vista, onElegir }: { vista: VistaProductos; onElegir: (v: VistaProductos) => void }) {
   const opciones: { clave: VistaProductos; texto: string }[] = [
     { clave: "medio", texto: "Por forma de pago" },
     { clave: "todo", texto: "Todo junto" },
@@ -220,9 +223,11 @@ function ResumenFinal({ d }: { d: ReporteCierreProductos }) {
 /**
  * Los pedidos de una plataforma en el turno: su marca, cuántos pedidos y
  * unidades, lo que suman (lo paga la app de delivery) y debajo sus categorías
- * y productos con el mismo formato que las ventas.
+ * y productos con el mismo formato que las ventas. Va dentro de un
+ * `@container` (las columnas de la tabla se miden contra él); la usa también
+ * el arqueo de Reportes con costos.
  */
-function SeccionPlataforma({ p, limite }: { p: PlataformaVendida; limite?: number }) {
+export function SeccionPlataforma({ p, limite }: { p: PlataformaVendida; limite?: number }) {
   return (
     <section aria-label={textoEncabezadoPlataforma(p)} data-plataforma-seccion={p.plataforma} className="space-y-3 pt-1">
       <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
