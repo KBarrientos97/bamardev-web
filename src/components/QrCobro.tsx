@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   borrarQr,
   guardarQr,
@@ -236,6 +236,8 @@ export function QrParaCobrar({
   /** Monto a cobrar, para que el cajero contraste contra lo que le entró. */
   monto,
   sinBoton = false,
+  compacto = false,
+  leyenda,
 }: {
   confirmado: boolean;
   onConfirmar: () => void;
@@ -246,6 +248,16 @@ export function QrParaCobrar({
    * Queda el aviso de revisar el banco antes.
    */
   sinBoton?: boolean;
+  /**
+   * En el cobro dentro del carrito del punto de venta (16-nov): el QR más chico
+   * y al lado, con «Confirmar pago recibido» a su derecha. Uno debajo del otro
+   * no entraba en una pantalla de 1366×768 y la cajera tenía que buscar el
+   * botón scrolleando. Tocar el QR lo sigue agrandando para el cliente. Sin QR
+   * cargado se ve como siempre. Sin esto, el de siempre.
+   */
+  compacto?: boolean;
+  /** Con `compacto`: lo que va arriba del botón («Cobrá Bs 25,00 por QR»). */
+  leyenda?: ReactNode;
 }) {
   const { negocio, usuario } = useAuth();
   const alias = negocio?.alias;
@@ -295,8 +307,58 @@ export function QrParaCobrar({
     };
   }, [alias, usuario, sede, listo]);
 
+  const botonConfirmar = !sinBoton && (
+    <button
+      type="button"
+      onClick={onConfirmar}
+      disabled={confirmado}
+      className={[
+        "flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-bold transition-colors",
+        confirmado
+          ? "border-primary bg-primary-50 text-primary-700"
+          : "border-borde bg-white text-texto hover:bg-muted",
+      ].join(" ")}
+    >
+      {confirmado && <Icon name="check" size={17} />}
+      {confirmado ? "Pago confirmado" : "Confirmar pago recibido"}
+    </button>
+  );
+  const ventanaAmpliada = ampliado && qr && (
+    <Modal abierto titulo="QR de cobro" onClose={() => setAmpliado(false)} ancho="max-w-sm">
+      <div className="p-4">
+        <img src={qr} alt="QR de cobro" className="mx-auto w-full max-w-xs object-contain" />
+      </div>
+    </Modal>
+  );
+
+  if (compacto && qr) {
+    return (
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setAmpliado(true)}
+          className="shrink-0 rounded-xl border border-borde bg-white p-1.5"
+          title="Ampliar"
+        >
+          <img src={qr} alt="QR de cobro" className="h-28 w-28 object-contain" />
+        </button>
+        <div className="min-w-0 flex-1 space-y-2">
+          {leyenda}
+          {botonConfirmar}
+          {!confirmado && (
+            <p className="text-xs leading-snug text-texto-3">
+              Revisá que el pago{monto ? ` de ${monto}` : ""} haya llegado antes de confirmar.
+            </p>
+          )}
+        </div>
+        {ventanaAmpliada}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {compacto && leyenda}
       {qr ? (
         <button
           type="button"
@@ -341,22 +403,7 @@ export function QrParaCobrar({
       )}
       {errorCarga && <ErrorMsg>{errorCarga}</ErrorMsg>}
 
-      {!sinBoton && (
-        <button
-          type="button"
-          onClick={onConfirmar}
-          disabled={confirmado}
-          className={[
-            "flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-bold transition-colors",
-            confirmado
-              ? "border-primary bg-primary-50 text-primary-700"
-              : "border-borde bg-white text-texto hover:bg-muted",
-          ].join(" ")}
-        >
-          {confirmado && <Icon name="check" size={17} />}
-          {confirmado ? "Pago confirmado" : "Confirmar pago recibido"}
-        </button>
-      )}
+      {botonConfirmar}
 
       {!confirmado && (
         <p className="text-center text-xs text-texto-3">
@@ -364,13 +411,7 @@ export function QrParaCobrar({
         </p>
       )}
 
-      {ampliado && qr && (
-        <Modal abierto titulo="QR de cobro" onClose={() => setAmpliado(false)} ancho="max-w-sm">
-          <div className="p-4">
-            <img src={qr} alt="QR de cobro" className="mx-auto w-full max-w-xs object-contain" />
-          </div>
-        </Modal>
-      )}
+      {ventanaAmpliada}
     </div>
   );
 }

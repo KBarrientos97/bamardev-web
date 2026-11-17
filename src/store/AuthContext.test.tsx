@@ -271,6 +271,66 @@ describe("entrega de los pedidos de la página: sigue al estado de la licencia (
   });
 });
 
+describe("Configuración › Punto de venta: negocio.pos sigue al estado de la licencia (16-nov)", () => {
+  const RESTAURANTE: SesionNegocio = { id: 3, nombre: "Pollería QA", tipoNegocio: "RESTAURANTE" };
+  function SondaPos() {
+    const { negocio, fijarConfigPos } = useAuth();
+    return (
+      <>
+        <p>pos:{negocio?.pos ? `${negocio.pos.vista}/${negocio.pos.cobro}` : "-"}</p>
+        <button
+          onClick={() =>
+            fijarConfigPos({ vista: "TARJETAS", cobro: "EN_VENTA", iconos: true, filtros: true, ordenCategorias: [] })
+          }
+        >
+          guardar
+        </button>
+      </>
+    );
+  }
+  const montarPos = async () => {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaPos />
+        </AuthProvider>,
+      );
+    });
+  };
+
+  it("si el dueño lo cambió en otro equipo, la caja abierta lo toma en el próximo chequeo", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, pos: { vista: "COLUMNAS", cobro: "EN_VENTA" } });
+    await montarPos();
+    expect(screen.getByText("pos:COLUMNAS/EN_VENTA")).toBeInTheDocument();
+    // Guardado ya completo: después de un F5 se lee lo mismo.
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").pos).toEqual({
+      vista: "COLUMNAS",
+      cobro: "EN_VENTA",
+      iconos: true,
+      filtros: true,
+      ordenCategorias: [],
+    });
+  });
+
+  it("un backend viejo que no lo manda deja lo que trajo el login", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...RESTAURANTE, pos: { vista: "COLUMNAS" } }));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await montarPos();
+    expect(screen.getByText("pos:COLUMNAS/undefined")).toBeInTheDocument();
+  });
+
+  it("lo guardado en Configuración pisa la sesión sin volver a entrar", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await montarPos();
+    expect(screen.getByText("pos:-")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "guardar" }));
+    expect(screen.getByText("pos:TARJETAS/EN_VENTA")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").pos.cobro).toBe("EN_VENTA");
+  });
+});
+
 describe("cupo del Plan Emprendedor (§5.2)", () => {
   function SondaCupo() {
     const { cupo, refrescarCupo, login, logout } = useAuth();

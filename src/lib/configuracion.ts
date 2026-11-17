@@ -38,11 +38,20 @@ export interface OpcionConfiguracion {
 }
 
 /**
- * En el orden en que se muestran. Las tres primeras son las de Android, con
- * sus mismos textos (`strings_pantallas.xml` y `strings_qr_cobro.xml`); las dos
- * de abajo existen sólo en la web (en la app, el pie de la pantalla lo dice).
+ * En el orden en que se muestran. «Punto de venta» va primera (16-nov): es lo
+ * que más se toca en un local que recién arranca, y existe sólo en la web. Las
+ * tres siguientes son las de Android, con sus mismos textos
+ * (`strings_pantallas.xml` y `strings_qr_cobro.xml`); las dos de abajo existen
+ * sólo en la web (en la app, el pie de la pantalla lo dice).
  */
 export const OPCIONES_CONFIGURACION: readonly OpcionConfiguracion[] = [
+  {
+    seccion: "config_pos",
+    a: "/configuracion/punto-de-venta",
+    titulo: "Punto de venta",
+    detalle: "Cómo se ven los productos y cómo se cobra.",
+    icono: "cart",
+  },
   {
     seccion: "config_recibo",
     a: "/configuracion/recibo",
@@ -82,7 +91,11 @@ export const OPCIONES_CONFIGURACION: readonly OpcionConfiguracion[] = [
   },
 ];
 
-/** Las secciones de la lista: con cualquiera, el restaurante ve «Configuración». */
+/**
+ * Las secciones de la lista: con cualquiera, el restaurante ve «Configuración».
+ * La primera es la sección del ítem del menú y el resto van en su `tambien`
+ * (ver `CONFIGURACION_RESTAURANTE`): el orden no cambia quién lo ve.
+ */
 export const SECCIONES_CONFIGURACION: readonly Seccion[] = OPCIONES_CONFIGURACION.map((o) => o.seccion);
 
 /**

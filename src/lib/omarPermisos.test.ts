@@ -235,7 +235,16 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
     expect(pantallas("ADMIN", COMPLETO)).toEqual(
       [...PANTALLAS_06_OCT.COMPLETO_ADMIN, CONFIGURACION, SUPERVISION].sort(),
     );
-    const EN_LA_LISTA = ["Ticket y recibo", "QR de cobro", "Inventario y stock", "Datos de las sucursales"];
+    // Desde el 16-nov la lista empieza por «Punto de venta» (cómo se ve y cómo
+    // cobra el POS): lo de fábrica es el POS de siempre, así que nada cambia
+    // para quien no entra ahí.
+    const EN_LA_LISTA = [
+      "Punto de venta",
+      "Ticket y recibo",
+      "QR de cobro",
+      "Inventario y stock",
+      "Datos de las sucursales",
+    ];
     for (const plan of [OMAR, COMPLETO]) {
       const { ctx } = menuDe("ADMIN", plan);
       expect(opcionesConfiguracion((s) => puedeVer(ctx, s), ctx.rubro).map((o) => o.titulo)).toEqual(EN_LA_LISTA);
