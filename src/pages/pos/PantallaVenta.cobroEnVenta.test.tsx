@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto } from "../../types";
 
 /**
@@ -238,6 +238,57 @@ describe("el cobro en el carrito", () => {
     await act(async () => {});
     expect(within(carritoEnPantalla()).getByText("Carrito vacío")).toBeInTheDocument();
     expect(confirmar()).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * 17-nov: en una ventana baja (1366×768) el cobro se aprieta para que la lista
+ * del carrito no quede en renglón y medio; en una alta (1920×1080), igual que siempre.
+ */
+describe("el cobro en el carrito en una ventana baja", () => {
+  function ventana(alto: number) {
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: /max-height:\s*(\d+)px/.test(q) ? alto <= Number(/max-height:\s*(\d+)px/.exec(q)![1]) : false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  }
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("baja: «Total · N unidades», el rótulo dentro del campo y el fiado en la fila de las apps", async () => {
+    ventana(768);
+    await montar({ plataformas: { disponibles: ["YANGO", "PEDIDOS_YA"], onElegir: vi.fn() } });
+    const panel = carritoEnPantalla();
+    expect(within(panel).getByText("Total").closest("div")).toHaveTextContent(/^Total · 1 unidadBs\s35,00$/);
+    expect(within(panel).queryByText("1 unidad")).not.toBeInTheDocument();
+    // El campo sigue nombrado para el lector de pantalla, sin el rótulo arriba.
+    const campo = within(panel).getByLabelText("Efectivo recibido");
+    expect(campo).toHaveAttribute("placeholder", "Efectivo recibido");
+    // «Fiado» corto, con el nombre entero, en la misma fila que Yango y PedidosYa.
+    const fiado = within(panel).getByRole("button", { name: "Vender a crédito (fiado)" });
+    expect(fiado).toHaveTextContent(/^Fiado$/);
+    expect(fiado).toHaveAttribute("title", "Vender a crédito (fiado)");
+    const yango = within(panel).getByRole("button", { name: /Yango/ });
+    expect(yango.parentElement).toBe(fiado.parentElement);
+    expect(within(panel).getByRole("button", { name: /PedidosYa/ }).parentElement).toBe(fiado.parentElement);
+    // El fiado sigue llevando al fiado; los montos, Confirmar y los medios, como siempre.
+    fireEvent.click(fiado);
+    expect(cobro.onCredito).toHaveBeenCalled();
+    expect(confirmar()).toHaveTextContent("Confirmar cobro · Bs 35,00");
+    for (const m of ["Efectivo", "QR", "Mixto"]) expect(within(panel).getByRole("button", { name: m })).toBeInTheDocument();
+  });
+
+  it("alta: como siempre", async () => {
+    ventana(1080);
+    await montar({ plataformas: { disponibles: ["YANGO"], onElegir: vi.fn() } });
+    const panel = carritoEnPantalla();
+    expect(within(panel).getByText("1 unidad")).toBeInTheDocument();
+    expect(within(panel).getByText("Efectivo recibido")).toBeInTheDocument();
+    const fiado = within(panel).getByRole("button", { name: "Vender a crédito (fiado)" });
+    expect(fiado).toHaveTextContent("Vender a crédito (fiado)");
+    expect(within(panel).getByRole("button", { name: /Yango/ }).parentElement).not.toBe(fiado.parentElement);
   });
 });
 

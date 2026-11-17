@@ -10,6 +10,7 @@ import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia"
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
+import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
@@ -36,6 +37,8 @@ import VistaColumnas from "./VistaColumnas";
 const TODAS = "__todas__";
 /** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
 const PAUSADOS = "__pausados__";
+/** Desde qué alto el cobro en la misma pantalla se aprieta (ver `PanelCarrito`). */
+const VENTANA_BAJA = "(max-height: 860px)";
 
 const idDe = (p: Producto) => p.id;
 
@@ -983,6 +986,18 @@ function PanelCarrito({
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
   const [vaciando, setVaciando] = useState(false);
+  /**
+   * El cobro en la misma pantalla en una ventana baja (17-nov): en 1366×768,
+   * con el fiado y las apps de delivery, la lista quedaba en renglón y medio.
+   * Se aprieta lo de abajo para que se vean casi tres; con 900 px de alto o
+   * más (1920×1080) sobra lugar y queda como siempre. Sin el cobro incrustado,
+   * nada cambia.
+   */
+  const ventanaBaja = useCoincideMedia(VENTANA_BAJA);
+  const apretado = !!cobro && ventanaBaja;
+  // «Total · 2 unidades» en un renglón, cuando abajo del subtotal no hay nada
+  // más que decir (ni descuentos ni otra cifra que la del total).
+  const totalConUnidades = apretado && !descuentos && !modificacion && aCentavos(carrito.subtotal) === aCentavos(total);
   const botonesPlataformas =
     plataformas &&
     plataformas.disponibles.map((p) => (
@@ -1107,7 +1122,21 @@ function PanelCarrito({
             ))}
           </ul>
 
-          <div className={`${cobro ? "shrink-0 " : ""}border-t border-borde-soft px-4 py-3`}>
+          <div className={`${cobro ? "shrink-0 " : ""}border-t border-borde-soft px-4 ${apretado ? "py-2" : "py-3"}`}>
+            {totalConUnidades ? (
+              <dl className="text-sm">
+                <div className="flex items-baseline justify-between gap-3 text-base font-extrabold text-texto">
+                  <dt>
+                    Total
+                    <span className="text-sm font-normal text-texto-2">
+                      {" "}
+                      · {carrito.unidades} {carrito.unidades === 1 ? "unidad" : "unidades"}
+                    </span>
+                  </dt>
+                  <dd>{fmtMoney(total)}</dd>
+                </div>
+              </dl>
+            ) : (
             <dl className="space-y-1 text-sm">
               <div className="flex justify-between text-texto-2">
                 <dt>
@@ -1122,6 +1151,7 @@ function PanelCarrito({
               </div>
               {modificacion?.resumen}
             </dl>
+            )}
 
             {cobro ? (
               // Con el cobro en la misma pantalla no hay «Cobrar»: lo que sigue
@@ -1172,9 +1202,12 @@ function PanelCarrito({
               bloqueado={!!descuentos?.bloqueado || !!bloqueoCobro}
               enviando={cobro.enviando}
               error={cobro.error}
+              compacto={apretado}
+              // En la ventana baja, Yango y PedidosYa en la fila del fiado.
+              alLadoDelFiado={apretado ? botonesPlataformas : undefined}
             />
           )}
-          {cobro && botonesPlataformas && (
+          {cobro && botonesPlataformas && !apretado && (
             <div inert={quieto} className="flex shrink-0 gap-2 px-4 pb-3">
               {botonesPlataformas}
             </div>
