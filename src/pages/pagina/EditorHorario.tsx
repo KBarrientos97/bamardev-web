@@ -4,6 +4,7 @@ import { Boton, Modal, Select } from "../../components/ui";
 import type { Paleta } from "../../lib/pagina/aspecto";
 import {
   agregarCorte,
+  cierreDelDiaSiguiente,
   errorDelDia,
   horaCorta,
   NOMBRE_DIA,
@@ -63,7 +64,8 @@ export default function EditorHorario({
       return s.map((d) => (d.dia >= 2 && d.dia <= 5 ? { ...d, abierto: lunes.abierto, tramos: lunes.tramos.map((t) => ({ ...t })) } : d));
     });
 
-  const errores = (semana ?? []).map(errorDelDia);
+  // Cada día mira la semana: el que cierra al día siguiente no puede pisar su apertura.
+  const errores = (semana ?? []).map((d) => errorDelDia(d, semana ?? []));
   const listo = () => {
     // Con un error el popup queda abierto: el mensaje ya está en su día.
     if (!semana || errores.some(Boolean)) return;
@@ -71,7 +73,7 @@ export default function EditorHorario({
       onCambio(normalizarHorario(tramosDesdeSemana(semana)));
       cerrar();
     } catch {
-      // errorDelDia ya revisa cada día; lo de la lista entera (más de 14
+      // errorDelDia ya revisa cada día; lo de la lista entera (más de 21
       // tramos) no puede salir de este popup.
     }
   };
@@ -140,8 +142,8 @@ export default function EditorHorario({
           ))}
         </ul>
         <p className="mt-3 text-xs text-texto-4">
-          ¿Cerrás pasada la medianoche? Cargá hasta las 24:00 y seguí el día siguiente desde las 0:00: la página lo
-          lee como un solo horario.
+          ¿Cerrás pasada la medianoche? Elegí la hora de la madrugada como cierre (por ejemplo, de 10:00 a 1:00): se
+          entiende que es del día siguiente.
         </p>
       </Modal>
     </>
@@ -215,53 +217,65 @@ function FilaDia({
 
       {d.abierto && (
         <div className="min-w-0 flex-1 space-y-2">
-          {d.tramos.map((t, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <div className="min-w-0 flex-1 sm:flex-none">
-                <Select
-                  className={select}
-                  aria-label={`${nombre}: abre${i === 1 ? " (después del corte)" : ""}`}
-                  aria-describedby={error ? idError : undefined}
-                  value={t.desde}
-                  onChange={(ev) => cambiarTramo(i, "desde", ev.target.value)}
-                >
-                  {opcionesHora(false, t.desde).map((h) => (
-                    <option key={h} value={h}>
-                      {horaCorta(h)}
-                    </option>
-                  ))}
-                </Select>
+          {d.tramos.map((t, i) => {
+            // El que cierra al día siguiente lleva su ayuda gris: "Cierre: 1:00 del miércoles (madrugada)".
+            const ayuda = cierreDelDiaSiguiente(d.dia, t);
+            const idAyuda = `horario-cierre-${d.dia}-${i}`;
+            const describeCierre = [ayuda ? idAyuda : "", error ? idError : ""].filter(Boolean).join(" ") || undefined;
+            return (
+              <div key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <div className="min-w-0 flex-1 sm:flex-none">
+                  <Select
+                    className={select}
+                    aria-label={`${nombre}: abre${i === 1 ? " (después del corte)" : ""}`}
+                    aria-describedby={error ? idError : undefined}
+                    value={t.desde}
+                    onChange={(ev) => cambiarTramo(i, "desde", ev.target.value)}
+                  >
+                    {opcionesHora(false, t.desde).map((h) => (
+                      <option key={h} value={h}>
+                        {horaCorta(h)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <span className="text-[13px] text-texto-3">a</span>
+                <div className="min-w-0 flex-1 sm:flex-none">
+                  <Select
+                    className={select}
+                    aria-label={`${nombre}: cierra${i === 1 ? " (después del corte)" : ""}`}
+                    aria-describedby={describeCierre}
+                    value={t.hasta}
+                    onChange={(ev) => cambiarTramo(i, "hasta", ev.target.value)}
+                  >
+                    {opcionesHora(true, t.hasta).map((h) => (
+                      <option key={h} value={h}>
+                        {h === "24:00" ? "24:00 (medianoche)" : horaCorta(h)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {d.tramos.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Quitar el ${i === 0 ? "primer" : "segundo"} horario del ${delDia}`}
+                    onClick={() => onCambio(d.tramos.filter((_, j) => j !== i))}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-texto-3 hover:bg-muted"
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                )}
+                {ayuda && (
+                  // En su propia línea, justo debajo de las horas: en el celular antes de
+                  // «+ Agregar corte»; en la computadora, que lo tiene al lado, al final.
+                  <p id={idAyuda} className="basis-full text-xs text-texto-3 sm:order-last">
+                    {ayuda}
+                  </p>
+                )}
+                {d.tramos.length > 1 ? null : agregar}
               </div>
-              <span className="text-[13px] text-texto-3">a</span>
-              <div className="min-w-0 flex-1 sm:flex-none">
-                <Select
-                  className={select}
-                  aria-label={`${nombre}: cierra${i === 1 ? " (después del corte)" : ""}`}
-                  aria-describedby={error ? idError : undefined}
-                  value={t.hasta}
-                  onChange={(ev) => cambiarTramo(i, "hasta", ev.target.value)}
-                >
-                  {opcionesHora(true, t.hasta).map((h) => (
-                    <option key={h} value={h}>
-                      {h === "24:00" ? "24:00 (medianoche)" : horaCorta(h)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              {d.tramos.length > 1 ? (
-                <button
-                  type="button"
-                  aria-label={`Quitar el ${i === 0 ? "primer" : "segundo"} horario del ${delDia}`}
-                  onClick={() => onCambio(d.tramos.filter((_, j) => j !== i))}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-texto-3 hover:bg-muted"
-                >
-                  <Icon name="close" size={16} />
-                </button>
-              ) : (
-                agregar
-              )}
-            </div>
-          ))}
+            );
+          })}
           {onCopiar && (
             <button type="button" onClick={onCopiar} className="min-h-9 text-[13px] font-semibold" style={{ color: c.oscuro }}>
               Copiar a todos los días hábiles

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   agregarCorte,
   agruparSemana,
+  cierreDelDiaSiguiente,
   errorDelDia,
   estadoHorario,
   HorarioInvalido,
@@ -12,6 +13,7 @@ import {
   semanaDesdeTramos,
   textoEstado,
   tramosDesdeSemana,
+  type DiaEditor,
   type Tramo,
 } from "./horario";
 
@@ -84,9 +86,55 @@ describe("normalizarHorario (los mensajes del backend)", () => {
         { dia: 2, desde: "15:00", hasta: "19:00" },
       ]),
     ).toBe("El martes: hasta 2 tramos por día (por ejemplo, mañana y tarde)");
-    expect(error(Array.from({ length: 15 }, () => ({ dia: 1, desde: "09:00", hasta: "10:00" })))).toBe(
+    // Una lista que no puede ser válida (más de 3 por día de 7) se corta antes de recorrerla.
+    expect(error(Array.from({ length: 22 }, () => ({ dia: 1, desde: "09:00", hasta: "10:00" })))).toBe(
       "Hasta 2 tramos por día (por ejemplo, mañana y tarde)",
     );
+    expect(error(Array.from({ length: 15 }, () => ({ dia: 1, desde: "09:00", hasta: "10:00" })))).toBe(
+      "El lunes: hasta 2 tramos por día (por ejemplo, mañana y tarde)",
+    );
+  });
+
+  it("un tercero sólo si el primero es la madrugada de la noche anterior", () => {
+    // El lunes cierra el martes a la 1:00 y el martes tiene sus 2 propios (12:00–15:00 y 19:00 a 1:00).
+    const conMadrugada = [
+      { dia: 1, desde: "19:00", hasta: "24:00" },
+      { dia: 2, desde: "00:00", hasta: "01:00" },
+      { dia: 2, desde: "12:00", hasta: "15:00" },
+      { dia: 2, desde: "19:00", hasta: "24:00" },
+      { dia: 3, desde: "00:00", hasta: "01:00" },
+    ];
+    expect(normalizarHorario(conMadrugada)).toEqual(conMadrugada);
+    // Del domingo al lunes, igual.
+    const domingo = [
+      { dia: 1, desde: "00:00", hasta: "02:00" },
+      { dia: 1, desde: "12:00", hasta: "15:00" },
+      { dia: 1, desde: "19:00", hasta: "22:00" },
+      { dia: 7, desde: "20:00", hasta: "24:00" },
+    ];
+    expect(normalizarHorario(domingo)).toEqual(domingo);
+    // Los 7 días con 3 (21 tramos): entra justo en el techo.
+    const todos = [1, 2, 3, 4, 5, 6, 7].flatMap((dia) => [
+      { dia, desde: "00:00", hasta: "01:00" },
+      { dia, desde: "12:00", hasta: "15:00" },
+      { dia, desde: "19:00", hasta: "24:00" },
+    ]);
+    expect(normalizarHorario(todos)).toHaveLength(21);
+
+    const tope = "El martes: hasta 2 tramos por día (por ejemplo, mañana y tarde)";
+    // El lunes no cierra a las 24:00: esa madrugada no sigue de nadie.
+    expect(error([{ dia: 1, desde: "19:00", hasta: "23:00" }, ...conMadrugada.slice(1)])).toBe(tope);
+    // El primero del martes no arranca a las 00:00.
+    expect(
+      error([
+        { dia: 1, desde: "19:00", hasta: "24:00" },
+        { dia: 2, desde: "00:30", hasta: "01:00" },
+        { dia: 2, desde: "12:00", hasta: "15:00" },
+        { dia: 2, desde: "19:00", hasta: "22:00" },
+      ]),
+    ).toBe(tope);
+    // Con la madrugada y 3 propios, tampoco.
+    expect(error([...conMadrugada, { dia: 2, desde: "16:00", hasta: "17:00" }])).toBe(tope);
   });
 
   it("los tramos del mismo día no se pisan (que se toquen, sí)", () => {
@@ -278,10 +326,11 @@ describe("el popup del horario", () => {
   });
 
   it("el error de cada día, con el mensaje del backend", () => {
-    expect(errorDelDia({ dia: 2, abierto: true, tramos: [{ desde: "09:00", hasta: "18:00" }] })).toBeNull();
-    expect(errorDelDia({ dia: 2, abierto: false, tramos: [{ desde: "20:00", hasta: "09:00" }] })).toBeNull();
+    const solo = (d: DiaEditor) => errorDelDia(d, [d]);
+    expect(solo({ dia: 2, abierto: true, tramos: [{ desde: "09:00", hasta: "18:00" }] })).toBeNull();
+    expect(solo({ dia: 2, abierto: false, tramos: [{ desde: "20:00", hasta: "09:00" }] })).toBeNull();
     expect(
-      errorDelDia({
+      solo({
         dia: 1,
         abierto: true,
         tramos: [
@@ -323,5 +372,304 @@ describe("el popup del horario", () => {
     ];
     expect(mismoHorario(a, [...a].reverse())).toBe(true);
     expect(mismoHorario(a, a.slice(1))).toBe(false);
+  });
+});
+
+describe("el que cierra pasada la medianoche (de 10:00 a 1:00)", () => {
+  /** Un día abierto del popup: `abierto(2, "10:00-01:00")`. */
+  const abierto = (dia: number, ...tramos: string[]): DiaEditor => ({
+    dia,
+    abierto: true,
+    tramos: tramos.map((t) => {
+      const [desde, hasta] = t.split("-");
+      return { desde, hasta };
+    }),
+  });
+  /** La semana del popup: los días que no se nombran, cerrados y sin horas. */
+  const semana = (...dias: DiaEditor[]): DiaEditor[] =>
+    [1, 2, 3, 4, 5, 6, 7].map((dia) => dias.find((d) => d.dia === dia) ?? { dia, abierto: false, tramos: [] });
+  const todaLaSemana = (...tramos: string[]) => semana(...[1, 2, 3, 4, 5, 6, 7].map((dia) => abierto(dia, ...tramos)));
+  const guardar = (s: DiaEditor[]) => normalizarHorario(tramosDesdeSemana(s));
+  const errores = (s: DiaEditor[]) => s.map((d) => errorDelDia(d, s));
+  /** Todos los días de 10:00 a 1:00, como queda guardado (14 tramos). */
+  const hasta1Guardado: Tramo[] = [1, 2, 3, 4, 5, 6, 7].flatMap((dia) => [
+    { dia, desde: "00:00", hasta: "01:00" },
+    { dia, desde: "10:00", hasta: "24:00" },
+  ]);
+
+  it("al guardar se parte: hasta las 24:00 ese día y desde las 00:00 el siguiente", () => {
+    expect(guardar(semana(abierto(2, "10:00-01:00")))).toEqual([
+      { dia: 2, desde: "10:00", hasta: "24:00" },
+      { dia: 3, desde: "00:00", hasta: "01:00" },
+    ]);
+    // El domingo sigue en el lunes.
+    expect(guardar(semana(abierto(7, "18:00-02:00")))).toEqual([
+      { dia: 1, desde: "00:00", hasta: "02:00" },
+      { dia: 7, desde: "18:00", hasta: "24:00" },
+    ]);
+    // Aunque el día siguiente esté cerrado en el popup (sus horas escondidas no viajan).
+    const conMiercolesCerrado = semana(abierto(2, "10:00-01:00"), {
+      dia: 3,
+      abierto: false,
+      tramos: [{ desde: "09:00", hasta: "18:00" }],
+    });
+    expect(guardar(conMiercolesCerrado)).toEqual([
+      { dia: 2, desde: "10:00", hasta: "24:00" },
+      { dia: 3, desde: "00:00", hasta: "01:00" },
+    ]);
+    expect(guardar(todaLaSemana("10:00-01:00"))).toEqual(hasta1Guardado);
+  });
+
+  it("al abrir se junta en el día que abre; el que sólo tenía esa madrugada se ve cerrado", () => {
+    const s = semanaDesdeTramos([
+      { dia: 2, desde: "10:00", hasta: "24:00" },
+      { dia: 3, desde: "00:00", hasta: "01:00" },
+    ]);
+    expect(s[1]).toEqual({ dia: 2, abierto: true, tramos: [{ desde: "10:00", hasta: "01:00" }] });
+    expect(s[2]).toEqual({ dia: 3, abierto: false, tramos: [] });
+    expect(semanaDesdeTramos(hasta1Guardado)).toEqual(todaLaSemana("10:00-01:00"));
+    // Del domingo al lunes.
+    const domingo = semanaDesdeTramos([
+      { dia: 1, desde: "00:00", hasta: "02:00" },
+      { dia: 7, desde: "18:00", hasta: "24:00" },
+    ]);
+    expect(domingo[6].tramos).toEqual([{ desde: "18:00", hasta: "02:00" }]);
+    expect(domingo[0]).toEqual({ dia: 1, abierto: false, tramos: [] });
+    // El día siguiente con sus propios tramos: le queda lo suyo.
+    expect(
+      semanaDesdeTramos([
+        { dia: 2, desde: "19:00", hasta: "24:00" },
+        { dia: 3, desde: "00:00", hasta: "01:00" },
+        { dia: 3, desde: "12:00", hasta: "15:00" },
+        { dia: 3, desde: "19:00", hasta: "24:00" },
+        { dia: 4, desde: "00:00", hasta: "01:00" },
+      ]).slice(1, 4),
+    ).toEqual([abierto(2, "19:00-01:00"), abierto(3, "12:00-15:00", "19:00-01:00"), { dia: 4, abierto: false, tramos: [] }]);
+  });
+
+  it("con una hora de la madrugada igual o posterior a la apertura no se junta: 24 horas queda como está", () => {
+    expect(semanaDesdeTramos([1, 2].map((dia) => ({ dia, desde: "00:00", hasta: "24:00" }))).slice(0, 2)).toEqual([
+      abierto(1, "00:00-24:00"),
+      abierto(2, "00:00-24:00"),
+    ]);
+    expect(semanaDesdeTramos([1, 2, 3, 4, 5, 6, 7].map((dia) => ({ dia, desde: "00:00", hasta: "24:00" })))).toEqual(
+      todaLaSemana("00:00-24:00"),
+    );
+    expect(
+      semanaDesdeTramos([
+        { dia: 1, desde: "00:00", hasta: "24:00" },
+        { dia: 2, desde: "00:00", hasta: "05:00" },
+      ]).slice(0, 2),
+    ).toEqual([abierto(1, "00:00-24:00"), abierto(2, "00:00-05:00")]);
+    // Justo hasta la hora en que abrió (10:00 a 10:00 del otro día) tampoco: sería "igual".
+    expect(
+      semanaDesdeTramos([
+        { dia: 1, desde: "10:00", hasta: "24:00" },
+        { dia: 2, desde: "00:00", hasta: "10:00" },
+      ]).slice(0, 2),
+    ).toEqual([abierto(1, "10:00-24:00"), abierto(2, "00:00-10:00")]);
+    // Si no cierra a las 24:00, la madrugada del otro día es de ese día.
+    expect(
+      semanaDesdeTramos([
+        { dia: 1, desde: "10:00", hasta: "22:00" },
+        { dia: 2, desde: "00:00", hasta: "01:00" },
+      ]).slice(0, 2),
+    ).toEqual([abierto(1, "10:00-22:00"), abierto(2, "00:00-01:00")]);
+  });
+
+  it("ida y vuelta exacta: guardar(abrir(guardado)) = guardado y abrir(guardar(popup)) = popup", () => {
+    const guardados: Tramo[][] = [
+      hasta1Guardado,
+      [
+        ...[1, 2, 3, 4, 5].flatMap((dia) => [
+          { dia, desde: "09:00", hasta: "13:00" },
+          { dia, desde: "15:00", hasta: "20:00" },
+        ]),
+        { dia: 6, desde: "09:00", hasta: "13:00" },
+      ],
+      // 2 propios + la madrugada de la noche anterior (3 guardados), los 7 días.
+      [1, 2, 3, 4, 5, 6, 7].flatMap((dia) => [
+        { dia, desde: "00:00", hasta: "01:00" },
+        { dia, desde: "12:00", hasta: "15:00" },
+        { dia, desde: "19:00", hasta: "24:00" },
+      ]),
+      [
+        { dia: 1, desde: "00:00", hasta: "02:00" },
+        { dia: 7, desde: "18:00", hasta: "24:00" },
+      ],
+      [1, 2, 3, 4, 5, 6, 7].map((dia) => ({ dia, desde: "00:00", hasta: "24:00" })),
+      [
+        { dia: 1, desde: "00:00", hasta: "24:00" },
+        { dia: 2, desde: "00:00", hasta: "05:00" },
+      ],
+      [
+        { dia: 1, desde: "10:00", hasta: "24:00" },
+        { dia: 2, desde: "00:00", hasta: "10:00" },
+      ],
+      [
+        { dia: 5, desde: "20:00", hasta: "24:00" },
+        { dia: 6, desde: "00:00", hasta: "02:00" },
+        { dia: 6, desde: "20:00", hasta: "24:00" },
+        { dia: 7, desde: "00:00", hasta: "03:00" },
+      ],
+      // Una noche que sigue en otra que también cruza.
+      [
+        { dia: 1, desde: "22:00", hasta: "24:00" },
+        { dia: 2, desde: "00:00", hasta: "03:00" },
+        { dia: 2, desde: "03:00", hasta: "24:00" },
+        { dia: 3, desde: "00:00", hasta: "02:00" },
+      ],
+    ];
+    for (const g of guardados) {
+      expect(guardar(semanaDesdeTramos(g))).toEqual(normalizarHorario(g));
+      expect(errores(semanaDesdeTramos(g))).toEqual([null, null, null, null, null, null, null]);
+    }
+
+    const popups: DiaEditor[][] = [
+      todaLaSemana("10:00-01:00"),
+      todaLaSemana("12:00-15:00", "19:00-01:00"),
+      semana(abierto(1, "12:00-15:00", "19:00-01:00"), abierto(2, "12:00-15:00", "19:00-01:00")),
+      semana(abierto(7, "18:00-02:00")),
+      semana(abierto(2, "22:00-03:00"), abierto(3, "03:00-02:00")),
+      semana(abierto(5, "20:00-02:00"), abierto(6, "20:00-03:00")),
+      todaLaSemana("00:00-24:00"),
+      semana(abierto(1, "09:00-13:00", "15:00-20:00"), abierto(6, "09:00-13:00")),
+      semana(abierto(1, "10:00-09:00")),
+    ];
+    for (const p of popups) {
+      expect(errores(p)).toEqual([null, null, null, null, null, null, null]);
+      expect(semanaDesdeTramos(guardar(p))).toEqual(p);
+    }
+  });
+
+  it("lo guardado se lee como siempre: abierto y cierra 1:00", () => {
+    const tramos = guardar(semana(abierto(1, "10:00-01:00")));
+    expect(estadoHorario(tramos, bolivia(`${LUNES}T23:30`))).toEqual({ abierto: true, cierra: "01:00" });
+    expect(estadoHorario(tramos, bolivia("2026-10-13T00:30"))).toEqual({ abierto: true, cierra: "01:00" });
+    expect(estadoHorario(tramos, bolivia("2026-10-13T01:00"))).toEqual({
+      abierto: false,
+      abre: { dia: 1, hora: "10:00", enDias: 6 },
+    });
+  });
+
+  it("la hora de cierre no puede ser igual a la de apertura", () => {
+    expect(errores(semana(abierto(2, "10:00-10:00")))[1]).toBe(
+      "El martes: la hora de cierre no puede ser igual a la de apertura (si atendés las 24 horas, cargá de 0:00 a 24:00)",
+    );
+    expect(errores(semana(abierto(2, "00:00-24:00")))[1]).toBeNull();
+  });
+
+  it("el que cruza no puede pisar la apertura del día siguiente (el error va en el día que cruza)", () => {
+    // Con espacios duros para que "se pisan" o "a las 2:00" no se partan en dos renglones.
+    const plano = (e: string | null) => e?.replace(/\u00A0/g, " ") ?? null;
+    const pisa = semana(abierto(2, "20:00-03:00"), abierto(3, "02:00-12:00"));
+    expect(errores(pisa).map(plano)).toEqual([
+      null,
+      "El martes cierra a las 3:00 del miércoles, pero el miércoles ya abre a las 2:00: se pisan",
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expect(errores(pisa)[1]).toContain("ya abre a\u00A0las\u00A02:00: se\u00A0pisan");
+    // "a la 1:00", y la apertura más temprana del día aunque esté cargada segunda.
+    expect(plano(errores(semana(abierto(4, "20:00-01:00"), abierto(5, "15:00-20:00", "00:30-05:00")))[3])).toBe(
+      "El jueves cierra a la 1:00 del viernes, pero el viernes ya abre a las 0:30: se pisan",
+    );
+    // Del domingo al lunes.
+    expect(plano(errores(semana(abierto(7, "20:00-03:00"), abierto(1, "01:00-12:00")))[6])).toBe(
+      "El domingo cierra a las 3:00 del lunes, pero el lunes ya abre a la 1:00: se pisan",
+    );
+    // Que cierre justo cuando abre el otro no se pisa; con el otro cerrado, tampoco.
+    expect(errores(semana(abierto(2, "20:00-03:00"), abierto(3, "03:00-12:00"))).every((e) => e === null)).toBe(true);
+    const cerrado = semana(abierto(2, "20:00-03:00"), { dia: 3, abierto: false, tramos: [{ desde: "02:00", hasta: "12:00" }] });
+    expect(errores(cerrado).every((e) => e === null)).toBe(true);
+  });
+
+  it("sólo el último del día puede cruzar; el dueño sigue con 2 tramos por día", () => {
+    expect(errores(semana(abierto(1, "19:00-01:00", "22:00-23:00")))[0]).toBe(
+      "El lunes: los tramos 19:00-01:00 y 22:00-23:00 se pisan",
+    );
+    // Cargados al revés, igual (se ordenan por la apertura).
+    expect(errores(semana(abierto(1, "22:00-23:00", "19:00-01:00")))[0]).toBe(
+      "El lunes: los tramos 19:00-01:00 y 22:00-23:00 se pisan",
+    );
+    expect(errores(semana(abierto(1, "12:00-15:00", "19:00-01:00")))[0]).toBeNull();
+    expect(errores(semana(abierto(2, "08:00-10:00", "11:00-13:00", "15:00-19:00")))[1]).toBe(
+      "El martes: hasta 2 tramos por día (por ejemplo, mañana y tarde)",
+    );
+    // Sus 2 y la madrugada del lunes: el martes queda con 3 guardados, y se acepta.
+    const tres = semana(abierto(1, "19:00-01:00"), abierto(2, "12:00-15:00", "19:00-01:00"));
+    expect(errores(tres).every((e) => e === null)).toBe(true);
+    expect(guardar(tres)).toEqual([
+      { dia: 1, desde: "19:00", hasta: "24:00" },
+      { dia: 2, desde: "00:00", hasta: "01:00" },
+      { dia: 2, desde: "12:00", hasta: "15:00" },
+      { dia: 2, desde: "19:00", hasta: "24:00" },
+      { dia: 3, desde: "00:00", hasta: "01:00" },
+    ]);
+  });
+
+  it("la ayuda gris dice a qué hora y qué día cierra", () => {
+    expect(cierreDelDiaSiguiente(2, { desde: "10:00", hasta: "01:00" })).toBe("Cierre: 1:00 del miércoles (madrugada)");
+    expect(cierreDelDiaSiguiente(7, { desde: "18:00", hasta: "02:30" })).toBe("Cierre: 2:30 del lunes (madrugada)");
+    // El que eligió mal (quería 21:00) lo ve: cierra a las 9:00 de otro día.
+    expect(cierreDelDiaSiguiente(1, { desde: "10:00", hasta: "09:00" })).toBe("Cierre: 9:00 del martes");
+    expect(cierreDelDiaSiguiente(1, { desde: "10:00", hasta: "24:00" })).toBeNull();
+    expect(cierreDelDiaSiguiente(1, { desde: "09:00", hasta: "18:00" })).toBeNull();
+  });
+
+  it("agregar corte sobre uno que cruza da dos tramos válidos", () => {
+    const casos: [string, string[]][] = [
+      ["10:00-01:00", ["10:00-13:00", "15:00-01:00"]],
+      ["19:00-01:00", ["12:00-15:00", "19:00-01:00"]],
+      ["14:00-02:00", ["14:00-17:00", "19:00-02:00"]],
+    ];
+    for (const [antes, despues] of casos) {
+      const corte = agregarCorte(abierto(1, antes).tramos);
+      expect(corte).toEqual(abierto(1, ...despues).tramos);
+      expect(errores(semana({ dia: 1, abierto: true, tramos: corte }))[0]).toBeNull();
+    }
+  });
+
+  it("el resumen y la semana agrupada lo dicen como el dueño: 10:00–1:00", () => {
+    expect(resumenHorario(hasta1Guardado)).toBe("Todos los días 10:00–1:00");
+    expect(resumenHorario(tramosDesdeSemana(todaLaSemana("12:00-15:00", "19:00-01:00")))).toBe(
+      "Todos los días 12:00–15:00 y 19:00–1:00",
+    );
+    // El que ya lo había cargado partido, también.
+    expect(
+      resumenHorario([
+        { dia: 5, desde: "18:00", hasta: "24:00" },
+        { dia: 6, desde: "00:00", hasta: "02:00" },
+      ]),
+    ).toBe("Lun a jue cerrado · Vie 18:00–2:00 · Sáb y dom cerrado");
+    expect(
+      resumenHorario([
+        { dia: 7, desde: "18:00", hasta: "24:00" },
+        { dia: 1, desde: "00:00", hasta: "01:00" },
+      ]),
+    ).toBe("Lun a sáb cerrado · Dom 18:00–1:00");
+    expect(
+      agruparSemana([
+        { dia: 5, desde: "20:00", hasta: "24:00" },
+        { dia: 6, desde: "00:00", hasta: "02:00" },
+        { dia: 6, desde: "20:00", hasta: "24:00" },
+        { dia: 7, desde: "00:00", hasta: "03:00" },
+      ]),
+    ).toEqual([
+      { dias: "Lun a jue", horas: null },
+      { dias: "Vie", horas: "20:00–2:00" },
+      { dias: "Sáb", horas: "20:00–3:00" },
+      { dias: "Dom", horas: null },
+    ]);
+    // Lo que no se junta queda como hoy.
+    expect(
+      resumenHorario([
+        { dia: 1, desde: "00:00", hasta: "24:00" },
+        { dia: 2, desde: "00:00", hasta: "05:00" },
+      ]),
+    ).toBe("Lun 24 horas · Mar 0:00–5:00 · Mié a dom cerrado");
   });
 });
