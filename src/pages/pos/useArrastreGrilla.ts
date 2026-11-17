@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Arrastrar para reordenar la grilla del POS, equivalente al ItemTouchHelper
- * de Android: se levanta una card y se la lleva a su lugar.
+ * de Android: se levanta una card y se la lleva a su lugar. La lista en
+ * columnas (`VistaColumnas`) usa el mismo gesto con sus filas, cada una dentro
+ * de su categoría (ver `aceptaDestino`).
  *
  * Va con Pointer Events y no con HTML5 drag-and-drop porque éste no existe en
  * táctil, y la web se usa igual en la tablet del mostrador que en la PC del
@@ -66,6 +68,15 @@ interface Opciones {
    * arrastra: el resto de la pantalla scrollea como siempre.
    */
   contenedor?: React.RefObject<HTMLElement | null>;
+  /**
+   * Si la card levantada puede ir al lugar de `destino`. Sin esto, a cualquier
+   * lugar (la grilla de tarjetas). La lista en columnas lo usa para que un
+   * producto se acomode sólo dentro de su categoría: pasar por encima de una
+   * fila de otra no lo lleva para allá, se queda en el último lugar que valía.
+   * Y al moverse sólo cambia de lugar con las de su grupo (las que aceptaría
+   * de destino): las demás no se corren de donde estaban (ver `moverEnGrupo`).
+   */
+  aceptaDestino?: (levantada: number, destino: number) => boolean;
 }
 
 /**
@@ -115,6 +126,36 @@ export function moverEnLista(lista: number[], actual: number, destino: number): 
   return nuevo;
 }
 
+/**
+ * Como `moverEnLista`, pero sólo entre las del grupo de `actual` (`delGrupo`):
+ * se reacomodan los lugares que ya ocupaban y las demás quedan donde estaban.
+ * En la lista en columnas el grupo es la categoría: subir las alitas entre los
+ * pollos no corre a las bebidas en el orden del cajero, que es el mismo de las
+ * tarjetas, donde están todas mezcladas. Null si no cambia nada.
+ */
+export function moverEnGrupo(
+  lista: number[],
+  actual: number,
+  destino: number,
+  delGrupo: (id: number) => boolean,
+): number[] | null {
+  const lugares: number[] = [];
+  const grupo: number[] = [];
+  lista.forEach((id, i) => {
+    if (delGrupo(id)) {
+      lugares.push(i);
+      grupo.push(id);
+    }
+  });
+  const movido = moverEnLista(grupo, actual, destino);
+  if (!movido) return null;
+  const nuevo = [...lista];
+  lugares.forEach((lugar, i) => {
+    nuevo[lugar] = movido[i];
+  });
+  return nuevo;
+}
+
 /** La card que está debajo del puntero, o null si no hay ninguna. */
 function cardBajo(x: number, y: number): number | null {
   // `elementFromPoint` y no `pointerenter`: con el dedo el navegador captura el
@@ -126,7 +167,7 @@ function cardBajo(x: number, y: number): number | null {
   return Number.isInteger(id) ? id : null;
 }
 
-export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor }: Opciones): Arrastre {
+export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor, aceptaDestino }: Opciones): Arrastre {
   // Orden "en vuelo": sólo existe mientras se arrastra. Fuera de eso mandan los
   // ids que llegan por props, así que un cambio de filtro se refleja al toque.
   const [orden, setOrden] = useState<number[] | null>(null);
@@ -150,6 +191,8 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor 
   onReordenarRef.current = onReordenar;
   const contenedorRef = useRef(contenedor);
   contenedorRef.current = contenedor;
+  const aceptaDestinoRef = useRef(aceptaDestino);
+  aceptaDestinoRef.current = aceptaDestino;
 
   const limpiarTimer = () => {
     if (timer.current !== null) {
@@ -170,7 +213,13 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor 
     const actual = arrastrandoRef.current;
     const destino = cardBajo(x, y);
     if (actual === null || destino === null) return;
-    const nuevo = moverEnLista(ordenRef.current ?? idsRef.current, actual, destino);
+    const lista = ordenRef.current ?? idsRef.current;
+    const acepta = aceptaDestinoRef.current;
+    // Un lugar que no le corresponde (en la lista, otra categoría): no se mueve.
+    if (acepta && !acepta(actual, destino)) return;
+    const nuevo = acepta
+      ? moverEnGrupo(lista, actual, destino, (id) => acepta(actual, id))
+      : moverEnLista(lista, actual, destino);
     if (nuevo) {
       ordenRef.current = nuevo;
       setOrden(nuevo);

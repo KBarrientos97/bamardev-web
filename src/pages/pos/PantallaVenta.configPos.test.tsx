@@ -37,7 +37,7 @@ vi.mock("../../lib/api", () => ({
 vi.mock("../farmacia/CatalogoVenta", () => ({ default: () => <p>catálogo de la farmacia</p> }));
 
 import { api } from "../../lib/api";
-import PantallaVenta, { type ModoModificacion } from "./PantallaVenta";
+import PantallaVenta, { type CobroEnLaVenta, type ModoModificacion } from "./PantallaVenta";
 import type { Carrito, LineaCarrito } from "./useCarrito";
 
 const POLLOS = { id: 1, nombre: "Pollos", activo: true };
@@ -89,17 +89,20 @@ function carritoCon(lineas: LineaCarrito[] = []): Carrito {
 
 let carrito: Carrito;
 
-async function montar(opc: { lineas?: LineaCarrito[]; modificacion?: ModoModificacion } = {}) {
+async function montar(
+  opc: { lineas?: LineaCarrito[]; modificacion?: ModoModificacion; productos?: Producto[]; cobro?: CobroEnLaVenta } = {},
+) {
   carrito = carritoCon(opc.lineas);
   const r = render(
     <MemoryRouter>
       <PantallaVenta
-        productos={TODOS}
+        productos={opc.productos ?? TODOS}
         categorias={CATEGORIAS}
         carrito={carrito}
         onCobrar={() => {}}
         sucursalId={3}
         modificacion={opc.modificacion}
+        cobro={opc.cobro}
       />
     </MemoryRouter>,
   );
@@ -224,9 +227,9 @@ describe("la vista en columnas", () => {
     const pollos = screen.getByRole("region", { name: "Pollos" });
     expect(within(pollos).getByRole("heading", { name: "Pollos" })).toBeInTheDocument();
     expect(within(pollos).getByText("2")).toBeInTheDocument();
-    // Ni tarjetas ni arrastre.
+    // Ni tarjetas. Las filas sí se arrastran (ver «acomodar la lista arrastrando»).
     expect(screen.queryByRole("heading", { name: "Pollo entero" })).not.toBeInTheDocument();
-    expect(document.querySelector("[data-arrastre-id]")).toBeNull();
+    expect(fila("Pollo entero")).toHaveAttribute("data-arrastre-id", "1");
   });
 
   it("cada fila: ícono chico, nombre y precio", async () => {
@@ -375,6 +378,242 @@ describe("la vista en columnas", () => {
     await montar();
     expect(chips()).toEqual([]);
     expect(columnas().map(([n]) => n)).toEqual(["Pollos", "Bebidas", "Extras", "Otros"]);
+  });
+});
+
+describe("acomodar la lista arrastrando (17-nov)", () => {
+  // Como las tarjetas: mantener presionado (dedo) o apretar y mover (mouse), y
+  // donde se suelta queda. Pero cada fila dentro de la lista de su categoría.
+  const ALITAS = producto(7, "Alitas", POLLOS);
+  const PIERNA = producto(8, "Pierna", POLLOS);
+  const SPRITE = producto(9, "Sprite 2 L", BEBIDAS);
+  /** Como llegan (el orden de las tarjetas): pollos y bebidas mezclados. */
+  const PARA_ACOMODAR = [ALITAS, ENTERO, COCA, CUARTO, SPRITE, PIERNA, PAPAS];
+  const POLLOS_ANTES = ["Alitas", "Pollo entero", "Cuarto de pollo", "Pierna"];
+  const BEBIDAS_ANTES = ["Coca 2 L", "Sprite 2 L"];
+  /** El orden del cajero, el mismo que usan las tarjetas. */
+  const guardado = () => localStorage.getItem("bamardev.pos.orden_prueba_cajero");
+
+  const lista = (nombre: string) => columnas().find(([n]) => n === nombre)?.[1];
+  /** Lo que el puntero tiene debajo: la fila de ese producto, o nada (fuera de las listas). */
+  function debajo(nombre: string | null) {
+    const el = nombre === null ? null : botonFila(nombre);
+    document.elementFromPoint = vi.fn(() => el);
+  }
+  function apretar(el: Element, pointerType = "mouse", x = 10, y = 10) {
+    fireEvent.pointerDown(el, { pointerType, button: 0, clientX: x, clientY: y });
+  }
+  function mover(x: number, y: number) {
+    act(() => {
+      window.dispatchEvent(new MouseEvent("pointermove", { clientX: x, clientY: y }));
+    });
+  }
+  function soltar() {
+    act(() => {
+      window.dispatchEvent(new MouseEvent("pointerup"));
+    });
+  }
+  const levantada = (nombre: string) => fila(nombre).className.includes("outline-2");
+
+  beforeEach(() => {
+    sesion.pos = { vista: "COLUMNAS" };
+    debajo(null);
+  });
+
+  it("con el mouse: apretar y mover lleva las alitas al tercer lugar; al soltar quedan ahí y se guarda", async () => {
+    await montar({ productos: PARA_ACOMODAR });
+    expect(lista("Pollos")).toEqual(POLLOS_ANTES);
+    apretar(botonFila("Alitas"));
+    mover(10, 40);
+    expect(levantada("Alitas")).toBe(true);
+    debajo("Cuarto de pollo");
+    mover(10, 120);
+    expect(lista("Pollos")).toEqual(["Pollo entero", "Cuarto de pollo", "Alitas", "Pierna"]);
+
+    // El click que el navegador manda enseguida de soltar no la agrega al carrito.
+    // (El botón se busca antes: buscarlo por su rol puede tardar más que el
+    // rato en que el click se ignora.)
+    const alitas = botonFila("Alitas");
+    soltar();
+    fireEvent.click(alitas);
+    expect(carrito.agregar).not.toHaveBeenCalled();
+    expect(levantada("Alitas")).toBe(false);
+    expect(lista("Pollos")).toEqual(["Pollo entero", "Cuarto de pollo", "Alitas", "Pierna"]);
+    expect(lista("Bebidas")).toEqual(BEBIDAS_ANTES);
+    // En el orden de las tarjetas sólo se reacomodaron los lugares de los pollos.
+    expect(guardado()).toBe("1,2,3,7,9,8,5");
+  });
+
+  it("con el dedo: mantener presionado y llevarla al último lugar", async () => {
+    await montar({ productos: PARA_ACOMODAR });
+    vi.useFakeTimers();
+    try {
+      apretar(botonFila("Alitas"), "touch");
+      act(() => vi.advanceTimersByTime(500));
+      expect(levantada("Alitas")).toBe(true);
+      debajo("Pierna");
+      mover(10, 200);
+      soltar();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(lista("Pollos")).toEqual(["Pollo entero", "Cuarto de pollo", "Pierna", "Alitas"]);
+    expect(guardado()).toBe("1,2,3,8,9,7,5");
+  });
+
+  it("pasar por encima de una fila de otra categoría no la cambia de lista ni desordena la otra", async () => {
+    await montar({ productos: PARA_ACOMODAR });
+    apretar(botonFila("Pollo entero"));
+    mover(10, 40);
+    debajo("Coca 2 L");
+    mover(300, 40);
+    expect(lista("Pollos")).toEqual(POLLOS_ANTES);
+    expect(lista("Bebidas")).toEqual(BEBIDAS_ANTES);
+
+    // Baja al final de los pollos; después pasa por la Sprite y sale de las
+    // listas: se queda en el último lugar que valía.
+    debajo("Pierna");
+    mover(10, 200);
+    debajo("Sprite 2 L");
+    mover(300, 200);
+    debajo(null);
+    mover(600, 600);
+    expect(lista("Pollos")).toEqual(["Alitas", "Cuarto de pollo", "Pierna", "Pollo entero"]);
+    expect(lista("Bebidas")).toEqual(BEBIDAS_ANTES);
+
+    soltar();
+    expect(lista("Pollos")).toEqual(["Alitas", "Cuarto de pollo", "Pierna", "Pollo entero"]);
+    expect(lista("Bebidas")).toEqual(BEBIDAS_ANTES);
+    expect(guardado()).toBe("7,2,3,8,9,1,5");
+  });
+
+  it("un toque sin arrastre agrega y no toca el orden (con el mouse y con el dedo)", async () => {
+    await montar({ productos: PARA_ACOMODAR });
+    apretar(botonFila("Alitas"));
+    soltar();
+    fireEvent.click(botonFila("Alitas"));
+    expect(carrito.agregar).toHaveBeenCalledWith(ALITAS);
+
+    vi.useFakeTimers();
+    try {
+      apretar(botonFila("Pierna"), "touch");
+      act(() => vi.advanceTimersByTime(200));
+      soltar();
+      act(() => vi.advanceTimersByTime(600));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(levantada("Pierna")).toBe(false);
+    fireEvent.click(botonFila("Pierna"));
+    expect(carrito.agregar).toHaveBeenCalledWith(PIERNA);
+    expect(guardado()).toBeNull();
+    expect(lista("Pollos")).toEqual(POLLOS_ANTES);
+  });
+
+  it("apretar el «−», la cantidad o el «⋯» y mover no levanta la fila", async () => {
+    sesion.permisos = ["productos.pausar"];
+    await montar({ productos: PARA_ACOMODAR, lineas: [{ producto: ALITAS, cantidad: 2, enMesa: 2, nota: "" }] });
+    const alitas = fila("Alitas");
+    for (const control of [
+      within(alitas).getByRole("button", { name: "Uno menos de Alitas" }),
+      within(alitas).getByRole("button", { name: "Pausar Alitas" }),
+    ]) {
+      apretar(control);
+      mover(10, 80);
+      expect(levantada("Alitas")).toBe(false);
+      soltar();
+    }
+    // La cantidad deja pasar el toque a la fila (tocarla suma), pero apretarla
+    // tampoco la levanta.
+    const cantidad = within(alitas).getByText("2").parentElement!;
+    cantidad.getBoundingClientRect = () =>
+      ({ left: 200, right: 260, top: 0, bottom: 36, width: 60, height: 36, x: 200, y: 0, toJSON() {} }) as DOMRect;
+    apretar(botonFila("Alitas"), "mouse", 230, 18);
+    mover(230, 80);
+    expect(levantada("Alitas")).toBe(false);
+    soltar();
+    expect(guardado()).toBeNull();
+  });
+
+  it("con un filtro sólo se reacomodan los visibles: lo que no se ve queda donde estaba", async () => {
+    const pausado = (productoId: number) => ({ productoId, nombre: "", desde: "2026-11-17T12:00:00Z", por: "ana" });
+    vi.mocked(api.productosPausados).mockResolvedValue({
+      sucursal: { id: 3, nombre: "Centro" },
+      pausados: [pausado(1), pausado(8), pausado(9)],
+    });
+    await montar({ productos: PARA_ACOMODAR });
+    fireEvent.click(screen.getByRole("button", { name: "Pausados (3)" }));
+    expect(columnas()).toEqual([
+      ["Pollos", ["Pollo entero", "Pierna"]],
+      ["Bebidas", ["Sprite 2 L"]],
+    ]);
+    apretar(botonFila("Pierna"));
+    mover(10, 40);
+    debajo("Pollo entero");
+    mover(10, 10);
+    soltar();
+    expect(columnas()).toEqual([
+      ["Pollos", ["Pierna", "Pollo entero"]],
+      ["Bebidas", ["Sprite 2 L"]],
+    ]);
+    // Con todo a la vista: las alitas y el cuarto, en sus lugares.
+    fireEvent.click(screen.getByRole("button", { name: "Todos" }));
+    expect(lista("Pollos")).toEqual(["Alitas", "Pierna", "Cuarto de pollo", "Pollo entero"]);
+    expect(lista("Bebidas")).toEqual(BEBIDAS_ANTES);
+    expect(guardado()).toBe("7,8,3,2,9,1,5");
+  });
+
+  it("con una categoría elegida, sus columnas son una sola lista: se lleva de una a la otra", async () => {
+    await montar({ productos: PARA_ACOMODAR });
+    fireEvent.click(screen.getByRole("button", { name: "Pollos" }));
+    expect(columnas()).toEqual([["Pollos", POLLOS_ANTES]]);
+    apretar(botonFila("Alitas"));
+    mover(10, 40);
+    debajo("Pierna");
+    mover(400, 10);
+    soltar();
+    expect(columnas()).toEqual([["Pollos", ["Pollo entero", "Cuarto de pollo", "Pierna", "Alitas"]]]);
+    expect(guardado()).toBe("1,2,3,8,9,7,5");
+  });
+
+  it("lo acomodado en la lista es el orden de las tarjetas, y sigue al volver a abrir", async () => {
+    const r = await montar({ productos: PARA_ACOMODAR });
+    apretar(botonFila("Pierna"));
+    mover(10, 40);
+    debajo("Alitas");
+    mover(10, 10);
+    soltar();
+    expect(lista("Pollos")).toEqual(["Pierna", "Alitas", "Pollo entero", "Cuarto de pollo"]);
+    r.unmount();
+
+    const otra = await montar({ productos: PARA_ACOMODAR });
+    expect(lista("Pollos")).toEqual(["Pierna", "Alitas", "Pollo entero", "Cuarto de pollo"]);
+    otra.unmount();
+
+    sesion.pos = undefined;
+    await montar({ productos: PARA_ACOMODAR });
+    const tarjetas = Array.from(document.querySelectorAll("li[data-arrastre-id] h3"), (h) => h.textContent);
+    expect(tarjetas).toEqual(["Pierna", "Alitas", "Coca 2 L", "Pollo entero", "Sprite 2 L", "Cuarto de pollo", "Papas extra"]);
+  });
+
+  it("mientras se registra el cobro no se arrastra", async () => {
+    const cobro: CobroEnLaVenta = {
+      total: 21,
+      formasPago: [{ id: 10, nombre: "Efectivo" }] as CobroEnLaVenta["formasPago"],
+      onConfirmar: vi.fn(),
+      enviando: true,
+      error: "",
+    };
+    await montar({ productos: PARA_ACOMODAR, cobro });
+    // `hidden`: lo que está `inert` puede no contar como accesible para la consulta.
+    const alitas = screen.getByRole("button", { name: "Alitas", hidden: true });
+    apretar(alitas);
+    mover(10, 40);
+    document.elementFromPoint = vi.fn(() => screen.getByRole("button", { name: "Pierna", hidden: true }));
+    mover(10, 200);
+    soltar();
+    expect(alitas.closest("li")!.className).not.toContain("outline-2");
+    expect(guardado()).toBeNull();
   });
 });
 
