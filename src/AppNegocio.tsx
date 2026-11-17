@@ -96,6 +96,7 @@ const MenuDigital = lazy(() => import("./pages/menu-digital/MenuDigital"));
 const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
 // «Configuración» del restaurante (15-nov): la lista de sus opciones.
 const Configuracion = lazy(() => import("./pages/configuracion/Configuracion"));
+const ConfigPuntoDeVenta = lazy(() => import("./pages/configuracion/ConfigPuntoDeVenta"));
 const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
 const Agregados = lazy(() => import("./pages/inventario/Agregados"));
 const ConfigTickets = lazy(() => import("./pages/tickets/ConfigTickets"));
@@ -793,6 +794,18 @@ function Rutas() {
             <Protegida seccion="config_recibo">
               <Suspense fallback={null}>
                 <ConfigRecibo />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Cómo se ven los productos en el POS y si se cobra en la misma pantalla (16-nov). */}
+        <Route
+          path="/configuracion/punto-de-venta"
+          element={
+            <Protegida seccion="config_pos">
+              <Suspense fallback={null}>
+                <ConfigPuntoDeVenta />
               </Suspense>
             </Protegida>
           }

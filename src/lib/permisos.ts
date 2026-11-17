@@ -110,6 +110,12 @@ export type Seccion =
    */
   | "config_inventario"
   /**
+   * Configuración › Punto de venta (16-nov): cómo se ven los productos en el
+   * POS (tarjetas o columnas por categoría, íconos, filtros, orden) y si se
+   * cobra en la misma pantalla. Del dueño, como Inventario y stock.
+   */
+  | "config_pos"
+  /**
    * Inventario → «Agregados» (PLAN-AGREGADOS §7.6): los grupos de toppings y a
    * qué productos se asignan. Sólo se ve con el ajuste de Configuración
    * prendido (`negocio.usaAgregados`), que no es una feature del plan.
@@ -426,6 +432,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Vender sin stock (09-nov): cómo trabaja el local, no algo que se venda
   // aparte. El dueño, sin feature, como el backend (`control-stock`).
   config_inventario: { permiso: "negocio.configurar", feature: null },
+  // Cómo se ve y cómo cobra el punto de venta (16-nov): cómo trabaja el local,
+  // no algo que se venda aparte. Lo mismo que pide el backend en `/pos/config`.
+  config_pos: { permiso: "negocio.configurar", feature: null },
   // Los grupos de toppings son parte del catálogo: lo mismo que Artículos. Que
   // el negocio los use lo decide el ajuste de Configuración (ver `puedeVer`).
   agregados: { permiso: "catalogo.editar", feature: "catalogo" },
@@ -595,6 +604,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // sus bebidas (09-nov). La farmacia no puede (el lote sale del stock) y el
   // resto de los rubros no lo pidió: ante la duda, no se ve.
   config_inventario: ["RESTAURANTE"],
+  // Lo pidió el restaurante (16-nov) y su lista de Configuración es la única
+  // que lo ofrece. La farmacia arma su catálogo aparte: no tiene qué elegir.
+  config_pos: ["RESTAURANTE"],
   // El ajuste vive en esa misma pantalla, así que el rubro es el mismo.
   agregados: ["RESTAURANTE"],
   config_tickets: ["RESTAURANTE"],
@@ -1007,6 +1019,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["menu_digital", "/menu-digital"],
   ["config_recibo", "/configuracion/recibo"],
   ["config_inventario", "/configuracion/inventario"],
+  ["config_pos", "/configuracion/punto-de-venta"],
   ["config_tickets", "/configuracion/tickets"],
   ["config_negocio", "/configuracion/negocio"],
   ["config_sucursales", "/configuracion/sucursales"],
