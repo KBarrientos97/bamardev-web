@@ -17,6 +17,11 @@ import type { Producto } from "../../types";
  * línea, nada nuevo.
  */
 
+// Cada caso monta el POS entero (venta, carrito y cobro reales): solo tarda
+// 1-2 s, pero con la PC cargada por la suite completa pasaba los 5 s de tope y
+// fallaba sin que nada estuviera roto.
+vi.setConfig({ testTimeout: 20_000 });
+
 const sesion = vi.hoisted(() => ({
   pos: { cobro: "EN_VENTA" } as Record<string, unknown> | undefined,
   features: ["pos", "caja", "pago_qr_mixto", "mesa_llevar"] as string[],
