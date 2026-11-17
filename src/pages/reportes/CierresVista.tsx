@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Modal, Vacio } from "../../components/ui";
-import { esCero } from "../../lib/dinero";
+import { aCentavos, esCero } from "../../lib/dinero";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import { ProductosDelArqueo } from "./ProductosDelArqueo";
@@ -18,6 +18,12 @@ export interface CierreFila {
   totalDia: number;
   apertura: number;
   efectivo: number;
+  /**
+   * Lo devuelto en efectivo por ventas modificadas (17-nov), en positivo y ya
+   * restado de `efectivo`. Sólo si es más que cero; un backend anterior no lo
+   * manda. Ver `efectivoDelTurno` del cierre.
+   */
+  devueltoEfectivo?: number;
   qr: number;
   esperado: number;
   conteo: number;
@@ -106,6 +112,9 @@ export function ArqueoDetalle({ cierre: c, sede, onCerrar }: { cierre: CierreFil
   // «Centro» sólo para la organización con cierres de 2+ locales (lo decide quien lo abre):
   // un PDF suelto tiene que decir de qué local es la caja.
   const subtitulo = [c.fecha, c.cajero, sede].filter(Boolean).join(" · ");
+  // Lo cobrado en efectivo y lo devuelto por ventas modificadas, como en el
+  // cierre de la caja; sin el dato, el número de siempre.
+  const devuelto = Math.max(0, aCentavos(c.devueltoEfectivo ?? 0));
   return (
     <Modal
       abierto
@@ -143,7 +152,13 @@ export function ArqueoDetalle({ cierre: c, sede, onCerrar }: { cierre: CierreFil
         <dl className="space-y-1.5 text-sm">
           <Fila etiqueta="Total vendido" valor={c.totalDia} />
           <Fila etiqueta="Fondo de apertura" valor={c.apertura} />
-          <Fila etiqueta="Ventas en efectivo" valor={c.efectivo} />
+          <Fila etiqueta="Ventas en efectivo" valor={devuelto > 0 ? aCentavos(c.efectivo + devuelto) : c.efectivo} />
+          {devuelto > 0 && (
+            <div>
+              <Fila etiqueta="Devuelto en efectivo" valor={-devuelto} />
+              <p className="pl-3 text-[12px] text-texto-4">Por ventas modificadas</p>
+            </div>
+          )}
           <Fila etiqueta="Ventas por QR y otros (no van al cajón)" valor={c.qr} apagado />
           <div className="border-t border-borde pt-1.5">
             <Fila etiqueta="Efectivo esperado" valor={c.esperado} fuerte />

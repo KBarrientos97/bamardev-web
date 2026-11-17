@@ -1,3 +1,4 @@
+import { aCentavos } from "../../lib/dinero";
 import type { ResumenCaja } from "../../types";
 
 /**
@@ -33,6 +34,43 @@ export function esEfectivo(nombre: string): boolean {
   return nombre.toLowerCase().includes("efectivo");
 }
 
+/** El renglón de lo devuelto en efectivo por ventas modificadas: el mismo nombre en todo el cierre. */
+export const ETIQUETA_DEVUELTO = "Devuelto en efectivo";
+
+/**
+ * El efectivo del turno separado en lo que se cobró, el vuelto de verdad y lo
+ * devuelto por ventas modificadas (17-nov).
+ *
+ * Al bajarle el total a una venta ya cobrada, la diferencia se devuelve en
+ * efectivo: el pago en efectivo de esa venta baja (queda en negativo si se
+ * había cobrado por QR) y el «entregado» sube en lo mismo. El servidor manda
+ * lo devuelto aparte (`devueltoEfectivo`), y con eso:
+ *
+ * - cobrado en efectivo = `efectivo + devueltoEfectivo`
+ * - vuelto de verdad    = `cambioEntregado − devueltoEfectivo`
+ *
+ * Sin eso el cierre decía «En efectivo Bs -3,00» y «cambio entregado Bs 3,00»
+ * por una venta de Bs 23 cobrada por QR, con Bs 3 devueltos. Sin el campo (un
+ * backend anterior, o un turno sin devoluciones) los números son los de
+ * siempre, tal cual llegaron.
+ */
+export function efectivoDelTurno(r: Pick<ResumenCaja, "efectivo" | "cambioEntregado" | "devueltoEfectivo">): {
+  cobrado: number;
+  cambio: number;
+  devuelto: number;
+} {
+  const devuelto = aCentavos(r.devueltoEfectivo ?? 0);
+  if (!(devuelto > 0)) return { cobrado: r.efectivo, cambio: r.cambioEntregado, devuelto: 0 };
+  return {
+    cobrado: aCentavos(r.efectivo + devuelto),
+    // Nunca negativo: si el pago en efectivo de una venta quedó en cero al
+    // modificarla, el servidor lo borra con su «entregado», y el cambio puede
+    // ser menos que lo devuelto (efectivo 0, cambio 0, devuelto 5).
+    cambio: Math.max(0, aCentavos(r.cambioEntregado - devuelto)),
+    devuelto,
+  };
+}
+
 export interface FilaVendido {
   etiqueta: string;
   monto: number;
@@ -46,7 +84,18 @@ export interface FilaVendido {
  * se cobra después.
  */
 export function vendidoDelTurno(r: ResumenCaja): { filas: FilaVendido[]; total: number } {
-  const formas = [...r.porFormaPago]
+  // Con plata devuelta por ventas modificadas, «En efectivo» dice lo que se
+  // cobró y lo devuelto va en su renglón, en negativo: las filas siguen
+  // sumando el total vendido (ver `efectivoDelTurno`).
+  const { cobrado, devuelto } = efectivoDelTurno(r);
+  // El renglón del efectivo sale de `efectivo + devuelto` y no del de la forma
+  // de pago: si el pago en efectivo de la venta quedó en cero, el servidor lo
+  // borra y la forma de pago ni viene.
+  const porForma =
+    devuelto > 0
+      ? [{ nombre: "Efectivo", monto: cobrado }, ...r.porFormaPago.filter((f) => !esEfectivo(f.nombre))]
+      : r.porFormaPago;
+  const formas = [...porForma]
     .filter((f) => f.monto !== 0)
     // El efectivo primero: es el renglón que se compara con el cajón.
     .sort((a, b) => Number(esEfectivo(b.nombre)) - Number(esEfectivo(a.nombre)));
@@ -55,6 +104,7 @@ export function vendidoDelTurno(r: ResumenCaja): { filas: FilaVendido[]; total: 
     monto: f.monto,
   }));
   if (r.creditoOtorgado > 0) filas.push({ etiqueta: "Al fiado", monto: r.creditoOtorgado, fiado: true });
+  if (devuelto > 0) filas.push({ etiqueta: ETIQUETA_DEVUELTO, monto: -devuelto });
   return { filas, total: r.totalVentas };
 }
 

@@ -35,7 +35,7 @@ import type {
 import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
-import { mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
+import { efectivoDelTurno, ETIQUETA_DEVUELTO, mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
 import ImprimirTicketCierre from "./ImprimirTicketCierre";
 import type { DatosTicketCierre } from "./ticketCierre";
 import ListaProductosVendidos from "./ListaProductosVendidos";
@@ -118,6 +118,7 @@ export default function PantallaCierre({
    * que el cajero verifique después de contar, no antes.
    */
   const esperado = r?.saldoEsperado ?? 0;
+  const efectivoTurno = r ? efectivoDelTurno(r) : null;
   // El ticket de 58 mm (§4.2 de PLAN-ELGANADERO-16NOV): antes de cerrar lleva
   // sólo el esperado; lo contado y la diferencia salen en el de después.
   const ticketCierre: DatosTicketCierre = {
@@ -299,8 +300,13 @@ export default function PantallaCierre({
                     {r.porFormaPago.map((f) => (
                       <Fila key={f.nombre} etiqueta={f.nombre} valor={f.monto} sangria />
                     ))}
-                    {r.cambioEntregado > 0 && (
-                      <Fila etiqueta="Cambio entregado" valor={-r.cambioEntregado} />
+                    {/* El vuelto de verdad, y lo devuelto por ventas
+                        modificadas en su renglón (ver `efectivoDelTurno`). */}
+                    {efectivoTurno && efectivoTurno.cambio > 0 && (
+                      <Fila etiqueta="Cambio entregado" valor={-efectivoTurno.cambio} />
+                    )}
+                    {efectivoTurno && efectivoTurno.devuelto > 0 && (
+                      <Fila etiqueta={ETIQUETA_DEVUELTO} valor={-efectivoTurno.devuelto} />
                     )}
                     {r.ingresos > 0 && <Fila etiqueta="Ingresos de efectivo" valor={r.ingresos} />}
                     {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
@@ -868,23 +874,34 @@ function FilasDelCajon({
   // renglón con quién lo registró, y "otros" queda para lo que no tiene
   // motivo. Fuera del billar no hay ninguno y las cuentas son las de siempre.
   const { cenaNeta, otrosIngresos, otrosEgresos, filas: conMotivo } = efectivoDelCierre(r);
+  // Con plata devuelta por ventas modificadas: lo cobrado, el vuelto de verdad
+  // y lo devuelto en su renglón. Sin eso, los números de siempre.
+  const { cobrado, cambio, devuelto } = efectivoDelTurno(r);
   return (
     <dl className="space-y-1.5 text-sm">
       <Fila etiqueta="Fondo de apertura" valor={r.montoApertura} />
       <div>
-        <Fila etiqueta="Ventas en efectivo" valor={r.efectivo} />
+        <Fila etiqueta="Ventas en efectivo" valor={cobrado} />
         {/* El cambio ya está descontado de las ventas: se cuenta
             cómo se llegó, sin restarlo otra vez. */}
         {/* En el billar no: la cajera cuenta el cajón, y "recibido 200 · cambio
             70" sólo la hacía dudar de por qué las ventas en efectivo (130) son
             menos que los billetes que tocó (QA de Kevin, 25-oct). */}
-        {r.cambioEntregado > 0 && !esBillar(rubro) && (
+        {cambio > 0 && !esBillar(rubro) && (
           <p className="pl-3 text-[12px] text-texto-4">
-            Recibido {fmtMoney(r.efectivo + r.cambioEntregado)} · cambio entregado{" "}
-            {fmtMoney(r.cambioEntregado)}
+            Recibido {fmtMoney(cobrado + cambio)} · cambio entregado{" "}
+            {fmtMoney(cambio)}
           </p>
         )}
       </div>
+      {/* Lo que salió del cajón al bajarle el total a una venta ya cobrada:
+          resta, como un egreso. Antes iba escondido dentro del cambio. */}
+      {devuelto > 0 && (
+        <div>
+          <Fila etiqueta={ETIQUETA_DEVUELTO} valor={-devuelto} />
+          <p className="pl-3 text-[12px] text-texto-4">Por ventas modificadas</p>
+        </div>
+      )}
       {r.abonosEfectivo > 0 && (
         <Fila
           // El restaurante con las mismas palabras que el bloque del QR

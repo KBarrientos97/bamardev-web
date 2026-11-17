@@ -1231,6 +1231,14 @@ export interface ResumenCaja {
   porFormaPago: { nombre: string; monto: number }[];
   efectivo: number;
   cambioEntregado: number;
+  /**
+   * Lo devuelto en efectivo al modificar ventas ya cobradas (17-nov), en
+   * positivo. Ya está restado de `efectivo` (que por eso puede quedar en
+   * negativo si la venta se había cobrado por QR) y sumado dentro de
+   * `cambioEntregado`. Sólo viene si es más que cero: un backend anterior no
+   * lo manda y el cierre queda como siempre. Ver `efectivoDelTurno`.
+   */
+  devueltoEfectivo?: number;
   ingresos: number;
   egresos: number;
   movimientos: MovimientoCaja[];

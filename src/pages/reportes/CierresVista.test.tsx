@@ -60,4 +60,36 @@ describe("cierres de caja (web)", () => {
     fireEvent.click(screen.getByText("Productos vendidos"));
     expect(screen.getByText("productos del turno")).toBeInTheDocument();
   });
+
+  /** Las filas del arqueo que dan el esperado (sin el total vendido ni el QR, que no van al cajón). */
+  const filasDelCajon = () =>
+    Array.from(document.querySelectorAll("dt"))
+      .map((dt) => [dt.textContent ?? "", dt.nextElementSibling?.textContent ?? ""] as const)
+      .filter(([e]) => ["Fondo de apertura", "Ventas en efectivo", "Devuelto en efectivo"].includes(e))
+      .map(([e, v]) => [e, Number(v.replace(/[^\d,-]/g, "").replace(",", "."))] as const);
+
+  it("17-nov: con plata devuelta por ventas modificadas, lo cobrado y lo devuelto suman el esperado", () => {
+    // Bs 20 cobrados en efectivo y Bs 5 devueltos al modificar la venta: el
+    // efectivo neto que manda el servidor es 15.
+    render(<CierresVista historial={[cierre({ efectivo: 15, devueltoEfectivo: 5, esperado: 115, conteo: 115 })]} />);
+    fireEvent.click(screen.getByText(/24 sept 2026 · Administrador/));
+    const filas = filasDelCajon();
+    expect(filas).toEqual([
+      ["Fondo de apertura", 100],
+      ["Ventas en efectivo", 20],
+      ["Devuelto en efectivo", -5],
+    ]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(115);
+    expect(screen.getByText("Por ventas modificadas")).toBeInTheDocument();
+  });
+
+  it("sin el dato, el arqueo es el de siempre", () => {
+    render(<CierresVista historial={[cierre({})]} />);
+    fireEvent.click(screen.getByText(/24 sept 2026 · Administrador/));
+    expect(filasDelCajon()).toEqual([
+      ["Fondo de apertura", 100],
+      ["Ventas en efectivo", 300],
+    ]);
+    expect(screen.queryByText("Por ventas modificadas")).not.toBeInTheDocument();
+  });
 });
