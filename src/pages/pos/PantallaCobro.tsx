@@ -589,7 +589,7 @@ export default function PantallaCobro({
   );
 
   // En el carrito (16-nov): dos piezas sueltas, que el carrito acomoda entre
-  // sus totales y los botones de Yango/PedidosYa. La de arriba es la que se
+  // sus totales y los botones de las apps de delivery. La de arriba es la que se
   // achica y scrollea si no entra (el QR, sobre todo): así «Confirmar» nunca
   // queda abajo, fuera de la vista, en una pantalla de 1366×768.
   if (incrustado) {

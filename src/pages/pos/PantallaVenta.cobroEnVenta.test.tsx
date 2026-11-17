@@ -178,12 +178,12 @@ describe("el cobro en el carrito", () => {
     expect(confirmar()).toBeDisabled();
   });
 
-  it("Yango y PedidosYa quedan después del cobro, como alternativa", async () => {
+  it("los pedidos de las apps de delivery quedan después del cobro, como alternativa", async () => {
     await montar({ plataformas: { disponibles: ["YANGO"], onElegir: vi.fn() } });
     const panel = carritoEnPantalla();
-    const yango = within(panel).getByRole("button", { name: /Yango/ });
+    const plataforma = within(panel).getByRole("button", { name: /🛵/ });
     const fiado = within(panel).getByRole("button", { name: "Vender a crédito (fiado)" });
-    expect(fiado.compareDocumentPosition(yango) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fiado.compareDocumentPosition(plataforma) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("con el carrito vacío, el vacío de siempre y sin cobro", async () => {

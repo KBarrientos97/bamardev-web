@@ -1070,7 +1070,7 @@ function PanelCarrito({
 
           {/* El cobro en la misma pantalla (16-nov): el medio de pago, el
               efectivo y «Confirmar cobro», con el fiado debajo; y después, como
-              alternativa a cobrar, los pedidos de Yango / PedidosYa. */}
+              alternativa a cobrar, los pedidos de las apps de delivery. */}
           {cobro && (
             <PantallaCobro
               incrustado
