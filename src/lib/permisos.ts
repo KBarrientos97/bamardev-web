@@ -110,6 +110,12 @@ export type Seccion =
    */
   | "config_inventario"
   /**
+   * Inventario → «Agregados» (PLAN-AGREGADOS §7.6): los grupos de toppings y a
+   * qué productos se asignan. Sólo se ve con el ajuste de Configuración
+   * prendido (`negocio.usaAgregados`), que no es una feature del plan.
+   */
+  | "agregados"
+  /**
    * Configuración › Tickets y despacho (10-nov): si se usa la pantalla de
    * Despacho y cuándo vuelve a 001 el número del pedido. Del encargado, como
    * Tickets y pedidos.
@@ -420,6 +426,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Vender sin stock (09-nov): cómo trabaja el local, no algo que se venda
   // aparte. El dueño, sin feature, como el backend (`control-stock`).
   config_inventario: { permiso: "negocio.configurar", feature: null },
+  // Los grupos de toppings son parte del catálogo: lo mismo que Artículos. Que
+  // el negocio los use lo decide el ajuste de Configuración (ver `puedeVer`).
+  agregados: { permiso: "catalogo.editar", feature: "catalogo" },
   // Despacho apagable y numeración por turno (10-nov): lo mismo que pide el
   // backend para `/tickets/config`.
   config_tickets: { permiso: "tickets.configurar", feature: "tickets_pedido" },
@@ -586,6 +595,8 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // sus bebidas (09-nov). La farmacia no puede (el lote sale del stock) y el
   // resto de los rubros no lo pidió: ante la duda, no se ve.
   config_inventario: ["RESTAURANTE"],
+  // El ajuste vive en esa misma pantalla, así que el rubro es el mismo.
+  agregados: ["RESTAURANTE"],
   config_tickets: ["RESTAURANTE"],
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
@@ -650,6 +661,12 @@ export interface ContextoPermisos {
    * un negocio con delivery que nunca lo prendió, como Omar, ve el menú de siempre.
    */
   pedidosWeb?: boolean;
+  /**
+   * `negocio.usaAgregados`: el dueño prendió «Productos con agregados» en
+   * Configuración. «Agregados» sólo se ve con `true`; sin el dato (sesión o
+   * backend viejo) no se ve, que es como funcionó siempre.
+   */
+  usaAgregados?: boolean;
 }
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
@@ -772,6 +789,8 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
 
   // Los pedidos de la página los recibe sólo quien prendió el interruptor.
   if (seccion === "pedidos_web" && ctx.pedidosWeb !== true) return false;
+  // Los grupos de toppings, sólo con el ajuste prendido (PLAN-AGREGADOS §7.6).
+  if (seccion === "agregados" && ctx.usaAgregados !== true) return false;
 
   const req = REQUISITOS[seccion];
   // D9: «Mis clases» pide el alcance PROPIO, que el dueño no tiene (tiene todo

@@ -362,6 +362,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
         termino: "articulos",
       },
       { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos" },
+      // Toppings y extras (PLAN-AGREGADOS §7.6): sólo con el ajuste de
+      // Configuración prendido; `puedeVer` lo apaga sin él.
+      { a: "/inventario/agregados", label: "Agregados", icono: "masCuadro", seccion: "agregados" },
       { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos" },
       {
         a: "/inventario/almacenes",
