@@ -36,6 +36,7 @@ import {
 import { MapaPagina } from "./MapaPagina";
 import SitioPagina from "./SitioPagina";
 import CartaSitio, { type PedidoCarta } from "./CartaSitio";
+import { textoIncluyeDeItem } from "../../lib/pagina/agregadosPagina";
 import { cantidadDe, type LineaPedido } from "../../lib/pagina/pedido";
 import { estiloCatalogoSitio, tonosSitio } from "../../lib/pagina/sitio";
 
@@ -308,7 +309,7 @@ export interface PropsVista {
    * «− n +» en cada fila y el WhatsApp flotante sube para no tapar la barra.
    */
   lineasPedido?: LineaPedido[];
-  alCambiarPedido?: (id: number, delta: number) => void;
+  alCambiarPedido?: (id: number | string, delta: number) => void;
   /** Los ítems que el local elegido no puede servir hoy: se marcan «Agotado» y no se suman (pedidos al sistema). */
   agotados?: ReadonlySet<number>;
   /** A dónde lleva «Ver toda la carta» del sitio (la tienda, 09-nov). Sin esto, la portada muestra todo. */
@@ -558,7 +559,15 @@ export default function VistaPagina({
   const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
   const consultaA = p.reservar ? null : (contactos[0] ?? null);
   const accionCatalogo: AccionCatalogo | null = alAgregarAlPedido
-    ? { texto: "Agregar al pedido", icono: "M12 5v14M5 12h14", href: () => "#", alAgregar: alAgregarAlPedido, agotado: (it) => agotados?.has(it.id) ?? false }
+    ? {
+        texto: "Agregar al pedido",
+        icono: "M12 5v14M5 12h14",
+        href: () => "#",
+        alAgregar: alAgregarAlPedido,
+        agotado: (it) => agotados?.has(it.id) ?? false,
+        // «Incluye 2 toppings» (PLAN-AGREGADOS §8.3): sólo en el vaso que lleva grupo.
+        incluye: (it) => textoIncluyeDeItem(p.agregados, it.id),
+      }
     : p.reservar
     ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
     : consultaA
@@ -746,7 +755,13 @@ export default function VistaPagina({
     // editor el «+» se ve (para que el dueño vea lo mismo) pero no suma.
     const lineas = lineasPedido ?? [];
     const pedidoCarta: PedidoCarta | null = alAgregarAlPedido
-      ? { cantidadDe: (id) => cantidadDe(lineas, id), agregar: alAgregarAlPedido, cambiar: alCambiarPedido ?? null, agotado: (id) => agotados?.has(id) ?? false }
+      ? {
+          cantidadDe: (id) => cantidadDe(lineas, id),
+          agregar: alAgregarAlPedido,
+          cambiar: alCambiarPedido ?? null,
+          agotado: (id) => agotados?.has(id) ?? false,
+          incluye: (id) => textoIncluyeDeItem(p.agregados, id),
+        }
       : p.pedidos && enCaja && contactos.length > 0
         ? { cantidadDe: () => 0, agregar: null, cambiar: null }
         : null;

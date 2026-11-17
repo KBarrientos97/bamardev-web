@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { agregarLinea, ajustarASucursal, cambiarCantidad, type LineaPedido } from "./pedido";
+import type { CatalogoAgregados } from "../agregados/tipos";
+import { agregarLinea, ajustarASucursal, cambiarAgregados, cambiarCantidad, type LineaPedido, type ToppingsElegidos } from "./pedido";
 import type { ItemCatalogoPublico } from "./tipos";
 
 /**
@@ -33,11 +34,14 @@ export function usePedido(sub: string) {
   }, [sub, lineas]);
   return {
     lineas,
-    agregar: (item: ItemCatalogoPublico) => setLineas((l) => agregarLinea(l, item)),
-    cambiar: (id: number, delta: number) => setLineas((l) => cambiarCantidad(l, id, delta)),
-    /** Otra sucursal elegida: sus precios, y fuera lo que ahí no se ofrece. */
-    ajustar: (items: ItemCatalogoPublico[], todos: ItemCatalogoPublico[]) =>
-      setLineas((l) => ajustarASucursal(l, items, todos)),
+    agregar: (item: ItemCatalogoPublico, toppings?: ToppingsElegidos) => setLineas((l) => agregarLinea(l, item, toppings)),
+    /** `ref`: el id del ítem o, con toppings, la clave de la línea (`claveLinea`). */
+    cambiar: (ref: number | string, delta: number) => setLineas((l) => cambiarCantidad(l, ref, delta)),
+    /** Cambia los toppings de una línea (tocarla en el carrito reabre la hoja). */
+    cambiarToppings: (clave: string, toppings: ToppingsElegidos) => setLineas((l) => cambiarAgregados(l, clave, toppings)),
+    /** Otra sucursal elegida: sus precios (también los de los toppings), y fuera lo que ahí no se ofrece. */
+    ajustar: (items: ItemCatalogoPublico[], todos: ItemCatalogoPublico[], toppings?: CatalogoAgregados | null) =>
+      setLineas((l) => ajustarASucursal(l, items, todos, toppings)),
     vaciar: () => setLineas([]),
   };
 }

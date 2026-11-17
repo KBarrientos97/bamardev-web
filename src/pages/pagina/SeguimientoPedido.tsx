@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useParams } from "react-router-dom";
+import { agruparHijas } from "../../lib/agregados/hijas";
 import { ICONO_RED, paleta } from "../../lib/pagina/aspecto";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
 import { urlPaginaDe } from "../../lib/pagina/rutas";
@@ -336,12 +337,30 @@ export default function SeguimientoPedido() {
 
         <section aria-label="Tu pedido" style={{ background: "#ffffff", border: "1px solid #E5E7EB", borderRadius: 16, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-            {seg.lineas.map((l, i) => (
-              <li key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 15 }}>
-                <span>
-                  <strong>{l.cantidad}×</strong> {l.titulo}
-                </span>
-                <span style={{ fontWeight: 600 }}>{formatoPrecio(l.subtotal)}</span>
+            {agruparHijas(seg.lineas).map(({ linea: l, hijas }, i) => (
+              <li key={i}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 15 }}>
+                  <span>
+                    <strong>{l.cantidad}×</strong> {l.titulo}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{formatoPrecio(l.subtotal)}</span>
+                </div>
+                {/* Los toppings del vaso, debajo de él (PLAN-AGREGADOS §8.3). */}
+                {hijas.length > 0 && (
+                  <ul data-testid="toppings-seguimiento" style={{ listStyle: "none", margin: "3px 0 0", padding: "0 0 0 12px", borderLeft: "2px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 1 }}>
+                    {hijas.map((h, j) => (
+                      <li key={j} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13.5, color: "#4B5563" }}>
+                        <span>
+                          + {h.cantidad !== 1 ? `${h.cantidad} × ` : ""}
+                          {h.titulo}
+                        </span>
+                        <span style={{ whiteSpace: "nowrap", color: h.incluido ? "#6B7280" : "#111827", fontWeight: h.incluido ? 400 : 600 }}>
+                          {h.incluido ? "incluido" : formatoPrecio(h.subtotal)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

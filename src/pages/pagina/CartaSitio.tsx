@@ -28,7 +28,13 @@ export interface PedidoCarta {
   cantidadDe: (id: number) => number;
   /** Null en la vista previa del editor: el botón se ve pero no suma. */
   agregar: ((item: ItemCatalogoPublico) => void) | null;
-  cambiar: ((id: number, delta: number) => void) | null;
+  cambiar: ((id: number | string, delta: number) => void) | null;
+  /**
+   * «Incluye 2 toppings» si ese ítem lleva toppings (PLAN-AGREGADOS §8.3), o null.
+   * Un vaso con toppings no tiene «− n +»: cada «Agregar» abre la hoja y los
+   * vasos con distintos toppings son líneas distintas, que se manejan en el carrito.
+   */
+  incluye?: (id: number) => string | null;
   /** Ese local no lo puede servir hoy (agotado): se ve «Agotado» y no se suma (pedidos al sistema). */
   agotado?: (id: number) => boolean;
 }
@@ -526,6 +532,7 @@ function FilaProducto({ it, onAbrir, ...b }: Base & { it: ItemCatalogoPublico; o
         <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
           <span style={{ fontWeight: 800, fontSize: 15, lineHeight: 1.3, ...dosLineas }}>{it.titulo}</span>
           {detalle && <span style={{ fontSize: 13, color: t.texto3Tarjeta, ...unaLinea }}>{detalle}</span>}
+          <Incluye texto={b.pedido?.incluye?.(it.id) ?? null} c={b.c} />
           <span style={{ fontWeight: 800, fontSize: 16, color: t.precio }}>{precio ?? "Precio a consultar"}</span>
         </span>
       </AbrirItem>
@@ -559,6 +566,7 @@ function TarjetaFoto({ it, onAbrir, ...b }: Base & { it: ItemCatalogoPublico; on
         <span style={{ padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontWeight: 800, fontSize: 18, lineHeight: 1.25 }}>{it.titulo}</span>
           {detalle && <span style={{ fontSize: 14, color: t.texto3Tarjeta }}>{detalle}</span>}
+          <Incluye texto={b.pedido?.incluye?.(it.id) ?? null} c={b.c} />
         </span>
       </AbrirItem>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 16px 16px", marginTop: "auto" }}>
@@ -593,6 +601,7 @@ function TarjetaComercio({ it, onAbrir, ...b }: Base & { it: ItemCatalogoPublico
         <Foto it={it} t={t} alto={escritorio ? 150 : 104} ancho="100%" radio={escritorio ? 14 : 12} />
         <span style={{ fontWeight: 700, fontSize: escritorio ? 15 : 14, lineHeight: 1.25, minHeight: escritorio ? 40 : 36, ...dosLineas }}>{it.titulo}</span>
         <span style={{ ...estiloLetra(b.letra, escritorio ? 20 : 17), color: t.precio }}>{precio ?? "A consultar"}</span>
+        <Incluye texto={b.pedido?.incluye?.(it.id) ?? null} c={b.c} />
       </AbrirItem>
       <div style={{ marginTop: "auto" }}>{b.pedido && <Sumar it={it} cantidad={cantidad} forma="ancho" {...b} />}</div>
     </li>
@@ -708,6 +717,8 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
   const { pedido, c } = b;
   if (!pedido) return null;
   const puede = !!pedido.agregar;
+  // Un vaso con toppings no se maneja con «− n +» desde la carta: cada toque abre la hoja.
+  const conToppings = !!pedido.incluye?.(it.id);
   if (!cantidad && pedido.agotado?.(it.id)) {
     return (
       <span
@@ -718,7 +729,7 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
       </span>
     );
   }
-  if (!cantidad) {
+  if (!cantidad || conToppings) {
     const comun: CSSProperties = {
       ...b.lleno,
       height: 44,
@@ -733,6 +744,7 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
       cursor: puede ? "pointer" : "default",
       flex: "none",
       boxSizing: "border-box",
+      position: "relative",
     };
     return (
       <button
@@ -748,6 +760,15 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
         }
       >
         {forma === "cuadrado" ? <Trazo d={ICONO_MAS} color={b.colorIconoLleno} size={20} grosor={2.5} /> : "Agregar"}
+        {conToppings && cantidad > 0 && (
+          <span
+            data-testid="en-pedido"
+            aria-label={`${cantidad} en el pedido`}
+            style={{ position: "absolute", top: -7, right: -7, minWidth: 20, height: 20, padding: "0 5px", boxSizing: "border-box", borderRadius: 999, background: "#ffffff", color: c.oscuro, border: `2px solid ${c.oscuro}`, fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+          >
+            {cantidad}
+          </span>
+        )}
       </button>
     );
   }
@@ -800,6 +821,19 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
         {cantidad} en el pedido
       </span>
     </div>
+  );
+}
+
+/** «Incluye 2 toppings»: el cartelito que dice a la vista que el vaso viene con toppings. */
+function Incluye({ texto, c }: { texto: string | null; c: Paleta }) {
+  if (!texto) return null;
+  return (
+    <span
+      data-testid="incluye"
+      style={{ alignSelf: "flex-start", fontSize: 12.5, fontWeight: 700, color: c.oscuro, background: c.tinte, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}
+    >
+      {texto}
+    </span>
   );
 }
 

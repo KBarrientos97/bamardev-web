@@ -312,3 +312,26 @@ describe("BUG-pedidos-12: Llamar y WhatsApp con el teléfono armado como en el r
     expect(within(detalle).queryByRole("link", { name: /WhatsApp/ })).not.toBeInTheDocument();
   });
 });
+
+describe("toppings en la entrega (PLAN-AGREGADOS §8.4)", () => {
+  it("el repartidor ve los toppings indentados bajo el vaso: «incluido» o lo que se cobró aparte", async () => {
+    const conToppings = {
+      ...PEDIDO,
+      detalles: [
+        { id: 1, productoId: 84, producto: "Nutella M", cantidad: 1, precio: 20, subtotal: 20, nota: null, consumo: "LLEVAR" },
+        { id: 2, lineaPadreId: 1, incluido: true, productoId: 201, producto: "Oreo", cantidad: 1, precio: 0, subtotal: 0, nota: null, consumo: "LLEVAR" },
+        { id: 3, lineaPadreId: 1, incluido: false, productoId: 203, producto: "Coco", cantidad: 2, precio: 2, subtotal: 4, nota: null, consumo: "LLEVAR" },
+      ],
+    } as Venta;
+    const detalle = await abrirDetalle(conToppings);
+    const toppings = within(detalle).getByTestId("toppings-entrega");
+    expect(Array.from(toppings.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["+ Oreoincluido", "+ 2 × CocoBs 4,00"]);
+    expect(toppings.closest("li")).toHaveTextContent("1× Nutella M");
+  });
+
+  it("sin toppings la entrega se ve como siempre", async () => {
+    const detalle = await abrirDetalle();
+    expect(within(detalle).getByText("Brasa cuarto")).toBeInTheDocument();
+    expect(within(detalle).queryByTestId("toppings-entrega")).not.toBeInTheDocument();
+  });
+});

@@ -96,9 +96,11 @@ interface AuthValue {
   /**
    * Pisa `negocio.usaAgregados` con lo recién guardado en Configuración ›
    * Inventario y stock: «Agregados» entra (o sale) del menú y el POS dibuja (o
-   * deja de dibujar) la hoja de toppings sin esperar al próximo ingreso.
+   * deja de dibujar) la hoja de toppings sin esperar al próximo ingreso. Con
+   * `dondeSeUsa` también pisa `agregadosEnPos` y `agregadosEnPagina` (§8.1); se
+   * guardan ya efectivos: con el interruptor apagado quedan en `false`.
    */
-  fijarUsaAgregados: (usa: boolean) => void;
+  fijarUsaAgregados: (usa: boolean, dondeSeUsa?: { enPos?: boolean; enPagina?: boolean }) => void;
   /**
    * Pisa `negocio.pedidosWeb` con lo que acaba de publicar Mi página («Recibir
    * pedidos en el sistema»): «Pedidos web» sale (o se va) del menú sin esperar
@@ -320,10 +322,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const fijarUsaAgregados = useCallback((usa: boolean) => {
+  const fijarUsaAgregados = useCallback((usa: boolean, dondeSeUsa?: { enPos?: boolean; enPagina?: boolean }) => {
     setNegocio((previo) => {
-      if (!previo || (previo.usaAgregados ?? false) === usa) return previo;
-      const actualizado = { ...previo, usaAgregados: usa };
+      if (!previo) return previo;
+      // Efectivos: apagado el general, ninguno de los dos aplica. Sin el dato
+      // (backend anterior) se conserva lo que había.
+      const enPos = !usa ? false : (dondeSeUsa?.enPos ?? previo.agregadosEnPos);
+      const enPagina = !usa ? false : (dondeSeUsa?.enPagina ?? previo.agregadosEnPagina);
+      if ((previo.usaAgregados ?? false) === usa && previo.agregadosEnPos === enPos && previo.agregadosEnPagina === enPagina) return previo;
+      const actualizado = {
+        ...previo,
+        usaAgregados: usa,
+        ...(enPos !== undefined ? { agregadosEnPos: enPos } : {}),
+        ...(enPagina !== undefined ? { agregadosEnPagina: enPagina } : {}),
+      };
       localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
       return actualizado;
     });
@@ -489,7 +501,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Un backend viejo no manda el campo: ahí se queda con lo que hay.
           if (typeof estado.pedidosWeb === "boolean") fijarPedidosWeb(estado.pedidosWeb);
           // Igual: la sesión abierta se entera si el ajuste se cambió desde otro equipo.
-          if (typeof estado.usaAgregados === "boolean") fijarUsaAgregados(estado.usaAgregados);
+          if (typeof estado.usaAgregados === "boolean") {
+            fijarUsaAgregados(estado.usaAgregados, { enPos: estado.agregadosEnPos, enPagina: estado.agregadosEnPagina });
+          }
           // Ausente (un backend viejo) = repartidores propios, como siempre.
           if (estado.entregaPedidosWeb !== undefined || estado.servicioDeliveryExterno !== undefined) {
             fijarEntregaPedidos(estado.entregaPedidosWeb ?? "PROPIO", estado.servicioDeliveryExterno ?? null);

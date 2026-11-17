@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
-import { avisoDeQuitados, totalPedido } from "../../lib/pagina/pedido";
+import { avisoDeQuitados, claveLinea, totalPedido, type LineaPedido } from "../../lib/pagina/pedido";
 import { urlPedidoDe } from "../../lib/pagina/rutas";
 import type { Pedido } from "../../lib/pagina/usePedido";
 import { alDescansar, precargarMapa, type Ubicacion } from "../../lib/mapa";
@@ -95,6 +95,9 @@ export default function PanelSistema({
   whatsappUrl,
   ancho,
   onCerrar,
+  onEditarToppings,
+  llevaToppings,
+  toppingsAgotadosDe,
 }: {
   subdominio: string;
   negocio: string;
@@ -114,6 +117,11 @@ export default function PanelSistema({
   whatsappUrl: string | null;
   ancho: boolean;
   onCerrar: () => void;
+  /** Toppings (PLAN-AGREGADOS §8.3): tocar los de una línea reabre la hoja. */
+  onEditarToppings?: (l: LineaPedido) => void;
+  llevaToppings?: (itemId: number) => boolean;
+  /** Las opciones de toppings que ese local no puede servir hoy. */
+  toppingsAgotadosDe?: (indiceSucursal: number | null) => ReadonlySet<number>;
 }) {
   const navegar = useNavigate();
   const { lineas } = pedido;
@@ -293,6 +301,11 @@ export default function PanelSistema({
     return ids;
   }, [sucursal, agotadosServidor]);
   const lineasAgotadas = lineas.filter((l) => agotados.has(l.id));
+  // Un topping que ese local no tiene hoy: el vaso se puede pedir, pero hay que cambiarle el topping.
+  const toppingsFuera = toppingsAgotadosDe?.(ev?.indice ?? null);
+  const lineasToppingAgotado = lineas.filter(
+    (l) => !agotados.has(l.id) && !!toppingsFuera?.size && (l.agregados ?? []).some((a) => toppingsFuera.has(a.productoId)),
+  );
 
   // Con otro local elegido, las líneas toman SUS precios (y se van las que ahí no se ofrecen).
   const antes = useRef(lineas.length);
@@ -345,6 +358,12 @@ export default function PanelSistema({
     const nombres = lineasAgotadas.map((l) => `«${l.titulo}»`).join(", ");
     faltas.push({
       texto: `${nombres} ${lineasAgotadas.length === 1 ? "está agotado" : "están agotados"} en ${sucursal.nombre}. Sacalo del pedido${sucursales.length > 1 ? " o elegí otro local" : ""}.`,
+    });
+  }
+  if (lineasToppingAgotado.length && sucursal) {
+    const nombres = lineasToppingAgotado.map((l) => `«${l.titulo}»`).join(", ");
+    faltas.push({
+      texto: `Un topping de ${nombres} está agotado en ${sucursal.nombre}. Tocá los toppings del vaso para cambiarlo${sucursales.length > 1 ? " o elegí otro local" : ""}.`,
     });
   }
   if (nombre.trim().length < 2) faltas.push({ texto: "Escribí tu nombre completo (mínimo 2 letras).", campo: "nombre" });
@@ -410,7 +429,13 @@ export default function PanelSistema({
         : {}),
       ...(pagaConFinal != null ? { pagaCon: pagaConFinal } : {}),
       ...(nota.trim() ? { nota: nota.trim() } : {}),
-      lineas: lineas.map((l) => ({ itemId: l.id, cantidad: l.cantidad })),
+      // Los toppings viajan con el vaso, en el orden en que el cliente los eligió; el
+      // precio lo recalcula el backend (no se manda).
+      lineas: lineas.map((l) => ({
+        itemId: l.id,
+        cantidad: l.cantidad,
+        ...(l.agregados?.length ? { agregados: l.agregados.map((a) => ({ productoId: a.productoId, cantidad: a.cantidad, grupoId: a.grupoId })) } : {}),
+      })),
       // Siempre vacío para una persona; el campo trampa sólo lo llena un bot.
       ...(trampa ? { sitioWeb: trampa } : {}),
     };
@@ -605,7 +630,22 @@ export default function PanelSistema({
 
           <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 }}>
             {lineas.map((l) => (
-              <LineaCarrito key={l.id} l={l} fuerte={fuerte} tinte={tinte} pedido={pedido} agotado={agotados.has(l.id) && sucursal ? `Agotado en ${sucursal.nombre}: sacalo del pedido` : undefined} />
+              <LineaCarrito
+                key={claveLinea(l)}
+                l={l}
+                fuerte={fuerte}
+                tinte={tinte}
+                pedido={pedido}
+                onEditarToppings={onEditarToppings}
+                llevaToppings={llevaToppings}
+                agotado={
+                  agotados.has(l.id) && sucursal
+                    ? `Agotado en ${sucursal.nombre}: sacalo del pedido`
+                    : lineasToppingAgotado.includes(l) && sucursal
+                      ? `Un topping está agotado en ${sucursal.nombre}: cambialo`
+                      : undefined
+                }
+              />
             ))}
           </ul>
           <button
