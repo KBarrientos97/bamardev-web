@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ResumenCaja } from "../../types";
-import { mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
+import { efectivoDelTurno, mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
 
 function resumen(extra: Partial<ResumenCaja> = {}): ResumenCaja {
   return {
@@ -61,6 +61,62 @@ describe("lo vendido del turno", () => {
   it("sin fiado no hay renglón de fiado en cero", () => {
     const v = vendidoDelTurno(resumen({ totalVentas: 10, porFormaPago: [{ nombre: "QR", monto: 10 }] }));
     expect(v.filas).toEqual([{ etiqueta: "Por QR", monto: 10 }]);
+  });
+
+  it("17-nov: con plata devuelta, «En efectivo» es lo cobrado y lo devuelto va al final, en negativo", () => {
+    const v = vendidoDelTurno(
+      resumen({
+        totalVentas: 25,
+        porFormaPago: [
+          { nombre: "Efectivo", monto: 15 },
+          { nombre: "QR", monto: 10 },
+        ],
+        efectivo: 15,
+        cambioEntregado: 35,
+        devueltoEfectivo: 5,
+      }),
+    );
+    expect(v.filas).toEqual([
+      { etiqueta: "En efectivo", monto: 20 },
+      { etiqueta: "Por QR", monto: 10 },
+      { etiqueta: "Devuelto en efectivo", monto: -5 },
+    ]);
+    expect(suma(v.filas)).toBe(v.total);
+  });
+});
+
+describe("17-nov: el efectivo del turno con plata devuelta por ventas modificadas", () => {
+  it("(a) QR 23 con 3 devueltos: nada cobrado en efectivo, sin vuelto y 3 devueltos", () => {
+    expect(efectivoDelTurno(resumen({ efectivo: -3, cambioEntregado: 3, devueltoEfectivo: 3 }))).toEqual({
+      cobrado: 0,
+      cambio: 0,
+      devuelto: 3,
+    });
+  });
+
+  it("(b) efectivo 20 recibido 50 y 5 devueltos: cobrado 20, vuelto 30", () => {
+    const e = efectivoDelTurno(resumen({ efectivo: 15, cambioEntregado: 35, devueltoEfectivo: 5 }));
+    expect(e).toEqual({ cobrado: 20, cambio: 30, devuelto: 5 });
+    // Lo recibido no cambia: 20 cobrados + 30 de vuelto = el billete de 50.
+    expect(e.cobrado + e.cambio).toBe(50);
+  });
+
+  it("el pago en efectivo borrado al modificar: el cambio nunca queda negativo", () => {
+    // El servidor borra la fila del efectivo que quedó en 0 con su «entregado».
+    expect(efectivoDelTurno(resumen({ efectivo: 0, cambioEntregado: 0, devueltoEfectivo: 5 }))).toEqual({
+      cobrado: 5,
+      cambio: 0,
+      devuelto: 5,
+    });
+  });
+
+  it("(c) sin el campo (o en cero), los números de siempre", () => {
+    expect(efectivoDelTurno(resumen({ efectivo: -3, cambioEntregado: 3 }))).toEqual({ cobrado: -3, cambio: 3, devuelto: 0 });
+    expect(efectivoDelTurno(resumen({ efectivo: 15, cambioEntregado: 35, devueltoEfectivo: 0 }))).toEqual({
+      cobrado: 15,
+      cambio: 35,
+      devuelto: 0,
+    });
   });
 });
 

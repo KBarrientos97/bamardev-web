@@ -10,6 +10,7 @@ import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia"
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
+import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
@@ -36,6 +37,8 @@ import VistaColumnas from "./VistaColumnas";
 const TODAS = "__todas__";
 /** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
 const PAUSADOS = "__pausados__";
+/** Desde qué alto el cobro en la misma pantalla se aprieta (ver `PanelCarrito`). */
+const VENTANA_BAJA = "(max-height: 860px)";
 
 const idDe = (p: Producto) => p.id;
 
@@ -104,9 +107,11 @@ export default function PantallaVenta({
   /**
    * Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §5): un botón por
    * cada plataforma que este usuario puede cargar, junto a «Cobrar». Sin esto
-   * —casi todos los negocios— el carrito es el de siempre.
+   * —casi todos los negocios— el carrito es el de siempre. `alVolver` llega
+   * sólo si se eligió desde la hoja del carrito del celular: quien abre el
+   * diálogo lo llama si se sale sin registrar, y la hoja se vuelve a abrir.
    */
-  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma, alVolver?: () => void) => void };
   /**
    * Los toppings del local (PLAN-AGREGADOS §7.4): con ellos, un producto que
    * lleva grupo dice «Incluye 2 toppings» y al tocarlo abre su hoja. Sin esto
@@ -268,10 +273,15 @@ export default function PantallaVenta({
    * no está en la página pero la caja lo puede tener: pregunta antes de
    * agregarlo. Ya en el carrito (ya dijo que sí) los toques siguientes suman
    * sin volver a preguntar.
+   *
+   * Dentro del chip «Pausados», quien puede pausar lo está mirando para
+   * reactivarlo: tocarlo abre la hoja de reactivar, como en la app (17-nov).
+   * Sin el permiso, o fuera de ese chip, todo sigue igual.
    */
   const tocarProducto = (p: Producto) => {
     if (quieto) return;
-    if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
+    if (cat === PAUSADOS && puedePausar && pausados.ids.has(p.id)) setHojaPausa(p);
+    else if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
     else pedirAgregar(p);
   };
   /** El «−» de la tarjeta baja la última línea de ese producto (puede haber varias con toppings). */
@@ -385,8 +395,13 @@ export default function PantallaVenta({
               onElegir: (p) => {
                 if (quieto) return;
                 confirmarNotasAbiertas();
+                // En el celular el carrito es una hoja que se cierra para dejar
+                // ver el diálogo; si se vuelve sin registrar el pedido, se
+                // vuelve a abrir, como en la app (17-nov).
+                const enLaHoja = carritoAbierto;
                 setCarritoAbierto(false);
-                plataformas.onElegir(p);
+                if (enLaHoja) plataformas.onElegir(p, () => setCarritoAbierto(true));
+                else plataformas.onElegir(p);
               },
             }
           : undefined
@@ -493,6 +508,9 @@ export default function PantallaVenta({
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
                   onAgregar={() => tocarProducto(p)}
+                  // El «+» suma siempre, también dentro de «Pausados» (ahí
+                  // tocar la tarjeta es para reactivarla), como en la app.
+                  onMas={() => pedirAgregar(p)}
                   onQuitar={() => quitarUna(p)}
                   incluye={textoIncluyeDe(catalogoAgregados, p.id)}
                   arrastre={arrastre.props(p.id)}
@@ -597,6 +615,33 @@ function textoIncluyeDe(catalogo: CatalogoAgregados | null | undefined, producto
   return grupos.map((g) => textoIncluye(g.grupo.nombre, g.incluidos)).join(" · ");
 }
 
+/**
+ * Las clases de los tres lugares de «Pausado» en la tarjeta (ver `TarjetaVenta`),
+ * por el ancho útil de la tarjeta. Con el «⋯»: la etiqueta de siempre desde
+ * 146 px; la pastilla en la fila desde 126 (ícono 40 + 6 + pastilla 56 + aire
+ * hasta los puntos del «⋯»); debajo del nombre, menos. Sin el «⋯», desde 118 y 102.
+ * Escritas enteras: Tailwind sólo genera las clases que ve en el código.
+ */
+const PAUSADO_CON_MENU = {
+  arriba: "hidden @min-[146px]:inline-flex",
+  chica: "mr-auto hidden @min-[126px]:inline-flex @min-[146px]:hidden",
+  abajo: "mt-1 flex @min-[126px]:hidden",
+};
+const PAUSADO_SIN_MENU = {
+  arriba: "hidden @min-[118px]:inline-flex",
+  chica: "mr-auto hidden @min-[102px]:inline-flex @min-[118px]:hidden",
+  abajo: "mt-1 flex @min-[102px]:hidden",
+};
+
+/** «Pausado» chico, como en la lista en columnas (`VistaColumnas`). */
+function PastillaPausado() {
+  return (
+    <span className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-px text-[11px] font-bold text-texto-3">
+      Pausado
+    </span>
+  );
+}
+
 function ChipCat({
   activo,
   onClick,
@@ -632,10 +677,13 @@ function TarjetaVenta({
   onMenu,
   incluye,
   conIcono = true,
+  onMas,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /** El «+» del stepper; sin esto hace lo mismo que tocar la tarjeta. */
+  onMas?: () => void;
   /**
    * El ícono del producto (Configuración › Punto de venta). Sin él, la tarjeta
    * es nombre y precio. De fábrica va, como siempre.
@@ -680,6 +728,18 @@ function TarjetaVenta({
   // La fila de arriba lleva el ícono y lo que dice el stock. Sin ícono y sin
   // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
   const conFila = conIcono || agotado || pausado || controla;
+  /**
+   * Dónde va «Pausado» según el ancho de la tarjeta (17-nov). En la angosta
+   * (1366 con el menú abierto) quedaba pegado al «⋯», y en 1024 se salía de
+   * la tarjeta. Se mide la tarjeta (`@container`, su ancho útil):
+   * - con lugar, la etiqueta de siempre, arriba a la derecha;
+   * - si no entra, una pastilla chica en la misma fila, pegada al ícono, con
+   *   aire hasta el «⋯» (así la tarjeta no crece);
+   * - si tampoco entra (1024), la pastilla debajo del nombre, como en la
+   *   lista en columnas.
+   * Sin el «⋯» (sin permiso de pausar) hay más lugar en la fila.
+   */
+  const lugarPausado = onMenu ? PAUSADO_CON_MENU : PAUSADO_SIN_MENU;
 
   return (
     <li
@@ -695,7 +755,7 @@ function TarjetaVenta({
           elegido sin abrir el carrito es lo que evita cargarlo dos veces. */}
       <div
         className={[
-          "relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          "@container relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
           enCarrito
             ? "border-primary bg-primary-50 shadow-sm"
             : pausado
@@ -728,7 +788,16 @@ function TarjetaVenta({
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
             {/* Pausado y agotado a la vez: gana «Agotado», que sí frena la venta. */}
-            {pausado && !agotado && <Badge tono="gris">Pausado</Badge>}
+            {pausado && !agotado && (
+              <>
+                <span className={lugarPausado.chica}>
+                  <PastillaPausado />
+                </span>
+                <span className={lugarPausado.arriba}>
+                  <Badge tono="gris">Pausado</Badge>
+                </span>
+              </>
+            )}
             {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controla && (
@@ -757,6 +826,12 @@ function TarjetaVenta({
           >
             {p.nombre}
           </h3>
+          {/* En la tarjeta más angosta «Pausado» no entra arriba: va acá (ver `lugarPausado`). */}
+          {pausado && !agotado && (
+            <span className={lugarPausado.abajo}>
+              <PastillaPausado />
+            </span>
+          )}
           {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,
               antes de tocarlo. */}
           {incluye && <p className="mt-1 text-[11px] font-bold text-primary-700">{incluye}</p>}
@@ -803,7 +878,7 @@ function TarjetaVenta({
             <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
             <button
               onClick={() => {
-                if (!ignorarClic()) onAgregar();
+                if (!ignorarClic()) (onMas ?? onAgregar)();
               }}
               disabled={alTope}
               aria-label="Uno más"
@@ -929,6 +1004,18 @@ function PanelCarrito({
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
   const [vaciando, setVaciando] = useState(false);
+  /**
+   * El cobro en la misma pantalla en una ventana baja (17-nov): en 1366×768,
+   * con el fiado y las apps de delivery, la lista quedaba en renglón y medio.
+   * Se aprieta lo de abajo para que se vean casi tres; con 900 px de alto o
+   * más (1920×1080) sobra lugar y queda como siempre. Sin el cobro incrustado,
+   * nada cambia.
+   */
+  const ventanaBaja = useCoincideMedia(VENTANA_BAJA);
+  const apretado = !!cobro && ventanaBaja;
+  // «Total · 2 unidades» en un renglón, cuando abajo del subtotal no hay nada
+  // más que decir (ni descuentos ni otra cifra que la del total).
+  const totalConUnidades = apretado && !descuentos && !modificacion && aCentavos(carrito.subtotal) === aCentavos(total);
   const botonesPlataformas =
     plataformas &&
     plataformas.disponibles.map((p) => (
@@ -1053,7 +1140,21 @@ function PanelCarrito({
             ))}
           </ul>
 
-          <div className={`${cobro ? "shrink-0 " : ""}border-t border-borde-soft px-4 py-3`}>
+          <div className={`${cobro ? "shrink-0 " : ""}border-t border-borde-soft px-4 ${apretado ? "py-2" : "py-3"}`}>
+            {totalConUnidades ? (
+              <dl className="text-sm">
+                <div className="flex items-baseline justify-between gap-3 text-base font-extrabold text-texto">
+                  <dt>
+                    Total
+                    <span className="text-sm font-normal text-texto-2">
+                      {" "}
+                      · {carrito.unidades} {carrito.unidades === 1 ? "unidad" : "unidades"}
+                    </span>
+                  </dt>
+                  <dd>{fmtMoney(total)}</dd>
+                </div>
+              </dl>
+            ) : (
             <dl className="space-y-1 text-sm">
               <div className="flex justify-between text-texto-2">
                 <dt>
@@ -1068,6 +1169,7 @@ function PanelCarrito({
               </div>
               {modificacion?.resumen}
             </dl>
+            )}
 
             {cobro ? (
               // Con el cobro en la misma pantalla no hay «Cobrar»: lo que sigue
@@ -1118,9 +1220,12 @@ function PanelCarrito({
               bloqueado={!!descuentos?.bloqueado || !!bloqueoCobro}
               enviando={cobro.enviando}
               error={cobro.error}
+              compacto={apretado}
+              // En la ventana baja, Yango y PedidosYa en la fila del fiado.
+              alLadoDelFiado={apretado ? botonesPlataformas : undefined}
             />
           )}
-          {cobro && botonesPlataformas && (
+          {cobro && botonesPlataformas && !apretado && (
             <div inert={quieto} className="flex shrink-0 gap-2 px-4 pb-3">
               {botonesPlataformas}
             </div>

@@ -773,6 +773,11 @@ function PuntoDeVenta() {
   // con `tipoPedido` distinto de LOCAL). La feature es explícita (no falla
   // abierta) y además hace falta `plataformas.registrar`.
   const [pedidoPlataforma, setPedidoPlataforma] = useState<Plataforma | null>(null);
+  /**
+   * Elegido desde la hoja del carrito del celular: «Volver» la vuelve a abrir,
+   * como la app (17-nov). Registrado el pedido, no: el carrito quedó vacío.
+   */
+  const alVolverDelPedido = useRef<(() => void) | undefined>(undefined);
   const [avisoPedido, setAvisoPedido] = useAviso();
   // Su propia identidad, aparte de la del cobro: un reintento tras un 504
   // devuelve el mismo pedido en vez de crear otro y descontar dos veces.
@@ -828,6 +833,7 @@ function PuntoDeVenta() {
       intentoPedido.registrado();
       // Sin señal el stock de la copia baja igual que con una venta encolada.
       if (r.encolado) await descontarDeLaCopia(copiaCatalogo(almacenCaja), detalles);
+      alVolverDelPedido.current = undefined;
       setPedidoPlataforma(null);
       limpiar();
       const nombre = NOMBRE_PLATAFORMA[plataforma];
@@ -1555,7 +1561,13 @@ function PuntoDeVenta() {
       sucursalId={abierta.almacenId}
       plataformas={
         plataformasDelPos.length > 0
-          ? { disponibles: plataformasDelPos, onElegir: setPedidoPlataforma }
+          ? {
+              disponibles: plataformasDelPos,
+              onElegir: (p, alVolver) => {
+                alVolverDelPedido.current = alVolver;
+                setPedidoPlataforma(p);
+              },
+            }
           : undefined
       }
       // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro
@@ -1714,7 +1726,12 @@ function PuntoDeVenta() {
             plataforma={pedidoPlataforma}
             lineas={lineasDelPedido}
             total={totalDelPedido}
-            onClose={() => setPedidoPlataforma(null)}
+            onClose={() => {
+              setPedidoPlataforma(null);
+              const volver = alVolverDelPedido.current;
+              alVolverDelPedido.current = undefined;
+              volver?.();
+            }}
             onRegistrar={(codigo) => registrarPedido(pedidoPlataforma, codigo)}
           />
         )}
