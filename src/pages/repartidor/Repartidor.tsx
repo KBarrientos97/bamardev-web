@@ -1,3 +1,4 @@
+import { agruparHijas } from "../../lib/agregados/hijas";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import InputMonto from "../../components/InputMonto";
@@ -493,10 +494,16 @@ function DetalleEntrega({
             )}
 
             <ul className="divide-y divide-borde-soft">
-              {(p.detalles ?? []).map((d, i) => (
+              {agruparHijas(p.detalles ?? []).map(({ linea: d, hijas }, i) => (
                 <li key={i} className="flex items-start justify-between gap-3 py-2.5">
                   <p className="text-[13px] text-texto">
                     <span className="font-bold">{fmtNum(d.cantidad)}×</span> {d.producto}
+                    {/* Los toppings del vaso, para que el repartidor sepa qué lleva. */}
+                    {hijas.length > 0 && (
+                      <span className="block text-xs text-texto-3">
+                        + {hijas.map((h) => `${h.cantidad !== 1 ? `${fmtNum(h.cantidad)} × ` : ""}${h.producto}`).join(", ")}
+                      </span>
+                    )}
                     {d.nota && (
                       <span className="block text-xs italic text-texto-3">{d.nota}</span>
                     )}

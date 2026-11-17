@@ -1,3 +1,4 @@
+import { agruparHijas } from "./agregados/hijas";
 import { fmtFecha, fmtMoney } from "./format";
 import { Telefono } from "./telefono";
 import type { Venta } from "../types";
@@ -22,7 +23,11 @@ export function mensajeRecibo(venta: Venta, negocio: string, sucursal?: string |
   if (cuotas.length) {
     for (const c of cuotas) renglones.push(`• ${c.carrera ? `${c.carrera} · ` : ""}${c.concepto}: ${fmtMoney(c.cobrado)}`);
   } else {
-    for (const d of venta.detalles ?? []) renglones.push(`• ${d.cantidad} × ${d.producto ?? "Artículo"}: ${fmtMoney(d.subtotal)}`);
+    // Los toppings (líneas hijas) van debajo de su vaso: «   + Oreo (incluido)».
+    for (const { linea: d, hijas } of agruparHijas(venta.detalles ?? [])) {
+      renglones.push(`• ${d.cantidad} × ${d.producto ?? "Artículo"}: ${fmtMoney(d.subtotal)}`);
+      for (const h of hijas) renglones.push(`   + ${h.cantidad !== 1 ? `${h.cantidad} × ` : ""}${h.producto}${h.incluido || h.subtotal === 0 ? " (incluido)" : `: ${fmtMoney(h.subtotal)}`}`);
+    }
   }
   renglones.push(`Total: ${fmtMoney(venta.total + (venta.tarifaEnvio ?? 0))}`);
   const ultima = cuotas.at(-1);

@@ -70,7 +70,9 @@ import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
 import { pideConfirmacion } from "../farmacia/medicamento";
-import { useCarrito } from "./useCarrito";
+import { claveDeLinea, useCarrito } from "./useCarrito";
+import { agregadosParaEnviar, textoDeAgregados } from "../../lib/agregados/calculo";
+import { useCatalogoAgregados } from "../../lib/agregados/useCatalogoAgregados";
 import { useDescuentos } from "./useDescuentos";
 import BloqueDescuentos from "./BloqueDescuentos";
 // Agenda fase 3: sesiones de paquete en el cobro de la cita y venta de paquetes.
@@ -185,11 +187,17 @@ function PuntoDeVenta() {
         ? Promise.resolve([])
         : caja.cargando
           ? new Promise<never>(() => {})
-          : conCopia(copiaCatalogo(almacenCaja), () => api.getProductos(false, almacenCaja)),
+          : conCopia(copiaCatalogo(almacenCaja), () => api.getProductos(false, almacenCaja, true)),
     [rubro, caja.cargando, almacenCaja],
   );
   const categorias = useApi(() => conCopia("categorias", () => api.getCategorias(false)), []);
   const formasPago = useApi(() => conCopia("formas_pago", () => api.getFormasPago()), []);
+  /**
+   * Los toppings del local (PLAN-AGREGADOS §7.4), sólo con el ajuste de
+   * Configuración prendido: de ahí salen la hoja, el «Incluye 2 toppings» de la
+   * tarjeta y los extras del total. Con la sucursal de la caja, como el catálogo.
+   */
+  const catalogoAgregados = useCatalogoAgregados(almacenCaja, negocio?.usaAgregados === true);
   /**
    * `crearVenta`, o la cola si no hay señal (sólo en la app instalada). El
    * ticket de una venta encolada lo arma el equipo con este catálogo.
@@ -203,6 +211,7 @@ function PuntoDeVenta() {
       const r = await venderOEncolar(cuerpo, api.crearVenta, {
         productos: productos.datos ?? [],
         formasPago: formasPago.datos ?? [],
+        agregados: catalogoAgregados,
         cajero: usuario?.nombre ?? usuario?.username ?? null,
         // A qué caja va la venta en el manifiesto del turno (12-nov): la que
         // el POS tiene abierta (o su copia, sin señal). Ver turno.ts.
@@ -213,7 +222,7 @@ function PuntoDeVenta() {
       if (r.encolada) await descontarDeLaCopia(copiaCatalogo(almacenCaja), cuerpo.detalles);
       return r;
     },
-    [productos.datos, formasPago.datos, usuario, almacenCaja, idCaja, variasSedes],
+    [productos.datos, formasPago.datos, catalogoAgregados, usuario, almacenCaja, idCaja, variasSedes],
   );
   /**
    * Lo del salón y del reparto se pide sólo si el plan lo trae (QA M-11): un
@@ -405,7 +414,7 @@ function PuntoDeVenta() {
     () => catalogoConCita(productos.datos ?? [], citaCobrando),
     [productos.datos, citaCobrando],
   );
-  const carritoPropio = useCarrito(tipoPedido, catalogoPos, catalogoPos.length > 0);
+  const carritoPropio = useCarrito(tipoPedido, catalogoPos, catalogoPos.length > 0, undefined, catalogoAgregados);
   // En una farmacia la venta vive por encima del POS (ver VentaFarmaciaProvider.tsx):
   // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
   // tal venta y el POS usa la suya, como siempre.
@@ -510,7 +519,9 @@ function PuntoDeVenta() {
     citaId: citaCobrando?.citaId ?? null,
   });
   /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
-  const totalCarrito = descuentos.total(carritoVenta.total);
+  // Los toppings no pasan por el motor de promociones: el total con descuentos
+  // es el neto del vaso más los toppings (PLAN-AGREGADOS, backend).
+  const totalCarrito = descuentos.total(carritoVenta.total, carritoVenta.totalAgregados ?? 0);
 
   /**
    * Farmacia: F2 cobra (#19). Doscientas ventas por día de un paracetamol,
@@ -765,10 +776,12 @@ function PuntoDeVenta() {
   const lineasDelPedido = useMemo(
     () =>
       carritoVenta.lineas.map((l) => ({
-        clave: l.producto.id,
+        clave: claveDeLinea(l),
         nombre: l.producto.nombre,
         cantidad: l.cantidad,
-        precio: l.producto.precio,
+        // Con los extras: el total del pedido tiene que ser el que cobra el backend.
+        precio: l.producto.precio + (l.vista?.extraPorUnidad ?? 0),
+        agregados: textoDeAgregados(l.vista),
       })),
     [carritoVenta.lineas],
   );
@@ -777,7 +790,12 @@ function PuntoDeVenta() {
 
   const registrarPedido = useCallback(
     async (plataforma: Plataforma, codigoExterno: string | undefined) => {
-      const detalles = carritoVenta.lineas.map((l) => ({ productoId: l.producto.id, cantidad: l.cantidad }));
+      // Las mismas líneas de la venta, con sus toppings: el backend los
+      // descuenta del stock y los recalcula igual que en un cobro.
+      const detalles = carritoVenta.lineas.map((l) => {
+        const agregados = l.vista ? agregadosParaEnviar(l.agregados, l.vista) : undefined;
+        return { productoId: l.producto.id, cantidad: l.cantidad, ...(agregados ? { agregados } : {}) };
+      });
       const precios = new Map(carritoVenta.lineas.map((l) => [l.producto.id, l.producto.precio]));
       const r = await registrarPedidoOEncolar(
         {
@@ -1272,10 +1290,10 @@ function PuntoDeVenta() {
           itemsVivos(c).map((i) => ({ clave: `${c.id}-${i.id}`, nombre: i.nombre, cantidad: i.cantidad, precio: i.precio })),
         )
       : carritoVenta.lineas.map((l) => ({
-          clave: l.producto.id,
+          clave: claveDeLinea(l),
           nombre: l.producto.nombre,
           cantidad: l.cantidad,
-          precio: l.producto.precio,
+          precio: l.producto.precio + (l.vista?.extraPorUnidad ?? 0),
         }));
     return (
       <>
@@ -1439,6 +1457,7 @@ function PuntoDeVenta() {
 
   return (
     <PantallaVenta
+      catalogoAgregados={catalogoAgregados}
       productos={productos.datos ?? []}
       categorias={categorias.datos ?? []}
       // Con profesional, el precio propio ya en cada línea; si no, el mismo.

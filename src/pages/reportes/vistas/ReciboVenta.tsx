@@ -1,3 +1,4 @@
+import { agruparHijas } from "../../../lib/agregados/hijas";
 import { useRef, useState } from "react";
 import { Boton, Cargando, ErrorMsg, Modal } from "../../../components/ui";
 import { api } from "../../../lib/api";
@@ -158,7 +159,7 @@ function TicketVenta({ venta: v, negocio, rubro }: { venta: Venta; negocio: stri
       </dl>
 
       <div className="mt-2 border-t border-dashed border-borde pt-1">
-        {detalles.map((d, i) => (
+        {agruparHijas(detalles).map(({ linea: d, hijas }, i) => (
           <div key={i} className="py-1 text-[13px]">
             <div className="flex items-start gap-2">
               <p className="min-w-0 flex-1 font-semibold">{d.producto}</p>
@@ -181,6 +182,16 @@ function TicketVenta({ venta: v, negocio, rubro }: { venta: Venta; negocio: stri
                 <span className="shrink-0">− {fmtMoney(d.descuento)}</span>
               </div>
             )}
+            {/* Los toppings (PLAN-AGREGADOS §7.3), debajo de su vaso, como en el ticket del POS. */}
+            {hijas.map((h, j) => (
+              <div key={j} className="flex items-start justify-between gap-2 pl-3 text-xs text-texto-2">
+                <span className="min-w-0">
+                  + {h.cantidad !== 1 ? `${fmtCantidad(h.cantidad)} × ` : ""}
+                  {h.producto}
+                </span>
+                <span className="shrink-0 font-semibold">{h.incluido || h.subtotal === 0 ? "incluido" : fmtMoney(h.subtotal)}</span>
+              </div>
+            ))}
             {d.nota && <p className="text-xs italic text-texto-3">{d.nota}</p>}
           </div>
         ))}

@@ -1,3 +1,4 @@
+import { agruparHijas } from "../../lib/agregados/hijas";
 import { fmtCantidad, fmtHora } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
 import type { Venta } from "../../types";
@@ -53,11 +54,14 @@ export default function ComandaCocina({
   negrita?: boolean;
 }) {
   const detalles = venta.detalles ?? [];
+  // Los toppings (PLAN-AGREGADOS §7.3) van debajo de su vaso: «+ Oreo, Chubi».
+  // El destino (mesa o llevar) lo manda el vaso, y «N productos» cuenta vasos.
+  const vasos = agruparHijas(detalles);
   const grupos = [
-    { titulo: "EN MESA", lineas: detalles.filter((d) => d.consumo === "MESA") },
-    { titulo: "PARA LLEVAR", lineas: detalles.filter((d) => d.consumo !== "MESA") },
+    { titulo: "EN MESA", lineas: vasos.filter((v) => v.linea.consumo === "MESA") },
+    { titulo: "PARA LLEVAR", lineas: vasos.filter((v) => v.linea.consumo !== "MESA") },
   ].filter((g) => g.lineas.length > 0);
-  const unidades = detalles.reduce((s, d) => s + d.cantidad, 0);
+  const unidades = vasos.reduce((s, v) => s + v.linea.cantidad, 0);
   // La venta se modificó después de cobrada (15-nov): la cocina ya tiene un
   // papel con este mismo número. Éste dice que es un CAMBIO y qué ya no va,
   // para que no prepare los dos. La lista de abajo es el pedido como quedó.
@@ -97,12 +101,22 @@ export default function ComandaCocina({
         <section key={g.titulo} className="mt-3">
           <p className="border-b-2 border-texto pb-0.5 text-[12px] font-extrabold tracking-[0.16em] text-texto">{g.titulo}</p>
           <ul className="mt-1.5 space-y-2">
-            {g.lineas.map((d, i) => (
+            {g.lineas.map(({ linea: d, hijas }, i) => (
               <li key={i}>
                 <p className="flex gap-2 text-[19px] font-bold leading-snug text-texto">
                   <span className="shrink-0 font-mono">{fmtCantidad(d.cantidad)}×</span>
                   <span className="min-w-0">{d.producto}</span>
                 </p>
+                {/* Los toppings: la cocina los lee como parte del vaso. */}
+                {hijas.map((h, j) => (
+                  <p key={j} className="flex gap-2 pl-6 text-[15px] font-semibold leading-snug text-texto">
+                    <span className="shrink-0">+</span>
+                    <span className="min-w-0">
+                      {h.cantidad !== 1 ? `${fmtCantidad(h.cantidad)} × ` : ""}
+                      {h.producto}
+                    </span>
+                  </p>
+                ))}
                 {d.nota && (
                   <p className="mt-1 rounded border-2 border-texto px-2 py-0.5 text-[15px] font-bold text-texto">
                     {d.nota}

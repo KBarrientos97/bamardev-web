@@ -7,6 +7,7 @@ import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
 import type { EntregaPedidosWeb, PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
 import type { Plataforma } from "./lib/pedidosPlataforma/tipos";
+import type { AgregadoInput } from "./lib/agregados/tipos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -179,6 +180,12 @@ export interface SesionNegocio {
    * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
    */
   usaDespacho?: boolean;
+  /**
+   * Si el negocio vende productos con agregados (toppings, extras): el ajuste
+   * de Configuración › Inventario y stock (PLAN-AGREGADOS §7.6). Apagado de
+   * fábrica; sin el dato (sesión o backend viejo) se lee como apagado.
+   */
+  usaAgregados?: boolean;
   /**
    * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
    * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
@@ -481,6 +488,12 @@ export interface Producto extends FichaFarmaceutica {
    * `controlaStock` en `pos/useCarrito.ts`.
    */
   vendeSinStock?: boolean;
+  /**
+   * Existe para el stock y los reportes pero no se vende suelto: es un topping
+   * (PLAN-AGREGADOS §7.1). `GET /productos` lo trae siempre, para poder
+   * destildarlo en Artículos; el POS pide `paraVenta` y el backend lo excluye.
+   */
+  soloAgregado?: boolean;
 }
 
 /**
@@ -594,6 +607,8 @@ export interface ProductoInput {
   categoriaId?: number;
   icono?: string;
   componentes?: { ingredienteId: number; cantidad: number }[];
+  /** Es un topping: no sale en la grilla del POS ni en la carta (PLAN-AGREGADOS §7.1). */
+  soloAgregado?: boolean;
   // Ficha farmacéutica: la manda el formulario de farmacia y nadie más.
   principioActivo?: string;
   concentracion?: string;
@@ -1299,6 +1314,17 @@ export interface PagoVenta {
 }
 
 export interface DetalleVenta {
+  /**
+   * Sólo en una venta con toppings (PLAN-AGREGADOS §7.3): el id de la línea,
+   * para que sus hijas la señalen. Ausente en una venta sin toppings y en el
+   * ticket local de la cola sin señal.
+   */
+  id?: number;
+  /** La línea del vaso de la que cuelga este topping; null en el vaso. */
+  lineaPadreId?: number | null;
+  /** El topping va dentro de lo incluido (Bs 0). */
+  incluido?: boolean;
+  grupoAgregadosId?: number | null;
   productoId: number;
   producto: string;
   cantidad: number;
@@ -1571,6 +1597,12 @@ export interface DetalleVentaInput {
    */
   cuotaId?: number;
   montoCuota?: number;
+  /**
+   * Toppings de ESTA línea (PLAN-AGREGADOS §7.3), en el orden en que el cliente
+   * los eligió y por unidad del producto. El backend recalcula incluidos y
+   * extras; sin ellos la línea es la de siempre.
+   */
+  agregados?: AgregadoInput[];
 }
 
 /**
@@ -2090,6 +2122,8 @@ export interface EstadoLicencia {
   permisosVersion?: string;
   /** Lo mismo que `negocio.pedidosWeb` del login, para repintar el menú sin volver a entrar. */
   pedidosWeb?: boolean;
+  /** Lo mismo que `negocio.usaAgregados` del login: si se apaga en otra pantalla, ésta se entera. */
+  usaAgregados?: boolean;
   /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
   entregaPedidosWeb?: EntregaPedidosWeb;
   servicioDeliveryExterno?: string | null;

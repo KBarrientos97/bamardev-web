@@ -17,6 +17,7 @@ import { imprimeReciboSinNumero } from "../../lib/menuDigital/reglasRecibo";
 import { estiloLetra } from "../../lib/menuDigital/letraRecibo";
 import { CabeceraNegocio, HojaAngosta, NumeroDelRecibo, PieDelRecibo, QrRecibo, TotalesRecibo } from "./PiezasRecibo";
 import { mensajeRecibo, whatsappDelRecibo } from "../../lib/mensajeRecibo";
+import { agruparHijas, type LineaConHijas } from "../../lib/agregados/hijas";
 import { useRotuloSucursal } from "../../lib/useHayVariasSucursales";
 import { useLocalEnElRecibo } from "../../lib/menuDigital/localEnElRecibo";
 import { abrirWhatsapp } from "../../lib/academia/vista";
@@ -158,6 +159,10 @@ export default function PantallaRecibo({
   }
 
   const detalles = venta.detalles ?? [];
+  // Los toppings (PLAN-AGREGADOS §7.3) vienen como líneas hijas de su vaso: el
+  // papel las dibuja debajo, y todo lo que decide por línea (mesa o llevar, el
+  // número grande) mira sólo los vasos.
+  const vasos = agruparHijas(detalles);
   const pagos = venta.pagos ?? [];
 
   // El badge M/LL sólo aplica a ventas de local: en delivery/recoger todo va
@@ -472,20 +477,21 @@ export default function PantallaRecibo({
         {separarConsumo
           ? // En bloques en vez de la M/LL de cada renglón: el cliente de un
             // pedido mixto ve de un vistazo qué se lleva.
-            porConsumo(detalles).map((g) => (
+            porConsumo(vasos).map((g) => (
               <div key={g.consumo}>
                 <p className="mt-1.5 border-b border-texto pb-0.5 text-[11px] font-extrabold tracking-[0.14em] text-texto">
                   {g.consumo === "MESA" ? "EN MESA" : "PARA LLEVAR"}
                 </p>
-                {g.lineas.map((d, i) => (
-                  <LineaTicket key={i} linea={d} mostrarConsumo={false} conNota={!conTicket} />
+                {g.lineas.map(({ linea: d, hijas }, i) => (
+                  <LineaTicket key={i} linea={d} hijas={hijas} mostrarConsumo={false} conNota={!conTicket} />
                 ))}
               </div>
             ))
-          : detalles.map((d, i) => (
+          : vasos.map(({ linea: d, hijas }, i) => (
               <LineaTicket
                 key={i}
                 linea={d}
+                hijas={hijas}
                 mostrarConsumo={mostrarConsumo}
                 cuota={cuotaDeLinea(venta, d.cuotaId)}
                 conNota={!conTicket}
@@ -659,7 +665,7 @@ export default function PantallaRecibo({
                 </div>
               </div>
               {modificada && <AvisoDelCambio cambio={modificada} />}
-              <NumeroGrande numero={numero} detalles={detalles} />
+              <NumeroGrande numero={numero} detalles={vasos.map((v) => v.linea)} />
               {ancha && (
                 <div className="mt-5 space-y-3">
                   {imprimirTodo("w-full py-3.5 text-base")}
@@ -856,9 +862,9 @@ function RotuloPapel({
 }
 
 /** Los renglones en mesa primero y después los para llevar, cada grupo en su orden. */
-function porConsumo(detalles: NonNullable<Venta["detalles"]>) {
-  const enMesa = detalles.filter((d) => d.consumo === "MESA");
-  const llevar = detalles.filter((d) => d.consumo !== "MESA");
+function porConsumo(vasos: LineaConHijas<NonNullable<Venta["detalles"]>[number]>[]) {
+  const enMesa = vasos.filter((v) => v.linea.consumo === "MESA");
+  const llevar = vasos.filter((v) => v.linea.consumo !== "MESA");
   return [
     ...(enMesa.length ? [{ consumo: "MESA" as const, lineas: enMesa }] : []),
     ...(llevar.length ? [{ consumo: "LLEVAR" as const, lineas: llevar }] : []),
@@ -887,11 +893,14 @@ function FilaDato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
  */
 function LineaTicket({
   linea,
+  hijas = [],
   mostrarConsumo,
   cuota,
   conNota = true,
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
+  /** Los toppings del vaso (líneas hijas), debajo y con sangría. */
+  hijas?: NonNullable<Venta["detalles"]>;
   mostrarConsumo: boolean;
   /**
    * Educación: la cuota que cobró. Con los módulos que cubre, el renglón dice
@@ -931,6 +940,17 @@ function LineaTicket({
           <span className="shrink-0">− {fmtMoney(linea.descuento)}</span>
         </div>
       )}
+      {/* Los toppings, como en la comanda: «+ Oreo  incluido» y «+ Canela  Bs 5,00».
+          Con sangría y en la letra chica para que se lean como parte del vaso. */}
+      {hijas.map((h, i) => (
+        <div key={i} className="flex items-start justify-between gap-2 pl-3 text-xs text-texto-2">
+          <span className="min-w-0">
+            + {h.cantidad !== 1 ? `${fmtNum(h.cantidad)} × ` : ""}
+            {h.producto}
+          </span>
+          <span className="shrink-0 font-semibold">{h.incluido || h.subtotal === 0 ? "incluido" : fmtMoney(h.subtotal)}</span>
+        </div>
+      ))}
       {conNota && linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
       {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
           trae. Una venta sin profesional ni paquetes no lo trae y el ticket
