@@ -76,6 +76,34 @@ export function cantidadTicket(n: number): string {
 
 const recortar = (t: string, ancho: number) => (t.length > ancho ? t.slice(0, Math.max(ancho, 0)) : t);
 
+/**
+ * Un dato de la cabecera en renglones de hasta 32 columnas, cortando entre
+ * palabras; una palabra que sola no entra se parte donde llega al borde, sin
+ * perder letras. «Cajero: Administrador El Ganadero» salía «…El Ganader»
+ * (QA del 17-nov). Igual que `TicketCierre.partir` de la app. Los productos
+ * siguen en un renglón cada uno, con el nombre recortado: eso es a propósito.
+ */
+export function partirEnRenglones(texto: string): string[] {
+  const renglones: string[] = [];
+  let actual = "";
+  for (const palabra of texto.split(" ").filter(Boolean)) {
+    const junto = actual ? `${actual} ${palabra}` : palabra;
+    if (junto.length <= COLUMNAS_TICKET) {
+      actual = junto;
+      continue;
+    }
+    if (actual) renglones.push(actual);
+    let resto = palabra;
+    while (resto.length > COLUMNAS_TICKET) {
+      renglones.push(resto.slice(0, COLUMNAS_TICKET));
+      resto = resto.slice(COLUMNAS_TICKET);
+    }
+    actual = resto;
+  }
+  if (actual) renglones.push(actual);
+  return renglones;
+}
+
 /** «izquierda ........ derecha»: la derecha pegada al borde; si no entra todo, se recorta la izquierda. */
 function renglon(izquierda: string, derecha: string): string {
   const lugar = COLUMNAS_TICKET - derecha.length - 1;
@@ -138,11 +166,12 @@ export function lineasTicketCierre(d: ReporteCierreProductos, o: DatosTicketCier
   const ancho = anchoCantidad([productos, ...plataformas.map((x) => x.items)]);
 
   const lineas: string[] = [];
-  if (o.negocio) lineas.push(recortar(o.negocio.toUpperCase(), COLUMNAS_TICKET));
-  if (o.sede) lineas.push(recortar(o.sede, COLUMNAS_TICKET));
+  // Lo de arriba del papel no se corta: lo que no entra sigue abajo.
+  if (o.negocio) lineas.push(...partirEnRenglones(o.negocio.toUpperCase()));
+  if (o.sede) lineas.push(...partirEnRenglones(o.sede));
   const turno = lineaDelTurno(o.abrio, o.cerro);
-  if (turno) lineas.push(recortar(turno, COLUMNAS_TICKET));
-  if (o.cajero) lineas.push(recortar(`Cajero: ${o.cajero}`, COLUMNAS_TICKET));
+  if (turno) lineas.push(...partirEnRenglones(turno));
+  if (o.cajero) lineas.push(...partirEnRenglones(`Cajero: ${o.cajero}`));
   lineas.push(RAYA);
 
   if (productos.length === 0) lineas.push("Sin ventas en el turno");
