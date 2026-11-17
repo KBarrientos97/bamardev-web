@@ -546,3 +546,33 @@ describe("el seguimiento con un servicio externo (PLAN-DELIVERY-EXTERNO §2.5)",
     expect(screen.queryByRole("link", { name: /Seguir mi pedido/ })).not.toBeInTheDocument();
   });
 });
+
+describe("toppings en el pedido (PLAN-AGREGADOS §8.3)", () => {
+  it("los toppings salen debajo de su vaso, con «incluido» o lo que cuestan; el resto del pedido no cambia", async () => {
+    servidor({
+      lineas: [
+        { id: 1, titulo: "Nutella M", cantidad: 1, precio: 20, subtotal: 20, lineaPadreId: null, incluido: false },
+        { id: 2, titulo: "Oreo", cantidad: 1, precio: 0, subtotal: 0, lineaPadreId: 1, incluido: true },
+        { id: 3, titulo: "Chubi", cantidad: 1, precio: 0, subtotal: 0, lineaPadreId: 1, incluido: true },
+        { id: 4, titulo: "Coco", cantidad: 2, precio: 2, subtotal: 4, lineaPadreId: 1, incluido: false },
+        { id: 5, titulo: "Agua", cantidad: 1, precio: 5, subtotal: 5, lineaPadreId: null, incluido: false },
+      ],
+      subtotal: 29,
+      total: 38,
+    });
+    await montar();
+    const toppings = await screen.findByTestId("toppings-seguimiento");
+    expect(Array.from(toppings.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["+ Oreoincluido", "+ Chubiincluido", "+ 2 × CocoBs 4"]);
+    // Cuelgan del vaso (no de la bebida), y la bebida va aparte como una línea más.
+    expect(toppings.closest("li")).toHaveTextContent("1× Nutella M");
+    expect(screen.getAllByTestId("toppings-seguimiento")).toHaveLength(1);
+    expect(screen.getByText("Agua")).toBeInTheDocument();
+  });
+
+  it("un pedido de un backend anterior (sin ids ni toppings) se ve como siempre", async () => {
+    servidor({});
+    await montar();
+    expect(await screen.findByText("Arroz con leche grande")).toBeInTheDocument();
+    expect(screen.queryByTestId("toppings-seguimiento")).not.toBeInTheDocument();
+  });
+});

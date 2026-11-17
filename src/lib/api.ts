@@ -97,7 +97,7 @@ import type {
   TurnoMesero,
   ZonaSalon,
 } from "../types/salon";
-import type { CatalogoAgregados, ConfigAgregados, GrupoAgregados, GuardarGrupoInput } from "./agregados/tipos";
+import type { CambioConfigAgregados, CatalogoAgregados, ConfigAgregados, GrupoAgregados, GuardarGrupoInput } from "./agregados/tipos";
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
@@ -954,6 +954,12 @@ export const api = {
   // ── Productos con agregados (toppings, PLAN-AGREGADOS §7) ──────────────────
   /** El ajuste de Configuración; pide `negocio.configurar`, como el del stock. */
   configAgregados: () => request<ConfigAgregados>("/agregados/config"),
+  /** Parcial (§8.1): el interruptor general y/o dónde se usan, con el mismo permiso. */
+  cambiarConfigAgregados: (cambio: CambioConfigAgregados) =>
+    request<ConfigAgregados>("/agregados/config", {
+      method: "PATCH",
+      body: JSON.stringify(cambio),
+    }),
   cambiarUsaAgregados: (usaAgregados: boolean) =>
     request<ConfigAgregados>("/agregados/config", {
       method: "PATCH",

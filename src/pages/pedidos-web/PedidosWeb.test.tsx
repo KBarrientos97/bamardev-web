@@ -577,3 +577,32 @@ describe("ronda 2 de QA (14-nov)", () => {
   });
 });
 
+describe("toppings en la bandeja (PLAN-AGREGADOS §8.4)", () => {
+  const CON_TOPPINGS: PedidoWeb = {
+    ...LUCIA,
+    subtotal: 22,
+    lineas: [
+      { id: 1, titulo: "Nutella M", cantidad: 1, precio: 20, subtotal: 20, lineaPadreId: null, incluido: false },
+      { id: 2, titulo: "Oreo", cantidad: 1, precio: 0, subtotal: 0, lineaPadreId: 1, incluido: true, grupoAgregadosId: 1 },
+      { id: 3, titulo: "Coco", cantidad: 1, precio: 2, subtotal: 2, lineaPadreId: 1, incluido: false, grupoAgregadosId: 1 },
+    ],
+  };
+
+  it("el detalle indenta los toppings bajo el vaso: «+ Oreo · incluido» y «+ Coco · Bs 2»", async () => {
+    mock.detalle.mockImplementation(async () => CON_TOPPINGS);
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    await screen.findByRole("heading", { name: /Pedido N° 07 · Lucía/ });
+    const toppings = await screen.findByTestId("toppings-pedido");
+    expect(Array.from(toppings.querySelectorAll("li")).map((li) => li.textContent)).toEqual(["+ Oreoincluido", "+ CocoBs 2,00"]);
+    expect(toppings.closest("li")).toHaveTextContent("1× Nutella M");
+  });
+
+  it("sin toppings el detalle es el de siempre", async () => {
+    await montar();
+    fireEvent.click(await screen.findByText(/N° 07 · Lucía/));
+    await screen.findByRole("heading", { name: /Pedido N° 07 · Lucía/ });
+    expect(screen.getByText("Arroz con leche grande")).toBeInTheDocument();
+    expect(screen.queryByTestId("toppings-pedido")).not.toBeInTheDocument();
+  });
+});

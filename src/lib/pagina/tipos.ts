@@ -197,6 +197,37 @@ export interface ItemCatalogoPublico {
   enSucursal?: EnSucursal[];
 }
 
+/**
+ * Los toppings de la página del cliente (PLAN-AGREGADOS §8.3). Con el ajuste
+ * «En la página del cliente» apagado el backend manda `agregados: null`.
+ */
+export interface AgregadosPublicos {
+  grupos: GrupoAgregadosPublico[];
+  /** Qué ítems de la carta llevan grupo y con cuántos incluidos (ya con el override de producto o categoría). */
+  items: { itemId: number; grupos: { grupoId: number; incluidos: number }[] }[];
+}
+
+export interface GrupoAgregadosPublico {
+  id: number;
+  nombre: string;
+  incluidos: number;
+  /** Precio fijo del extra; null = se cobra el precio de cada opción. */
+  precioExtra: number | null;
+  /** Tope de agregados por unidad; null = sin tope. */
+  maximo: number | null;
+  opciones: OpcionAgregadoPublica[];
+}
+
+export interface OpcionAgregadoPublica {
+  productoId: number;
+  nombre: string;
+  /** El precio de lista; con varias sucursales, `enSucursal` trae el de cada una (como la carta). */
+  precio: number | null;
+  icono?: string | null;
+  foto?: string | null;
+  enSucursal?: EnSucursal[];
+}
+
 /** Cómo sale un producto en una sucursal. */
 export interface EnSucursal {
   precio: number | null;
@@ -275,6 +306,8 @@ export interface PaginaPublica {
   sitio?: SitioPublico | null;
   /** El destacado del día que se publica desde la caja (M4). Ausente o null = no hay. */
   destacadoDia?: DestacadoDia | null;
+  /** Toppings de la carta (§8.3). Null o ausente = ningún vaso lleva toppings. */
+  agregados?: AgregadosPublicos | null;
   pie: { atribucionUrl: string };
   og: { titulo: string; descripcion: string; imagen: string | null; url: string };
 }

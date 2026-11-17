@@ -59,6 +59,11 @@ export interface SucursalPedido {
    * mano o sin stock). Un backend viejo no lo manda: se lee como «ninguno».
    */
   agotados?: number[];
+  /**
+   * Las opciones de toppings (`productoId`) que ESE local no puede servir hoy
+   * (PLAN-AGREGADOS §8.3). Un backend anterior no lo manda: se lee como «ninguna».
+   */
+  agotadosAgregados?: number[];
 }
 
 /** `GET /publico/pedidos/:subdominio`. */
@@ -76,6 +81,12 @@ export interface LineaPedidoEnvio {
   /** El `id` del ítem del catálogo público (la fila fijada), no el del producto. */
   itemId: number;
   cantidad: number;
+  /**
+   * Los toppings de ESTE vaso (PLAN-AGREGADOS §8.3), por unidad y en el orden en
+   * que el cliente los eligió. El backend los recalcula con la regla del punto de
+   * venta: el precio no viaja.
+   */
+  agregados?: { productoId: number; cantidad: number; grupoId: number }[];
 }
 
 /** `POST /publico/pedidos/:subdominio`. */
@@ -116,10 +127,16 @@ export type EstadoSeguimiento =
   | "CANCELADO";
 
 export interface LineaSeguimiento {
+  /** Con toppings (PLAN-AGREGADOS §8.3): el id de la línea, para ubicar a sus hijas. */
+  id?: number;
   titulo: string;
   cantidad: number;
   precio: number;
   subtotal: number;
+  /** Un topping de otra línea (el vaso): se dibuja debajo de ella. */
+  lineaPadreId?: number | null;
+  /** Va dentro de lo incluido: Bs 0. */
+  incluido?: boolean;
 }
 
 /** `GET /publico/pedidos/:subdominio/:token`. */
@@ -181,6 +198,13 @@ export interface LineaPedidoWeb {
   cantidad: number;
   precio: number;
   subtotal: number;
+  /**
+   * Un topping del vaso (PLAN-AGREGADOS §8.3): la bandeja lo dibuja indentado
+   * debajo de `lineaPadreId`. `incluido` = va dentro de lo que trae el vaso (Bs 0).
+   */
+  lineaPadreId?: number | null;
+  incluido?: boolean;
+  grupoAgregadosId?: number | null;
 }
 
 /** Una fila de la bandeja y, con más campos, el detalle. */

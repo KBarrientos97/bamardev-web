@@ -36,6 +36,7 @@ vi.mock("../../lib/api", () => ({
     getProductos: vi.fn(),
     configAgregados: vi.fn(),
     cambiarUsaAgregados: vi.fn(),
+    cambiarConfigAgregados: vi.fn(),
   },
 }));
 
@@ -258,33 +259,75 @@ describe("el conteo con varios locales (PLAN-SUCURSAL-TOTAL, etapa 3)", () => {
   });
 });
 
-describe("Configuración › Productos con agregados (PLAN-AGREGADOS §7.6)", () => {
+describe("Configuración › Productos con agregados (PLAN-AGREGADOS §7.6 y §8.1)", () => {
   const interruptorAgregados = () => screen.getByRole("switch", { name: "Productos con agregados (toppings, extras)" });
+  const casillaPagina = () => screen.getByRole("checkbox", { name: /En la página del cliente/ });
+  const casillaPos = () => screen.getByRole("checkbox", { name: /En el punto de venta/ });
 
-  it("apagado de fábrica: el interruptor está al lado del stock y dice cómo se arma", async () => {
+  it("apagado de fábrica: el interruptor está al lado del stock, sin casillas y sin enlace", async () => {
     vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
     await montar();
     expect(interruptorAgregados()).toHaveAttribute("aria-checked", "false");
     expect(screen.queryByRole("link", { name: "Armar los grupos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /En la página del cliente/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /En el punto de venta/ })).not.toBeInTheDocument();
   });
 
-  it("prenderlo guarda el ajuste, avisa a la sesión y ofrece armar los grupos", async () => {
+  it("prenderlo por primera vez deja sólo la página, avisa a la sesión y ofrece armar los grupos", async () => {
     vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
-    vi.mocked(api.cambiarUsaAgregados).mockResolvedValue({ usaAgregados: true });
+    vi.mocked(api.configAgregados).mockResolvedValue({ usaAgregados: false, enPagina: false, enPos: false });
+    vi.mocked(api.cambiarConfigAgregados).mockResolvedValue({ usaAgregados: true, enPagina: true, enPos: false });
     await montar();
     await act(async () => {
       fireEvent.click(interruptorAgregados());
     });
-    expect(api.cambiarUsaAgregados).toHaveBeenCalledWith(true);
-    // La sesión se entera sin volver a entrar: el menú muestra «Agregados».
-    expect(fijarUsaAgregados).toHaveBeenCalledWith(true);
+    expect(api.cambiarConfigAgregados).toHaveBeenCalledWith({ usaAgregados: true, enPagina: true });
+    // La sesión se entera sin volver a entrar: el menú muestra «Agregados» y el POS sigue como antes.
+    expect(fijarUsaAgregados).toHaveBeenCalledWith(true, { enPos: false, enPagina: true });
     expect(interruptorAgregados()).toHaveAttribute("aria-checked", "true");
+    expect(casillaPagina()).toBeChecked();
+    expect(casillaPos()).not.toBeChecked();
+    expect(screen.getByText(/Apagado, la caja vende como siempre/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Armar los grupos" })).toHaveAttribute("href", "/inventario/agregados");
+  });
+
+  it("volver a prenderlo respeta lo que el dueño ya había elegido", async () => {
+    vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
+    vi.mocked(api.configAgregados).mockResolvedValue({ usaAgregados: false, enPagina: false, enPos: true });
+    vi.mocked(api.cambiarConfigAgregados).mockResolvedValue({ usaAgregados: true, enPagina: false, enPos: true });
+    await montar();
+    await act(async () => {
+      fireEvent.click(interruptorAgregados());
+    });
+    expect(api.cambiarConfigAgregados).toHaveBeenCalledWith({ usaAgregados: true });
+  });
+
+  it("cada casilla guarda sólo lo suyo (parcial) y la sesión toma lo nuevo", async () => {
+    vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
+    vi.mocked(api.configAgregados).mockResolvedValue({ usaAgregados: true, enPagina: true, enPos: false });
+    vi.mocked(api.cambiarConfigAgregados).mockResolvedValue({ usaAgregados: true, enPagina: true, enPos: true });
+    await montar();
+    expect(casillaPagina()).toBeChecked();
+    expect(casillaPos()).not.toBeChecked();
+    await act(async () => {
+      fireEvent.click(casillaPos());
+    });
+    expect(api.cambiarConfigAgregados).toHaveBeenCalledWith({ enPos: true });
+    expect(fijarUsaAgregados).toHaveBeenCalledWith(true, { enPos: true, enPagina: true });
+    expect(casillaPos()).toBeChecked();
+
+    vi.mocked(api.cambiarConfigAgregados).mockResolvedValue({ usaAgregados: true, enPagina: false, enPos: true });
+    await act(async () => {
+      fireEvent.click(casillaPagina());
+    });
+    expect(api.cambiarConfigAgregados).toHaveBeenLastCalledWith({ enPagina: false });
+    expect(casillaPagina()).not.toBeChecked();
   });
 
   it("si el backend lo rechaza dice por qué y el ajuste queda como estaba", async () => {
     vi.mocked(api.controlStock).mockResolvedValue({ controlaStock: true, sePuedeApagar: true });
-    vi.mocked(api.cambiarUsaAgregados).mockRejectedValue(new Error("No tenés permiso"));
+    vi.mocked(api.configAgregados).mockResolvedValue({ usaAgregados: false, enPagina: false, enPos: false });
+    vi.mocked(api.cambiarConfigAgregados).mockRejectedValue(new Error("No tenés permiso"));
     await montar();
     await act(async () => {
       fireEvent.click(interruptorAgregados());

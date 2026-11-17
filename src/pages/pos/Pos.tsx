@@ -72,6 +72,7 @@ import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
 import { pideConfirmacion } from "../farmacia/medicamento";
 import { claveDeLinea, useCarrito } from "./useCarrito";
 import { agregadosParaEnviar, textoDeAgregados } from "../../lib/agregados/calculo";
+import { agregadosEnPos } from "../../lib/agregados/donde";
 import { useCatalogoAgregados } from "../../lib/agregados/useCatalogoAgregados";
 import { useDescuentos } from "./useDescuentos";
 import BloqueDescuentos from "./BloqueDescuentos";
@@ -197,7 +198,7 @@ function PuntoDeVenta() {
    * Configuración prendido: de ahí salen la hoja, el «Incluye 2 toppings» de la
    * tarjeta y los extras del total. Con la sucursal de la caja, como el catálogo.
    */
-  const catalogoAgregados = useCatalogoAgregados(almacenCaja, negocio?.usaAgregados === true);
+  const catalogoAgregados = useCatalogoAgregados(almacenCaja, agregadosEnPos(negocio));
   /**
    * `crearVenta`, o la cola si no hay señal (sólo en la app instalada). El
    * ticket de una venta encolada lo arma el equipo con este catálogo.

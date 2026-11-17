@@ -11,6 +11,8 @@ export interface OpcionCatalogo {
   /** El precio vigente en el local (el de la sucursal si tiene uno propio). */
   precio: number;
   icono: string | null;
+  /** Sólo en la página del cliente: la foto del topping, si tiene. */
+  foto?: string | null;
 }
 
 /** Un grupo ya resuelto para vender: lo que dice la hoja del POS. */
@@ -86,7 +88,16 @@ export interface GuardarGrupoInput {
   asignaciones?: { categoriaId?: number; productoId?: number; incluidos?: number | null }[];
 }
 
-/** `GET` y `PATCH /agregados/config`. */
+/**
+ * `GET` y `PATCH /agregados/config` (PLAN-AGREGADOS §8.1). `usaAgregados` es el
+ * interruptor general; `enPagina` y `enPos` dicen DÓNDE se usan los toppings.
+ * Un backend anterior no manda las dos últimas: se leen como apagadas.
+ */
 export interface ConfigAgregados {
   usaAgregados: boolean;
+  enPagina?: boolean;
+  enPos?: boolean;
 }
+
+/** Lo que `PATCH /agregados/config` acepta: cualquiera de los tres, parcial. */
+export type CambioConfigAgregados = Partial<Pick<ConfigAgregados, "usaAgregados" | "enPagina" | "enPos">>;

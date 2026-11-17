@@ -372,7 +372,7 @@ describe("la miniatura del carrito del pedido (16-nov)", () => {
         <LineaCarrito l={l} fuerte="#5C1A40" tinte="#F5E6EE" pedido={pedido} />
       </ul>,
     );
-    return container.querySelector("li > span")!;
+    return container.querySelector("li > div > span")!;
   };
 
   it("con fondo llena el cuadro; sin fondo va entera sobre el tinte", () => {

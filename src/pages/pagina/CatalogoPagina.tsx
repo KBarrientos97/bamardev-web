@@ -40,6 +40,8 @@ export interface AccionCatalogo {
   alAgregar?: (item: ItemCatalogoPublico) => void;
   /** Con `alAgregar`: ese ítem está agotado en el local elegido, no se puede sumar (pedidos al sistema). */
   agotado?: (item: ItemCatalogoPublico) => boolean;
+  /** «Incluye 2 toppings» si el ítem lleva toppings (PLAN-AGREGADOS §8.3); null si no. */
+  incluye?: (item: ItemCatalogoPublico) => string | null;
 }
 
 /**
@@ -1077,6 +1079,14 @@ export function VisorCatalogo({
         )}
         <h2 style={{ margin: 0, fontSize: 18, lineHeight: 1.3, fontWeight: 700 }}>{item.titulo}</h2>
         {precio && <span style={{ fontSize: 16, fontWeight: 700, color: c.oscuro }}>{precio}</span>}
+        {accion?.alAgregar && accion.incluye?.(item) && (
+          <span
+            data-testid="incluye-visor"
+            style={{ alignSelf: "flex-start", fontSize: 13, fontWeight: 700, color: c.oscuro, background: c.tinte, borderRadius: 999, padding: "3px 10px" }}
+          >
+            {accion.incluye(item)}
+          </span>
+        )}
         {/* La descripción (o las notas del producto) se lee acá, no en la tarjeta. */}
         {item.descripcion && (
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{item.descripcion}</p>

@@ -187,6 +187,14 @@ export interface SesionNegocio {
    */
   usaAgregados?: boolean;
   /**
+   * Dónde se usan los toppings (PLAN-AGREGADOS §8.1), ya efectivos: `false` si
+   * `usaAgregados` está apagado. `agregadosEnPos` apagado deja la caja como antes
+   * de los agregados; `agregadosEnPagina` los lleva a la página del cliente. Un
+   * backend anterior no los manda: el POS toma `usaAgregados`.
+   */
+  agregadosEnPos?: boolean;
+  agregadosEnPagina?: boolean;
+  /**
    * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
    * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
    * (CONTRATO-PEDIDOS-WEB §9). La entrada «Pedidos web», la franja del POS, el
@@ -2124,6 +2132,9 @@ export interface EstadoLicencia {
   pedidosWeb?: boolean;
   /** Lo mismo que `negocio.usaAgregados` del login: si se apaga en otra pantalla, ésta se entera. */
   usaAgregados?: boolean;
+  /** Lo mismo que `negocio.agregadosEnPos` / `agregadosEnPagina` del login (§8.1). */
+  agregadosEnPos?: boolean;
+  agregadosEnPagina?: boolean;
   /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
   entregaPedidosWeb?: EntregaPedidosWeb;
   servicioDeliveryExterno?: string | null;
