@@ -10,11 +10,15 @@ import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia"
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
+import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
+import type { Categoria, Consumo, FormaPago, LotesDelArticulo, PagoInput, Producto } from "../../types";
+import type { PropinaInput } from "../../lib/belleza/apiExtras";
+import type { ProfesionalCobro } from "./belleza/ExtrasCobro";
+import PantallaCobro from "./PantallaCobro";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import { claveDeLinea, controlaStock, topeStock, type Carrito, type ClaveLinea, type LineaCarrito } from "./useCarrito";
 import { gruposDelProducto, textoIncluye } from "../../lib/agregados/calculo";
@@ -26,10 +30,15 @@ import { useAgotadosHoy } from "../../lib/menuDigital/useAgotadosHoy";
 import { tienePermiso } from "../../lib/permisos";
 import HojaPausa, { textoVenderPausado } from "./HojaPausa";
 import { usePausados } from "./usePausados";
+import { configPosDe, normalizarConfigPos, ordenarCategorias } from "../../lib/configPos";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
+import VistaColumnas from "./VistaColumnas";
 
 const TODAS = "__todas__";
 /** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
 const PAUSADOS = "__pausados__";
+/** Desde qué alto el cobro en la misma pantalla se aprieta (ver `PanelCarrito`). */
+const VENTANA_BAJA = "(max-height: 860px)";
 
 const idDe = (p: Producto) => p.id;
 
@@ -47,11 +56,20 @@ export default function PantallaVenta({
   plataformas,
   modificacion,
   catalogoAgregados,
+  cobro,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
+  /**
+   * El cobro en la misma pantalla (Configuración › Punto de venta, 16-nov):
+   * en la columna del carrito, donde va «Cobrar», el medio de pago, el
+   * efectivo y «Confirmar cobro». Lo arma el POS sólo cuando vale (el ajuste,
+   * pantalla ancha, ni cita ni mesa); sin esto, «Cobrar» lleva a la pantalla de
+   * cobro, como siempre.
+   */
+  cobro?: CobroEnLaVenta;
   /**
    * Se está modificando una venta ya cobrada (`ModificarVenta`, 15-nov): el
    * carrito es el de esa venta y el pie no dice "Cobrar" sino lo que pasa con
@@ -89,9 +107,11 @@ export default function PantallaVenta({
   /**
    * Pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §5): un botón por
    * cada plataforma que este usuario puede cargar, junto a «Cobrar». Sin esto
-   * —casi todos los negocios— el carrito es el de siempre.
+   * —casi todos los negocios— el carrito es el de siempre. `alVolver` llega
+   * sólo si se eligió desde la hoja del carrito del celular: quien abre el
+   * diálogo lo llama si se sale sin registrar, y la hoja se vuelve a abrir.
    */
-  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
+  plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma, alVolver?: () => void) => void };
   /**
    * Los toppings del local (PLAN-AGREGADOS §7.4): con ellos, un producto que
    * lleva grupo dice «Incluye 2 toppings» y al tocarlo abre su hoja. Sin esto
@@ -100,8 +120,39 @@ export default function PantallaVenta({
   catalogoAgregados?: CatalogoAgregados | null;
 }) {
   const { negocio, usuario, rubro } = useAuth();
+  /**
+   * Cómo se ve el catálogo (Configuración › Punto de venta, 16-nov). Lo de
+   * fábrica es el POS de siempre. Modificar una venta ya cobrada no lo toma: es
+   * otra tarea, con su propio pie, y se hace como siempre. La farmacia tampoco
+   * (`configPosDe` ya le da lo de fábrica: arma su catálogo aparte).
+   */
+  const conAjustes = !modificacion;
+  const config = useMemo(
+    () => (conAjustes ? configPosDe(negocio) : normalizarConfigPos(null)),
+    [conAjustes, negocio],
+  );
+  // La lista en columnas es para pantalla grande: en el celular se trabaja con
+  // las tarjetas de siempre (con su arrastre), diga lo que diga el ajuste.
+  const pantallaParaColumnas = useCoincideMedia("(min-width: 768px)");
+  const enColumnas = config.vista === "COLUMNAS" && pantallaParaColumnas;
+  /** Las categorías en el orden del dueño: el de los chips y el de las columnas. */
+  const categoriasPos = useMemo(
+    () => ordenarCategorias(categorias, config.ordenCategorias),
+    [categorias, config.ordenCategorias],
+  );
+  /**
+   * Se está registrando el cobro incrustado: el catálogo y el carrito quedan
+   * quietos hasta que vuelva. La venta ya salió con lo que había; un producto
+   * tocado en ese momento entraba al carrito y se perdía al vaciarse después
+   * del cobro, sin que nadie lo cobrara. (Como pantalla aparte no pasa: el
+   * catálogo no está a la vista mientras se cobra.)
+   */
+  const quieto = !!cobro?.enviando && !modificacion && !esFarmacia(rubro);
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState<string>(TODAS);
+  const [catElegida, setCat] = useState<string>(TODAS);
+  // Sin la fila de chips no hay cómo elegir otra cosa que «Todos»: si el ajuste
+  // se apagó con una categoría elegida, no queda filtrando a escondidas.
+  const cat = config.filtros ? catElegida : TODAS;
   // En móvil el carrito es una hoja que se abre; en escritorio es una columna
   // siempre visible, así que este estado sólo pesa abajo de lg.
   const [carritoAbierto, setCarritoAbierto] = useState(false);
@@ -185,8 +236,11 @@ export default function PantallaVenta({
     ids: idsFiltrados,
     onReordenar: alReordenar,
     // Con el carrito abierto en móvil la grilla está tapada: no hay nada que
-    // arrastrar y el gesto sólo estorbaría al scroll de la hoja.
-    activo: !carritoAbierto,
+    // arrastrar y el gesto sólo estorbaría al scroll de la hoja. En la vista
+    // en columnas tampoco: el orden de las columnas es el del dueño y dentro de
+    // cada una manda el que el cajero armó en las tarjetas, así que ahí no se
+    // arrastra nada.
+    activo: !carritoAbierto && !enColumnas,
     contenedor: grillaRef,
   });
 
@@ -210,11 +264,29 @@ export default function PantallaVenta({
   } | null>(null);
   /** Suma el producto al carrito: con grupo de toppings abre su hoja, sin él entra directo. */
   const pedirAgregar = (p: Producto) => {
+    if (quieto) return;
     if (gruposDelProducto(catalogoAgregados, p.id).length > 0) setHojaAgregados({ producto: p });
     else carrito.agregar(p);
   };
+  /**
+   * Tocar un producto, en la tarjeta o en la fila de las columnas. Un pausado
+   * no está en la página pero la caja lo puede tener: pregunta antes de
+   * agregarlo. Ya en el carrito (ya dijo que sí) los toques siguientes suman
+   * sin volver a preguntar.
+   *
+   * Dentro del chip «Pausados», quien puede pausar lo está mirando para
+   * reactivarlo: tocarlo abre la hoja de reactivar, como en la app (17-nov).
+   * Sin el permiso, o fuera de ese chip, todo sigue igual.
+   */
+  const tocarProducto = (p: Producto) => {
+    if (quieto) return;
+    if (cat === PAUSADOS && puedePausar && pausados.ids.has(p.id)) setHojaPausa(p);
+    else if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
+    else pedirAgregar(p);
+  };
   /** El «−» de la tarjeta baja la última línea de ese producto (puede haber varias con toppings). */
   const quitarUna = (p: Producto) => {
+    if (quieto) return;
     const suyas = carrito.lineas.filter((l) => l.producto.id === p.id);
     const ultima = suyas[suyas.length - 1];
     if (ultima) carrito.setCantidad(claveDeLinea(ultima), ultima.cantidad - 1);
@@ -251,8 +323,56 @@ export default function PantallaVenta({
     setCarritoAbierto(false);
   };
 
-  const panelCarrito = (
+  /**
+   * Confirmar el cobro incrustado con una nota todavía en el campo («sin
+   * cebolla» tecleado y, sin salir, Confirmar): guardar la nota es un cambio
+   * de estado del carrito, y la venta que se mandara en ese mismo toque se
+   * armaría con las líneas de antes, sin la nota. Como pantalla aparte no pasa
+   * porque Cobrar cambia de pantalla y se confirma en otro toque. Así que se
+   * guarda la nota y el cobro sale recién en el próximo dibujo, con el carrito
+   * ya al día (y con el mismo `cobrar` de siempre, que es el que hace valer la
+   * idempotencia).
+   */
+  // Lo que se pasó a «Confirmar» tal cual (con o sin el `extra` de las
+  // propinas), para que el POS lo reciba igual que sin la nota.
+  const [cobroPendiente, setCobroPendiente] = useState<Parameters<CobroEnLaVenta["onConfirmar"]> | null>(null);
+  useEffect(() => {
+    if (!cobroPendiente || !cobro) return;
+    setCobroPendiente(null);
+    cobro.onConfirmar(...cobroPendiente);
+  }, [cobroPendiente, cobro]);
+  // Ni modificando una venta (su pie dice qué pasa con la diferencia) ni en la
+  // farmacia (la receta se pide al tocar «Cobrar»): ahí, «Cobrar» de siempre
+  // aunque llegue el cobro. El POS ya no lo manda en esos casos; esto lo asegura.
+  const cobroDelCarrito: CobroEnLaVenta | undefined =
+    cobro && !modificacion && !esFarmacia(rubro)
+      ? {
+          ...cobro,
+          onConfirmar: (...lo) => {
+            if (notasAbiertas.current.size === 0) return cobro.onConfirmar(...lo);
+            confirmarNotasAbiertas();
+            setCobroPendiente(lo);
+          },
+          // El fiado se arma en su pantalla, después: alcanza con guardar la nota antes de ir.
+          onCredito: cobro.onCredito
+            ? (extra) => {
+                confirmarNotasAbiertas();
+                cobro.onCredito?.(extra);
+              }
+            : undefined,
+        }
+      : undefined;
+
+  /**
+   * El carrito: en la columna de la derecha (desde lg) y en la hoja del
+   * celular. El cobro incrustado va sólo en la columna: en la hoja nunca
+   * corresponde (es pantalla angosta), y así un carrito que quedó abierto al
+   * agrandar la ventana no dibuja un segundo cobro escondido.
+   */
+  const panelCarrito = (conCobro: boolean) => (
     <PanelCarrito
+      cobro={conCobro ? cobroDelCarrito : undefined}
+      quieto={conCobro && quieto}
       carrito={carrito}
       sucursalId={sucursalId}
       descuentos={descuentos}
@@ -273,9 +393,15 @@ export default function PantallaVenta({
               // Igual que cobrar: la nota que se estaba escribiendo se confirma
               // antes de salir del carrito.
               onElegir: (p) => {
+                if (quieto) return;
                 confirmarNotasAbiertas();
+                // En el celular el carrito es una hoja que se cierra para dejar
+                // ver el diálogo; si se vuelve sin registrar el pedido, se
+                // vuelve a abrir, como en la app (17-nov).
+                const enLaHoja = carritoAbierto;
                 setCarritoAbierto(false);
-                plataformas.onElegir(p);
+                if (enLaHoja) plataformas.onElegir(p, () => setCarritoAbierto(true));
+                else plataformas.onElegir(p);
               },
             }
           : undefined
@@ -292,7 +418,14 @@ export default function PantallaVenta({
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Columna del catálogo */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* Quieto mientras se registra el cobro incrustado (ver `quieto`): sin
+          toques ni foco. Se nota recién si tarda (el apagado arranca a los
+          200 ms), así un cobro rápido no hace parpadear la pantalla. */}
+      <div
+        inert={quieto}
+        aria-busy={quieto || undefined}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col${quieto ? " opacity-80 transition-opacity delay-200 duration-200" : ""}`}
+      >
         {cabecera}
 
         {/* En una farmacia el catálogo se pide al servidor de a tandas y por
@@ -320,11 +453,14 @@ export default function PantallaVenta({
             />
           </div>
 
+          {/* Sin los filtros (Configuración › Punto de venta) no hay fila de
+              chips: se ven todos y se busca con el buscador. */}
+          {config.filtros && (
           <div className="flex gap-2 overflow-x-auto pb-0.5">
             <ChipCat activo={cat === TODAS} onClick={() => setCat(TODAS)}>
               Todos
             </ChipCat>
-            {categorias.map((c) => (
+            {categoriasPos.map((c) => (
               <ChipCat
                 key={c.id}
                 activo={cat === String(c.id)}
@@ -339,6 +475,7 @@ export default function PantallaVenta({
               </ChipCat>
             )}
           </div>
+          )}
         </div>
 
         <div ref={grillaRef} className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 lg:pb-4">
@@ -350,6 +487,19 @@ export default function PantallaVenta({
                 q ? "Probá con otro texto." : cat === PAUSADOS ? "No hay productos pausados." : "No hay productos en esta categoría."
               }
             />
+          ) : enColumnas ? (
+            <VistaColumnas
+              productos={filtrados}
+              categorias={categoriasPos}
+              enCarrito={enCarrito}
+              conIcono={config.iconos}
+              agotadosHoy={agotadosHoy}
+              pausados={pausados.ids}
+              incluyeDe={(id) => textoIncluyeDe(catalogoAgregados, id)}
+              onAgregar={tocarProducto}
+              onQuitar={quitarUna}
+              onMenu={puedePausar ? setHojaPausa : undefined}
+            />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {visibles.map((p) => (
@@ -357,14 +507,10 @@ export default function PantallaVenta({
                   key={p.id}
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
-                  // Un pausado no está en la página pero la caja lo puede tener:
-                  // pregunta antes de agregarlo. Ya en el carrito (ya dijo que
-                  // sí) los toques siguientes suman sin volver a preguntar.
-                  onAgregar={() =>
-                    pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0
-                      ? setVenderPausado(p)
-                      : pedirAgregar(p)
-                  }
+                  onAgregar={() => tocarProducto(p)}
+                  // El «+» suma siempre, también dentro de «Pausados» (ahí
+                  // tocar la tarjeta es para reactivarla), como en la app.
+                  onMas={() => pedirAgregar(p)}
                   onQuitar={() => quitarUna(p)}
                   incluye={textoIncluyeDe(catalogoAgregados, p.id)}
                   arrastre={arrastre.props(p.id)}
@@ -374,6 +520,7 @@ export default function PantallaVenta({
                   agotadoHoy={agotadosHoy.has(p.id)}
                   pausado={pausados.ids.has(p.id)}
                   onMenu={puedePausar ? () => setHojaPausa(p) : undefined}
+                  conIcono={config.iconos}
                 />
               ))}
             </ul>
@@ -385,7 +532,7 @@ export default function PantallaVenta({
 
       {/* Carrito: columna fija desde lg, igual que la app en tablet horizontal */}
       <aside className="hidden w-[380px] shrink-0 border-l border-borde bg-white lg:flex lg:flex-col xl:w-[420px]">
-        {panelCarrito}
+        {panelCarrito(true)}
       </aside>
 
       {/* Móvil y tablet vertical: píldora flotante + hoja inferior.
@@ -453,7 +600,7 @@ export default function PantallaVenta({
             onClick={cerrarCarrito}
           />
           <div className="relative flex max-h-[85dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl">
-            {panelCarrito}
+            {panelCarrito(false)}
           </div>
         </div>
       )}
@@ -466,6 +613,33 @@ function textoIncluyeDe(catalogo: CatalogoAgregados | null | undefined, producto
   const grupos = gruposDelProducto(catalogo, productoId);
   if (grupos.length === 0) return undefined;
   return grupos.map((g) => textoIncluye(g.grupo.nombre, g.incluidos)).join(" · ");
+}
+
+/**
+ * Las clases de los tres lugares de «Pausado» en la tarjeta (ver `TarjetaVenta`),
+ * por el ancho útil de la tarjeta. Con el «⋯»: la etiqueta de siempre desde
+ * 146 px; la pastilla en la fila desde 126 (ícono 40 + 6 + pastilla 56 + aire
+ * hasta los puntos del «⋯»); debajo del nombre, menos. Sin el «⋯», desde 118 y 102.
+ * Escritas enteras: Tailwind sólo genera las clases que ve en el código.
+ */
+const PAUSADO_CON_MENU = {
+  arriba: "hidden @min-[146px]:inline-flex",
+  chica: "mr-auto hidden @min-[126px]:inline-flex @min-[146px]:hidden",
+  abajo: "mt-1 flex @min-[126px]:hidden",
+};
+const PAUSADO_SIN_MENU = {
+  arriba: "hidden @min-[118px]:inline-flex",
+  chica: "mr-auto hidden @min-[102px]:inline-flex @min-[118px]:hidden",
+  abajo: "mt-1 flex @min-[102px]:hidden",
+};
+
+/** «Pausado» chico, como en la lista en columnas (`VistaColumnas`). */
+function PastillaPausado() {
+  return (
+    <span className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-px text-[11px] font-bold text-texto-3">
+      Pausado
+    </span>
+  );
 }
 
 function ChipCat({
@@ -502,10 +676,19 @@ function TarjetaVenta({
   pausado = false,
   onMenu,
   incluye,
+  conIcono = true,
+  onMas,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /** El «+» del stepper; sin esto hace lo mismo que tocar la tarjeta. */
+  onMas?: () => void;
+  /**
+   * El ícono del producto (Configuración › Punto de venta). Sin él, la tarjeta
+   * es nombre y precio. De fábrica va, como siempre.
+   */
+  conIcono?: boolean;
   /** «Incluye 2 toppings»: el producto lleva un grupo de agregados y al tocarlo abre su hoja. */
   incluye?: string;
   /** Marcado "agotado hoy" en el Menú digital: no se ofrece aunque no tenga stock que contar. */
@@ -542,6 +725,21 @@ function TarjetaVenta({
   // toque, pero en silencio: el cajero tocaba y no pasaba nada, sin saber por
   // qué. Es el mismo tope del carrito, como en la app.
   const alTope = cantidad >= topeStock(p);
+  // La fila de arriba lleva el ícono y lo que dice el stock. Sin ícono y sin
+  // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
+  const conFila = conIcono || agotado || pausado || controla;
+  /**
+   * Dónde va «Pausado» según el ancho de la tarjeta (17-nov). En la angosta
+   * (1366 con el menú abierto) quedaba pegado al «⋯», y en 1024 se salía de
+   * la tarjeta. Se mide la tarjeta (`@container`, su ancho útil):
+   * - con lugar, la etiqueta de siempre, arriba a la derecha;
+   * - si no entra, una pastilla chica en la misma fila, pegada al ícono, con
+   *   aire hasta el «⋯» (así la tarjeta no crece);
+   * - si tampoco entra (1024), la pastilla debajo del nombre, como en la
+   *   lista en columnas.
+   * Sin el «⋯» (sin permiso de pausar) hay más lugar en la fila.
+   */
+  const lugarPausado = onMenu ? PAUSADO_CON_MENU : PAUSADO_SIN_MENU;
 
   return (
     <li
@@ -557,7 +755,7 @@ function TarjetaVenta({
           elegido sin abrir el carrito es lo que evita cargarlo dos veces. */}
       <div
         className={[
-          "relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          "@container relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
           enCarrito
             ? "border-primary bg-primary-50 shadow-sm"
             : pausado
@@ -574,19 +772,32 @@ function TarjetaVenta({
           disabled={agotado}
           className="flex flex-1 flex-col text-left"
         >
-          <div className={`flex items-start justify-between gap-1.5${onMenu ? " pr-7" : ""}`}>
-            <IconoProducto
-              nombre={p.nombre}
-              icono={p.icono}
-              categoria={p.categoria?.nombre}
-              size={40}
-            />
+          {conFila && (
+          // Sin ícono, lo del stock queda arriba a la derecha, como con él.
+          <div className={`flex items-start ${conIcono ? "justify-between" : "justify-end"} gap-1.5${onMenu ? " pr-7" : ""}`}>
+            {conIcono && (
+              <IconoProducto
+                nombre={p.nombre}
+                icono={p.icono}
+                categoria={p.categoria?.nombre}
+                size={40}
+              />
+            )}
             {/* Como en la app: el que vende ve cuánto queda antes de
                 ofrecerlo, no recién cuando se agota. Antes el número sólo
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
             {/* Pausado y agotado a la vez: gana «Agotado», que sí frena la venta. */}
-            {pausado && !agotado && <Badge tono="gris">Pausado</Badge>}
+            {pausado && !agotado && (
+              <>
+                <span className={lugarPausado.chica}>
+                  <PastillaPausado />
+                </span>
+                <span className={lugarPausado.arriba}>
+                  <Badge tono="gris">Pausado</Badge>
+                </span>
+              </>
+            )}
             {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controla && (
@@ -601,6 +812,7 @@ function TarjetaVenta({
               </span>
             )}
           </div>
+          )}
           {/* Tres renglones y no dos: en la compu (4 columnas) «Arroz con leche
               con dulce de leche – Mediano» quedaba «…con dulce de leche –…» y
               la cajera no distinguía el tamaño, sólo por el precio (13-nov).
@@ -608,9 +820,18 @@ function TarjetaVenta({
               letra del tamaño ya no queda sola abajo («Leche condensada / M»
               pasa a «Leche / condensada M»). No suma renglones ni cambia el
               alto; donde el navegador no lo sabe hacer, queda como antes. */}
-          <h3 className="mt-2 line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto">
+          {/* Sin la fila de arriba el nombre encabeza la tarjeta: deja lugar al «⋯». */}
+          <h3
+            className={`${conFila ? "mt-2" : onMenu ? "pr-7" : ""} line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto`.trim()}
+          >
             {p.nombre}
           </h3>
+          {/* En la tarjeta más angosta «Pausado» no entra arriba: va acá (ver `lugarPausado`). */}
+          {pausado && !agotado && (
+            <span className={lugarPausado.abajo}>
+              <PastillaPausado />
+            </span>
+          )}
           {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,
               antes de tocarlo. */}
           {incluye && <p className="mt-1 text-[11px] font-bold text-primary-700">{incluye}</p>}
@@ -657,7 +878,7 @@ function TarjetaVenta({
             <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
             <button
               onClick={() => {
-                if (!ignorarClic()) onAgregar();
+                if (!ignorarClic()) (onMas ?? onAgregar)();
               }}
               disabled={alTope}
               aria-label="Uno más"
@@ -695,6 +916,23 @@ export interface ModoModificacion {
   vacio: string;
 }
 
+/**
+ * El cobro en la misma pantalla de la venta: lo mismo que el POS le pasa a la
+ * pantalla de cobro de siempre, para dibujarlo en el carrito.
+ */
+export interface CobroEnLaVenta {
+  /** Lo que se cobra: el mismo total que tendría la pantalla de cobro. */
+  total: number;
+  formasPago: FormaPago[];
+  /** Belleza (propinas); en el restaurante, nadie. */
+  profesionales?: ProfesionalCobro[];
+  onConfirmar: (pagos: PagoInput[], extra?: { propinas?: PropinaInput[]; propinaMesa?: number }) => void;
+  /** «Vender a crédito (fiado)», con las mismas condiciones de siempre; sin esto, no se ofrece. */
+  onCredito?: (extra?: { propinas?: PropinaInput[] }) => void;
+  enviando: boolean;
+  error: string;
+}
+
 export interface ExtraDescuentos {
   /** El total a cobrar (el neto que devolvió la cotización). */
   total: number;
@@ -705,7 +943,6 @@ export interface ExtraDescuentos {
 }
 
 function PanelCarrito({
-  carrito,
   sucursalId,
   descuentos,
   bloqueoCobro,
@@ -717,7 +954,14 @@ function PanelCarrito({
   plataformas,
   onCobrar,
   onCerrar,
+  cobro,
+  quieto = false,
+  carrito: carritoRecibido,
 }: {
+  /** El cobro incrustado en vez de «Cobrar» (ver `PantallaVenta`). */
+  cobro?: CobroEnLaVenta;
+  /** Se está registrando el cobro incrustado: las líneas no se tocan (ver `PantallaVenta`). */
+  quieto?: boolean;
   carrito: Carrito;
   sucursalId?: number | null;
   descuentos?: ExtraDescuentos;
@@ -733,6 +977,9 @@ function PanelCarrito({
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
+  // Quieto, el carrito no cambia aunque llegue un toque: `inert` ya los frena
+  // en el navegador, y esto los frena igual donde `inert` no existe.
+  const carrito = useMemo(() => (quieto ? carritoQuieto(carritoRecibido) : carritoRecibido), [quieto, carritoRecibido]);
   const total = descuentos?.total ?? carrito.total;
   const { incluye, rubro } = useAuth();
   // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
@@ -757,6 +1004,35 @@ function PanelCarrito({
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
   const [vaciando, setVaciando] = useState(false);
+  /**
+   * El cobro en la misma pantalla en una ventana baja (17-nov): en 1366×768,
+   * con el fiado y las apps de delivery, la lista quedaba en renglón y medio.
+   * Se aprieta lo de abajo para que se vean casi tres; con 900 px de alto o
+   * más (1920×1080) sobra lugar y queda como siempre. Sin el cobro incrustado,
+   * nada cambia.
+   */
+  const ventanaBaja = useCoincideMedia(VENTANA_BAJA);
+  const apretado = !!cobro && ventanaBaja;
+  // «Total · 2 unidades» en un renglón, cuando abajo del subtotal no hay nada
+  // más que decir (ni descuentos ni otra cifra que la del total).
+  const totalConUnidades = apretado && !descuentos && !modificacion && aCentavos(carrito.subtotal) === aCentavos(total);
+  const botonesPlataformas =
+    plataformas &&
+    plataformas.disponibles.map((p) => (
+      <Boton
+        key={p}
+        variante="ghost"
+        onClick={() => {
+          if (!quieto) plataformas.onElegir(p);
+        }}
+        disabled={descuentos?.bloqueado || !!bloqueoCobro}
+        className="min-w-0 flex-1 px-2"
+        // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
+        style={{ color: colorDePlataforma(p), borderColor: colorDePlataforma(p) }}
+      >
+        <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
+      </Boton>
+    ));
 
   return (
     <>
@@ -774,7 +1050,11 @@ function PanelCarrito({
           setVaciando(false);
         }}
       />
-      <div className="flex items-center justify-between border-b border-borde-soft px-4 py-3">
+      <div
+        inert={quieto}
+        aria-busy={quieto || undefined}
+        className="flex items-center justify-between border-b border-borde-soft px-4 py-3"
+      >
         <div className="flex items-center gap-2">
           <Icon name="cart" size={19} />
           <h2 className="text-[15px] font-bold text-texto">
@@ -826,14 +1106,20 @@ function PanelCarrito({
           {/* Atajo para marcar toda la comanda de una: lo más común es que
               todo el pedido sea para el mismo destino. */}
           {conMesaLlevar && (
-            <div className="flex gap-2 border-b border-borde-soft px-4 py-2.5">
+            <div inert={quieto} className="flex gap-2 border-b border-borde-soft px-4 py-2.5">
               <BotonConsumoTodo carrito={carrito} consumo="MESA" />
               <BotonConsumoTodo carrito={carrito} consumo="LLEVAR" />
             </div>
           )}
 
           {lineasExtra}
-          <ul className="min-h-0 flex-1 divide-y divide-borde-soft overflow-y-auto">
+          {/* Lo único que scrollea. Con el cobro abajo, con un mínimo: el
+              medio de pago o el QR no pueden dejar las líneas sin lugar. */}
+          <ul
+            inert={quieto}
+            aria-busy={quieto || undefined}
+            className={`${cobro ? "min-h-28" : "min-h-0"} flex-1 divide-y divide-borde-soft overflow-y-auto`}
+          >
             {carrito.lineas.map((l) => (
               <FilaCarrito
                 key={claveDeLinea(l)}
@@ -854,7 +1140,21 @@ function PanelCarrito({
             ))}
           </ul>
 
-          <div className="border-t border-borde-soft px-4 py-3">
+          <div className={`${cobro ? "shrink-0 " : ""}border-t border-borde-soft px-4 ${apretado ? "py-2" : "py-3"}`}>
+            {totalConUnidades ? (
+              <dl className="text-sm">
+                <div className="flex items-baseline justify-between gap-3 text-base font-extrabold text-texto">
+                  <dt>
+                    Total
+                    <span className="text-sm font-normal text-texto-2">
+                      {" "}
+                      · {carrito.unidades} {carrito.unidades === 1 ? "unidad" : "unidades"}
+                    </span>
+                  </dt>
+                  <dd>{fmtMoney(total)}</dd>
+                </div>
+              </dl>
+            ) : (
             <dl className="space-y-1 text-sm">
               <div className="flex justify-between text-texto-2">
                 <dt>
@@ -869,7 +1169,18 @@ function PanelCarrito({
               </div>
               {modificacion?.resumen}
             </dl>
+            )}
 
+            {cobro ? (
+              // Con el cobro en la misma pantalla no hay «Cobrar»: lo que sigue
+              // es el cobro mismo. Lo que lo frena se dice igual, acá.
+              bloqueoCobro && (
+                <p role="status" className="mt-1.5 text-center text-[12px] font-semibold text-warning-text">
+                  {bloqueoCobro}
+                </p>
+              )
+            ) : (
+              <>
             <Boton
               onClick={() => {
                 if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
@@ -888,28 +1199,59 @@ function PanelCarrito({
             {/* Pedidos de Yango / PedidosYa: no se cobran, así que van como
                 alternativa a «Cobrar», más discretos. Un paquete sin cliente
                 (`bloqueoCobro`) tampoco se registra como pedido. */}
-            {plataformas && (
-              <div className="mt-2 flex gap-2">
-                {plataformas.disponibles.map((p) => (
-                  <Boton
-                    key={p}
-                    variante="ghost"
-                    onClick={() => plataformas.onElegir(p)}
-                    disabled={descuentos?.bloqueado || !!bloqueoCobro}
-                    className="min-w-0 flex-1 px-2"
-                    // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
-                    style={{ color: colorDePlataforma(p), borderColor: colorDePlataforma(p) }}
-                  >
-                    <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
-                  </Boton>
-                ))}
-              </div>
+            {botonesPlataformas && <div className="mt-2 flex gap-2">{botonesPlataformas}</div>}
+              </>
             )}
           </div>
+
+          {/* El cobro en la misma pantalla (16-nov): el medio de pago, el
+              efectivo y «Confirmar cobro», con el fiado debajo; y después, como
+              alternativa a cobrar, los pedidos de las apps de delivery. */}
+          {cobro && (
+            <PantallaCobro
+              incrustado
+              total={cobro.total}
+              formasPago={cobro.formasPago}
+              profesionales={cobro.profesionales}
+              onAtras={() => {}}
+              onConfirmar={cobro.onConfirmar}
+              onCredito={cobro.onCredito}
+              // Lo mismo que apagaba «Cobrar»: la cotización en vuelo, el paquete sin cliente.
+              bloqueado={!!descuentos?.bloqueado || !!bloqueoCobro}
+              enviando={cobro.enviando}
+              error={cobro.error}
+              compacto={apretado}
+              // En la ventana baja, Yango y PedidosYa en la fila del fiado.
+              alLadoDelFiado={apretado ? botonesPlataformas : undefined}
+            />
+          )}
+          {cobro && botonesPlataformas && !apretado && (
+            <div inert={quieto} className="flex shrink-0 gap-2 px-4 pb-3">
+              {botonesPlataformas}
+            </div>
+          )}
         </>
       )}
     </>
   );
+}
+
+const nada = () => {};
+
+/** El mismo carrito, que se lee igual pero no cambia: mientras se registra el cobro incrustado. */
+function carritoQuieto(c: Carrito): Carrito {
+  return {
+    ...c,
+    agregar: nada,
+    setAgregados: nada,
+    setCantidad: nada,
+    setNota: nada,
+    setEnMesa: nada,
+    setConsumo: nada,
+    setConsumoTodo: nada,
+    quitar: nada,
+    vaciar: nada,
+  };
 }
 
 /** Cuántas unidades de ESTE producto hay en las otras líneas del carrito (con otros toppings). */

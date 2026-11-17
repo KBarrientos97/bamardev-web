@@ -64,6 +64,9 @@ export default function PantallaCobro({
   recibidoVacioEsExacto = false,
   qrEnUnPaso = false,
   cobroDeMesa,
+  incrustado = false,
+  compacto = false,
+  alLadoDelFiado,
 }: {
   total: number;
   /** Qué se está cobrando ("Mesa 4 · Juan"), para no cobrar la mesa equivocada. */
@@ -123,7 +126,31 @@ export default function PantallaCobro({
    * cobro es el de siempre.
    */
   cobroDeMesa?: "caja" | "mesero";
+  /**
+   * El cobro va dentro del carrito del punto de venta, al lado de los
+   * productos (Configuración › Punto de venta › «En la misma pantalla»,
+   * 16-nov). Sin la cabecera «← Cobrar» ni el cartel del total (el total ya
+   * está en el carrito), más apretado, y sin robarle el foco al buscador al
+   * aparecer: en una tablet abría el teclado tapando los productos. Devuelve
+   * dos piezas para el carrito: lo que scrollea (el medio de pago, el efectivo,
+   * el QR) y el pie con «Confirmar», que queda siempre a la vista. Sin esto
+   * —belleza, billar, el instituto, las mesas— el cobro es el de siempre.
+   */
+  incrustado?: boolean;
+  /**
+   * Incrustado en una ventana baja (17-nov): en 1366×768, con el fiado y las
+   * apps de delivery, la lista del carrito quedaba en renglón y medio. Lo
+   * recibido se rotula dentro del campo, el fiado va en una fila con las apps
+   * (`alLadoDelFiado`) y hay menos aire entre las piezas. Los montos, los
+   * medios de pago, los montos rápidos y «Confirmar» quedan del mismo tamaño.
+   * Sin esto (o sin `incrustado`) nada cambia.
+   */
+  compacto?: boolean;
+  /** Con `compacto`: los botones de Yango y PedidosYa, en la misma fila que el del fiado. */
+  alLadoDelFiado?: ReactNode;
 }) {
+  // Apretado sólo dentro del carrito: como pantalla aparte siempre hay lugar.
+  const apretado = incrustado && compacto;
   const { incluye, negocio, usuario } = useAuth();
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
   const formaQr = buscarForma(formasPago, "QR");
@@ -171,6 +198,19 @@ export default function PantallaCobro({
    * cobrada por el solo hecho de haber elegido QR. Igual que en la app.
    */
   const [qrConfirmado, setQrConfirmado] = useState(false);
+  /**
+   * Incrustado, el cobro queda armado mientras se sigue cargando el pedido: si
+   * después de confirmar el QR se agrega o se quita algo, el total ya no es el
+   * que se vio entrar en el banco, y registrar el nuevo por QR sería cobrar
+   * algo que nadie vio. Se vuelve a pedir la confirmación. El método y lo
+   * tecleado en el efectivo quedan. (Como pantalla aparte esto no pasa: para
+   * cambiar el pedido hay que salir, y al volver arranca de cero.)
+   */
+  const [totalVisto, setTotalVisto] = useState(total);
+  if (incrustado && aCentavos(total) !== aCentavos(totalVisto)) {
+    setTotalVisto(total);
+    setQrConfirmado(false);
+  }
   /**
    * La propina de una mesa, tecleada como cualquier monto de la caja. Viaja
    * aparte de los pagos y no toca el vuelto: no es plata del cajón.
@@ -220,6 +260,15 @@ export default function PantallaCobro({
     cobroDeMesa === "mesero" && !nadaQueCobrar && metodo !== "QR" ? aCubrirEnEfectivo : 0;
 
   const sugerencias = useMemo(() => sugerenciasEfectivo(enMano), [enMano]);
+  /** Lo que va debajo de «Efectivo recibido». */
+  const pistaRecibido =
+    // En mixto, lo que falta en mano es el resto de la venta MÁS la
+    // propina en efectivo (QA DIA-02: decía sólo el resto).
+    metodo === "MIXTO"
+      ? `Falta cubrir ${fmtMoney(enMano)}${extraEfectivo > 0 ? " (incluye la propina)" : ""}`
+      : extraEfectivo > 0
+        ? `Incluye la propina en efectivo (${fmtMoney(extraEfectivo)})`
+        : undefined;
   /** Lo que tiene que entrar por QR: la parte de la venta más la propina por QR. */
   const qrConPropina = (deLaVenta: number) => Math.round((deLaVenta + extraQr) * 100) / 100;
 
@@ -298,6 +347,33 @@ export default function PantallaCobro({
   const conDetalle = encabezado != null && encabezado !== false;
   /** El botón de abajo hace también de «llegó el QR»: sólo cuando hay un QR que esperar. */
   const conQrEnUnPaso = qrEnUnPaso && !nadaQueCobrar && (metodo === "QR" || (metodo === "MIXTO" && qrNum > 0));
+  // Sin la capacidad no se dibujan botones apagados: el cobro es en
+  // efectivo y punto, como en un negocio que no cobra por QR.
+  const metodos = permiteQr && !nadaQueCobrar && (
+    <div className="grid grid-cols-3 gap-2">
+      <BotonMetodo
+        activo={metodo === "EFECTIVO"}
+        icono="dollar"
+        label="Efectivo"
+        onClick={() => elegirMetodo("EFECTIVO")}
+        compacto={incrustado}
+      />
+      <BotonMetodo
+        activo={metodo === "QR"}
+        icono="qr"
+        label="QR"
+        onClick={() => elegirMetodo("QR")}
+        compacto={incrustado}
+      />
+      <BotonMetodo
+        activo={metodo === "MIXTO"}
+        icono="swap"
+        label="Mixto"
+        onClick={() => elegirMetodo("MIXTO")}
+        compacto={incrustado}
+      />
+    </div>
+  );
   const totalYMetodo = (
     <>
       <div className="rounded-2xl bg-marca p-5 text-center text-white">
@@ -317,67 +393,13 @@ export default function PantallaCobro({
 
       {extras.ui}
 
-      {/* Sin la capacidad no se dibujan botones apagados: el cobro es en
-          efectivo y punto, como en un negocio que no cobra por QR. */}
-      {permiteQr && !nadaQueCobrar && (
-        <div className="grid grid-cols-3 gap-2">
-          <BotonMetodo
-            activo={metodo === "EFECTIVO"}
-            icono="dollar"
-            label="Efectivo"
-            onClick={() => elegirMetodo("EFECTIVO")}
-          />
-          <BotonMetodo
-            activo={metodo === "QR"}
-            icono="qr"
-            label="QR"
-            onClick={() => elegirMetodo("QR")}
-          />
-          <BotonMetodo
-            activo={metodo === "MIXTO"}
-            icono="swap"
-            label="Mixto"
-            onClick={() => elegirMetodo("MIXTO")}
-          />
-        </div>
-      )}
+      {metodos}
     </>
   );
 
-  // Con lugar (26-oct), en dos columnas: el total y cómo paga a la izquierda,
-  // lo que se recibe a la derecha, con "Confirmar" debajo. Se mide el lugar
-  // que tiene (`@container`) y no la ventana: también vive en el panel de
-  // "Cobrar a estudiante", que es angosto aun en la PC.
-  return (
-    <div className="@container flex h-full min-h-0 w-full flex-col">
-      <div className="flex items-center gap-2 border-b border-borde bg-white py-3 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
-        <button
-          onClick={onAtras}
-          aria-label="Volver"
-          className="rounded-lg p-1.5 text-texto-2 hover:bg-muted"
-        >
-          <Icon name="arrowLeft" size={20} />
-        </button>
-        <div className="min-w-0">
-          <h1 className="text-[15px] font-bold text-texto">{titulo}</h1>
-          {/* Qué se está cobrando. Sin esto la cabecera decía sólo "Cobrar", y
-              la cajera que atiende mostrador y salón a la vez —con dos mesas
-              esperando— no tenía cómo verificar que estaba cobrando la
-              correcta: el único chequeo posible era que el monto le sonara. */}
-          {subtitulo && (
-            <p className="truncate text-xs text-texto-3">{subtitulo}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-6 @3xl:space-y-0 @3xl:py-6">
-        <div className="space-y-4">
-          {destino}
-          {conDetalle ? encabezado : totalYMetodo}
-        </div>
-
-        <div className="space-y-4">
-          {conDetalle && totalYMetodo}
+  /** Lo que se recibe: el QR del mixto, el efectivo con sus atajos y el vuelto, el QR, las propinas. */
+  const detalle = (
+    <>
           {metodo === "MIXTO" && (
             <>
               <Campo
@@ -403,8 +425,8 @@ export default function PantallaCobro({
               </Campo>
 
               {qrNum > 0 && (
-                <div className="rounded-2xl border border-borde bg-white p-5">
-                  {extraQr > 0 && (
+                <div className={`rounded-2xl border border-borde bg-white ${incrustado ? "p-3" : "p-5"}`}>
+                  {extraQr > 0 && !incrustado && (
                     <p className="mb-3 text-center text-sm font-semibold text-texto">
                       Cobrá {fmtMoney(qrConPropina(qrNum))} por QR
                       <span className="block text-xs font-normal text-texto-3">
@@ -417,6 +439,20 @@ export default function PantallaCobro({
                     onConfirmar={() => setQrConfirmado(true)}
                     sinBoton={qrEnUnPaso}
                     monto={fmtMoney(qrConPropina(qrNum))}
+                    // En el carrito, el QR al lado del botón (ver QrParaCobrar).
+                    compacto={incrustado}
+                    leyenda={
+                      incrustado ? (
+                        <p className="text-sm font-semibold leading-snug text-texto">
+                          Cobrá {fmtMoney(qrConPropina(qrNum))} por QR
+                          {extraQr > 0 && (
+                            <span className="block text-xs font-normal text-texto-3">
+                              incluye {fmtMoney(extraQr)} de propina
+                            </span>
+                          )}
+                        </p>
+                      ) : undefined
+                    }
                   />
                 </div>
               )}
@@ -425,18 +461,22 @@ export default function PantallaCobro({
 
           {metodo !== "QR" && !nadaQueCobrar && (
             <>
-              <Campo
-                label="Efectivo recibido"
-                hint={
-                  // En mixto, lo que falta en mano es el resto de la venta MÁS la
-                  // propina en efectivo (QA DIA-02: decía sólo el resto).
-                  metodo === "MIXTO"
-                    ? `Falta cubrir ${fmtMoney(enMano)}${extraEfectivo > 0 ? " (incluye la propina)" : ""}`
-                    : extraEfectivo > 0
-                      ? `Incluye la propina en efectivo (${fmtMoney(extraEfectivo)})`
-                      : undefined
-                }
-              >
+              {apretado ? (
+                // Ventana baja: el rótulo va dentro del campo (el nombre sigue
+                // para el lector de pantalla) y lo que falta, debajo, igual.
+                <div>
+                  <InputMonto
+                    value={recibido}
+                    onChange={cambiarRecibido}
+                    placeholder="Efectivo recibido"
+                    aria-label="Efectivo recibido"
+                    // El monto tecleado, grande como siempre; el rótulo, como rótulo.
+                    className="text-lg font-bold placeholder:text-sm placeholder:font-semibold"
+                  />
+                  {pistaRecibido && <span className="mt-1 block text-xs text-texto-4">{pistaRecibido}</span>}
+                </div>
+              ) : (
+              <Campo label="Efectivo recibido" hint={pistaRecibido}>
                 <InputMonto
                   value={recibido}
                   onChange={cambiarRecibido}
@@ -445,10 +485,13 @@ export default function PantallaCobro({
                   // la cajera todavía está tecleando cuánto usar del vale.
                   // Con encabezado (el cobro del instituto) tampoco: en el celular
                   // el teclado tapaba de quién es el cobro y cuánto se reparte.
-                  autoFocus={extras.montoVale === 0 && !encabezado}
+                  // En el carrito tampoco: aparece con el primer producto, y el
+                  // foco es del buscador (en una tablet abría el teclado).
+                  autoFocus={extras.montoVale === 0 && !encabezado && !incrustado}
                   className="text-lg font-bold"
                 />
               </Campo>
+              )}
 
               <div className="flex flex-wrap gap-2">
                 {sugerencias.map((s) => (
@@ -470,6 +513,17 @@ export default function PantallaCobro({
                 </p>
               )}
 
+              {incrustado ? (
+                // En el carrito, en un renglón: el monto grande sigue, el alto no.
+                <p
+                  className={`flex items-baseline justify-between gap-3 rounded-xl px-4 ${apretado ? "py-1" : "py-2"} ${
+                    falta > 0 ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
+                  }`}
+                >
+                  <span className="text-xs font-semibold uppercase tracking-wide">{falta > 0 ? "Falta" : "Cambio"}</span>
+                  <span className="text-xl font-extrabold tabular-nums">{fmtMoney(falta > 0 ? falta : cambio)}</span>
+                </p>
+              ) : (
               <div
                 className={`rounded-xl px-4 py-3 text-center ${
                   falta > 0 ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
@@ -487,11 +541,13 @@ export default function PantallaCobro({
                   </>
                 )}
               </div>
+              )}
             </>
           )}
 
           {metodo === "QR" && !nadaQueCobrar && (
-            <div className="rounded-2xl border border-borde bg-white p-5">
+            <div className={`rounded-2xl border border-borde bg-white ${incrustado ? "p-3" : "p-5"}`}>
+              {!incrustado && (
               <p className="mb-3 text-center text-sm font-semibold text-texto">
                 Cobrá {fmtMoney(qrConPropina(aCubrir))} por QR
                 {extraQr > 0 && (
@@ -500,11 +556,27 @@ export default function PantallaCobro({
                   </span>
                 )}
               </p>
+              )}
               <QrParaCobrar
                 confirmado={qrConfirmado}
                 onConfirmar={() => setQrConfirmado(true)}
                 sinBoton={qrEnUnPaso}
                 monto={fmtMoney(qrConPropina(aCubrir))}
+                // En el carrito, el QR al lado del botón y el monto arriba de él:
+                // uno debajo del otro no entraba en 1366×768 (QA 16-nov).
+                compacto={incrustado}
+                leyenda={
+                  incrustado ? (
+                    <p className="text-sm font-semibold leading-snug text-texto">
+                      Cobrá {fmtMoney(qrConPropina(aCubrir))} por QR
+                      {extraQr > 0 && (
+                        <span className="block text-xs font-normal text-texto-3">
+                          incluye {fmtMoney(extraQr)} de propina
+                        </span>
+                      )}
+                    </p>
+                  ) : undefined
+                }
               />
               {/* QA DIA-02 (c): el QR no lleva la propina en efectivo, pero la
                   caja la espera. Sin el aviso, nadie la cobraba. */}
@@ -543,11 +615,11 @@ export default function PantallaCobro({
               <InputMonto value={propinaMesa} onChange={setPropinaMesa} placeholder="0,00" />
             </Campo>
           )}
-        </div>
-      </div>
+    </>
+  );
 
-      <div className="border-t border-borde bg-white py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
-        <div className="space-y-2 @3xl:ml-auto @3xl:w-[calc(50%-0.75rem)]">
+  const pie = (
+    <>
           {/* El error va en el PIE, pegado al botón, y no al final del área que
               scrollea: en un celular cobrando con método MIXTO la pantalla es
               larga (total, métodos, QR, efectivo, sugerencias, vuelto) y el
@@ -568,12 +640,105 @@ export default function PantallaCobro({
               ? "Registrando…"
               : `${conQrEnUnPaso ? "Llegó el QR · " : ""}Confirmar cobro · ${fmtMoney(total)}${propinasTotal > 0 ? ` + ${fmtMoney(propinasTotal)} de propina` : ""}`}
           </Boton>
-          {onCredito && (
-            <Boton variante="ghost" onClick={() => onCredito(extra)} disabled={enviando} className="w-full">
-              Vender a crédito (fiado)
-            </Boton>
+          {apretado && alLadoDelFiado ? (
+            // Ventana baja: el fiado y las apps de delivery en una fila, que se
+            // reparten el ancho. «Fiado» corto; el nombre entero, al pasar el
+            // mouse y para el lector de pantalla.
+            <div className="flex gap-2">
+              {onCredito && (
+                <Boton
+                  variante="ghost"
+                  onClick={() => onCredito(extra)}
+                  disabled={enviando}
+                  aria-label="Vender a crédito (fiado)"
+                  title="Vender a crédito (fiado)"
+                  className="min-w-0 flex-1 px-2"
+                >
+                  Fiado
+                </Boton>
+              )}
+              {alLadoDelFiado}
+            </div>
+          ) : (
+            onCredito && (
+              <Boton variante="ghost" onClick={() => onCredito(extra)} disabled={enviando} className="w-full">
+                Vender a crédito (fiado)
+              </Boton>
+            )
+          )}
+    </>
+  );
+
+  // En el carrito (16-nov): dos piezas sueltas, que el carrito acomoda entre
+  // sus totales y los botones de las apps de delivery. La de arriba es la que se
+  // achica y scrollea si no entra (el QR, sobre todo): así «Confirmar» nunca
+  // queda abajo, fuera de la vista, en una pantalla de 1366×768.
+  if (incrustado) {
+    return (
+      <>
+        <div
+          aria-label="Cómo paga"
+          role="group"
+          className={`min-h-24 shrink overflow-y-auto border-t border-borde-soft px-4 empty:hidden ${
+            apretado ? "space-y-2 py-2" : "space-y-3 py-3"
+          }`}
+        >
+          {extras.ui}
+          {/* Lo del cartel del total que no es el total (ése ya está en el carrito). */}
+          {extras.montoVale > 0 && (
+            <p className="text-[13px] font-semibold text-texto-2">
+              Gift card −{fmtMoney(extras.montoVale)} · resta {fmtMoney(aCubrir)}
+            </p>
+          )}
+          {avisoEnvio && <p className="text-[13px] text-texto-3">{avisoEnvio}</p>}
+          {metodos}
+          {detalle}
+        </div>
+        <div className={`shrink-0 space-y-2 border-t border-borde-soft px-4 ${apretado ? "py-2" : "py-3"}`}>{pie}</div>
+      </>
+    );
+  }
+
+  // Con lugar (26-oct), en dos columnas: el total y cómo paga a la izquierda,
+  // lo que se recibe a la derecha, con "Confirmar" debajo. Se mide el lugar
+  // que tiene (`@container`) y no la ventana: también vive en el panel de
+  // "Cobrar a estudiante", que es angosto aun en la PC.
+  return (
+    <div className="@container flex h-full min-h-0 w-full flex-col">
+      <div className="flex items-center gap-2 border-b border-borde bg-white py-3 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
+        <button
+          onClick={onAtras}
+          aria-label="Volver"
+          className="rounded-lg p-1.5 text-texto-2 hover:bg-muted"
+        >
+          <Icon name="arrowLeft" size={20} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-[15px] font-bold text-texto">{titulo}</h1>
+          {/* Qué se está cobrando. Sin esto la cabecera decía sólo "Cobrar", y
+              la cajera que atiende mostrador y salón a la vez —con dos mesas
+              esperando— no tenía cómo verificar que estaba cobrando la
+              correcta: el único chequeo posible era que el monto le sonara. */}
+          {subtitulo && (
+            <p className="truncate text-xs text-texto-3">{subtitulo}</p>
           )}
         </div>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-6 @3xl:space-y-0 @3xl:py-6">
+        <div className="space-y-4">
+          {destino}
+          {conDetalle ? encabezado : totalYMetodo}
+        </div>
+
+        <div className="space-y-4">
+          {conDetalle && totalYMetodo}
+          {detalle}
+        </div>
+      </div>
+
+      <div className="border-t border-borde bg-white py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
+        <div className="space-y-2 @3xl:ml-auto @3xl:w-[calc(50%-0.75rem)]">{pie}</div>
       </div>
     </div>
   );
@@ -585,24 +750,30 @@ function BotonMetodo({
   label,
   onClick,
   deshabilitado,
+  compacto = false,
 }: {
   activo: boolean;
   icono: "dollar" | "qr" | "swap";
   label: string;
   onClick: () => void;
   deshabilitado?: boolean;
+  /** En el carrito: el ícono al lado del nombre, en un solo renglón (40 px de alto y no 70). */
+  compacto?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={deshabilitado}
-      className={`flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+      aria-pressed={compacto ? activo : undefined}
+      className={`flex ${
+        compacto ? "min-h-10 items-center justify-center gap-1.5 px-2 py-2" : "flex-col items-center gap-1.5 px-3 py-3"
+      } rounded-xl border text-[13px] font-semibold transition-colors disabled:opacity-40 ${
         activo
           ? "border-primary bg-primary-50 text-primary-700"
           : "border-borde bg-white text-texto-2 enabled:hover:bg-muted"
       }`}
     >
-      <Icon name={icono} size={20} />
+      <Icon name={icono} size={compacto ? 17 : 20} />
       {label}
     </button>
   );

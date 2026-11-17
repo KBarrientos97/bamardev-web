@@ -98,6 +98,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import type { CambioConfigAgregados, CatalogoAgregados, ConfigAgregados, GrupoAgregados, GuardarGrupoInput } from "./agregados/tipos";
+import type { ConfigPos } from "./configPos";
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
@@ -949,6 +950,19 @@ export const api = {
     request<EstadoControlStock & { contados: number; puestosEnCero: number }>("/control-stock", {
       method: "PATCH",
       body: JSON.stringify({ controlaStock: true, almacenId, conteo }),
+    }),
+
+  // ── Configuración › Punto de venta (16-nov) ───────────────────────────────
+  /**
+   * Cómo se ve y cómo cobra el POS. Crudo: se lee con `normalizarConfigPos`,
+   * que completa con lo de fábrica lo que no venga.
+   */
+  configPos: () => request<Partial<ConfigPos>>("/pos/config"),
+  /** Cambia sólo lo que se manda (`negocio.configurar`) y devuelve la configuración entera. */
+  guardarConfigPos: (cambios: Partial<ConfigPos>) =>
+    request<Partial<ConfigPos>>("/pos/config", {
+      method: "PATCH",
+      body: JSON.stringify(cambios),
     }),
 
   // ── Productos con agregados (toppings, PLAN-AGREGADOS §7) ──────────────────

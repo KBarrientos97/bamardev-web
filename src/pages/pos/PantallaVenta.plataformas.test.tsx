@@ -111,6 +111,27 @@ describe("botones de Yango y PedidosYa en el carrito", () => {
     expect(screen.queryByRole("button", { name: "Yango" })).not.toBeInTheDocument();
   });
 
+  it("17-nov, en el celular: elegida desde la hoja del carrito, «Volver» del diálogo la vuelve a abrir", async () => {
+    await montar({ plataformas: { disponibles: ["YANGO"], onElegir } });
+    // La hoja del celular: se abre con la píldora del carrito.
+    fireEvent.click(screen.getByRole("button", { name: /^\s*2\s*Bs/ }));
+    expect(screen.getAllByRole("button", { name: "Cerrar carrito" })).toHaveLength(2);
+    // Hay dos «Yango»: el de la columna (escritorio) y el de la hoja; el último es el de la hoja.
+    fireEvent.click(screen.getAllByRole("button", { name: "Yango" }).at(-1)!);
+    expect(onElegir).toHaveBeenLastCalledWith("YANGO", expect.any(Function));
+    // La hoja se cerró para dejar ver el diálogo…
+    expect(screen.getAllByRole("button", { name: "Cerrar carrito" })).toHaveLength(1);
+    // …y quien abrió el diálogo, al volver sin registrar, la vuelve a abrir.
+    act(() => onElegir.mock.lastCall![1]());
+    expect(screen.getAllByRole("button", { name: "Cerrar carrito" })).toHaveLength(2);
+  });
+
+  it("desde la columna del carrito (escritorio) no hay nada que volver a abrir", async () => {
+    await montar({ plataformas: { disponibles: ["YANGO"], onElegir } });
+    fireEvent.click(screen.getByRole("button", { name: "Yango" }));
+    expect(onElegir).toHaveBeenLastCalledWith("YANGO");
+  });
+
   it("se apagan junto con Cobrar cuando falta algo para vender (un paquete sin cliente)", async () => {
     await montar({
       plataformas: { disponibles: ["YANGO"], onElegir },

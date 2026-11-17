@@ -97,8 +97,11 @@ describe("Mi página y la entrada «Pedidos web»", () => {
   it("al publicar con el interruptor prendido, la sesión pasa a recibir pedidos", async () => {
     vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ pedidosSistema: true }));
     await montarYPublicar();
-    expect(apiPagina.publicarCambios).toHaveBeenCalled();
-    expect(fijarPedidosWeb).toHaveBeenCalledWith(true);
+    // Con espera, como los casos de abajo: publicar encadena el guardado y la
+    // publicación, y con la PC cargada un solo `act` no alcanzaba a que se
+    // llamara (el test caía sin que hubiera nada roto).
+    await vi.waitFor(() => expect(apiPagina.publicarCambios).toHaveBeenCalled());
+    await vi.waitFor(() => expect(fijarPedidosWeb).toHaveBeenCalledWith(true));
   });
 
   it("al publicar con el interruptor apagado, la entrada se va si el backend dice que no quedan pedidos vivos", async () => {

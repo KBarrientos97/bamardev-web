@@ -42,6 +42,8 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
   it("un restaurante sin TVs ve el recibo y el QR adentro, con lo de la web", () => {
     // El caso que lo trajo: sin los extras de las TVs no había dónde poner el logo.
     expect(opciones(ctx("ADMIN", SIN_TVS))).toEqual([
+      // Primera, y sólo en la web (16-nov).
+      "Punto de venta",
       "Ticket y recibo",
       "QR de cobro",
       "Inventario y stock",
@@ -51,6 +53,7 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
 
   it("con los tickets también está Tickets y despacho, en su orden", () => {
     expect(opciones(ctx("ADMIN", CON_TICKETS))).toEqual([
+      "Punto de venta",
       "Ticket y recibo",
       "Tickets y despacho",
       "QR de cobro",
@@ -61,7 +64,25 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
 
   it("con sólo el menú digital no hay Tickets y despacho: no saca número", () => {
     expect(opciones(ctx("ADMIN", CON_MENU))).not.toContain("Tickets y despacho");
-    expect(opciones(ctx("ADMIN", CON_MENU))[0]).toBe("Ticket y recibo");
+    expect(opciones(ctx("ADMIN", CON_MENU)).slice(0, 2)).toEqual(["Punto de venta", "Ticket y recibo"]);
+  });
+
+  it("Punto de venta (16-nov): del dueño, con `negocio.configurar`, sin feature del plan", () => {
+    expect(opciones(ctx("ADMIN", ["pos", "caja"]))).toContain("Punto de venta");
+    // Si el dueño le da el permiso al encargado, también la ve.
+    expect(opciones(ctx("SUPERVISOR", SIN_TVS, "RESTAURANTE", { extra: ["negocio.configurar"] }))).toContain(
+      "Punto de venta",
+    );
+    expect(opciones(ctx("ADMIN", SIN_TVS, "RESTAURANTE", { sin: ["negocio.configurar"] }))).not.toContain(
+      "Punto de venta",
+    );
+    expect(puedeVer(ctx("ADMIN", SIN_TVS, "FARMACIA"), "config_pos")).toBe(false);
+    expect(puedeVer(ctx("ADMIN", SIN_TVS, "PELUQUERIA"), "config_pos")).toBe(false);
+  });
+
+  it("no suma nada al grupo «Configuración» de los demás rubros", () => {
+    const rutas = nodos(menuDe(ctx("ADMIN", SIN_TVS, "FARMACIA", { extra: PERMISOS_NUEVOS }))).map((n) => n.item.a);
+    expect(rutas).not.toContain("/configuracion/punto-de-venta");
   });
 
   it("el encargado: el recibo (y los tickets, con el extra); el QR y lo del dueño, no", () => {
@@ -100,6 +121,7 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
 
   it("cada opción lleva a la pantalla que ya existía", () => {
     expect(OPCIONES_CONFIGURACION.map((o) => [o.titulo, o.a])).toEqual([
+      ["Punto de venta", "/configuracion/punto-de-venta"],
       ["Ticket y recibo", "/configuracion/recibo"],
       ["Tickets y despacho", "/configuracion/tickets"],
       ["QR de cobro", "/configuracion/qr-cobro"],

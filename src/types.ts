@@ -8,6 +8,7 @@ import type { Vocabulario } from "./lib/rubro";
 import type { EntregaPedidosWeb, PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
 import type { Plataforma } from "./lib/pedidosPlataforma/tipos";
 import type { AgregadoInput } from "./lib/agregados/tipos";
+import type { ConfigPos } from "./lib/configPos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -194,6 +195,13 @@ export interface SesionNegocio {
    */
   agregadosEnPos?: boolean;
   agregadosEnPagina?: boolean;
+  /**
+   * Cómo se ve y cómo cobra el punto de venta (Configuración › Punto de
+   * venta, 16-nov). Crudo, como viene: se lee SIEMPRE con `configPosDe`, que
+   * completa lo que falte con lo de fábrica. Sin el dato (sesión o backend
+   * viejo) el POS es el de siempre.
+   */
+  pos?: Partial<ConfigPos> | null;
   /**
    * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
    * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
@@ -1223,6 +1231,14 @@ export interface ResumenCaja {
   porFormaPago: { nombre: string; monto: number }[];
   efectivo: number;
   cambioEntregado: number;
+  /**
+   * Lo devuelto en efectivo al modificar ventas ya cobradas (17-nov), en
+   * positivo. Ya está restado de `efectivo` (que por eso puede quedar en
+   * negativo si la venta se había cobrado por QR) y sumado dentro de
+   * `cambioEntregado`. Sólo viene si es más que cero: un backend anterior no
+   * lo manda y el cierre queda como siempre. Ver `efectivoDelTurno`.
+   */
+  devueltoEfectivo?: number;
   ingresos: number;
   egresos: number;
   movimientos: MovimientoCaja[];
@@ -2135,6 +2151,8 @@ export interface EstadoLicencia {
   /** Lo mismo que `negocio.agregadosEnPos` / `agregadosEnPagina` del login (§8.1). */
   agregadosEnPos?: boolean;
   agregadosEnPagina?: boolean;
+  /** Lo mismo que `negocio.pos` del login: si el dueño lo cambia desde otro equipo, la caja abierta se entera. */
+  pos?: Partial<ConfigPos> | null;
   /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
   entregaPedidosWeb?: EntregaPedidosWeb;
   servicioDeliveryExterno?: string | null;

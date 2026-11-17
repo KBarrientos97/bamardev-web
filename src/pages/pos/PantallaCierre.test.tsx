@@ -644,6 +644,203 @@ describe("10-nov: el movimiento del turno del restaurante, en bloques que suman 
   });
 });
 
+/**
+ * 17-nov: al modificar una venta ya cobrada y bajarle el total, la diferencia
+ * se devuelve en efectivo. El servidor la manda aparte (`devueltoEfectivo`) y
+ * el cierre dice lo cobrado, el vuelto de verdad y lo devuelto en su renglón,
+ * con las filas sumando a mano lo mismo que el esperado.
+ */
+describe("17-nov: plata devuelta en efectivo por ventas modificadas", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  /** (a) Una venta de Bs 23 por QR a la que se le sacó un extra: Bs 3 devueltos en efectivo. */
+  const QR_CON_DEVOLUCION: Partial<ResumenCaja> = {
+    montoApertura: 10,
+    cantidadVentas: 1,
+    totalVentas: 20,
+    porFormaPago: [
+      { nombre: "Efectivo", monto: -3 },
+      { nombre: "QR", monto: 23 },
+    ],
+    efectivo: -3,
+    cambioEntregado: 3,
+    devueltoEfectivo: 3,
+    saldoEsperado: 7,
+  };
+
+  /**
+   * (b) Bs 20 en efectivo pagados con 50 y después Bs 5 devueltos; con un
+   * ingreso y un egreso de efectivo en el turno.
+   */
+  const EFECTIVO_CON_DEVOLUCION: Partial<ResumenCaja> = {
+    montoApertura: 100,
+    cantidadVentas: 1,
+    totalVentas: 15,
+    porFormaPago: [{ nombre: "Efectivo", monto: 15 }],
+    efectivo: 15,
+    cambioEntregado: 35,
+    devueltoEfectivo: 5,
+    ingresos: 10,
+    egresos: 4,
+    saldoEsperado: 121,
+  };
+
+  it("(a) QR 23 con 3 devueltos: lo vendido suma 20 y el cajón, fondo 10 − 3 = 7", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(QR_CON_DEVOLUCION));
+    await montar();
+    // Antes: «En efectivo Bs -3,00» y «Recibido Bs 0,00 · cambio entregado Bs 3,00».
+    const vendido = filasDeBloque("Lo que se vendió");
+    expect(vendido).toEqual([
+      ["Por QR", 23],
+      ["Devuelto en efectivo", -3],
+      ["Total vendido", 20],
+    ]);
+    expect(sumaDe(vendido)).toBe(20);
+    const cajon = filasDeCaja();
+    expect(cajon).toEqual([
+      ["Fondo de apertura", 10],
+      ["Ventas en efectivo", 0],
+      ["Devuelto en efectivo", -3],
+    ]);
+    expect(cajon.reduce((s, [, m]) => s + m, 0)).toBe(7);
+    expect(screen.getByText("Efectivo esperado en caja").nextElementSibling).toHaveTextContent("Bs 7,00");
+    expect(screen.getByText("Por ventas modificadas")).toBeInTheDocument();
+    // No hubo vuelto de verdad: la línea chica no sale.
+    expect(screen.queryByText(/Recibido/)).not.toBeInTheDocument();
+    expect(screen.queryByText("En efectivo")).not.toBeInTheDocument();
+  });
+
+  it("(b) efectivo 20 recibido 50 y 5 devueltos: ventas 20, cambio 30, devuelto −5 y los movimientos dan 121", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(EFECTIVO_CON_DEVOLUCION));
+    await montar();
+    const vendido = filasDeBloque("Lo que se vendió");
+    expect(vendido).toEqual([
+      ["En efectivo", 20],
+      ["Devuelto en efectivo", -5],
+      ["Total vendido", 15],
+    ]);
+    expect(sumaDe(vendido)).toBe(15);
+    const cajon = filasDeCaja();
+    expect(cajon).toEqual([
+      ["Fondo de apertura", 100],
+      ["Ventas en efectivo", 20],
+      ["Devuelto en efectivo", -5],
+      ["Ingresos de efectivo", 10],
+      ["Egresos de efectivo", -4],
+    ]);
+    expect(cajon.reduce((s, [, m]) => s + m, 0)).toBe(121);
+    expect(screen.getByText("Efectivo esperado en caja").nextElementSibling).toHaveTextContent("Bs 121,00");
+    // Lo recibido de verdad y el vuelto de verdad: 20 cobrados con un billete de 50.
+    expect(screen.getByText(/Recibido Bs.50,00 · cambio entregado Bs.30,00/)).toBeInTheDocument();
+  });
+
+  it("el pago en efectivo que quedó en cero se borra: sin cambio negativo y las filas siguen sumando", async () => {
+    // Bs 25 = 5 en efectivo + 20 por QR; se bajó a 20 devolviendo los 5 en
+    // efectivo. El servidor borra el pago en efectivo (con su «entregado»):
+    // efectivo 0, cambio 0, devuelto 5, y la forma de pago ni viene.
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 10,
+        cantidadVentas: 1,
+        totalVentas: 20,
+        porFormaPago: [{ nombre: "QR", monto: 20 }],
+        efectivo: 0,
+        cambioEntregado: 0,
+        devueltoEfectivo: 5,
+        saldoEsperado: 10,
+      }),
+    );
+    await montar();
+    const vendido = filasDeBloque("Lo que se vendió");
+    expect(vendido).toEqual([
+      ["En efectivo", 5],
+      ["Por QR", 20],
+      ["Devuelto en efectivo", -5],
+      ["Total vendido", 20],
+    ]);
+    expect(sumaDe(vendido)).toBe(20);
+    const cajon = filasDeCaja();
+    expect(cajon).toEqual([
+      ["Fondo de apertura", 10],
+      ["Ventas en efectivo", 5],
+      ["Devuelto en efectivo", -5],
+    ]);
+    expect(cajon.reduce((s, [, m]) => s + m, 0)).toBe(10);
+    expect(screen.queryByText(/Recibido/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cambio entregado/i)).not.toBeInTheDocument();
+  });
+
+  it("(c) sin el campo, el cierre queda como hoy", async () => {
+    // El mismo turno de (a) contra un backend que no manda `devueltoEfectivo`.
+    const { devueltoEfectivo: _sinCampo, ...sinCampo } = QR_CON_DEVOLUCION;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(sinCampo));
+    await montar();
+    expect(filasDeBloque("Lo que se vendió")).toEqual([
+      ["En efectivo", -3],
+      ["Por QR", 23],
+      ["Total vendido", 20],
+    ]);
+    expect(filasDeCaja()).toEqual([
+      ["Fondo de apertura", 10],
+      ["Ventas en efectivo", -3],
+    ]);
+    expect(screen.getByText(/Recibido Bs.0,00 · cambio entregado Bs.3,00/)).toBeInTheDocument();
+    expect(screen.queryByText("Devuelto en efectivo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Por ventas modificadas")).not.toBeInTheDocument();
+  });
+
+  it("«Caja cerrada» dice lo mismo que la pantalla con la que se contó", () => {
+    render(
+      <CierreOk
+        caja={cajaCerrada({ montoApertura: 100, montoCierre: 121, montoDiferencia: 0, resumen: resumen(EFECTIVO_CON_DEVOLUCION) })}
+        onSalir={() => {}}
+      />,
+    );
+    expect(filasDeBloque("Lo que se vendió")).toEqual([
+      ["En efectivo", 20],
+      ["Devuelto en efectivo", -5],
+      ["Total vendido", 15],
+    ]);
+    const cajon = within(screen.getByRole("region", { name: "Efectivo en caja" }));
+    expect(cajon.getByText("Devuelto en efectivo").nextElementSibling).toHaveTextContent("Bs -5,00");
+    expect(cajon.getByText("Por ventas modificadas")).toBeInTheDocument();
+    expect(cajon.getByText(/Recibido Bs.50,00 · cambio entregado Bs.30,00/)).toBeInTheDocument();
+    expect(cajon.getByText("Efectivo esperado en caja").nextElementSibling).toHaveTextContent("Bs 121,00");
+  });
+
+  it("el cierre de los demás rubros: el «Cambio entregado» suelto es el de verdad y al lado va lo devuelto", async () => {
+    sesion.rubro = "FERRETERIA";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(EFECTIVO_CON_DEVOLUCION));
+    await montar();
+    const filas = filasDelTurno();
+    expect(filas.map(([e]) => e)).toEqual([
+      "Fondo de apertura",
+      "Ventas (1)",
+      "Efectivo",
+      "Cambio entregado",
+      "Devuelto en efectivo",
+      "Ingresos de efectivo",
+      "Egresos de efectivo",
+    ]);
+    // El efectivo va en lo cobrado (15 + 5): lo devuelto resta una sola vez, abajo.
+    expect(filas[2][1]).toMatch(/20,00/);
+    expect(filas[3][1]).toMatch(/-30,00/);
+    expect(filas[4][1]).toMatch(/-5,00/);
+  });
+
+  it("los demás rubros sin el campo: «Cambio entregado» como siempre y sin renglón nuevo", async () => {
+    sesion.rubro = "FERRETERIA";
+    const { devueltoEfectivo: _sinCampo, ...sinCampo } = EFECTIVO_CON_DEVOLUCION;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(sinCampo));
+    await montar();
+    const filas = filasDelTurno();
+    expect(filas.map(([e]) => e)).not.toContain("Devuelto en efectivo");
+    expect(filas.find(([e]) => e === "Cambio entregado")?.[1]).toMatch(/-35,00/);
+  });
+});
+
 describe("F-23: en el instituto las filas del cajón suman el esperado (videos, 07-nov)", () => {
   beforeEach(() => {
     sesion.rubro = "ACADEMIA";
