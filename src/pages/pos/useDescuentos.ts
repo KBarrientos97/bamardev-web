@@ -26,7 +26,7 @@ export interface Descuentos {
   cargando: boolean;
   error: string;
   /** El total que se cobra: el neto si hay cotización vigente. */
-  total: (bruto: number) => number;
+  total: (bruto: number, agregados?: number) => number;
   /** Lo que se suma al cuerpo de POST /ventas. Vacío si está apagado. */
   extraVenta: () => Pick<VentaInput, "cupones" | "descuentosEsperados" | "clienteId">;
   /** ¿La cotización corresponde al carrito de ahora? Sin eso no se cobra. */
@@ -182,8 +182,10 @@ export function useDescuentos(opc: {
 
   const total = useCallback(
     // Con la cotización de otro carrito (el de antes del último toque) va el
-    // bruto: su neto sería de otra cuenta.
-    (bruto: number) => (cotizada && cotizacion ? cotizacion.total : bruto),
+    // bruto: su neto sería de otra cuenta. `agregados` son los toppings extra:
+    // la cotización sólo ve los vasos, y el backend los suma al neto.
+    (bruto: number, agregados = 0) =>
+      cotizada && cotizacion ? Math.round((cotizacion.total + agregados) * 100) / 100 : bruto,
     [cotizada, cotizacion],
   );
 

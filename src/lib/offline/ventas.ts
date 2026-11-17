@@ -1,7 +1,10 @@
 import { ApiError } from "../api";
+import { vistaDeAgregados } from "../agregados/calculo";
+import type { CatalogoAgregados } from "../agregados/tipos";
 import type {
   ClienteCredito,
   Credito,
+  DetalleVenta,
   FormaPago,
   Producto,
   Venta,
@@ -39,6 +42,8 @@ export async function venderOEncolar(
   datos: {
     productos: Producto[];
     formasPago: FormaPago[];
+    /** Los toppings del local, para armar sus renglones en el ticket de una venta con toppings. */
+    agregados?: CatalogoAgregados | null;
     cajero?: string | null;
     /** La caja del turno: a su manifiesto va la venta (12-nov, ver turno.ts). */
     cajaId?: number | null;
@@ -128,14 +133,17 @@ export function reciboLocal(
     productos: Producto[];
     formasPago: FormaPago[];
     clientes?: ClienteCredito[];
+    agregados?: CatalogoAgregados | null;
     cajero?: string | null;
   },
 ): Venta {
   const porId = new Map(d.productos.map((p) => [p.id, p]));
-  const detalles = c.detalles.map((x) => {
+  // Ids propios del ticket local, sólo para que las hijas señalen a su vaso.
+  let siguienteId = 1;
+  const detalles = c.detalles.flatMap((x): DetalleVenta[] => {
     const p = porId.get(x.productoId);
     const precio = x.usarPaquete ? 0 : (x.precio ?? p?.precio ?? 0);
-    return {
+    const vaso: DetalleVenta = {
       productoId: x.productoId,
       producto: p?.nombre ?? `Artículo ${x.productoId}`,
       cantidad: x.cantidad,
@@ -144,6 +152,25 @@ export function reciboLocal(
       nota: x.nota ?? null,
       consumo: x.consumo ?? "LLEVAR",
     };
+    if (!x.agregados?.length) return [vaso];
+    // Los toppings, con la misma regla que el servidor (`vistaDeAgregados`): el
+    // ticket que se le muestra al cliente dice lo que después se va a cobrar.
+    const vista = vistaDeAgregados(x.agregados, x.productoId, d.agregados);
+    vaso.id = siguienteId++;
+    const hijas = vista.hijas.map((h): DetalleVenta => ({
+      id: siguienteId++,
+      lineaPadreId: vaso.id,
+      incluido: h.incluido,
+      grupoAgregadosId: h.grupoId,
+      productoId: h.productoId,
+      producto: h.nombre,
+      cantidad: redondear(h.cantidad * x.cantidad),
+      precio: h.precio,
+      subtotal: redondear(h.subtotal * x.cantidad),
+      nota: null,
+      consumo: vaso.consumo,
+    }));
+    return [vaso, ...hijas];
   });
   const descuento = redondear((c.descuentosEsperados ?? []).reduce((s, x) => s + x.monto, 0));
   // Sin el envío, como el `total` del servidor: la tarifa va aparte

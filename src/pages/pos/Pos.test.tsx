@@ -264,7 +264,7 @@ describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () =>
     await montar();
     // Sin la sucursal, al dueño le llegaba el precio de lista y la venta
     // cobraba el de la sucursal ("los pagos no suman el total").
-    expect(api.getProductos).toHaveBeenCalledWith(false, 1);
+    expect(api.getProductos).toHaveBeenCalledWith(false, 1, true);
     expect(api.getProductos).toHaveBeenCalledTimes(1);
   });
 });
