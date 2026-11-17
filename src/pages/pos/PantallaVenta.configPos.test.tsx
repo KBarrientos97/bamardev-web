@@ -113,10 +113,13 @@ function columnas() {
     s.getAttribute("aria-label"),
     within(s)
       .getAllByRole("listitem")
-      .map((li) => li.querySelector("[title]")?.getAttribute("title")),
+      // El primer botón de cada fila es la fila entera (la que suma).
+      .map((li) => li.querySelector("button")?.getAttribute("aria-label")),
   ]);
 }
-const fila = (nombre: string) => screen.getByTitle(nombre).closest("li")!;
+/** El botón que es toda la fila: tocarlo suma. */
+const botonFila = (nombre: string) => screen.getByRole("button", { name: nombre });
+const fila = (nombre: string) => botonFila(nombre).closest("li")!;
 const chips = () =>
   screen
     .queryAllByRole("button")
@@ -240,13 +243,19 @@ describe("la vista en columnas", () => {
     expect(columnas()[0]).toEqual(["Pollos", ["Cuarto de pollo", "Pollo entero"]]);
   });
 
-  it("tocar una fila agrega el producto", async () => {
+  it("tocar una fila agrega el producto, con el nombre entero en el `title`", async () => {
     await montar();
-    fireEvent.click(screen.getByTitle("Pollo entero"));
+    expect(botonFila("Pollo entero")).toHaveAttribute("title", "Pollo entero");
+    fireEvent.click(botonFila("Pollo entero"));
     expect(carrito.agregar).toHaveBeenCalledWith(ENTERO);
   });
 
-  it("en el carrito: resaltada, con la cantidad, «−» y «+»; en la última unidad el «−» quita", async () => {
+  it("el nombre, hasta tres renglones (como la tarjeta)", async () => {
+    await montar();
+    expect(within(fila("Pollo entero")).getByText("Pollo entero").className).toContain("line-clamp-3");
+  });
+
+  it("en el carrito: resaltada, con la cantidad y el «−» en la misma fila; sumar es tocar la fila", async () => {
     await montar({
       lineas: [
         { producto: ENTERO, cantidad: 2, enMesa: 2, nota: "" },
@@ -256,29 +265,48 @@ describe("la vista en columnas", () => {
     const entero = fila("Pollo entero");
     expect(entero.className).toContain("bg-primary-50");
     expect(within(entero).getByText("2")).toBeInTheDocument();
-    fireEvent.click(within(entero).getByRole("button", { name: "Uno más de Pollo entero" }));
+    // Sin «+» ni renglón de más: la fila no crece al entrar al carrito.
+    expect(within(entero).queryByRole("button", { name: /Uno más/ })).not.toBeInTheDocument();
+    expect(entero.children).toHaveLength(1);
+    fireEvent.click(botonFila("Pollo entero"));
     expect(carrito.agregar).toHaveBeenCalledWith(ENTERO);
     fireEvent.click(within(entero).getByRole("button", { name: "Uno menos de Pollo entero" }));
     expect(carrito.setCantidad).toHaveBeenCalledWith(1, 1);
+    // En la última unidad el «−» es tacho y la saca.
     fireEvent.click(screen.getByRole("button", { name: "Quitar Cuarto de pollo del pedido" }));
     expect(carrito.setCantidad).toHaveBeenCalledWith(2, 0);
-    // Lo que no está en el carrito no tiene stepper.
-    expect(screen.queryByRole("button", { name: "Uno más de Coca 2 L" })).not.toBeInTheDocument();
+    // Lo que no está en el carrito no tiene «−».
+    expect(within(fila("Coca 2 L")).queryByRole("button", { name: /Uno menos|Quitar/ })).not.toBeInTheDocument();
+    expect(fila("Coca 2 L").children).toHaveLength(1);
   });
 
-  it("el «+» se apaga al llegar a lo que hay", async () => {
-    await montar({ lineas: [{ producto: COCA, cantidad: 2, enMesa: 2, nota: "" }] });
-    expect(screen.getByRole("button", { name: "Uno más de Coca 2 L" })).toBeDisabled();
+  it("al tope del stock la fila no suma, dice por qué y cuánto hay, sin apagarse entera", async () => {
+    // Coca 2 L tiene 2 y están las 2 en el carrito. El mínimo (5) no importa acá.
+    await montar({
+      lineas: [
+        { producto: COCA, cantidad: 2, enMesa: 2, nota: "" },
+        { producto: ENTERO, cantidad: 50, enMesa: 50, nota: "" },
+      ],
+    });
+    expect(botonFila("Coca 2 L")).toBeDisabled();
+    expect(botonFila("Coca 2 L")).toHaveAttribute("title", "No hay más disponibles");
+    expect(fila("Coca 2 L").className).not.toContain("opacity-50");
+    // Con stock de sobra (50, mínimo 5), el número sale sólo porque llegó al tope.
+    expect(within(fila("Pollo entero")).getByText("50 disp.")).toBeInTheDocument();
+    expect(botonFila("Pollo entero")).toBeDisabled();
+    // El «−» sigue andando.
+    fireEvent.click(within(fila("Coca 2 L")).getByRole("button", { name: "Uno menos de Coca 2 L" }));
+    expect(carrito.setCantidad).toHaveBeenCalledWith(3, 1);
   });
 
   it("agotado: apagada y lo dice; con poco stock dice cuánto queda", async () => {
     await montar();
-    expect(screen.getByTitle("Fanta 2 L")).toBeDisabled();
+    expect(botonFila("Fanta 2 L")).toBeDisabled();
     expect(within(fila("Fanta 2 L")).getByText("Agotado")).toBeInTheDocument();
     expect(within(fila("Coca 2 L")).getByText("2 disp.")).toBeInTheDocument();
     // Con stock de sobra no se dice nada (en la lista sería ruido).
     expect(within(fila("Pollo entero")).queryByText(/disp\./)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Fanta 2 L"));
+    fireEvent.click(botonFila("Fanta 2 L"));
     expect(carrito.agregar).not.toHaveBeenCalled();
   });
 
@@ -291,7 +319,7 @@ describe("la vista en columnas", () => {
     const cuarto = fila("Cuarto de pollo");
     expect(cuarto.className).toContain("grayscale");
     expect(within(cuarto).getByText("Pausado")).toBeInTheDocument();
-    fireEvent.click(screen.getByTitle("Cuarto de pollo"));
+    fireEvent.click(botonFila("Cuarto de pollo"));
     expect(carrito.agregar).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Sí, venderlo" }));
     expect(carrito.agregar).toHaveBeenCalledWith(CUARTO);

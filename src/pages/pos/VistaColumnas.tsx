@@ -18,8 +18,8 @@ import { controlaStock, topeStock } from "./useCarrito";
  *
  * Cada fila hace lo mismo que la tarjeta: tocarla agrega (con la pregunta del
  * pausado y la hoja de toppings, que decide quien la usa), en el carrito se
- * resalta con su «−» y «+», y dice «Agotado», «Pausado» o cuánto queda cuando
- * queda poco. Lo que no hace es reordenarse arrastrando: el orden de las
+ * resalta y muestra la cantidad con su «−» (sin cambiar de alto), y dice
+ * «Agotado», «Pausado» o cuánto queda cuando queda poco o ya no suma. Lo que no hace es reordenarse arrastrando: el orden de las
  * columnas lo elige el dueño en Configuración, y dentro de cada una manda el
  * que el cajero armó en las tarjetas.
  */
@@ -156,10 +156,12 @@ function FilaProducto({
   const controla = controlaStock(p);
   const agotado = (controla && p.stockTotal <= 0) || agotadoHoy;
   const enCarrito = cantidad > 0;
-  const alTope = cantidad >= topeStock(p);
-  // En la lista el número sólo sale cuando queda poco: al lado de cada nombre
-  // sería ruido, y lo que el cajero necesita es el aviso antes de que se acabe.
-  const quedaPoco = !agotado && controla && p.stockTotal <= p.stockMinimo;
+  // Ya está en el carrito todo lo que hay: tocar la fila no suma más.
+  const alTope = !agotado && cantidad >= topeStock(p);
+  // En la lista el número sólo sale cuando queda poco (al lado de cada nombre
+  // sería ruido; lo que el cajero necesita es el aviso antes de que se acabe),
+  // o cuando ya no suma: así se entiende por qué tocarla no hace nada.
+  const quedaPoco = !agotado && controla && (p.stockTotal <= p.stockMinimo || alTope);
 
   return (
     <li
@@ -170,83 +172,85 @@ function FilaProducto({
         pausado && !agotado ? "opacity-60 grayscale" : "",
       ].join(" ")}
     >
-      <div className="flex items-center gap-0.5">
+      {/* Una fila de alto fijo: estar en el carrito no le suma un renglón. En
+          una lista apretada, una fila que crece al tocarla corre las de abajo y
+          el toque siguiente cae en otro producto. Por eso la cantidad va en la
+          misma fila y sin «+»: sumar es tocar la fila, que ya lo hace.
+
+          Toda la fila es el botón que suma (la capa de abajo, a todo el ancho);
+          el «−» y el «⋯» van encima, con su propio toque. */}
+      <div className="relative flex min-h-11 items-center gap-2 py-1">
         <button
           type="button"
           onClick={onAgregar}
-          disabled={agotado}
-          // El nombre entero también para el lector de pantalla y el mouse.
-          title={p.nombre}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 text-left transition-colors enabled:hover:bg-muted/70"
-        >
-          {/* Chico, para no robarle ancho al nombre: es para reconocerlo de un vistazo. */}
-          {conIcono && <IconoProducto nombre={p.nombre} icono={p.icono} categoria={p.categoria?.nombre} size={24} />}
-          <span className="min-w-0 flex-1">
-            {/* Dos renglones repartidos parejo: «Arroz con leche – Mediano» no
-                deja el tamaño solo abajo. */}
-            <span
-              className={`line-clamp-2 text-balance text-[13px] leading-snug text-texto ${
-                enCarrito ? "font-bold" : "font-semibold"
+          disabled={agotado || alTope}
+          aria-label={p.nombre}
+          // El nombre entero para el mouse, o por qué ya no suma.
+          title={alTope ? "No hay más disponibles" : p.nombre}
+          className="absolute inset-0 rounded-lg transition-colors enabled:hover:bg-muted/70"
+        />
+        {/* Chico, para no robarle ancho al nombre: es para reconocerlo de un vistazo. */}
+        {conIcono && (
+          <span className="pointer-events-none relative">
+            <IconoProducto nombre={p.nombre} icono={p.icono} categoria={p.categoria?.nombre} size={24} />
+          </span>
+        )}
+        <span className="pointer-events-none relative min-w-0 flex-1">
+          {/* Hasta tres renglones, como la tarjeta, y repartidos parejo: «Arroz
+              con leche con dulce de leche – Mediano» entra entero, sin «…». */}
+          <span
+            className={`line-clamp-3 text-balance text-[13px] leading-snug text-texto ${
+              enCarrito ? "font-bold" : "font-semibold"
+            }`}
+          >
+            {p.nombre}
+          </span>
+          {incluye && <span className="block text-[11px] font-bold leading-snug text-primary-700">{incluye}</span>}
+          {(agotado || pausado || quedaPoco) && (
+            <span className="mt-0.5 flex flex-wrap gap-1">
+              {agotado ? (
+                <EstadoFila tono="rojo">Agotado</EstadoFila>
+              ) : pausado ? (
+                <EstadoFila tono="gris">Pausado</EstadoFila>
+              ) : null}
+              {quedaPoco && <EstadoFila tono="aviso">{fmtCantidad(p.stockTotal)} disp.</EstadoFila>}
+            </span>
+          )}
+        </span>
+        {enCarrito && (
+          // La cantidad y el «−»: 36 px de alto, menos que la fila, así entrar
+          // al carrito no la agranda. El borde es un anillo, que no ocupa lugar.
+          // Tocar el número es tocar la fila (suma); sólo el «−» tiene su toque.
+          <span className="pointer-events-none relative flex h-9 shrink-0 items-center rounded-full bg-white ring-1 ring-primary">
+            <button
+              type="button"
+              onClick={onQuitar}
+              aria-label={cantidad === 1 ? `Quitar ${p.nombre} del pedido` : `Uno menos de ${p.nombre}`}
+              // En la última unidad el «−» es tacho, como en la tarjeta.
+              className={`pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full ${
+                cantidad === 1 ? "text-[#DC2626] hover:bg-[#FEF2F2]" : "text-texto-2 hover:bg-muted"
               }`}
             >
-              {p.nombre}
-            </span>
-            {incluye && <span className="block text-[11px] font-bold leading-snug text-primary-700">{incluye}</span>}
-            {(agotado || pausado || quedaPoco) && (
-              <span className="mt-0.5 flex flex-wrap gap-1">
-                {agotado ? (
-                  <EstadoFila tono="rojo">Agotado</EstadoFila>
-                ) : pausado ? (
-                  <EstadoFila tono="gris">Pausado</EstadoFila>
-                ) : null}
-                {quedaPoco && <EstadoFila tono="aviso">{fmtCantidad(p.stockTotal)} disp.</EstadoFila>}
-              </span>
-            )}
+              <Icon name={cantidad === 1 ? "trash" : "minus"} size={15} />
+            </button>
+            <span className="min-w-5 pr-3 text-center text-sm font-bold tabular-nums text-texto">{fmtNum(cantidad)}</span>
           </span>
-          <span className="shrink-0 whitespace-nowrap pl-1 text-[13px] font-extrabold tabular-nums text-primary-700">
-            {fmtMoney(p.precio)}
-          </span>
-        </button>
+        )}
+        <span className="pointer-events-none relative shrink-0 whitespace-nowrap text-[13px] font-extrabold tabular-nums text-primary-700">
+          {fmtMoney(p.precio)}
+        </span>
         {onMenu && (
           <button
             type="button"
             onClick={onMenu}
             aria-label={pausado ? `Reactivar ${p.nombre}` : `Pausar ${p.nombre}`}
             title={pausado ? "Reactivar" : "Pausar en esta sucursal"}
-            className="flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-texto-3 hover:bg-muted hover:text-texto"
+            className="relative -ml-1 flex h-10 w-8 shrink-0 items-center justify-center rounded-lg text-texto-3 hover:bg-muted hover:text-texto"
           >
             <Icon name="more" size={18} />
           </button>
         )}
       </div>
-      {enCarrito && (
-        <div className="flex justify-end pb-1.5">
-          <div className="flex h-10 items-center rounded-full border border-primary bg-white">
-            <button
-              type="button"
-              onClick={onQuitar}
-              aria-label={cantidad === 1 ? `Quitar ${p.nombre} del pedido` : `Uno menos de ${p.nombre}`}
-              // En la última unidad el «−» es tacho, como en la tarjeta.
-              className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                cantidad === 1 ? "text-[#DC2626] hover:bg-[#FEF2F2]" : "text-texto-2 hover:bg-muted"
-              }`}
-            >
-              <Icon name={cantidad === 1 ? "trash" : "minus"} size={15} />
-            </button>
-            <span className="min-w-6 text-center text-sm font-bold tabular-nums text-texto">{fmtNum(cantidad)}</span>
-            <button
-              type="button"
-              onClick={onAgregar}
-              disabled={alTope}
-              aria-label={`Uno más de ${p.nombre}`}
-              title={alTope ? "No hay más disponibles" : undefined}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50 disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <Icon name="plus" size={15} />
-            </button>
-          </div>
-        </div>
-      )}
     </li>
   );
 }
