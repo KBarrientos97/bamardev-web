@@ -99,6 +99,8 @@ import {
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
 import type { ProfesionalesDelCarrito } from "./PantallaVenta";
 import PublicarEnSitio from "./PublicarEnSitio";
+import { configPosDe } from "../../lib/configPos";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
 
 type Pantalla =
   | "venta"
@@ -250,6 +252,8 @@ function PuntoDeVenta() {
   // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
   const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
+  /** Desde acá el carrito es una columna fija al lado de los productos (ver `cobroEnLaVenta`). */
+  const pantallaAncha = useCoincideMedia("(min-width: 1024px)");
   // «Publicar en tu sitio» (PLAN-PAGINA-PRO M4): lo diario se publica desde la
   // caja. Con la feature explícita (no falla abierto: un plan sin sitio no
   // tiene que ver el botón) y el permiso que pide el backend.
@@ -482,6 +486,12 @@ function PuntoDeVenta() {
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   /** Las propinas anotadas en el cobro antes de pasar a "fiado". */
   const [propinasCredito, setPropinasCredito] = useState<PropinaInput[]>([]);
+  /**
+   * A dónde vuelve el «atrás» del fiado: a la pantalla de cobro, de donde se
+   * llega siempre, o a la venta cuando se fió desde el cobro incrustado en el
+   * carrito (Configuración › Punto de venta, 16-nov).
+   */
+  const [volverDeCredito, setVolverDeCredito] = useState<"cobro" | "venta">("cobro");
   /** Veces que el backend frenó el fiado por el límite del cliente (ver `venderACredito`). */
   const [rechazosPorLimite, setRechazosPorLimite] = useState(0);
   const [enviando, setEnviando] = useState(false);
@@ -1056,6 +1066,44 @@ function PuntoDeVenta() {
     if (!cobertura || cobertura.cubre) return seguir();
     setCobroIncompleto({ texto: textoCoberturaIncompleta(cobertura, fmtMoney), seguir });
   };
+  // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
+  // delivery ya define quién y cuándo paga, y una mesa se fía desde el
+  // salón — el flujo de crédito arma la venta desde el carrito, que
+  // cobrando una mesa está vacío. Una venta en 0 (todo con paquete) no
+  // tiene nada que fiar. Y con el permiso de fiar, no sólo la feature:
+  // el dueño se lo puede sacar al cajero, y el backend responde 403
+  // desde el 18-oct (antes lo dejaba pasar igual). Y sólo donde se ve
+  // «Cuentas por cobrar»: en el instituto está oculta a propósito (lo
+  // que se debe son cuotas), y un fiado hecho ahí no se podría cobrar.
+  // Vale igual para el cobro de siempre y para el que va en el carrito.
+  const sePuedeFiar =
+    tieneFeature(negocio?.features, "fiado") &&
+    tienePermiso(usuario, "credito.otorgar") &&
+    puede("creditos") &&
+    !datosEntrega &&
+    !mesaCobrando &&
+    totalCarrito > 0;
+
+  /**
+   * El cobro en la misma pantalla (Configuración › Punto de venta, 16-nov):
+   * el medio de pago, el efectivo y «Confirmar» quedan en el carrito, al lado
+   * de los productos. Sólo donde el carrito es una columna fija (pantalla de
+   * 1024 px o más) y en la venta de mostrador de siempre: la farmacia, cobrar
+   * una cita o una mesa, y armar un delivery o un recoger siguen con su
+   * pantalla de cobro, igual que si el ajuste no existiera. Si la ventana se
+   * achica en medio de una venta, vuelve el «Cobrar» de siempre (lo tecleado en
+   * el cobro se pierde; el carrito no).
+   */
+  const cobroEnLaVenta =
+    configPosDe(negocio).cobro === "EN_VENTA" &&
+    pantallaAncha &&
+    !esFarmacia(rubro) &&
+    !ventaFarmacia &&
+    !citaCobrando &&
+    !mesaCobrando &&
+    !datosEntrega &&
+    tipoPedido === "LOCAL";
+
   const dialogoCobroIncompleto = (
     <Confirmar
       abierto={!!cobroIncompleto}
@@ -1361,25 +1409,13 @@ function PuntoDeVenta() {
           // propina cobrada desde la web llegaba al backend.
           mesaCobrando ? void cobrar(pagos, extra) : confirmandoCita(() => void cobrar(pagos, extra))
         }
-        // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
-        // delivery ya define quién y cuándo paga, y una mesa se fía desde el
-        // salón — el flujo de crédito arma la venta desde el carrito, que
-        // cobrando una mesa está vacío. Una venta en 0 (todo con paquete) no
-        // tiene nada que fiar. Y con el permiso de fiar, no sólo la feature:
-        // el dueño se lo puede sacar al cajero, y el backend responde 403
-        // desde el 18-oct (antes lo dejaba pasar igual). Y sólo donde se ve
-        // «Cuentas por cobrar»: en el instituto está oculta a propósito (lo
-        // que se debe son cuotas), y un fiado hecho ahí no se podría cobrar.
+        // Cuándo se puede fiar: ver `sePuedeFiar`.
         onCredito={
-          tieneFeature(negocio?.features, "fiado") &&
-          tienePermiso(usuario, "credito.otorgar") &&
-          puede("creditos") &&
-          !datosEntrega &&
-          !mesaCobrando &&
-          totalCarrito > 0
+          sePuedeFiar
             ? (extra) => {
                 // Las propinas que se anotaron en el cobro viajan con el fiado.
                 setPropinasCredito(extra?.propinas ?? []);
+                setVolverDeCredito("cobro");
                 setPantalla("credito");
               }
             : undefined
@@ -1402,7 +1438,7 @@ function PuntoDeVenta() {
         avisoPropinas={textoPropinasCredito(propinasCredito, formasPago.datos ?? [])}
         onAtras={() => {
           setError("");
-          setPantalla("cobro");
+          setPantalla(volverDeCredito);
         }}
         onConfirmar={(credito, pagos) =>
           confirmandoCita(() => void venderACredito(credito, pagos, propinasCredito))
@@ -1458,8 +1494,36 @@ function PuntoDeVenta() {
   if (productos.cargando) return <Cargando texto="Cargando el catálogo…" />;
 
   return (
+    <>
+    {/* «La venta no cubre la cita» es de cobrar una cita, que nunca va en el
+        carrito; se dibuja igual por si el cobro incrustado llega a pedirlo. */}
+    {cobroEnLaVenta && dialogoCobroIncompleto}
     <PantallaVenta
       catalogoAgregados={catalogoAgregados}
+      cobro={
+        cobroEnLaVenta
+          ? {
+              total: totalCarrito,
+              formasPago: formasPago.datos ?? [],
+              // Belleza (propinas): los de la venta directa; en el restaurante, nadie.
+              profesionales: profesionalesDeLaVenta(carrito, asignacion, profesionalesPos),
+              // El MISMO cobro que la pantalla aparte: el cupo del plan, la
+              // idempotencia y el recibo después.
+              onConfirmar: (pagos, extra) => confirmandoCita(() => void cobrar(pagos, extra)),
+              onCredito: sePuedeFiar
+                ? (extra) => {
+                    setError("");
+                    setPropinasCredito(extra?.propinas ?? []);
+                    // Su «atrás» vuelve a la venta: no hay pantalla de cobro de la que se vino.
+                    setVolverDeCredito("venta");
+                    setPantalla("credito");
+                  }
+                : undefined,
+              enviando,
+              error,
+            }
+          : undefined
+      }
       productos={productos.datos ?? []}
       categorias={categorias.datos ?? []}
       // Con profesional, el precio propio ya en cada línea; si no, el mismo.
@@ -1788,6 +1852,7 @@ function PuntoDeVenta() {
         </>
       }
     />
+    </>
   );
 }
 

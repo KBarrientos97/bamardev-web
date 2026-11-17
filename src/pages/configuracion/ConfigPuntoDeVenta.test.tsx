@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConfigPos } from "../../lib/configPos";
 
 /**
  * Configuración › Punto de venta (16-nov): la vista de los productos, dónde se
@@ -22,7 +23,7 @@ vi.mock("../../lib/api", () => ({
 import { api } from "../../lib/api";
 import ConfigPuntoDeVenta from "./ConfigPuntoDeVenta";
 
-const DE_SIEMPRE = { vista: "TARJETAS", cobro: "APARTE", iconos: true, filtros: true, ordenCategorias: [] as number[] };
+const DE_SIEMPRE: ConfigPos = { vista: "TARJETAS", cobro: "APARTE", iconos: true, filtros: true, ordenCategorias: [] };
 const CATEGORIAS = [
   { id: 1, nombre: "Pollos", activo: true },
   { id: 2, nombre: "Bebidas", activo: true },

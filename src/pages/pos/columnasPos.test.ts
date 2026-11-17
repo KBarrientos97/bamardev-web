@@ -84,8 +84,9 @@ describe("columnasQueEntran", () => {
 });
 
 describe("repartirEnColumnas", () => {
-  const alto = (b: { n: number }) => b.n;
-  const nombres = (pilas: { nombre: string }[][]) => pilas.map((pila) => pila.map((b) => b.nombre));
+  type Bloque = { nombre: string; n: number };
+  const alto = (b: Bloque) => b.n;
+  const nombres = (pilas: Bloque[][]) => pilas.map((pila) => pila.map((b) => b.nombre));
 
   it("con tantas categorías como columnas, cada una tiene la suya aunque una sea larga", () => {
     // Lo que el navegador hacía con columnas de CSS: Pollos sola y las otras dos juntas.

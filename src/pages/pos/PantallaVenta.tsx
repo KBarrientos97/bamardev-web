@@ -14,7 +14,10 @@ import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
+import type { Categoria, Consumo, FormaPago, LotesDelArticulo, PagoInput, Producto } from "../../types";
+import type { PropinaInput } from "../../lib/belleza/apiExtras";
+import type { ProfesionalCobro } from "./belleza/ExtrasCobro";
+import PantallaCobro from "./PantallaCobro";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import { claveDeLinea, controlaStock, topeStock, type Carrito, type ClaveLinea, type LineaCarrito } from "./useCarrito";
 import { gruposDelProducto, textoIncluye } from "../../lib/agregados/calculo";
@@ -50,11 +53,20 @@ export default function PantallaVenta({
   plataformas,
   modificacion,
   catalogoAgregados,
+  cobro,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
+  /**
+   * El cobro en la misma pantalla (Configuración › Punto de venta, 16-nov):
+   * en la columna del carrito, donde va «Cobrar», el medio de pago, el
+   * efectivo y «Confirmar cobro». Lo arma el POS sólo cuando vale (el ajuste,
+   * pantalla ancha, ni cita ni mesa); sin esto, «Cobrar» lleva a la pantalla de
+   * cobro, como siempre.
+   */
+  cobro?: CobroEnLaVenta;
   /**
    * Se está modificando una venta ya cobrada (`ModificarVenta`, 15-nov): el
    * carrito es el de esa venta y el pie no dice "Cobrar" sino lo que pasa con
@@ -290,8 +302,55 @@ export default function PantallaVenta({
     setCarritoAbierto(false);
   };
 
-  const panelCarrito = (
+  /**
+   * Confirmar el cobro incrustado con una nota todavía en el campo («sin
+   * cebolla» tecleado y, sin salir, Confirmar): guardar la nota es un cambio
+   * de estado del carrito, y la venta que se mandara en ese mismo toque se
+   * armaría con las líneas de antes, sin la nota. Como pantalla aparte no pasa
+   * porque Cobrar cambia de pantalla y se confirma en otro toque. Así que se
+   * guarda la nota y el cobro sale recién en el próximo dibujo, con el carrito
+   * ya al día (y con el mismo `cobrar` de siempre, que es el que hace valer la
+   * idempotencia).
+   */
+  // Lo que se pasó a «Confirmar» tal cual (con o sin el `extra` de las
+  // propinas), para que el POS lo reciba igual que sin la nota.
+  const [cobroPendiente, setCobroPendiente] = useState<Parameters<CobroEnLaVenta["onConfirmar"]> | null>(null);
+  useEffect(() => {
+    if (!cobroPendiente || !cobro) return;
+    setCobroPendiente(null);
+    cobro.onConfirmar(...cobroPendiente);
+  }, [cobroPendiente, cobro]);
+  // Ni modificando una venta (su pie dice qué pasa con la diferencia) ni en la
+  // farmacia (la receta se pide al tocar «Cobrar»): ahí, «Cobrar» de siempre
+  // aunque llegue el cobro. El POS ya no lo manda en esos casos; esto lo asegura.
+  const cobroDelCarrito: CobroEnLaVenta | undefined =
+    cobro && !modificacion && !esFarmacia(rubro)
+      ? {
+          ...cobro,
+          onConfirmar: (...lo) => {
+            if (notasAbiertas.current.size === 0) return cobro.onConfirmar(...lo);
+            confirmarNotasAbiertas();
+            setCobroPendiente(lo);
+          },
+          // El fiado se arma en su pantalla, después: alcanza con guardar la nota antes de ir.
+          onCredito: cobro.onCredito
+            ? (extra) => {
+                confirmarNotasAbiertas();
+                cobro.onCredito?.(extra);
+              }
+            : undefined,
+        }
+      : undefined;
+
+  /**
+   * El carrito: en la columna de la derecha (desde lg) y en la hoja del
+   * celular. El cobro incrustado va sólo en la columna: en la hoja nunca
+   * corresponde (es pantalla angosta), y así un carrito que quedó abierto al
+   * agrandar la ventana no dibuja un segundo cobro escondido.
+   */
+  const panelCarrito = (conCobro: boolean) => (
     <PanelCarrito
+      cobro={conCobro ? cobroDelCarrito : undefined}
       carrito={carrito}
       sucursalId={sucursalId}
       descuentos={descuentos}
@@ -437,7 +496,7 @@ export default function PantallaVenta({
 
       {/* Carrito: columna fija desde lg, igual que la app en tablet horizontal */}
       <aside className="hidden w-[380px] shrink-0 border-l border-borde bg-white lg:flex lg:flex-col xl:w-[420px]">
-        {panelCarrito}
+        {panelCarrito(true)}
       </aside>
 
       {/* Móvil y tablet vertical: píldora flotante + hoja inferior.
@@ -505,7 +564,7 @@ export default function PantallaVenta({
             onClick={cerrarCarrito}
           />
           <div className="relative flex max-h-[85dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl">
-            {panelCarrito}
+            {panelCarrito(false)}
           </div>
         </div>
       )}
@@ -764,6 +823,23 @@ export interface ModoModificacion {
   vacio: string;
 }
 
+/**
+ * El cobro en la misma pantalla de la venta: lo mismo que el POS le pasa a la
+ * pantalla de cobro de siempre, para dibujarlo en el carrito.
+ */
+export interface CobroEnLaVenta {
+  /** Lo que se cobra: el mismo total que tendría la pantalla de cobro. */
+  total: number;
+  formasPago: FormaPago[];
+  /** Belleza (propinas); en el restaurante, nadie. */
+  profesionales?: ProfesionalCobro[];
+  onConfirmar: (pagos: PagoInput[], extra?: { propinas?: PropinaInput[]; propinaMesa?: number }) => void;
+  /** «Vender a crédito (fiado)», con las mismas condiciones de siempre; sin esto, no se ofrece. */
+  onCredito?: (extra?: { propinas?: PropinaInput[] }) => void;
+  enviando: boolean;
+  error: string;
+}
+
 export interface ExtraDescuentos {
   /** El total a cobrar (el neto que devolvió la cotización). */
   total: number;
@@ -786,7 +862,10 @@ function PanelCarrito({
   plataformas,
   onCobrar,
   onCerrar,
+  cobro,
 }: {
+  /** El cobro incrustado en vez de «Cobrar» (ver `PantallaVenta`). */
+  cobro?: CobroEnLaVenta;
   carrito: Carrito;
   sucursalId?: number | null;
   descuentos?: ExtraDescuentos;
@@ -826,6 +905,21 @@ function PanelCarrito({
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
   const [vaciando, setVaciando] = useState(false);
+  const botonesPlataformas =
+    plataformas &&
+    plataformas.disponibles.map((p) => (
+      <Boton
+        key={p}
+        variante="ghost"
+        onClick={() => plataformas.onElegir(p)}
+        disabled={descuentos?.bloqueado || !!bloqueoCobro}
+        className="min-w-0 flex-1 px-2"
+        // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
+        style={{ color: colorDePlataforma(p), borderColor: colorDePlataforma(p) }}
+      >
+        <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
+      </Boton>
+    ));
 
   return (
     <>
@@ -902,7 +996,9 @@ function PanelCarrito({
           )}
 
           {lineasExtra}
-          <ul className="min-h-0 flex-1 divide-y divide-borde-soft overflow-y-auto">
+          {/* Lo único que scrollea. Con el cobro abajo, con un mínimo: el
+              medio de pago o el QR no pueden dejar las líneas sin lugar. */}
+          <ul className={`${cobro ? "min-h-28" : "min-h-0"} flex-1 divide-y divide-borde-soft overflow-y-auto`}>
             {carrito.lineas.map((l) => (
               <FilaCarrito
                 key={claveDeLinea(l)}
@@ -923,7 +1019,7 @@ function PanelCarrito({
             ))}
           </ul>
 
-          <div className="border-t border-borde-soft px-4 py-3">
+          <div className={`${cobro ? "shrink-0 " : ""}border-t border-borde-soft px-4 py-3`}>
             <dl className="space-y-1 text-sm">
               <div className="flex justify-between text-texto-2">
                 <dt>
@@ -939,6 +1035,16 @@ function PanelCarrito({
               {modificacion?.resumen}
             </dl>
 
+            {cobro ? (
+              // Con el cobro en la misma pantalla no hay «Cobrar»: lo que sigue
+              // es el cobro mismo. Lo que lo frena se dice igual, acá.
+              bloqueoCobro && (
+                <p role="status" className="mt-1.5 text-center text-[12px] font-semibold text-warning-text">
+                  {bloqueoCobro}
+                </p>
+              )
+            ) : (
+              <>
             <Boton
               onClick={() => {
                 if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
@@ -957,24 +1063,30 @@ function PanelCarrito({
             {/* Pedidos de Yango / PedidosYa: no se cobran, así que van como
                 alternativa a «Cobrar», más discretos. Un paquete sin cliente
                 (`bloqueoCobro`) tampoco se registra como pedido. */}
-            {plataformas && (
-              <div className="mt-2 flex gap-2">
-                {plataformas.disponibles.map((p) => (
-                  <Boton
-                    key={p}
-                    variante="ghost"
-                    onClick={() => plataformas.onElegir(p)}
-                    disabled={descuentos?.bloqueado || !!bloqueoCobro}
-                    className="min-w-0 flex-1 px-2"
-                    // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
-                    style={{ color: colorDePlataforma(p), borderColor: colorDePlataforma(p) }}
-                  >
-                    <span aria-hidden="true">🛵</span> {NOMBRE_PLATAFORMA[p]}
-                  </Boton>
-                ))}
-              </div>
+            {botonesPlataformas && <div className="mt-2 flex gap-2">{botonesPlataformas}</div>}
+              </>
             )}
           </div>
+
+          {/* El cobro en la misma pantalla (16-nov): el medio de pago, el
+              efectivo y «Confirmar cobro», con el fiado debajo; y después, como
+              alternativa a cobrar, los pedidos de Yango / PedidosYa. */}
+          {cobro && (
+            <PantallaCobro
+              incrustado
+              total={cobro.total}
+              formasPago={cobro.formasPago}
+              profesionales={cobro.profesionales}
+              onAtras={() => {}}
+              onConfirmar={cobro.onConfirmar}
+              onCredito={cobro.onCredito}
+              // Lo mismo que apagaba «Cobrar»: la cotización en vuelo, el paquete sin cliente.
+              bloqueado={!!descuentos?.bloqueado || !!bloqueoCobro}
+              enviando={cobro.enviando}
+              error={cobro.error}
+            />
+          )}
+          {cobro && botonesPlataformas && <div className="flex shrink-0 gap-2 px-4 pb-3">{botonesPlataformas}</div>}
         </>
       )}
     </>
