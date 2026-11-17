@@ -97,6 +97,7 @@ import type {
   TurnoMesero,
   ZonaSalon,
 } from "../types/salon";
+import type { CatalogoAgregados, ConfigAgregados, GrupoAgregados, GuardarGrupoInput } from "./agregados/tipos";
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
@@ -541,12 +542,15 @@ export const api = {
     * sin él, el POS mostraba el precio de lista y la venta cobraba el de la
     * sucursal, así que el cobro fallaba con "los pagos no suman el total".
     */
-  getProductos: (eliminados?: boolean, sucursalId?: number | null) =>
+  getProductos: (eliminados?: boolean, sucursalId?: number | null, paraVenta?: boolean) =>
     request<Producto[]>(
       `/productos${qs({
         // El backend compara el texto `=== 'true'`: con `1` daba el activo.
         eliminados: eliminados ? "true" : undefined,
         sucursalId: sucursalId ?? undefined,
+        // La grilla del POS: sin los toppings (`soloAgregado`) cuando el negocio
+        // usa agregados. Sin el ajuste el backend lo ignora (PLAN-AGREGADOS §7.6).
+        paraVenta: paraVenta ? "true" : undefined,
       })}`,
     ),
   getProducto: (id: number, sucursalId?: number | null) =>
@@ -946,6 +950,26 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ controlaStock: true, almacenId, conteo }),
     }),
+
+  // ── Productos con agregados (toppings, PLAN-AGREGADOS §7) ──────────────────
+  /** El ajuste de Configuración; pide `negocio.configurar`, como el del stock. */
+  configAgregados: () => request<ConfigAgregados>("/agregados/config"),
+  cambiarUsaAgregados: (usaAgregados: boolean) =>
+    request<ConfigAgregados>("/agregados/config", {
+      method: "PATCH",
+      body: JSON.stringify({ usaAgregados }),
+    }),
+  /** Lo que el POS necesita para dibujar la hoja; con el ajuste apagado viene vacío. */
+  catalogoAgregados: (sucursalId?: number | null) =>
+    request<CatalogoAgregados>(`/agregados/catalogo${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /** Inventario → «Agregados» (`catalogo.editar`); con el ajuste apagado el backend da 403. */
+  getGruposAgregados: () => request<GrupoAgregados[]>("/agregados/grupos"),
+  crearGrupoAgregados: (input: GuardarGrupoInput) =>
+    request<GrupoAgregados>("/agregados/grupos", { method: "POST", body: JSON.stringify(input) }),
+  actualizarGrupoAgregados: (id: number, input: GuardarGrupoInput) =>
+    request<GrupoAgregados>(`/agregados/grupos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  eliminarGrupoAgregados: (id: number) =>
+    request<{ mensaje?: string }>(`/agregados/grupos/${id}`, { method: "DELETE" }),
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),

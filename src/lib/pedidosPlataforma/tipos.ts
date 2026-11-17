@@ -9,6 +9,8 @@
  * liquidación. Sí descuentan stock (lo hace el backend).
  */
 
+import type { AgregadoInput } from "../agregados/tipos";
+
 /** Así viaja siempre, en el cuerpo y en las respuestas. */
 export type Plataforma = "YANGO" | "PEDIDOS_YA";
 
@@ -27,6 +29,12 @@ export const FEATURE_PLATAFORMA: Record<Plataforma, string> = {
 };
 
 export interface DetallePedidoPlataforma {
+  /** Con toppings (PLAN-AGREGADOS §7.3) cada renglón trae su id para que las hijas lo señalen. */
+  id?: number;
+  /** El renglón del vaso del que cuelga este topping; null en el vaso. */
+  lineaPadreId?: number | null;
+  /** El topping va dentro de lo incluido (Bs 0). */
+  incluido?: boolean;
   productoId: number | null;
   /** Foto del nombre al registrar: el reporte no cambia si después lo renombran. */
   nombre: string;
@@ -77,7 +85,7 @@ export interface PedidoPlataformaInput {
   fechaCliente?: string;
   /** Viene de la cola: el servidor respeta el precio del equipo. */
   encolado?: boolean;
-  detalles: { productoId: number; cantidad: number; precio?: number }[];
+  detalles: { productoId: number; cantidad: number; precio?: number; agregados?: AgregadoInput[] }[];
 }
 
 export interface PeriodoLiquidacion {
