@@ -98,7 +98,7 @@ describe("repartirEnColumnas", () => {
     expect(nombres(repartirEnColumnas(bloques, 3, alto))).toEqual([["Pollos"], ["Bebidas"], ["Extras"]]);
   });
 
-  it("con más categorías, la siguiente va a la columna más baja (con empate, la de la izquierda)", () => {
+  it("con más categorías, en orden como un diario y con la columna más alta lo más baja posible", () => {
     const bloques = [
       { nombre: "A", n: 10 },
       { nombre: "B", n: 3 },
@@ -106,11 +106,45 @@ describe("repartirEnColumnas", () => {
       { nombre: "D", n: 8 },
       { nombre: "E", n: 2 },
     ];
-    expect(nombres(repartirEnColumnas(bloques, 3, alto))).toEqual([["A"], ["B", "D"], ["C", "E"]]);
+    expect(nombres(repartirEnColumnas(bloques, 3, alto))).toEqual([["A"], ["B", "C"], ["D", "E"]]);
+  });
+
+  it("seis categorías en dos columnas se leen en el orden del dueño, no salteadas (QA 16-nov)", () => {
+    // «A la columna más baja» dejaba M, XL a la izquierda y C, L a la derecha.
+    const bloques = [
+      { nombre: "M", n: 4 },
+      { nombre: "C", n: 3 },
+      { nombre: "L", n: 4 },
+      { nombre: "XL", n: 4 },
+      { nombre: "Toppings", n: 10 },
+      { nombre: "Arroz con leche", n: 5 },
+    ];
+    expect(nombres(repartirEnColumnas(bloques, 2, alto))).toEqual([
+      ["M", "C", "L", "XL"],
+      ["Toppings", "Arroz con leche"],
+    ]);
+  });
+
+  it("con empate, la columna de la izquierda lleva más", () => {
+    const parejos = ["A", "B", "C"].map((nombre) => ({ nombre, n: 1 }));
+    expect(nombres(repartirEnColumnas(parejos, 2, alto))).toEqual([["A", "B"], ["C"]]);
+  });
+
+  it("ninguna columna queda vacía si hay categorías para todas", () => {
+    const bloques = [
+      { nombre: "A", n: 30 },
+      { nombre: "B", n: 1 },
+      { nombre: "C", n: 1 },
+      { nombre: "D", n: 1 },
+    ];
+    const pilas = repartirEnColumnas(bloques, 4, alto);
+    expect(pilas.every((p) => p.length === 1)).toBe(true);
+    expect(nombres(repartirEnColumnas(bloques, 2, alto))).toEqual([["A"], ["B", "C", "D"]]);
   });
 
   it("con más columnas que categorías sobran columnas vacías (cada bloque conserva su ancho)", () => {
     expect(nombres(repartirEnColumnas([{ nombre: "A", n: 1 }], 3, alto))).toEqual([["A"], [], []]);
+    expect(nombres(repartirEnColumnas([], 2, alto))).toEqual([[], []]);
   });
 
   it("una columna: todo en orden, uno debajo del otro", () => {

@@ -78,26 +78,58 @@ export function columnasQueEntran(ancho: number, minimo: number, separacion: num
 }
 
 /**
- * Reparte los bloques en `columnas` pilas: cada bloque va a la pila más baja
- * (con empate, la de más a la izquierda). Con tantas categorías como columnas
- * o menos, cada una tiene la suya —la comida a un lado, las bebidas al otro—;
- * con más, las cortas se apilan sin dejar huecos. Un bloque nunca se parte
- * entre dos columnas.
+ * Reparte los bloques en `columnas` pilas, EN ORDEN: la primera columna lleva
+ * las primeras categorías, la segunda las que siguen, y así, como un diario.
+ * Se lee de arriba abajo y de izquierda a derecha en el orden que eligió el
+ * dueño. Entre todos los cortes posibles se elige el que deja la columna más
+ * alta lo más baja posible, así quedan parejas. Con tantas categorías como
+ * columnas o menos, cada una tiene la suya —la comida a un lado, las bebidas
+ * al otro— y las columnas que sobran quedan vacías (cada bloque conserva su
+ * ancho). Un bloque nunca se parte entre dos columnas.
  *
  * Se hace a mano y no con columnas de CSS porque el navegador, al equilibrar
  * las alturas, juntaba dos categorías cortas en una columna y dejaba otra
  * vacía: con «Pollos» de 20 productos, «Bebidas» y «Extras» quedaban una
- * debajo de la otra al lado, y la tercera columna en blanco.
+ * debajo de la otra al lado, y la tercera columna en blanco. Y no «a la
+ * columna más baja» (lo primero que se probó en QA, 16-nov): con seis
+ * categorías en dos columnas el orden se leía salteado (M, C / XL, L).
  */
 export function repartirEnColumnas<T>(bloques: T[], columnas: number, alto: (b: T) => number): T[][] {
-  const n = Math.max(1, Math.floor(columnas));
-  const pilas: T[][] = Array.from({ length: n }, () => []);
-  const altos = new Array<number>(n).fill(0);
-  for (const b of bloques) {
-    let menor = 0;
-    for (let i = 1; i < n; i++) if (altos[i] < altos[menor]) menor = i;
-    pilas[menor].push(b);
-    altos[menor] += alto(b);
+  const total = Math.max(1, Math.floor(columnas));
+  const n = bloques.length;
+  const k = Math.min(total, n);
+  const vacias = (cuantas: number): T[][] => Array.from({ length: cuantas }, () => []);
+  if (k <= 1) return [[...bloques], ...vacias(total - 1)];
+
+  // suma[i] = alto de los primeros i bloques.
+  const suma = [0];
+  for (const b of bloques) suma.push(suma[suma.length - 1] + alto(b));
+  const tramo = (desde: number, hasta: number) => suma[hasta] - suma[desde];
+
+  // mejor[j][i]: la columna más alta al poner los primeros i bloques en j
+  // columnas (ninguna vacía); corte[j][i]: dónde empieza la última de ellas.
+  const mejor: number[][] = Array.from({ length: k + 1 }, () => new Array<number>(n + 1).fill(Infinity));
+  const corte: number[][] = Array.from({ length: k + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 1; i <= n; i++) mejor[1][i] = tramo(0, i);
+  for (let j = 2; j <= k; j++) {
+    for (let i = j; i <= n; i++) {
+      for (let p = j - 1; p < i; p++) {
+        const masAlta = Math.max(mejor[j - 1][p], tramo(p, i));
+        // `<=`: con empate gana el corte más tardío, así la columna de la
+        // izquierda lleva más, como se llena un diario.
+        if (masAlta <= mejor[j][i]) {
+          mejor[j][i] = masAlta;
+          corte[j][i] = p;
+        }
+      }
+    }
   }
-  return pilas;
+  const pilas: T[][] = [];
+  let hasta = n;
+  for (let j = k; j >= 1; j--) {
+    const desde = j === 1 ? 0 : corte[j][hasta];
+    pilas.unshift(bloques.slice(desde, hasta));
+    hasta = desde;
+  }
+  return [...pilas, ...vacias(total - k)];
 }
