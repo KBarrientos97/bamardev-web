@@ -56,19 +56,25 @@ export default function HojaAgregados({
       ancho="max-w-lg"
       cerrarAlClicAfuera={false}
       acciones={
-        <div className="flex w-full items-center gap-3">
-          <div className="min-w-0 flex-1">
+        // En el celular el total y los dos botones no entran en una fila: el
+        // total se apretaba y «Bs 10,00» se partía en dos renglones. El monto
+        // no se parte y, si no hay lugar, los botones bajan juntos a la fila
+        // de abajo; en la compu queda todo en una fila, como siempre.
+        <div className="flex w-full flex-wrap items-center justify-end gap-3">
+          <div className="mr-auto">
             <p className="text-[11px] font-bold uppercase tracking-wide text-texto-4">Total</p>
-            <p className="text-xl font-extrabold text-texto" aria-live="polite" data-testid="total-hoja">
+            <p className="whitespace-nowrap text-xl font-extrabold text-texto" aria-live="polite" data-testid="total-hoja">
               {fmtMoney(total)}
             </p>
           </div>
-          <Boton variante="ghost" onClick={onClose}>
-            Cancelar
-          </Boton>
-          <Boton icono="check" onClick={() => onConfirmar(elegidos)}>
-            {inicial ? "Guardar cambios" : "Agregar al pedido"}
-          </Boton>
+          <div className="flex gap-3">
+            <Boton variante="ghost" onClick={onClose}>
+              Cancelar
+            </Boton>
+            <Boton icono="check" onClick={() => onConfirmar(elegidos)}>
+              {inicial ? "Guardar cambios" : "Agregar al pedido"}
+            </Boton>
+          </div>
         </div>
       }
     >
@@ -102,7 +108,10 @@ export default function HojaAgregados({
                     <li key={o.productoId} className="flex items-center gap-2.5 px-3 py-2">
                       <IconoProducto nombre={o.nombre} icono={o.icono} categoria={grupo.nombre} size={32} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-texto">{o.nombre}</span>
+                        {/* El nombre entero, en dos renglones si hace falta (como en
+                            la hoja de la página del cliente): cortado con «…», en
+                            el celular quedaba «Topping chispas de cho…». */}
+                        <span className="block break-words text-sm font-semibold text-texto">{o.nombre}</span>
                         <span className="block text-xs text-texto-3">
                           {fmtMoney(grupo.precioExtra != null ? grupo.precioExtra : o.precio)}
                         </span>
