@@ -349,8 +349,19 @@ describe("la vista en columnas", () => {
     await montar();
     fireEvent.change(screen.getByPlaceholderText("Buscar producto o código"), { target: { value: "pollo" } });
     expect(columnas()).toEqual([["Pollos", ["Pollo entero", "Cuarto de pollo"]]]);
+    // Una sola categoría: usa el ancho.
+    expect(within(screen.getByRole("region", { name: "Pollos" })).getByRole("list").className).toContain("columns-");
     fireEvent.change(screen.getByPlaceholderText("Buscar producto o código"), { target: { value: "nada así" } });
     expect(screen.getByText("Sin productos")).toBeInTheDocument();
+  });
+
+  it("una búsqueda que cae en varias categorías: una columna por categoría, sin repartir filas (QA 16-nov)", async () => {
+    await montar();
+    fireEvent.change(screen.getByPlaceholderText("Buscar producto o código"), { target: { value: "2 l" } });
+    expect(columnas().map(([n]) => n)).toEqual(["Bebidas"]);
+    fireEvent.change(screen.getByPlaceholderText("Buscar producto o código"), { target: { value: "e" } });
+    expect(columnas().length).toBeGreaterThan(1);
+    for (const lista of screen.getAllByRole("list")) expect(lista.className).not.toContain("columns-");
   });
 
   it("con todo a la vista, las filas no se reparten: una categoría no se parte entre columnas", async () => {

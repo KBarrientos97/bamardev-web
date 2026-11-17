@@ -476,8 +476,6 @@ export default function PantallaVenta({
             <VistaColumnas
               productos={filtrados}
               categorias={categoriasPos}
-              // Una categoría elegida o una búsqueda: pocos bloques, las filas usan el ancho.
-              repartir={cat !== TODAS || q.trim() !== ""}
               enCarrito={enCarrito}
               conIcono={config.iconos}
               agotadosHoy={agotadosHoy}

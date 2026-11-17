@@ -48,7 +48,6 @@ const filete = (b: BloqueCategoria) => (b.lugar < 0 ? FILETE_OTROS : FILETES[b.l
 export default function VistaColumnas({
   productos,
   categorias,
-  repartir,
   enCarrito,
   conIcono,
   agotadosHoy,
@@ -62,11 +61,6 @@ export default function VistaColumnas({
   productos: Producto[];
   /** En el orden del dueño. */
   categorias: Categoria[];
-  /**
-   * Hay una categoría elegida o una búsqueda: son pocos bloques y las filas se
-   * reparten en columnas para usar el ancho, en vez de una lista larga y finita.
-   */
-  repartir: boolean;
   enCarrito: Map<number, number>;
   conIcono: boolean;
   agotadosHoy: Set<number>;
@@ -80,6 +74,14 @@ export default function VistaColumnas({
   const bloques = useMemo(() => agruparPorCategoria(productos, categorias), [productos, categorias]);
   const [medir, ancho] = useAncho();
   const columnas = columnasQueEntran(ancho, ANCHO_COLUMNA, SEPARACION);
+  /**
+   * Una sola categoría a la vista (la elegida en los chips, una búsqueda que
+   * cae en una sola, o un negocio con una): ocupa todo el ancho y sus filas se
+   * reparten en columnas, en vez de una lista larga y finita al costado de
+   * columnas vacías. Con varias, una columna por categoría: buscando «nutella»
+   * salían cinco bloques a todo el ancho con una fila cada uno (QA 16-nov).
+   */
+  const repartir = bloques.length === 1;
   // El encabezado pesa más o menos lo que una fila.
   const pilas = useMemo(
     () => repartirEnColumnas(bloques, repartir ? 1 : columnas, (b) => b.productos.length + 1),
@@ -120,8 +122,8 @@ export default function VistaColumnas({
                   {fmtNum(b.productos.length)}
                 </span>
               </header>
-              {/* Con una categoría elegida (o buscando) las filas usan el ancho:
-                  se reparten en columnas, y cada fila entera en la suya. */}
+              {/* Sola, la categoría usa el ancho: sus filas se reparten en
+                  columnas, y cada fila entera en la suya. */}
               <ul className={repartir ? "columns-[15rem] gap-x-3" : undefined}>{b.productos.map(fila)}</ul>
             </section>
           ))}
