@@ -135,6 +135,14 @@ export default function PantallaVenta({
     () => ordenarCategorias(categorias, config.ordenCategorias),
     [categorias, config.ordenCategorias],
   );
+  /**
+   * Se está registrando el cobro incrustado: el catálogo y el carrito quedan
+   * quietos hasta que vuelva. La venta ya salió con lo que había; un producto
+   * tocado en ese momento entraba al carrito y se perdía al vaciarse después
+   * del cobro, sin que nadie lo cobrara. (Como pantalla aparte no pasa: el
+   * catálogo no está a la vista mientras se cobra.)
+   */
+  const quieto = !!cobro?.enviando && !modificacion && !esFarmacia(rubro);
   const [q, setQ] = useState("");
   const [catElegida, setCat] = useState<string>(TODAS);
   // Sin la fila de chips no hay cómo elegir otra cosa que «Todos»: si el ajuste
@@ -251,6 +259,7 @@ export default function PantallaVenta({
   } | null>(null);
   /** Suma el producto al carrito: con grupo de toppings abre su hoja, sin él entra directo. */
   const pedirAgregar = (p: Producto) => {
+    if (quieto) return;
     if (gruposDelProducto(catalogoAgregados, p.id).length > 0) setHojaAgregados({ producto: p });
     else carrito.agregar(p);
   };
@@ -261,11 +270,13 @@ export default function PantallaVenta({
    * sin volver a preguntar.
    */
   const tocarProducto = (p: Producto) => {
+    if (quieto) return;
     if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
     else pedirAgregar(p);
   };
   /** El «−» de la tarjeta baja la última línea de ese producto (puede haber varias con toppings). */
   const quitarUna = (p: Producto) => {
+    if (quieto) return;
     const suyas = carrito.lineas.filter((l) => l.producto.id === p.id);
     const ultima = suyas[suyas.length - 1];
     if (ultima) carrito.setCantidad(claveDeLinea(ultima), ultima.cantidad - 1);
@@ -351,6 +362,7 @@ export default function PantallaVenta({
   const panelCarrito = (conCobro: boolean) => (
     <PanelCarrito
       cobro={conCobro ? cobroDelCarrito : undefined}
+      quieto={conCobro && quieto}
       carrito={carrito}
       sucursalId={sucursalId}
       descuentos={descuentos}
@@ -371,6 +383,7 @@ export default function PantallaVenta({
               // Igual que cobrar: la nota que se estaba escribiendo se confirma
               // antes de salir del carrito.
               onElegir: (p) => {
+                if (quieto) return;
                 confirmarNotasAbiertas();
                 setCarritoAbierto(false);
                 plataformas.onElegir(p);
@@ -390,7 +403,14 @@ export default function PantallaVenta({
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Columna del catálogo */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* Quieto mientras se registra el cobro incrustado (ver `quieto`): sin
+          toques ni foco. Se nota recién si tarda (el apagado arranca a los
+          200 ms), así un cobro rápido no hace parpadear la pantalla. */}
+      <div
+        inert={quieto}
+        aria-busy={quieto || undefined}
+        className={`flex min-h-0 min-w-0 flex-1 flex-col${quieto ? " opacity-80 transition-opacity delay-200 duration-200" : ""}`}
+      >
         {cabecera}
 
         {/* En una farmacia el catálogo se pide al servidor de a tandas y por
@@ -850,7 +870,6 @@ export interface ExtraDescuentos {
 }
 
 function PanelCarrito({
-  carrito,
   sucursalId,
   descuentos,
   bloqueoCobro,
@@ -863,9 +882,13 @@ function PanelCarrito({
   onCobrar,
   onCerrar,
   cobro,
+  quieto = false,
+  carrito: carritoRecibido,
 }: {
   /** El cobro incrustado en vez de «Cobrar» (ver `PantallaVenta`). */
   cobro?: CobroEnLaVenta;
+  /** Se está registrando el cobro incrustado: las líneas no se tocan (ver `PantallaVenta`). */
+  quieto?: boolean;
   carrito: Carrito;
   sucursalId?: number | null;
   descuentos?: ExtraDescuentos;
@@ -881,6 +904,9 @@ function PanelCarrito({
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
+  // Quieto, el carrito no cambia aunque llegue un toque: `inert` ya los frena
+  // en el navegador, y esto los frena igual donde `inert` no existe.
+  const carrito = useMemo(() => (quieto ? carritoQuieto(carritoRecibido) : carritoRecibido), [quieto, carritoRecibido]);
   const total = descuentos?.total ?? carrito.total;
   const { incluye, rubro } = useAuth();
   // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
@@ -911,7 +937,9 @@ function PanelCarrito({
       <Boton
         key={p}
         variante="ghost"
-        onClick={() => plataformas.onElegir(p)}
+        onClick={() => {
+          if (!quieto) plataformas.onElegir(p);
+        }}
         disabled={descuentos?.bloqueado || !!bloqueoCobro}
         className="min-w-0 flex-1 px-2"
         // El tono de la plataforma (paleta única, §10.4): borde y texto; el nombre va siempre.
@@ -937,7 +965,11 @@ function PanelCarrito({
           setVaciando(false);
         }}
       />
-      <div className="flex items-center justify-between border-b border-borde-soft px-4 py-3">
+      <div
+        inert={quieto}
+        aria-busy={quieto || undefined}
+        className="flex items-center justify-between border-b border-borde-soft px-4 py-3"
+      >
         <div className="flex items-center gap-2">
           <Icon name="cart" size={19} />
           <h2 className="text-[15px] font-bold text-texto">
@@ -989,7 +1021,7 @@ function PanelCarrito({
           {/* Atajo para marcar toda la comanda de una: lo más común es que
               todo el pedido sea para el mismo destino. */}
           {conMesaLlevar && (
-            <div className="flex gap-2 border-b border-borde-soft px-4 py-2.5">
+            <div inert={quieto} className="flex gap-2 border-b border-borde-soft px-4 py-2.5">
               <BotonConsumoTodo carrito={carrito} consumo="MESA" />
               <BotonConsumoTodo carrito={carrito} consumo="LLEVAR" />
             </div>
@@ -998,7 +1030,11 @@ function PanelCarrito({
           {lineasExtra}
           {/* Lo único que scrollea. Con el cobro abajo, con un mínimo: el
               medio de pago o el QR no pueden dejar las líneas sin lugar. */}
-          <ul className={`${cobro ? "min-h-28" : "min-h-0"} flex-1 divide-y divide-borde-soft overflow-y-auto`}>
+          <ul
+            inert={quieto}
+            aria-busy={quieto || undefined}
+            className={`${cobro ? "min-h-28" : "min-h-0"} flex-1 divide-y divide-borde-soft overflow-y-auto`}
+          >
             {carrito.lineas.map((l) => (
               <FilaCarrito
                 key={claveDeLinea(l)}
@@ -1086,11 +1122,33 @@ function PanelCarrito({
               error={cobro.error}
             />
           )}
-          {cobro && botonesPlataformas && <div className="flex shrink-0 gap-2 px-4 pb-3">{botonesPlataformas}</div>}
+          {cobro && botonesPlataformas && (
+            <div inert={quieto} className="flex shrink-0 gap-2 px-4 pb-3">
+              {botonesPlataformas}
+            </div>
+          )}
         </>
       )}
     </>
   );
+}
+
+const nada = () => {};
+
+/** El mismo carrito, que se lee igual pero no cambia: mientras se registra el cobro incrustado. */
+function carritoQuieto(c: Carrito): Carrito {
+  return {
+    ...c,
+    agregar: nada,
+    setAgregados: nada,
+    setCantidad: nada,
+    setNota: nada,
+    setEnMesa: nada,
+    setConsumo: nada,
+    setConsumoTodo: nada,
+    quitar: nada,
+    vaciar: nada,
+  };
 }
 
 /** Cuántas unidades de ESTE producto hay en las otras líneas del carrito (con otros toppings). */

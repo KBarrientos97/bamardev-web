@@ -167,6 +167,41 @@ describe("el cobro en el carrito", () => {
     expect(within(carritoEnPantalla()).getByText("No se pudo registrar la venta")).toBeInTheDocument();
   });
 
+  it("mientras se registra, el catálogo y el carrito quedan quietos: nada entra ni sale", async () => {
+    cobro = { ...cobro, enviando: true };
+    const onElegir = vi.fn();
+    await montar({ plataformas: { disponibles: ["YANGO"], onElegir } });
+    // `hidden`: lo que está `inert` puede no contar como accesible para la consulta.
+    const oculto = { hidden: true } as const;
+    const catalogo = screen.getByPlaceholderText("Buscar producto o código").closest("[aria-busy]")!;
+    expect(catalogo).toHaveAttribute("inert");
+    expect(catalogo).toHaveAttribute("aria-busy", "true");
+    // Un producto tocado justo ahora no entra (se perdería al vaciarse tras el cobro).
+    fireEvent.click(screen.getByRole("heading", { name: "Pollo entero", ...oculto }));
+    expect(carrito.agregar).not.toHaveBeenCalled();
+    // Ni las líneas ni la cabecera del carrito cambian.
+    const panel = carritoEnPantalla();
+    expect(within(panel).getByRole("list", oculto)).toHaveAttribute("inert");
+    fireEvent.click(within(panel).getByRole("button", { name: "Agregar una unidad", ...oculto }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Quitar una unidad", ...oculto }));
+    expect(carrito.setCantidad).not.toHaveBeenCalled();
+    fireEvent.click(within(panel).getByRole("button", { name: "Vaciar la venta", ...oculto }));
+    const dialogo = screen.queryByRole("dialog", { name: "¿Vaciar la venta?" });
+    if (dialogo) fireEvent.click(within(dialogo).getByRole("button", { name: "Vaciar" }));
+    expect(carrito.vaciar).not.toHaveBeenCalled();
+    // Ni se carga un pedido de una app de delivery.
+    fireEvent.click(within(panel).getByText("🛵").closest("button")!);
+    expect(onElegir).not.toHaveBeenCalled();
+  });
+
+  it("sin registrar nada, todo responde (y lo de siempre no lleva `inert`)", async () => {
+    await montar();
+    expect(document.querySelector("[inert]")).toBeNull();
+    expect(document.querySelector("[aria-busy]")).toBeNull();
+    fireEvent.click(screen.getByRole("heading", { name: "Pollo entero" }));
+    expect(carrito.agregar).toHaveBeenCalledWith(POLLO);
+  });
+
   it("lo que frenaba «Cobrar» frena Confirmar y se dice (un paquete sin cliente)", async () => {
     await montar({ bloqueoCobro: "Elegí a nombre de quién queda el paquete (arriba) para cobrar." });
     expect(confirmar()).toBeDisabled();
