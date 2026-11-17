@@ -16,12 +16,20 @@ import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
-import { controlaStock, topeStock, type Carrito, type LineaCarrito } from "./useCarrito";
+import { claveDeLinea, controlaStock, topeStock, type Carrito, type ClaveLinea, type LineaCarrito } from "./useCarrito";
+import { gruposDelProducto, textoIncluye } from "../../lib/agregados/calculo";
+import type { CatalogoAgregados } from "../../lib/agregados/tipos";
+import HojaAgregados from "./HojaAgregados";
 import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
 import { useArrastreGrilla } from "./useArrastreGrilla";
 import { useAgotadosHoy } from "../../lib/menuDigital/useAgotadosHoy";
+import { tienePermiso } from "../../lib/permisos";
+import HojaPausa, { textoVenderPausado } from "./HojaPausa";
+import { usePausados } from "./usePausados";
 
 const TODAS = "__todas__";
+/** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
+const PAUSADOS = "__pausados__";
 
 const idDe = (p: Producto) => p.id;
 
@@ -38,6 +46,7 @@ export default function PantallaVenta({
   lineasExtra,
   plataformas,
   modificacion,
+  catalogoAgregados,
 }: {
   productos: Producto[];
   categorias: Categoria[];
@@ -83,6 +92,12 @@ export default function PantallaVenta({
    * —casi todos los negocios— el carrito es el de siempre.
    */
   plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
+  /**
+   * Los toppings del local (PLAN-AGREGADOS §7.4): con ellos, un producto que
+   * lleva grupo dice «Incluye 2 toppings» y al tocarlo abre su hoja. Sin esto
+   * —el ajuste apagado, que es casi todo negocio— el POS es el de siempre.
+   */
+  catalogoAgregados?: CatalogoAgregados | null;
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -109,11 +124,30 @@ export default function PantallaVenta({
     [productos, orden],
   );
 
+  /**
+   * Lo PAUSADO en el local de la caja (PLAN-ELGANADERO-16NOV §4.1): no se pide
+   * por la página y acá sale en gris. Pausar y reactivar piden `productos.pausar`.
+   */
+  const pausados = usePausados(sucursalId, !esFarmacia(rubro));
+  const puedePausar = tienePermiso(usuario, "productos.pausar") && !esFarmacia(rubro);
+  const [hojaPausa, setHojaPausa] = useState<Producto | null>(null);
+  const [venderPausado, setVenderPausado] = useState<Producto | null>(null);
+  const cantidadPausados = useMemo(
+    () => ordenados.filter((p) => p.habilitado && pausados.ids.has(p.id)).length,
+    [ordenados, pausados.ids],
+  );
+  // Sin pausados no hay qué filtrar: se vuelve a «Todos» (se reactivó el último).
+  useEffect(() => {
+    if (cat === PAUSADOS && cantidadPausados === 0) setCat(TODAS);
+  }, [cat, cantidadPausados]);
+
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
     return ordenados.filter((p) => {
       if (!p.habilitado) return false;
-      if (cat !== TODAS && String(p.categoria?.id ?? "") !== cat) return false;
+      if (cat === PAUSADOS) {
+        if (!pausados.ids.has(p.id)) return false;
+      } else if (cat !== TODAS && String(p.categoria?.id ?? "") !== cat) return false;
       if (!texto) return true;
       // Ignora tildes: el cajero teclea "cafe" y el catálogo dice "Café".
       return (
@@ -122,7 +156,7 @@ export default function PantallaVenta({
         contiene(p.categoria?.nombre, texto)
       );
     });
-  }, [ordenados, q, cat]);
+  }, [ordenados, q, cat, pausados.ids]);
 
   /**
    * Guarda el orden que quedó en pantalla tras soltar una card.
@@ -158,10 +192,33 @@ export default function PantallaVenta({
 
   /** Lo que se pinta: durante el arrastre manda el orden en vuelo. */
   /** Cuánto hay de cada producto en el carrito: lo lee la grilla. */
-  const enCarrito = useMemo(
-    () => new Map(carrito.lineas.map((l) => [l.producto.id, l.cantidad])),
-    [carrito.lineas],
-  );
+  const enCarrito = useMemo(() => {
+    // Suma: el mismo vaso puede estar en dos líneas con toppings distintos.
+    const m = new Map<number, number>();
+    for (const l of carrito.lineas) m.set(l.producto.id, (m.get(l.producto.id) ?? 0) + l.cantidad);
+    return m;
+  }, [carrito.lineas]);
+
+  /**
+   * La hoja de toppings: el producto que se está armando y, si se edita una
+   * línea del carrito, su clave y lo que ya tenía elegido.
+   */
+  const [hojaAgregados, setHojaAgregados] = useState<{
+    producto: Producto;
+    clave?: ClaveLinea;
+    inicial?: LineaCarrito["agregados"];
+  } | null>(null);
+  /** Suma el producto al carrito: con grupo de toppings abre su hoja, sin él entra directo. */
+  const pedirAgregar = (p: Producto) => {
+    if (gruposDelProducto(catalogoAgregados, p.id).length > 0) setHojaAgregados({ producto: p });
+    else carrito.agregar(p);
+  };
+  /** El «−» de la tarjeta baja la última línea de ese producto (puede haber varias con toppings). */
+  const quitarUna = (p: Producto) => {
+    const suyas = carrito.lineas.filter((l) => l.producto.id === p.id);
+    const ultima = suyas[suyas.length - 1];
+    if (ultima) carrito.setCantidad(claveDeLinea(ultima), ultima.cantidad - 1);
+  };
   /** Lo marcado agotado hoy en el Menú digital EN ESTE LOCAL (vacío sin ese extra). */
   const agotadosHoy = useAgotadosHoy(sucursalId);
 
@@ -184,7 +241,7 @@ export default function PantallaVenta({
    * Un ref y no estado: es lo tecleado letra por letra y no hay nada que
    * redibujar por eso.
    */
-  const notasAbiertas = useRef(new Map<number, string>());
+  const notasAbiertas = useRef(new Map<ClaveLinea, string>());
   const confirmarNotasAbiertas = () => {
     for (const [id, nota] of notasAbiertas.current) carrito.setNota(id, nota.trim());
     notasAbiertas.current.clear();
@@ -204,6 +261,11 @@ export default function PantallaVenta({
       lineasExtra={lineasExtra}
       modificacion={modificacion}
       notasAbiertas={notasAbiertas}
+      onEditarAgregados={
+        catalogoAgregados?.activo
+          ? (l) => setHojaAgregados({ producto: l.producto, clave: claveDeLinea(l), inicial: l.agregados })
+          : undefined
+      }
       plataformas={
         plataformas && plataformas.disponibles.length > 0
           ? {
@@ -271,6 +333,11 @@ export default function PantallaVenta({
                 {c.nombre}
               </ChipCat>
             ))}
+            {cantidadPausados > 0 && (
+              <ChipCat activo={cat === PAUSADOS} onClick={() => setCat(PAUSADOS)}>
+                Pausados ({cantidadPausados})
+              </ChipCat>
+            )}
           </div>
         </div>
 
@@ -279,7 +346,9 @@ export default function PantallaVenta({
             <Vacio
               icono="search"
               titulo="Sin productos"
-              texto={q ? "Probá con otro texto." : "No hay productos en esta categoría."}
+              texto={
+                q ? "Probá con otro texto." : cat === PAUSADOS ? "No hay productos pausados." : "No hay productos en esta categoría."
+              }
             />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -288,15 +357,23 @@ export default function PantallaVenta({
                   key={p.id}
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
-                  onAgregar={() => carrito.agregar(p)}
-                  onQuitar={() =>
-                    carrito.setCantidad(p.id, (enCarrito.get(p.id) ?? 0) - 1)
+                  // Un pausado no está en la página pero la caja lo puede tener:
+                  // pregunta antes de agregarlo. Ya en el carrito (ya dijo que
+                  // sí) los toques siguientes suman sin volver a preguntar.
+                  onAgregar={() =>
+                    pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0
+                      ? setVenderPausado(p)
+                      : pedirAgregar(p)
                   }
+                  onQuitar={() => quitarUna(p)}
+                  incluye={textoIncluyeDe(catalogoAgregados, p.id)}
                   arrastre={arrastre.props(p.id)}
                   // Un tap que terminó siendo arrastre no debe agregar al
                   // carrito: cobrar de más es peor que tener que tocar de nuevo.
                   ignorarClic={arrastre.ignorarClic}
                   agotadoHoy={agotadosHoy.has(p.id)}
+                  pausado={pausados.ids.has(p.id)}
+                  onMenu={puedePausar ? () => setHojaPausa(p) : undefined}
                 />
               ))}
             </ul>
@@ -330,6 +407,45 @@ export default function PantallaVenta({
         </button>
       )}
 
+      {hojaPausa && (
+        <HojaPausa
+          producto={hojaPausa}
+          pausado={pausados.ids.has(hojaPausa.id)}
+          sucursal={pausados.sucursal}
+          sucursalId={sucursalId}
+          onClose={() => setHojaPausa(null)}
+          onCambio={(estaPausado) => {
+            pausados.marcar(hojaPausa.id, estaPausado);
+            pausados.recargar();
+          }}
+        />
+      )}
+      <Confirmar
+        abierto={venderPausado != null}
+        titulo="Producto pausado"
+        texto={venderPausado ? textoVenderPausado(venderPausado.nombre, pausados.sucursal) : ""}
+        etiquetaOk="Sí, venderlo"
+        onCancel={() => setVenderPausado(null)}
+        onOk={() => {
+          if (venderPausado) pedirAgregar(venderPausado);
+          setVenderPausado(null);
+        }}
+      />
+
+      {hojaAgregados && catalogoAgregados && (
+        <HojaAgregados
+          producto={hojaAgregados.producto}
+          catalogo={catalogoAgregados}
+          inicial={hojaAgregados.clave !== undefined ? (hojaAgregados.inicial ?? []) : undefined}
+          onClose={() => setHojaAgregados(null)}
+          onConfirmar={(elegidos) => {
+            if (hojaAgregados.clave !== undefined) carrito.setAgregados(hojaAgregados.clave, elegidos);
+            else carrito.agregar(hojaAgregados.producto, elegidos);
+            setHojaAgregados(null);
+          }}
+        />
+      )}
+
       {carritoAbierto && (
         <div className="fixed inset-0 z-40 flex items-end lg:hidden">
           <div
@@ -343,6 +459,13 @@ export default function PantallaVenta({
       )}
     </div>
   );
+}
+
+/** El rótulo de la tarjeta: «Incluye 2 toppings», con todos los grupos si el producto lleva más de uno. */
+function textoIncluyeDe(catalogo: CatalogoAgregados | null | undefined, productoId: number): string | undefined {
+  const grupos = gruposDelProducto(catalogo, productoId);
+  if (grupos.length === 0) return undefined;
+  return grupos.map((g) => textoIncluye(g.grupo.nombre, g.incluidos)).join(" · ");
 }
 
 function ChipCat({
@@ -376,12 +499,24 @@ function TarjetaVenta({
   arrastre,
   ignorarClic,
   agotadoHoy = false,
+  pausado = false,
+  onMenu,
+  incluye,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /** «Incluye 2 toppings»: el producto lleva un grupo de agregados y al tocarlo abre su hoja. */
+  incluye?: string;
   /** Marcado "agotado hoy" en el Menú digital: no se ofrece aunque no tenga stock que contar. */
   agotadoHoy?: boolean;
+  /**
+   * Pausado en este local (§4.1): sale en gris con «Pausado», pero se puede
+   * vender (la caja pregunta antes). No es lo mismo que agotado: éste sí se bloquea.
+   */
+  pausado?: boolean;
+  /** El «⋯» que abre la hoja de pausar o reactivar; sólo con `productos.pausar`. */
+  onMenu?: () => void;
   onAgregar: () => void;
   onQuitar: () => void;
   /** Handlers y estilo del reordenamiento (ver useArrastreGrilla). */
@@ -422,11 +557,14 @@ function TarjetaVenta({
           elegido sin abrir el carrito es lo que evita cargarlo dos veces. */}
       <div
         className={[
-          "flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          "relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
           enCarrito
             ? "border-primary bg-primary-50 shadow-sm"
-            : "border-borde bg-white hover:shadow-md",
+            : pausado
+              ? "border-borde bg-slate-100 hover:shadow-md"
+              : "border-borde bg-white hover:shadow-md",
           agotado ? "opacity-50" : "",
+          pausado && !agotado ? "opacity-60 grayscale" : "",
         ].join(" ")}
       >
         <button
@@ -436,7 +574,7 @@ function TarjetaVenta({
           disabled={agotado}
           className="flex flex-1 flex-col text-left"
         >
-          <div className="flex items-start justify-between gap-1.5">
+          <div className={`flex items-start justify-between gap-1.5${onMenu ? " pr-7" : ""}`}>
             <IconoProducto
               nombre={p.nombre}
               icono={p.icono}
@@ -447,6 +585,8 @@ function TarjetaVenta({
                 ofrecerlo, no recién cuando se agota. Antes el número sólo
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
+            {/* Pausado y agotado a la vez: gana «Agotado», que sí frena la venta. */}
+            {pausado && !agotado && <Badge tono="gris">Pausado</Badge>}
             {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controla && (
@@ -471,10 +611,29 @@ function TarjetaVenta({
           <h3 className="mt-2 line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto">
             {p.nombre}
           </h3>
+          {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,
+              antes de tocarlo. */}
+          {incluye && <p className="mt-1 text-[11px] font-bold text-primary-700">{incluye}</p>}
           <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
             {fmtMoney(p.precio)}
           </p>
         </button>
+
+        {onMenu && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!ignorarClic()) onMenu();
+            }}
+            // Sin esto, tocar el «⋯» empezaría el arrastre de la card.
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={pausado ? `Reactivar ${p.nombre}` : `Pausar ${p.nombre}`}
+            title={pausado ? "Reactivar" : "Pausar en esta sucursal"}
+            className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full text-texto-3 hover:bg-muted hover:text-texto"
+          >
+            <Icon name="more" size={18} />
+          </button>
+        )}
 
         {enCarrito && (
           <div className="mt-2 flex h-9 items-center justify-between rounded-full border border-primary bg-white px-1">
@@ -554,6 +713,7 @@ function PanelCarrito({
   lineasExtra,
   modificacion,
   notasAbiertas,
+  onEditarAgregados,
   plataformas,
   onCobrar,
   onCerrar,
@@ -566,7 +726,9 @@ function PanelCarrito({
   lineasExtra?: React.ReactNode;
   modificacion?: ModoModificacion;
   /** Lo escrito en las notas sin confirmar: ver PantallaVenta. */
-  notasAbiertas: RefObject<Map<number, string>>;
+  notasAbiertas: RefObject<Map<ClaveLinea, string>>;
+  /** Tocar los toppings de una línea reabre su hoja. Sin esto, la línea no se edita. */
+  onEditarAgregados?: (l: LineaCarrito) => void;
   plataformas?: { disponibles: Plataforma[]; onElegir: (p: Plataforma) => void };
   onCobrar: () => void;
   onCerrar: () => void;
@@ -674,10 +836,11 @@ function PanelCarrito({
           <ul className="min-h-0 flex-1 divide-y divide-borde-soft overflow-y-auto">
             {carrito.lineas.map((l) => (
               <FilaCarrito
-                key={l.producto.id}
+                key={claveDeLinea(l)}
                 linea={l}
                 carrito={carrito}
                 notasAbiertas={notasAbiertas}
+                onEditarAgregados={onEditarAgregados ? () => onEditarAgregados(l) : undefined}
                 conMesaLlevar={conMesaLlevar}
                 venta={venta}
                 profesional={profesionales?.de(l) ?? null}
@@ -749,6 +912,13 @@ function PanelCarrito({
   );
 }
 
+/** Cuántas unidades de ESTE producto hay en las otras líneas del carrito (con otros toppings). */
+function enOtrasLineas(carrito: Carrito, l: LineaCarrito): number {
+  let n = 0;
+  for (const o of carrito.lineas) if (o !== l && o.producto.id === l.producto.id) n += o.cantidad;
+  return n;
+}
+
 function BotonConsumoTodo({ carrito, consumo }: { carrito: Carrito; consumo: Consumo }) {
   // Se marca activo sólo si TODAS las líneas están de ese lado: con un split
   // parcial ninguno de los dos representa la comanda.
@@ -773,6 +943,7 @@ function FilaCarrito({
   linea: l,
   carrito,
   notasAbiertas,
+  onEditarAgregados,
   conMesaLlevar,
   venta,
   profesional,
@@ -781,7 +952,9 @@ function FilaCarrito({
 }: {
   linea: LineaCarrito;
   carrito: Carrito;
-  notasAbiertas: RefObject<Map<number, string>>;
+  notasAbiertas: RefObject<Map<ClaveLinea, string>>;
+  /** Tocar los toppings de la línea la reabre en su hoja; ausente = no se edita. */
+  onEditarAgregados?: () => void;
   conMesaLlevar: boolean;
   /** La venta de la farmacia; null en un restaurante. */
   venta: VentaFarmacia | null;
@@ -794,7 +967,11 @@ function FilaCarrito({
   const [editandoNota, setEditandoNota] = useState(false);
   const [nota, setNota] = useState(l.nota);
   const [splitAbierto, setSplitAbierto] = useState(false);
-  const id = l.producto.id;
+  // La clave de la línea (producto + toppings): dos vasos iguales con toppings
+  // distintos son líneas distintas y cada una guarda su nota y su cantidad.
+  const id: ClaveLinea = claveDeLinea(l);
+  const extra = l.vista?.extraPorUnidad ?? 0;
+  const precioUnidad = l.producto.precio + extra;
 
   // El campo arranca siempre en la nota guardada: ahora salir del campo la
   // guarda, y un borrador viejo pisaría la nota con lo de antes.
@@ -843,7 +1020,7 @@ function FilaCarrito({
             )}
           </p>
           <p className="truncate text-xs text-texto-3">
-            {fmtMoney(l.producto.precio)} c/u
+            {fmtMoney(precioUnidad)} c/u
             {/* QA PER-07b: con "Por servicio" cada línea puede ser de alguien
                 distinto; se dice acá, discreto, y se cambia tocándolo. */}
             {profesional && (
@@ -876,7 +1053,7 @@ function FilaCarrito({
         ) : (
         <div className="flex items-center gap-1 rounded-lg border border-borde">
           <button
-            onClick={() => carrito.setCantidad(l.producto.id, l.cantidad - 1)}
+            onClick={() => carrito.setCantidad(id, l.cantidad - 1)}
             aria-label="Quitar una unidad"
             className="p-2.5 text-texto-2 hover:bg-muted"
           >
@@ -884,9 +1061,10 @@ function FilaCarrito({
           </button>
           <span className="min-w-6 text-center text-[13px] font-bold">{l.cantidad}</span>
           <button
-            onClick={() => carrito.setCantidad(l.producto.id, l.cantidad + 1)}
-            // Apagado en el tope, igual que el "+" de la card (POS-10).
-            disabled={l.cantidad >= topeStock(l.producto)}
+            onClick={() => carrito.setCantidad(id, l.cantidad + 1)}
+            // Apagado en el tope, igual que el "+" de la card (POS-10). El tope
+            // es del producto: lo que ya hay en otras líneas con otros toppings cuenta.
+            disabled={enOtrasLineas(carrito, l) + l.cantidad >= topeStock(l.producto)}
             aria-label="Agregar una unidad"
             className="p-2.5 text-texto-2 hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent"
           >
@@ -896,9 +1074,31 @@ function FilaCarrito({
         )}
 
         <span className="min-w-20 shrink-0 text-right text-[13px] font-bold text-texto">
-          {fmtMoney(l.producto.precio * l.cantidad)}
+          {fmtMoney(precioUnidad * l.cantidad)}
         </span>
       </div>
+
+      {/* Los toppings debajo del vaso, como en el recibo: los incluidos lo
+          dicen y los extras llevan su precio. Tocarlos reabre la hoja. */}
+      {l.vista && l.vista.hijas.length > 0 && (
+        <button
+          type="button"
+          onClick={onEditarAgregados}
+          disabled={!onEditarAgregados}
+          aria-label={`Cambiar los toppings de ${l.producto.nombre}`}
+          className="mt-1.5 block w-full rounded-lg px-1 text-left enabled:hover:bg-muted"
+        >
+          {l.vista.hijas.map((h) => (
+            <span key={`${h.productoId}-${h.incluido}`} className="flex justify-between gap-2 text-xs text-texto-3">
+              <span className="min-w-0 truncate">
+                + {h.cantidad > 1 ? `${h.cantidad} × ` : ""}
+                {h.nombre}
+              </span>
+              <span className="shrink-0 font-semibold">{h.incluido ? "incluido" : fmtMoney(h.subtotal)}</span>
+            </span>
+          ))}
+        </button>
+      )}
 
       {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
           dos renglones. */}
@@ -917,7 +1117,7 @@ function FilaCarrito({
         {conMesaLlevar &&
           (l.cantidad === 1 ? (
             <button
-              onClick={() => carrito.setConsumo(l.producto.id, todaMesa ? "LLEVAR" : "MESA")}
+              onClick={() => carrito.setConsumo(id, todaMesa ? "LLEVAR" : "MESA")}
               className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
                 todaMesa ? "bg-primary-100 text-primary-700" : "bg-slate-100 text-texto-3"
               }`}
@@ -1003,7 +1203,7 @@ function FilaCarrito({
         linea={l}
         onClose={() => setSplitAbierto(false)}
         onAplicar={(enMesa) => {
-          carrito.setEnMesa(l.producto.id, enMesa);
+          carrito.setEnMesa(id, enMesa);
           setSplitAbierto(false);
         }}
       />

@@ -5,7 +5,9 @@ import { ICONO_RED, paleta } from "../../lib/pagina/aspecto";
 import { formatoPrecio, urlWhatsappConTexto } from "../../lib/pagina/catalogo";
 import {
   cantidadTotal,
+  claveLinea,
   mensajePedido,
+  precioConExtras,
   subtotalLinea,
   totalPedido,
   type DatosPedido,
@@ -154,6 +156,9 @@ export default function PedidoPagina({
   subdominio,
   asistente = false,
   sistema,
+  onEditarToppings,
+  llevaToppings,
+  toppingsAgotadosDe,
 }: {
   negocio: string;
   color: string;
@@ -173,6 +178,15 @@ export default function PedidoPagina({
   asistente?: boolean;
   /** Pedidos directo al sistema: reemplaza al WhatsApp (ver `ModoSistema`). */
   sistema?: ModoSistema;
+  /** Toppings (PLAN-AGREGADOS §8.3): tocar los de una línea reabre la hoja para cambiarlos. */
+  onEditarToppings?: (l: LineaPedido) => void;
+  /** ¿Este ítem de la carta lleva toppings? Una línea sin elegir ofrece «Elegir toppings». */
+  llevaToppings?: (itemId: number) => boolean;
+  /**
+   * Las opciones de toppings (`productoId`) que ese local no puede servir hoy.
+   * Recibe el índice de la sucursal en la lista de la info, o null si no hay.
+   */
+  toppingsAgotadosDe?: (indiceSucursal: number | null) => ReadonlySet<number>;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [destinoElegido, setDestino] = useState<string | null>(null);
@@ -396,6 +410,9 @@ export default function PedidoPagina({
           pedido={pedido}
           ancho={ancho}
           onCerrar={() => setAbierto(false)}
+          onEditarToppings={onEditarToppings}
+          llevaToppings={llevaToppings}
+          toppingsAgotadosDe={toppingsAgotadosDe}
           {...sistema}
         />
       </Suspense>
@@ -512,11 +529,13 @@ export default function PedidoPagina({
           >
             {lineas.map((l) => (
               <LineaCarrito
-                key={l.id}
+                key={claveLinea(l)}
                 l={l}
                 fuerte={fuerte}
                 tinte={tinte}
                 pedido={pedido}
+                onEditarToppings={onEditarToppings}
+                llevaToppings={llevaToppings}
               />
             ))}
           </ul>
@@ -781,17 +800,29 @@ export function LineaCarrito({
   tinte,
   pedido,
   agotado,
+  onEditarToppings,
+  llevaToppings,
 }: {
   l: LineaPedido;
   fuerte: string;
   tinte: string;
   pedido: Pedido;
+  /** Toppings (§8.3): tocarlos reabre la hoja de esta línea. */
+  onEditarToppings?: (l: LineaPedido) => void;
+  llevaToppings?: (itemId: number) => boolean;
   /** Si ese local no puede servir esta línea hoy: el aviso que se le muestra (pedidos al sistema). */
   agotado?: string;
 }) {
-  const foto = urlDeImagen(l.fotoUrl ?? null);
-  const icono = foto ? null : iconoPorLlave(l.icono);
+  // Lo que no carga (una foto, un ícono propio del servidor) pasa a lo que
+  // sigue: foto → ícono → inicial. Nunca la imagen rota del navegador.
+  const [fallaron, setFallaron] = useState<string[]>([]);
+  const fallar = (src: string) => setFallaron((antes) => (antes.includes(src) ? antes : [...antes, src]));
+  const fotoUrl = urlDeImagen(l.fotoUrl ?? null);
+  const foto = fotoUrl && !fallaron.includes(fotoUrl) ? fotoUrl : null;
+  const delIcono = iconoPorLlave(l.icono);
+  const icono = foto || !delIcono || fallaron.includes(delIcono.src) ? null : delIcono;
   const subtotal = subtotalLinea(l);
+  const clave = claveLinea(l);
   const redondo: CSSProperties = {
     width: 34,
     height: 34,
@@ -804,127 +835,177 @@ export function LineaCarrito({
     cursor: "pointer",
   };
   return (
-    <li style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <span
-        aria-hidden="true"
-        style={{
-          width: 52,
-          height: 52,
-          flex: "none",
-          borderRadius: 12,
-          overflow: "hidden",
-          background: tinte,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: fuerte,
-          fontWeight: 800,
-          fontSize: 20,
-        }}
-      >
-        {foto ? (
-          <img
-            src={foto}
-            alt=""
-            loading="lazy"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              display: "block",
-            }}
-          />
-        ) : icono ? (
-          <img
-            src={icono.src}
-            alt=""
-            loading="lazy"
-            style={{
-              width: "74%",
-              height: "74%",
-              objectFit: "contain",
-              display: "block",
-            }}
-          />
-        ) : (
-          l.titulo.trim().charAt(0).toUpperCase()
-        )}
-      </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>
-          {l.titulo}
-        </div>
-        <div style={{ fontSize: 13, color: "#6B7280" }}>
-          {formatoPrecio(l.precio, l.desde) ?? "Precio a consultar"}
-          {subtotal != null && l.cantidad > 1 && (
-            <span style={{ color: "#111827", fontWeight: 700 }}>
-              {" "}
-              · {formatoPrecio(subtotal)}
-            </span>
+    <li style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 52,
+            height: 52,
+            flex: "none",
+            borderRadius: 12,
+            overflow: "hidden",
+            background: tinte,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: fuerte,
+            fontWeight: 800,
+            fontSize: 20,
+          }}
+        >
+          {foto ? (
+            <img
+              src={foto}
+              alt=""
+              loading="lazy"
+              onError={() => fallar(foto)}
+              // Sin fondo, el producto entero sobre el tinte (como el ícono, más grande).
+              style={
+                l.fotoSinFondo
+                  ? { width: "88%", height: "88%", objectFit: "contain", display: "block" }
+                  : { width: "100%", height: "100%", objectFit: "cover", display: "block" }
+              }
+            />
+          ) : icono ? (
+            <img
+              src={icono.src}
+              alt=""
+              loading="lazy"
+              onError={() => fallar(icono.src)}
+              style={{
+                width: "74%",
+                height: "74%",
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
+          ) : (
+            l.titulo.trim().charAt(0).toUpperCase()
+          )}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.3 }}>
+            {l.titulo}
+          </div>
+          <div style={{ fontSize: 13, color: "#6B7280" }}>
+            {formatoPrecio(precioConExtras(l), l.desde) ?? "Precio a consultar"}
+            {subtotal != null && l.cantidad > 1 && (
+              <span style={{ color: "#111827", fontWeight: 700 }}>
+                {" "}
+                · {formatoPrecio(subtotal)}
+              </span>
+            )}
+          </div>
+          {agotado && (
+            <div role="alert" style={{ fontSize: 13, fontWeight: 700, color: "#B91C1C", marginTop: 2 }}>
+              {agotado}
+            </div>
           )}
         </div>
-        {agotado && (
-          <div role="alert" style={{ fontSize: 13, fontWeight: 700, color: "#B91C1C", marginTop: 2 }}>
-            {agotado}
+        {l.servicio ? (
+          // Un servicio va una vez: sólo se puede quitar.
+          <button
+            type="button"
+            aria-label={`Quitar ${l.titulo} del pedido`}
+            onClick={() => pedido.cambiar(clave, -1)}
+            style={{ ...redondo, background: tinte, flex: "none" }}
+          >
+            <Trazo d={ICONO_TACHO} color={fuerte} size={16} grosor={2.4} />
+          </button>
+        ) : (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              background: tinte,
+              borderRadius: 999,
+              padding: 3,
+              flex: "none",
+            }}
+          >
+            <button
+              type="button"
+              aria-label={`Quitar uno de ${l.titulo}`}
+              onClick={() => pedido.cambiar(clave, -1)}
+              style={{ ...redondo, background: "#ffffff" }}
+            >
+              <Trazo
+                d={l.cantidad === 1 ? ICONO_TACHO : ICONO_MENOS}
+                color={fuerte}
+                size={16}
+                grosor={2.4}
+              />
+            </button>
+            <span
+              aria-label={`Cantidad de ${l.titulo}`}
+              style={{
+                minWidth: 22,
+                textAlign: "center",
+                fontWeight: 800,
+                color: fuerte,
+              }}
+            >
+              {l.cantidad}
+            </span>
+            <button
+              type="button"
+              aria-label={`Sumar uno de ${l.titulo}`}
+              onClick={() => pedido.cambiar(clave, 1)}
+              style={{ ...redondo, background: fuerte }}
+            >
+              <Trazo d={ICONO_MAS} color="#ffffff" size={16} grosor={2.4} />
+            </button>
           </div>
         )}
       </div>
-      {l.servicio ? (
-        // Un servicio va una vez: sólo se puede quitar.
+      {/* Los toppings a todo el ancho, debajo del vaso (§8.3): en 390 px no caben al lado del contador. */}
+      {l.hijas && l.hijas.length > 0 ? (
+        // Los toppings van debajo del vaso; tocarlos reabre la hoja (§8.3).
         <button
           type="button"
-          aria-label={`Quitar ${l.titulo} del pedido`}
-          onClick={() => pedido.cambiar(l.id, -1)}
-          style={{ ...redondo, background: tinte, flex: "none" }}
-        >
-          <Trazo d={ICONO_TACHO} color={fuerte} size={16} grosor={2.4} />
-        </button>
-      ) : (
-        <div
+          aria-label={`Cambiar los toppings de ${l.titulo}`}
+          disabled={!onEditarToppings}
+          onClick={() => onEditarToppings?.(l)}
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
+            display: "block",
+            width: "calc(100% - 64px)",
+            margin: "0 0 0 64px",
+            padding: "5px 10px",
+            border: "none",
+            borderLeft: `3px solid ${fuerte}`,
+            borderRadius: 4,
             background: tinte,
-            borderRadius: 999,
-            padding: 3,
-            flex: "none",
+            textAlign: "left",
+            font: "inherit",
+            color: "#374151",
+            cursor: onEditarToppings ? "pointer" : "default",
           }}
         >
-          <button
-            type="button"
-            aria-label={`Quitar uno de ${l.titulo}`}
-            onClick={() => pedido.cambiar(l.id, -1)}
-            style={{ ...redondo, background: "#ffffff" }}
-          >
-            <Trazo
-              d={l.cantidad === 1 ? ICONO_TACHO : ICONO_MENOS}
-              color={fuerte}
-              size={16}
-              grosor={2.4}
-            />
-          </button>
-          <span
-            aria-label={`Cantidad de ${l.titulo}`}
-            style={{
-              minWidth: 22,
-              textAlign: "center",
-              fontWeight: 800,
-              color: fuerte,
-            }}
-          >
-            {l.cantidad}
-          </span>
-          <button
-            type="button"
-            aria-label={`Sumar uno de ${l.titulo}`}
-            onClick={() => pedido.cambiar(l.id, 1)}
-            style={{ ...redondo, background: fuerte }}
-          >
-            <Trazo d={ICONO_MAS} color="#ffffff" size={16} grosor={2.4} />
-          </button>
-        </div>
-      )}
+          {l.hijas.map((h) => (
+            <span key={`${h.nombre}-${h.incluido}-${h.subtotal}`} data-testid="topping-linea" style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, lineHeight: 1.4 }}>
+              <span>
+                + {h.cantidad > 1 ? `${h.cantidad} × ` : ""}
+                {h.nombre}
+              </span>
+              <span style={{ color: h.incluido ? "#6B7280" : "#111827", fontWeight: h.incluido ? 400 : 700, whiteSpace: "nowrap" }}>
+                {h.incluido ? "incluido" : formatoPrecio(h.subtotal)}
+              </span>
+            </span>
+          ))}
+          {onEditarToppings && <span style={{ display: "block", fontSize: 12, fontWeight: 700, color: fuerte, marginTop: 2 }}>Cambiar toppings</span>}
+        </button>
+      ) : onEditarToppings && llevaToppings?.(l.id) ? (
+        <button
+          type="button"
+          aria-label={`Elegir los toppings de ${l.titulo}`}
+          onClick={() => onEditarToppings(l)}
+          style={{ alignSelf: "flex-start", margin: "0 0 0 64px", border: "none", background: "transparent", padding: "2px 0", color: fuerte, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+        >
+          + Elegir toppings
+        </button>
+      ) : null}
     </li>
   );
 }

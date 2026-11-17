@@ -97,6 +97,7 @@ const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
 // «Configuración» del restaurante (15-nov): la lista de sus opciones.
 const Configuracion = lazy(() => import("./pages/configuracion/Configuracion"));
 const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
+const Agregados = lazy(() => import("./pages/inventario/Agregados"));
 const ConfigTickets = lazy(() => import("./pages/tickets/ConfigTickets"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
@@ -645,6 +646,18 @@ function Rutas() {
           element={
             <Protegida seccion="productos">
               <Categorias />
+            </Protegida>
+          }
+        />
+        {/* Toppings y extras: el guard cierra la ruta si el ajuste de
+            Configuración está apagado (`negocio.usaAgregados`). */}
+        <Route
+          path="/inventario/agregados"
+          element={
+            <Protegida seccion="agregados">
+              <Suspense fallback={null}>
+                <Agregados />
+              </Suspense>
             </Protegida>
           }
         />

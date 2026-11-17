@@ -800,3 +800,25 @@ describe("«Pedidos web» en un negocio sin delivery (PLAN-DELIVERY-EXTERNO §2.
     expect(puedeVer(ctx(["catalogo.ver"], ["pos", "caja", "recoger"]), "pedidos_web")).toBe(false);
   });
 });
+
+describe("Inventario → Agregados (PLAN-AGREGADOS §7.6)", () => {
+  const editor = ["catalogo.editar"];
+
+  it("no se ve con el ajuste apagado, aunque el rol edite el catálogo", () => {
+    expect(puedeVer({ ...ctxCon(editor, "RESTAURANTE"), usaAgregados: false }, "agregados")).toBe(false);
+    // Una sesión o un backend viejo no mandan el dato: se lee como apagado.
+    expect(puedeVer(ctxCon(editor, "RESTAURANTE"), "agregados")).toBe(false);
+  });
+
+  it("con el ajuste prendido lo ve quien edita el catálogo", () => {
+    expect(puedeVer({ ...ctxCon(editor, "RESTAURANTE"), usaAgregados: true }, "agregados")).toBe(true);
+  });
+
+  it("sin el permiso de editar el catálogo no, aunque esté prendido", () => {
+    expect(puedeVer({ ...ctxCon(["catalogo.ver"], "RESTAURANTE"), usaAgregados: true }, "agregados")).toBe(false);
+  });
+
+  it("es del restaurante, como la Configuración donde se prende", () => {
+    expect(puedeVer({ ...ctxCon(editor, "FARMACIA"), usaAgregados: true }, "agregados")).toBe(false);
+  });
+});

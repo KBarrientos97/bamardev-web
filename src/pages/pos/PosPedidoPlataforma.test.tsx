@@ -169,11 +169,11 @@ describe("registrar el pedido", () => {
     fireEvent.click(screen.getByRole("button", { name: `pedido ${plataforma}` }));
   }
 
-  it("abre el diálogo con el carrito y el aviso de que no se cobra", async () => {
+  it("abre el diálogo con el carrito y dónde queda registrado", async () => {
     await abrir();
     expect(screen.getByRole("dialog", { name: "Pedido de Yango" })).toBeInTheDocument();
     expect(screen.getByText("Arroz con leche L")).toBeInTheDocument();
-    expect(screen.getByText("No se cobra ni entra a la caja. Queda en el reporte de Yango.")).toBeInTheDocument();
+    expect(screen.getByText("Queda en el reporte de Yango.")).toBeInTheDocument();
   });
 
   it("en vivo: manda el pedido sin precio (lo pone el servidor), vacía el carrito y avisa", async () => {

@@ -94,6 +94,14 @@ interface AuthValue {
    */
   fijarUsaDespacho: (usa: boolean) => void;
   /**
+   * Pisa `negocio.usaAgregados` con lo recién guardado en Configuración ›
+   * Inventario y stock: «Agregados» entra (o sale) del menú y el POS dibuja (o
+   * deja de dibujar) la hoja de toppings sin esperar al próximo ingreso. Con
+   * `dondeSeUsa` también pisa `agregadosEnPos` y `agregadosEnPagina` (§8.1); se
+   * guardan ya efectivos: con el interruptor apagado quedan en `false`.
+   */
+  fijarUsaAgregados: (usa: boolean, dondeSeUsa?: { enPos?: boolean; enPagina?: boolean }) => void;
+  /**
    * Pisa `negocio.pedidosWeb` con lo que acaba de publicar Mi página («Recibir
    * pedidos en el sistema»): «Pedidos web» sale (o se va) del menú sin esperar
    * al próximo chequeo de la licencia.
@@ -314,6 +322,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const fijarUsaAgregados = useCallback((usa: boolean, dondeSeUsa?: { enPos?: boolean; enPagina?: boolean }) => {
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      // Efectivos: apagado el general, ninguno de los dos aplica. Sin el dato
+      // (backend anterior) se conserva lo que había.
+      const enPos = !usa ? false : (dondeSeUsa?.enPos ?? previo.agregadosEnPos);
+      const enPagina = !usa ? false : (dondeSeUsa?.enPagina ?? previo.agregadosEnPagina);
+      if ((previo.usaAgregados ?? false) === usa && previo.agregadosEnPos === enPos && previo.agregadosEnPagina === enPagina) return previo;
+      const actualizado = {
+        ...previo,
+        usaAgregados: usa,
+        ...(enPos !== undefined ? { agregadosEnPos: enPos } : {}),
+        ...(enPagina !== undefined ? { agregadosEnPagina: enPagina } : {}),
+      };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   /**
    * Cómo se entregan los pedidos de la página (`negocio.entregaPedidosWeb` y
    * `servicioDeliveryExterno`, PLAN-DELIVERY-EXTERNO §2.6): sigue a `/licencia/estado`
@@ -473,6 +500,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refrescarPerfil(estado);
           // Un backend viejo no manda el campo: ahí se queda con lo que hay.
           if (typeof estado.pedidosWeb === "boolean") fijarPedidosWeb(estado.pedidosWeb);
+          // Igual: la sesión abierta se entera si el ajuste se cambió desde otro equipo.
+          if (typeof estado.usaAgregados === "boolean") {
+            fijarUsaAgregados(estado.usaAgregados, { enPos: estado.agregadosEnPos, enPagina: estado.agregadosEnPagina });
+          }
           // Ausente (un backend viejo) = repartidores propios, como siempre.
           if (estado.entregaPedidosWeb !== undefined || estado.servicioDeliveryExterno !== undefined) {
             fijarEntregaPedidos(estado.entregaPedidosWeb ?? "PROPIO", estado.servicioDeliveryExterno ?? null);
@@ -512,6 +543,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refrescarFeatures,
     refrescarPerfil,
     fijarPedidosWeb,
+    fijarUsaAgregados,
     fijarEntregaPedidos,
     fijarVariante,
     refrescarPermisos,
@@ -572,6 +604,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             permisosPropios: usuario.permisosPropios,
             dictaClases,
             pedidosWeb: negocio?.pedidosWeb === true,
+            usaAgregados: negocio?.usaAgregados === true,
           }
         : null,
     [usuario, negocio, dictaClases],
@@ -606,6 +639,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarCupo,
       refrescarCupo,
       fijarUsaDespacho,
+      fijarUsaAgregados,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     }),
@@ -625,6 +659,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       actualizarCupo,
       refrescarCupo,
       fijarUsaDespacho,
+      fijarUsaAgregados,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     ],

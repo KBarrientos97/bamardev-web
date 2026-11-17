@@ -2,9 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic, urlDeImagen } from "../../lib/pagina/apiPagina";
+import type { AgregadoElegido } from "../../lib/agregados/tipos";
+import { catalogoDePagina, itemLlevaAgregados } from "../../lib/pagina/agregadosPagina";
 import { catalogoEnSucursal, enlaceWhatsapp } from "../../lib/pagina/catalogo";
+import { claveLinea, type LineaPedido } from "../../lib/pagina/pedido";
+import { toppingsAgotados } from "../../lib/pedidosWeb/agotados";
 import { contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
-import type { EnlacePublico } from "../../lib/pagina/tipos";
+import type { EnlacePublico, ItemCatalogoPublico } from "../../lib/pagina/tipos";
+import HojaAgregadosPagina from "./HojaAgregadosPagina";
 import PedidoPagina from "./PedidoPagina";
 import FranjasPedido from "./FranjasPedido";
 import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
@@ -181,8 +186,20 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   const nombreSucursal = sucursales.length > 1 ? (sucursales[sucursal] ?? sucursales[0]) : null;
   const elegirSucursal = (i: number) => {
     setSucursal(i);
-    if (pagina?.catalogo) pedido.ajustar(catalogoEnSucursal(pagina.catalogo, i).items, pagina.catalogo.items);
+    // Los toppings también cambian de precio con el local elegido.
+    if (pagina?.catalogo) pedido.ajustar(catalogoEnSucursal(pagina.catalogo, i).items, pagina.catalogo.items, catalogoDePagina(pagina.agregados, i)?.catalogo);
   };
+  // La hoja de toppings (PLAN-AGREGADOS §8.3): al agregar un vaso que lleva grupo, o al tocar los toppings de una línea.
+  const [hoja, setHoja] = useState<{
+    itemId: number;
+    titulo: string;
+    precio: number | null;
+    /** Con `item`, es un vaso nuevo; con `clave`, se edita esa línea. */
+    item?: ItemCatalogoPublico;
+    clave?: string;
+    inicial?: AgregadoElegido[];
+    vasos?: number;
+  } | null>(null);
 
   // Pedidos y gift cards se mandan por WhatsApp: al general o al de alguna
   // sucursal (13-oct). Sin ningún número, no hay.
@@ -204,6 +221,22 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
     const delLocal = infoPedidos.info?.sucursales[sucursal] ?? infoPedidos.info?.sucursales[0];
     return delLocal?.agotados?.length ? new Set(delLocal.agotados) : undefined;
   }, [conSistema, infoPedidos.info, sucursal]);
+  // Los toppings con los precios del local elegido en la carta; null si la página no los usa.
+  const toppings = useMemo(() => catalogoDePagina(pagina?.agregados, sucursal), [pagina?.agregados, sucursal]);
+  const agregarAlPedido = (item: ItemCatalogoPublico) => {
+    if (toppings && itemLlevaAgregados(pagina?.agregados, item.id)) setHoja({ itemId: item.id, titulo: item.titulo, precio: item.precio, item });
+    else pedido.agregar(item);
+  };
+  const editarToppings = (l: LineaPedido) =>
+    setHoja({ itemId: l.id, titulo: l.titulo, precio: l.precio, clave: claveLinea(l), inicial: l.agregados, vasos: l.cantidad });
+  // Lo que ese local no puede servir de los toppings: lo que no ofrece y lo que la info marca agotado.
+  const toppingsAgotadosDe = (indice: number | null): ReadonlySet<number> => {
+    const delLocal = catalogoDePagina(pagina?.agregados, indice ?? sucursal);
+    const agotados = new Set(delLocal?.noOfrecidas ?? []);
+    const s = indice != null ? infoPedidos.info?.sucursales[indice] : undefined;
+    for (const id of toppingsAgotados(s)) agotados.add(id);
+    return agotados;
+  };
   const conRegalos = !!pagina?.regalos && contactos.length > 0;
   // El pedido de «Mis productos» con sucursal elegida va al WhatsApp de esa
   // sucursal o, si no tiene, al general. Sin selector, a cualquiera de los
@@ -238,7 +271,7 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
         urlInscribirme={(grupoId) => urlInscribirmeDe(pagina.subdominio, grupoId)}
         urlMiCuenta={urlMiCuentaDe(pagina.subdominio)}
         alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
-        alAgregarAlPedido={carrito ? pedido.agregar : undefined}
+        alAgregarAlPedido={carrito ? agregarAlPedido : undefined}
         lineasPedido={carrito ? pedido.lineas : undefined}
         alCambiarPedido={carrito ? pedido.cambiar : undefined}
         agotados={agotadosCarta}
@@ -257,6 +290,9 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
           rubro={pagina.rubroClave}
           subdominio={pagina.subdominio}
           asistente={!!pagina.asistente}
+          onEditarToppings={toppings ? editarToppings : undefined}
+          llevaToppings={toppings ? (id) => itemLlevaAgregados(pagina.agregados, id) : undefined}
+          toppingsAgotadosDe={toppings ? toppingsAgotadosDe : undefined}
           sistema={
             conSistema
               ? {
@@ -270,6 +306,26 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
                 }
               : undefined
           }
+        />
+      )}
+      {hoja && toppings && (
+        <HojaAgregadosPagina
+          itemId={hoja.itemId}
+          titulo={hoja.titulo}
+          precio={hoja.precio}
+          catalogo={toppings.catalogo}
+          agotadas={toppingsAgotadosDe(conSistema ? sucursal : null)}
+          inicial={hoja.inicial}
+          vasos={hoja.vasos}
+          editando={!!hoja.clave}
+          c={paleta(pagina.color.hex)}
+          onCerrar={() => setHoja(null)}
+          onConfirmar={(elegidos) => {
+            const t = { elegidos, catalogo: toppings.catalogo };
+            if (hoja.item) pedido.agregar(hoja.item, t);
+            else if (hoja.clave) pedido.cambiarToppings(hoja.clave, t);
+            setHoja(null);
+          }}
         />
       )}
       {conRegalos && pagina.regalos && (

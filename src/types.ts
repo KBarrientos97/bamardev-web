@@ -6,6 +6,8 @@ import type { Tema } from "./lib/temas";
 import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
 import type { EntregaPedidosWeb, PedidoWebDeEntrega } from "./lib/pedidosWeb/tipos";
+import type { Plataforma } from "./lib/pedidosPlataforma/tipos";
+import type { AgregadoInput } from "./lib/agregados/tipos";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
@@ -178,6 +180,20 @@ export interface SesionNegocio {
    * backend viejo) se ve como siempre. Lo vigente lo dice el tablero.
    */
   usaDespacho?: boolean;
+  /**
+   * Si el negocio vende productos con agregados (toppings, extras): el ajuste
+   * de Configuración › Inventario y stock (PLAN-AGREGADOS §7.6). Apagado de
+   * fábrica; sin el dato (sesión o backend viejo) se lee como apagado.
+   */
+  usaAgregados?: boolean;
+  /**
+   * Dónde se usan los toppings (PLAN-AGREGADOS §8.1), ya efectivos: `false` si
+   * `usaAgregados` está apagado. `agregadosEnPos` apagado deja la caja como antes
+   * de los agregados; `agregadosEnPagina` los lleva a la página del cliente. Un
+   * backend anterior no los manda: el POS toma `usaAgregados`.
+   */
+  agregadosEnPos?: boolean;
+  agregadosEnPagina?: boolean;
   /**
    * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
    * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
@@ -480,6 +496,41 @@ export interface Producto extends FichaFarmaceutica {
    * `controlaStock` en `pos/useCarrito.ts`.
    */
   vendeSinStock?: boolean;
+  /**
+   * Existe para el stock y los reportes pero no se vende suelto: es un topping
+   * (PLAN-AGREGADOS §7.1). `GET /productos` lo trae siempre, para poder
+   * destildarlo en Artículos; el POS pide `paraVenta` y el backend lo excluye.
+   */
+  soloAgregado?: boolean;
+}
+
+/**
+ * Un producto pausado en una sucursal (PLAN-ELGANADERO-16NOV §4.1): no se pide
+ * por la página ni se muestra en las TVs de ese local hasta que alguien lo
+ * reactive. La caja sólo avisa al venderlo.
+ */
+export interface ProductoPausado {
+  productoId: number;
+  nombre: string;
+  /** Desde cuándo está pausado (ISO). */
+  desde: string;
+  /** Quién lo pausó; null si ese usuario ya no existe. */
+  por: string | null;
+}
+
+/** `GET /productos/pausados`: los pausados de una sucursal y cómo se llama. */
+export interface PausadosDeSucursal {
+  sucursal: { id: number; nombre: string };
+  pausados: ProductoPausado[];
+}
+
+/** Lo que contestan `POST` y `DELETE /productos/:id/pausar`. */
+export interface EstadoPausa {
+  productoId: number;
+  sucursalId: number;
+  pausado: boolean;
+  desde?: string | null;
+  por?: string | null;
 }
 
 /**
@@ -564,6 +615,8 @@ export interface ProductoInput {
   categoriaId?: number;
   icono?: string;
   componentes?: { ingredienteId: number; cantidad: number }[];
+  /** Es un topping: no sale en la grilla del POS ni en la carta (PLAN-AGREGADOS §7.1). */
+  soloAgregado?: boolean;
   // Ficha farmacéutica: la manda el formulario de farmacia y nadie más.
   principioActivo?: string;
   concentracion?: string;
@@ -1269,6 +1322,17 @@ export interface PagoVenta {
 }
 
 export interface DetalleVenta {
+  /**
+   * Sólo en una venta con toppings (PLAN-AGREGADOS §7.3): el id de la línea,
+   * para que sus hijas la señalen. Ausente en una venta sin toppings y en el
+   * ticket local de la cola sin señal.
+   */
+  id?: number;
+  /** La línea del vaso de la que cuelga este topping; null en el vaso. */
+  lineaPadreId?: number | null;
+  /** El topping va dentro de lo incluido (Bs 0). */
+  incluido?: boolean;
+  grupoAgregadosId?: number | null;
   productoId: number;
   producto: string;
   cantidad: number;
@@ -1541,6 +1605,12 @@ export interface DetalleVentaInput {
    */
   cuotaId?: number;
   montoCuota?: number;
+  /**
+   * Toppings de ESTA línea (PLAN-AGREGADOS §7.3), en el orden en que el cliente
+   * los eligió y por unidad del producto. El backend recalcula incluidos y
+   * extras; sin ellos la línea es la de siempre.
+   */
+  agregados?: AgregadoInput[];
 }
 
 /**
@@ -2060,6 +2130,11 @@ export interface EstadoLicencia {
   permisosVersion?: string;
   /** Lo mismo que `negocio.pedidosWeb` del login, para repintar el menú sin volver a entrar. */
   pedidosWeb?: boolean;
+  /** Lo mismo que `negocio.usaAgregados` del login: si se apaga en otra pantalla, ésta se entera. */
+  usaAgregados?: boolean;
+  /** Lo mismo que `negocio.agregadosEnPos` / `agregadosEnPagina` del login (§8.1). */
+  agregadosEnPos?: boolean;
+  agregadosEnPagina?: boolean;
   /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
   entregaPedidosWeb?: EntregaPedidosWeb;
   servicioDeliveryExterno?: string | null;
@@ -2472,41 +2547,86 @@ export interface ReporteMovimientosCaja {
   porMotivo?: { codigo: CodigoMotivoEfectivo; monto: number; cantidad: number }[];
 }
 
+/** Una categoría de «Productos vendidos» con sus productos, igual para las ventas y para cada plataforma. */
+export interface CategoriaVendida {
+  nombre: string;
+  unidades: number;
+  total: number;
+  items: {
+    nombre: string;
+    cantidad: number;
+    precio: number;
+    total: number;
+    /** El artículo (backend del 25-oct): la key de la fila, que el nombre se repite. */
+    productoId?: number;
+    /**
+     * Billar (25-oct): es el "Tiempo de mesa", no un producto que salió. La
+     * pantalla lo muestra aparte y no lo cuenta como unidades.
+     */
+    tiempoMesa?: boolean;
+    /**
+     * Se vendió a más de un precio unitario (backend del 25-oct): `precio` es
+     * el promedio y no se muestra como precio, aunque multiplique justo.
+     */
+    variosPrecios?: boolean;
+    /**
+     * De `cantidad`, lo que salió en ventas al fiado (backend del 11-nov).
+     * El producto está contado entero: salió ese día, la plata entra después.
+     * Sólo viene si es más que cero.
+     */
+    fiado?: number;
+  }[];
+}
+
+/**
+ * Lo que salió en los pedidos de una plataforma de delivery en ese turno
+ * (backend del 16-nov, PLAN-PEDIDOS-PLATAFORMA §11): pedidos vivos, sin los
+ * anulados. Lo paga la app de delivery, no la caja: no suma al total vendido.
+ */
+export interface PlataformaVendida {
+  plataforma: Plataforma;
+  pedidos: number;
+  unidades: number;
+  total: number;
+  categorias: CategoriaVendida[];
+}
+
+/**
+ * Las ventas del turno que se pagaron de una misma forma (backend del 16-nov,
+ * PLAN-PEDIDOS-PLATAFORMA §11 bis). Es una partición exacta de las ventas: la
+ * suma de `unidades` y `total` de todas las secciones da las de la respuesta.
+ */
+export interface MedioVendido {
+  /** Clave estable: 'EFECTIVO' | 'QR' | 'MIXTO' | 'FIADO' | 'OTRO:<nombre>'. */
+  medio: string;
+  /** Lo que se ve: «Efectivo», «QR», «Mixto», «Al fiado» o el nombre de la forma de pago. */
+  nombre: string;
+  ventas: number;
+  unidades: number;
+  total: number;
+  categorias: CategoriaVendida[];
+}
+
 /** Lo que salió del mostrador en un turno, agrupado por categoría. */
 export interface ReporteCierreProductos {
-  categorias: {
-    nombre: string;
-    unidades: number;
-    total: number;
-    items: {
-      nombre: string;
-      cantidad: number;
-      precio: number;
-      total: number;
-      /** El artículo (backend del 25-oct): la key de la fila, que el nombre se repite. */
-      productoId?: number;
-      /**
-       * Billar (25-oct): es el "Tiempo de mesa", no un producto que salió. La
-       * pantalla lo muestra aparte y no lo cuenta como unidades.
-       */
-      tiempoMesa?: boolean;
-      /**
-       * Se vendió a más de un precio unitario (backend del 25-oct): `precio` es
-       * el promedio y no se muestra como precio, aunque multiplique justo.
-       */
-      variosPrecios?: boolean;
-      /**
-       * De `cantidad`, lo que salió en ventas al fiado (backend del 11-nov).
-       * El producto está contado entero: salió ese día, la plata entra después.
-       * Sólo viene si es más que cero.
-       */
-      fiado?: number;
-    }[];
-  }[];
+  categorias: CategoriaVendida[];
   unidades: number;
   total: number;
   /** Productos DISTINTOS, no suma de unidades. */
   lineas: number;
+  /**
+   * Los pedidos de Yango y PedidosYa del turno, aparte (§11). Sólo las
+   * plataformas con algún pedido; ausente o vacío si no hubo. NO está dentro
+   * de `unidades`, `total` ni `lineas`.
+   */
+  plataformas?: PlataformaVendida[];
+  /**
+   * Las mismas ventas repartidas por forma de pago (§11 bis). Ausente en un
+   * backend anterior: la lista queda como siempre.
+   */
+  porMedio?: MedioVendido[];
+  /** Ventas y pedidos de plataforma juntos: cuántas unidades salieron y de qué categoría (§11 bis). */
+  todo?: { unidades: number; total?: number; categorias: { nombre: string; unidades: number }[] };
   /** Lo que salió al fiado en el turno (backend del 11-nov). Sólo si hubo. */
   fiado?: FiadoDelTurno;
   /**

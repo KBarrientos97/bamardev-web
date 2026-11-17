@@ -1,11 +1,10 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { iconoDe } from "../../lib/pagina/aspecto";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
 import { rgbaCapa } from "../../lib/pagina/estilosPagina";
 import type { ItemCatalogoPublico } from "../../lib/pagina/tipos";
 import { termino } from "../../lib/rubro";
-import { etiquetaItem, SinFoto, VisorCatalogo } from "./CatalogoPagina";
+import { etiquetaItem, FotoItem, VisorCatalogo } from "./CatalogoPagina";
 import { columna, enFilas, Nombre, Raiz, rubroYDescripcion, tamanoNombre, type PiezasArmado } from "./piezasArmado";
 import { LogoNegocio, soloLector, Trazo } from "./piezasPagina";
 
@@ -151,7 +150,6 @@ export default function ArmadoMosaico(x: PiezasArmado) {
 
   /** Un ítem del catálogo como bloque de foto: el grande con título y precio encima; el chico, con una etiqueta. */
   const bloqueItem = (it: ItemCatalogoPublico, i: number, grande: boolean, alto: number | string) => {
-    const foto = urlDeImagen(it.fotoUrl);
     const precio = formatoPrecio(it.precio, it.precioDesde);
     // Los que no entran en la grilla se ven en el visor: el último chico lo avisa.
     const quedan = !grande && i === Math.min(items.length, 3) - 1 && items.length > 3 ? items.length : 0;
@@ -179,20 +177,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
           color: "#ffffff",
         }}
       >
-        {foto ? (
-          <img
-            src={foto}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            draggable={false}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-          />
-        ) : (
-          <span style={{ position: "absolute", inset: 0 }}>
-            <SinFoto item={it} fondo={t.sinFotoFondo} color={t.sinFotoTexto} tamano={grande ? 72 : 40} />
-          </span>
-        )}
+        <FotoItem item={it} fondo={t.sinFotoFondo} color={t.sinFotoTexto} tamano={grande ? 72 : 40} />
         {grande ? (
           // La capa crece con el texto: detrás de cada letra hay al menos la capa mínima (como en Vitrina).
           <span

@@ -251,3 +251,218 @@ describe("11-nov: lo fiado sale el día que se fía, marcado; el cobro entra sin
     expect(screen.queryByText(/cobros de fiado/)).not.toBeInTheDocument();
   });
 });
+
+describe("los pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §11)", () => {
+  const CON_PLATAFORMAS: ReporteCierreProductos = {
+    ...RESTAURANTE,
+    plataformas: [
+      {
+        plataforma: "YANGO",
+        pedidos: 3,
+        unidades: 5,
+        total: 85,
+        categorias: [{ nombre: "Pollos", unidades: 5, total: 85, items: [item(7, "Brasa medio", 1, 56), item(8, "Brasa cuarto", 4, 7.25)] }],
+      },
+      {
+        plataforma: "PEDIDOS_YA",
+        pedidos: 1,
+        unidades: 1,
+        total: 15,
+        categorias: [{ nombre: "Gaseosas", unidades: 1, total: 15, items: [item(9, "Coca Cola 1.5L", 1, 15)] }],
+      },
+    ],
+  };
+
+  it("una sección por plataforma con su marca, pedidos, unidades, y total", () => {
+    render(<ListaProductosVendidos d={CON_PLATAFORMAS} />);
+    const yango = screen.getByRole("region", { name: "Yango · 3 pedidos · 5 unidades · Bs 85,00" });
+    expect(yango).toHaveTextContent("3 pedidos · 5 unidades");
+    expect(yango).toHaveTextContent("Bs 85,00");
+    expect(yango).not.toHaveTextContent(/No se cobra/);
+    expect(yango.querySelector('[data-plataforma="YANGO"]')).toHaveTextContent("Yango");
+    expect(yango).toHaveTextContent("Brasa medio");
+    expect(yango).toHaveTextContent("4 u × Bs 7,25");
+    const pya = screen.getByRole("region", { name: "PedidosYa · 1 pedido · 1 unidad · Bs 15,00" });
+    expect(pya.querySelector('[data-plataforma="PEDIDOS_YA"]')).toHaveTextContent("PedidosYa");
+    expect(pya).toHaveTextContent("Coca Cola 1.5L");
+  });
+
+  it("van después de lo vendido y no cambian su total, sus unidades ni sus productos", () => {
+    render(<ListaProductosVendidos d={CON_PLATAFORMAS} />);
+    expect(screen.getByText("4 unidades · 1 producto").closest("div")).toHaveTextContent("Bs 60,00");
+    const resumen = screen.getByText("4 unidades · 1 producto");
+    const yango = screen.getByRole("region", { name: /^Yango/ });
+    // Orden del documento: el resumen de las ventas y después las plataformas.
+    expect(resumen.compareDocumentPosition(yango) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Lo de las ventas no se mezcla con lo de las plataformas.
+    expect(screen.getAllByText("Paceña 620 ml")).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: /Paceña/ })).toBeNull();
+  });
+
+  it("sin el campo, o vacío, la lista de siempre", () => {
+    const { container, rerender } = render(<ListaProductosVendidos d={RESTAURANTE} />);
+    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.queryByText("No se cobra en caja")).toBeNull();
+    const antes = container.innerHTML;
+    rerender(<ListaProductosVendidos d={{ ...RESTAURANTE, plataformas: [] }} />);
+    expect(container.innerHTML).toBe(antes);
+  });
+
+  it("un turno con sólo pedidos de plataforma muestra sus secciones", () => {
+    render(
+      <ListaProductosVendidos
+        d={{ unidades: 0, total: 0, lineas: 0, categorias: [], plataformas: [CON_PLATAFORMAS.plataformas![0]] }}
+      />,
+    );
+    expect(screen.getByRole("region", { name: /^Yango/ })).toBeInTheDocument();
+  });
+});
+
+describe("por forma de pago y total de unidades (PLAN-PEDIDOS-PLATAFORMA §11 bis)", () => {
+  const POR_MEDIO: ReporteCierreProductos = {
+    unidades: 10,
+    total: 170,
+    lineas: 3,
+    categorias: [
+      { nombre: "M", unidades: 7, total: 140, items: [item(1, "Arroz con leche M", 7, 20)] },
+      { nombre: "Topping", unidades: 3, total: 30, items: [item(2, "Topping oreo", 3, 10)] },
+    ],
+    porMedio: [
+      {
+        medio: "EFECTIVO",
+        nombre: "Efectivo",
+        ventas: 4,
+        unidades: 7,
+        total: 140,
+        categorias: [{ nombre: "M", unidades: 7, total: 140, items: [item(1, "Arroz con leche M", 7, 20)] }],
+      },
+      {
+        medio: "FIADO",
+        nombre: "Al fiado",
+        ventas: 1,
+        unidades: 3,
+        total: 30,
+        categorias: [{ nombre: "Topping", unidades: 3, total: 30, items: [item(2, "Topping oreo", 3, 10, { fiado: 3 })] }],
+      },
+    ],
+    plataformas: [
+      {
+        plataforma: "YANGO",
+        pedidos: 1,
+        unidades: 2,
+        total: 40,
+        categorias: [{ nombre: "M", unidades: 2, total: 40, items: [item(1, "Arroz con leche M", 2, 20)] }],
+      },
+    ],
+    todo: {
+      unidades: 12,
+      categorias: [
+        { nombre: "M", unidades: 9 },
+        { nombre: "Topping", unidades: 3 },
+      ],
+    },
+  };
+
+  it("por defecto: una sección por medio con su encabezado, después las plataformas y al final el resumen", () => {
+    render(<ListaProductosVendidos d={POR_MEDIO} />);
+    const efectivo = screen.getByRole("region", { name: "Efectivo · 4 ventas · 7 unidades · Bs 140,00" });
+    expect(efectivo).toHaveTextContent("Arroz con leche M");
+    const fiado = screen.getByRole("region", { name: "Al fiado · 1 venta · 3 unidades · Bs 30,00" });
+    expect(fiado).toHaveTextContent("No entró al cajón");
+    // No repite «al fiado» en cada renglón de la sección de lo fiado.
+    expect(fiado).not.toHaveTextContent("3 al fiado");
+    const yango = screen.getByRole("region", { name: /^Yango/ });
+    const orden = (a: Element, b: Element) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(orden(efectivo, fiado)).toBeTruthy();
+    expect(orden(fiado, yango)).toBeTruthy();
+    const total = screen.getByText("Total vendido en caja");
+    expect(orden(yango, total)).toBeTruthy();
+    expect(total.closest("div")).toHaveTextContent("Bs 170,00");
+    expect(screen.getByText("Total de unidades: 12")).toBeInTheDocument();
+    expect(screen.getByText("M 9 · Topping 3")).toBeInTheDocument();
+  });
+
+  it("«Todo junto» deja la lista de siempre, con las plataformas y sin el resumen final", () => {
+    render(<ListaProductosVendidos d={POR_MEDIO} />);
+    fireEvent.click(screen.getByRole("button", { name: "Todo junto" }));
+    expect(screen.getByRole("button", { name: "Todo junto" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("region", { name: /^Efectivo/ })).toBeNull();
+    expect(screen.queryByText("Total vendido en caja")).toBeNull();
+    expect(screen.getByText("10 unidades · 3 productos").closest("div")).toHaveTextContent("Bs 170,00");
+    expect(screen.getByRole("region", { name: /^Yango/ })).toBeInTheDocument();
+  });
+
+  it("avisa al padre qué vista se elige (el PDF sale como se mira)", () => {
+    const onVista = vi.fn();
+    render(<ListaProductosVendidos d={POR_MEDIO} onVista={onVista} />);
+    fireEvent.click(screen.getByRole("button", { name: "Todo junto" }));
+    expect(onVista).toHaveBeenCalledWith("todo");
+  });
+
+  it("sin `porMedio` (un backend anterior) no hay selector ni cambia nada", () => {
+    render(<ListaProductosVendidos d={RESTAURANTE} />);
+    expect(screen.queryByRole("button", { name: "Todo junto" })).toBeNull();
+    expect(screen.queryByText("Total vendido en caja")).toBeNull();
+  });
+
+  it("en la tarjeta compacta (con límite, la Supervisión) sigue la lista de siempre", () => {
+    render(<ListaProductosVendidos d={POR_MEDIO} limite={5} />);
+    expect(screen.queryByRole("button", { name: "Todo junto" })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^Efectivo/ })).toBeNull();
+  });
+
+  it("«Sin pago», una forma de pago propia (OTRO:) y dos productos borrados se muestran sin repetir keys", () => {
+    const errores = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sinCat = (id: number, n: string) => item(id, n, 1, 10);
+    const D: ReporteCierreProductos = {
+      unidades: 4,
+      total: 40,
+      lineas: 4,
+      categorias: [{ nombre: "Sin categoría", unidades: 4, total: 40, items: [sinCat(0, "Borrado A"), sinCat(0, "Borrado B")] }],
+      porMedio: [
+        {
+          medio: "SIN_PAGO",
+          nombre: "Sin pago",
+          ventas: 1,
+          unidades: 2,
+          total: 20,
+          categorias: [{ nombre: "Sin categoría", unidades: 2, total: 20, items: [sinCat(0, "Borrado A"), sinCat(0, "Borrado B")] }],
+        },
+        {
+          medio: "OTRO:Tarjeta",
+          nombre: "Tarjeta",
+          ventas: 2,
+          unidades: 2,
+          total: 20,
+          categorias: [{ nombre: "Sin categoría", unidades: 2, total: 20, items: [sinCat(0, "Borrado C"), sinCat(0, "Borrado D")] }],
+        },
+      ],
+      todo: { unidades: 4, total: 40, categorias: [{ nombre: "Sin categoría", unidades: 4 }] },
+    };
+    render(<ListaProductosVendidos d={D} />);
+    expect(screen.getByRole("region", { name: "Sin pago · 1 venta · 2 unidades · Bs 20,00" })).toHaveTextContent("Borrado B");
+    expect(screen.getByRole("region", { name: "Tarjeta · 2 ventas · 2 unidades · Bs 20,00" })).toHaveTextContent("Borrado D");
+    expect(screen.getByText("Total de unidades: 4")).toBeInTheDocument();
+    // React avisa por consola de las keys repetidas.
+    expect(errores.mock.calls.some((c) => String(c[0]).includes("same key"))).toBe(false);
+    errores.mockRestore();
+  });
+
+  it("con tiempo de mesa (billar) no se parte por forma de pago", () => {
+    const BILLAR_MEDIO: ReporteCierreProductos = {
+      ...POR_MEDIO,
+      porMedio: [
+        {
+          medio: "EFECTIVO",
+          nombre: "Efectivo",
+          ventas: 1,
+          unidades: 1,
+          total: 25,
+          categorias: [{ nombre: "Mesas", unidades: 1, total: 25, items: [item(5, "Tiempo de mesa", 1, 25, { tiempoMesa: true })] }],
+        },
+      ],
+    };
+    render(<ListaProductosVendidos d={BILLAR_MEDIO} />);
+    expect(screen.queryByRole("button", { name: "Todo junto" })).toBeNull();
+  });
+});

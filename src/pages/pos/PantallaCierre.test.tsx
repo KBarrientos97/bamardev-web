@@ -31,6 +31,10 @@ vi.mock("../../store/AuthContext", async () => {
   };
 });
 
+/** El diseño del recibo (Ticket y recibo): sólo se mira «Letra gruesa». */
+const recibo = vi.hoisted(() => ({ valor: null as { recibo: { negrita: boolean }; logo: null } | null }));
+vi.mock("../../lib/menuDigital/useReciboNegocio", () => ({ useReciboNegocio: () => recibo.valor }));
+
 vi.mock("../../lib/api", () => ({
   api: { resumenCaja: vi.fn(), reporteCierreProductos: vi.fn(), cerrarCaja: vi.fn() },
 }));
@@ -1203,5 +1207,111 @@ describe("el cierre dice de qué local es la caja, sólo con varios (PLAN-SUCURS
     sesion.locales = 1;
     render(<CierreOk caja={caja()} onSalir={() => {}} />);
     expect(screen.queryByText(/Sucursal Sur/)).not.toBeInTheDocument();
+  });
+});
+
+describe("§4.2 de PLAN-ELGANADERO-16NOV: el ticket de cierre de 58 mm", () => {
+  /** Un renglón de 32 columnas: lo de la izquierda y el monto pegado al borde. */
+  const fila = (izq: string, monto: string) => izq + " ".repeat(32 - izq.length - monto.length) + monto;
+  const PRODUCTOS = {
+    unidades: 6,
+    total: 150,
+    lineas: 2,
+    categorias: [
+      { nombre: "Pollos", unidades: 4, total: 60, items: [{ nombre: "Cuarto de pollo", cantidad: 4, precio: 15, total: 60, productoId: 1 }] },
+      { nombre: "Combos", unidades: 2, total: 90, items: [{ nombre: "Combo familiar", cantidad: 2, precio: 45, total: 90, productoId: 2 }] },
+    ],
+    porMedio: [
+      { medio: "EFECTIVO", nombre: "Efectivo", ventas: 2, unidades: 4, total: 100, categorias: [] },
+      { medio: "QR", nombre: "QR", ventas: 1, unidades: 2, total: 50, categorias: [] },
+    ],
+  };
+
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.reportes = true;
+    recibo.valor = null;
+    window.print = vi.fn();
+  });
+
+  it("antes de cerrar: el botón imprime el ticket con el esperado y sin lo contado", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: PRODUCTOS, saldoEsperado: 430 }));
+    await montar();
+    // No hay papel montado hasta que se toca el botón.
+    expect(document.getElementById("area-impresion")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir ticket" }));
+    expect(window.print).toHaveBeenCalledTimes(1);
+    const papel = document.getElementById("area-impresion")!;
+    expect(papel).not.toBeNull();
+    // El rollo de 58 mm: la misma variable que usa el recibo.
+    expect(papel.style.getPropertyValue("--ancho-ticket")).toBe("48mm");
+    expect(papel.className).not.toContain("papel-negrita");
+    const texto = papel.textContent!;
+    expect(texto).toContain("4 Cuarto de pollo");
+    expect(texto).toContain(fila("Vendido 6 u", "150.00"));
+    expect(texto).toContain(fila("  QR", "50.00"));
+    expect(texto).toContain(fila("Efectivo esperado", "430.00"));
+    expect(texto).not.toMatch(/Contado|Diferencia/);
+    expect(texto).toContain("Cajero: Ana Quispe");
+    // Al terminar la impresión el papel se retira: no queda un #area-impresion escondido.
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    expect(document.getElementById("area-impresion")).toBeNull();
+  });
+
+  it("con «Letra gruesa» prendida en Ticket y recibo, el papel va en negrita", async () => {
+    recibo.valor = { recibo: { negrita: true }, logo: null };
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: PRODUCTOS }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir ticket" }));
+    expect(document.getElementById("area-impresion")!.className).toContain("papel-negrita");
+  });
+
+  it("el modal de «Productos vendidos» también lo ofrece", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: PRODUCTOS }));
+    await montar();
+    fireEvent.click(screen.getByText("Productos vendidos"));
+    const modal = await screen.findByRole("dialog", { name: "Productos vendidos" });
+    fireEvent.click(within(modal).getByRole("button", { name: "Imprimir ticket" }));
+    expect(window.print).toHaveBeenCalledTimes(1);
+    expect(document.getElementById("area-impresion")!.textContent).toContain("2 Combo familiar");
+    // «Exportar PDF» sigue como estaba.
+    expect(within(modal).getByRole("button", { name: "Exportar PDF" })).toBeInTheDocument();
+  });
+
+  it("ya cerrada la caja: lleva lo contado y la diferencia", () => {
+    render(
+      <CierreOk
+        caja={cajaCerrada({ resumen: resumen({ ...TURNO_COMPLETO, productos: PRODUCTOS }) })}
+        onSalir={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir ticket" }));
+    const texto = document.getElementById("area-impresion")!.textContent!;
+    expect(texto).toContain(fila("Efectivo esperado", "440.00"));
+    expect(texto).toContain(fila("Contado", "438.00"));
+    expect(texto).toContain(fila("Diferencia", "-2.00"));
+    expect(texto).toMatch(/Cierre 28\/10 12:04-29\/10 03:17/);
+  });
+
+  it("sin lo vendido en el comprobante, el botón queda para el modal que lo pide a Reportes", async () => {
+    vi.mocked(api.reporteCierreProductos).mockResolvedValue(PRODUCTOS);
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Imprimir ticket" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Productos vendidos"));
+    const modal = await screen.findByRole("dialog", { name: "Productos vendidos" });
+    fireEvent.click(await within(modal).findByRole("button", { name: "Imprimir ticket" }));
+    expect(document.getElementById("area-impresion")!.textContent).toContain("Contado");
+  });
+
+  it("los demás rubros no lo ofrecen", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: PRODUCTOS }));
+    await montar();
+    expect(screen.queryByRole("button", { name: "Imprimir ticket" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Ver lo vendido"));
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).queryByRole("button", { name: "Imprimir ticket" })).not.toBeInTheDocument();
   });
 });

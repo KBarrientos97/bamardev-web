@@ -625,6 +625,10 @@ export default function Productos() {
           setEditando(null);
           recargar();
         }}
+        // Se borró un ícono propio: los artículos que lo tenían quedaron sin
+        // ícono. Sin volver a pedir la lista, detrás del formulario seguían con
+        // la foto (el navegador la guarda para siempre: su URL no cambia).
+        onIconoBorrado={recargar}
       />
 
       <Confirmar
@@ -690,6 +694,7 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
             {sinStock && <Badge tono="rojo">Sin stock</Badge>}
             {bajoStock && <Badge tono="amarillo">Bajo stock</Badge>}
             {!p.habilitado && <Badge tono="gris">Inactivo</Badge>}
+            {p.soloAgregado && <Badge tono="azul">Agregado</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -1146,6 +1151,7 @@ function FormProducto({
   sucursalFiltradaId,
   onClose,
   onGuardado,
+  onIconoBorrado,
 }: {
   abierto: boolean;
   producto: Producto | null;
@@ -1158,6 +1164,8 @@ function FormProducto({
   sucursalFiltradaId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
+  /** Se borró un ícono propio desde el selector: la lista tiene que volver a pedirse. */
+  onIconoBorrado?: () => void;
 }) {
   // La clave remonta el formulario al cambiar de artículo: así los estados
   // internos arrancan siempre desde el producto que se está editando.
@@ -1173,6 +1181,7 @@ function FormProducto({
       sucursalFiltradaId={sucursalFiltradaId}
       onClose={onClose}
       onGuardado={onGuardado}
+      onIconoBorrado={onIconoBorrado}
     />
   );
 }
@@ -1186,6 +1195,7 @@ function FormProductoCuerpo({
   sucursalFiltradaId,
   onClose,
   onGuardado,
+  onIconoBorrado,
 }: {
   producto: Producto | null;
   categorias: Categoria[];
@@ -1195,9 +1205,13 @@ function FormProductoCuerpo({
   sucursalFiltradaId?: number | null;
   onClose: () => void;
   onGuardado: () => void;
+  onIconoBorrado?: () => void;
 }) {
   const esEdicion = !!producto;
-  const { incluye, rubro, vocabulario } = useAuth();
+  const { incluye, rubro, vocabulario, negocio } = useAuth();
+  // Toppings (PLAN-AGREGADOS §7.6): la casilla «Sólo como agregado» existe sólo
+  // con el ajuste de Configuración prendido; sin él nadie la ve ni la manda.
+  const usaAgregados = negocio?.usaAgregados === true;
   // El usuario de un local ve en la lista el precio de SU local: el campo lo
   // dice, porque guardarlo cambiado mueve el precio del catálogo de todos.
   const suc = useSucursales();
@@ -1273,6 +1287,7 @@ function FormProductoCuerpo({
   const [categoriaId, setCategoriaId] = useState(String(producto?.categoria?.id ?? ""));
   const [unidadId, setUnidadId] = useState(String(producto?.unidadMedida?.id ?? ""));
   const [habilitado, setHabilitado] = useState(producto?.habilitado ?? true);
+  const [soloAgregado, setSoloAgregado] = useState(producto?.soloAgregado ?? false);
   // Se arrastra siempre, aunque el form no lo toque: si no viajara en el PATCH,
   // cambiar el precio desde la web le borraria el icono puesto en la app.
   const [icono, setIcono] = useState<string | null>(producto?.icono ?? null);
@@ -1497,6 +1512,8 @@ function FormProductoCuerpo({
       // código chocaba con un 409 que no decía qué campo lo causaba.
       ...(codBarra.trim() ? { codBarra: codBarra.trim() } : {}),
       habilitado,
+      // Sólo con el ajuste prendido: apagado el campo no existe para este negocio.
+      ...(usaAgregados ? { soloAgregado } : {}),
       // Viaja siempre, también vacío: es lo que permite QUITAR el ícono. Y va
       // aunque el usuario no lo haya tocado, con el valor que ya tenía, para
       // que editar el precio desde la web no borre lo elegido en la app.
@@ -2041,6 +2058,12 @@ function FormProductoCuerpo({
               setEligiendoIcono(false);
             }}
             onCerrar={() => setEligiendoIcono(false)}
+            // Borró en «Mis íconos» el que tenía puesto: queda sin ícono, como
+            // los demás productos que lo usaban.
+            onIconoBorrado={(llave) => {
+              setIcono((puesto) => (puesto === llave ? null : puesto));
+              onIconoBorrado?.();
+            }}
           />
         )}
 
@@ -2120,6 +2143,21 @@ function FormProductoCuerpo({
             <span className="ml-1 text-texto-4">— si no, no aparece en el punto de venta</span>
           </span>
         </label>
+
+        {usaAgregados && (
+          <label className="flex items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={soloAgregado}
+              onChange={(e) => setSoloAgregado(e.target.checked)}
+              className="h-4 w-4 shrink-0 rounded border-borde accent-primary"
+            />
+            <span className="text-sm text-texto-2">
+              Sólo como agregado
+              <span className="ml-1 text-texto-4">— es un topping: no sale suelto en el punto de venta ni en la carta</span>
+            </span>
+          </label>
+        )}
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>

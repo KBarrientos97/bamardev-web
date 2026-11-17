@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState, useRef } from "react";
 import { Icon } from "../../components/Icon";
+import { agruparHijas } from "../../lib/agregados/hijas";
 import InputMonto from "../../components/InputMonto";
 import { Badge, Boton, Cargando, ErrorMsg, Input, Select } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
@@ -180,12 +181,30 @@ export default function DetallePedidoWeb({
           <Cargando />
         ) : (
           <ul className="divide-y divide-borde-soft">
-            {p.lineas.map((l, i) => (
-              <li key={i} className="flex items-start justify-between gap-3 py-2.5">
-                <p className="text-sm text-texto">
-                  <span className="font-bold">{fmtNum(l.cantidad)}×</span> {l.titulo}
-                </p>
-                <span className="shrink-0 text-sm font-bold">{fmtMoney(l.subtotal)}</span>
+            {agruparHijas(p.lineas).map(({ linea: l, hijas }, i) => (
+              <li key={i} className="py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm text-texto">
+                    <span className="font-bold">{fmtNum(l.cantidad)}×</span> {l.titulo}
+                  </p>
+                  <span className="shrink-0 text-sm font-bold">{fmtMoney(l.subtotal)}</span>
+                </div>
+                {/* Los toppings del vaso, indentados debajo de él (PLAN-AGREGADOS §8.4). */}
+                {hijas.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 border-l-2 border-borde pl-3" data-testid="toppings-pedido">
+                    {hijas.map((h, j) => (
+                      <li key={j} className="flex items-start justify-between gap-3 text-[13px] text-texto-2">
+                        <span>
+                          + {h.cantidad !== 1 ? `${fmtNum(h.cantidad)} × ` : ""}
+                          {h.titulo}
+                        </span>
+                        <span className={`shrink-0 ${h.incluido ? "text-texto-3" : "font-semibold text-texto"}`}>
+                          {h.incluido ? "incluido" : fmtMoney(h.subtotal)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

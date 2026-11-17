@@ -54,6 +54,10 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+// «Mis íconos» (16-nov): el selector del formulario pide la lista al abrirse.
+const apiIconos = vi.hoisted(() => ({ listar: vi.fn(), subir: vi.fn(), renombrar: vi.fn(), borrar: vi.fn() }));
+vi.mock("../../lib/apiIconos", () => ({ apiIconos }));
+
 import { api } from "../../lib/api";
 import Productos from "./Productos";
 
@@ -1272,4 +1276,47 @@ describe("el stock del combo es de UN local (PLAN-SUCURSAL-TOTAL §8.5)", () => 
     await guardar();
     expect(actualizarProducto.mock.calls[0][1]).not.toHaveProperty("almacenId");
   });
+});
+
+describe("«Mis íconos»: borrar uno desde el formulario (16-nov)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    apiIconos.listar.mockReset();
+    apiIconos.borrar.mockReset();
+  });
+
+  it("el formulario queda en «Sin ícono» y la lista se vuelve a pedir (los demás productos que lo usaban también lo pierden)", async () => {
+    // Prueba de punta a punta: detrás del formulario, la lista seguía con la
+    // foto borrada hasta recargar (el navegador la guarda: su URL no cambia).
+    const llave = "mio:00000000000000000000000a";
+    apiIconos.listar.mockResolvedValue({
+      tope: 200,
+      iconos: [{ id: 10, llave, nombre: "Vaso grande", ruta: "/publico/iconos/00000000000000000000000a", enUso: 2 }],
+    });
+    apiIconos.borrar.mockResolvedValue({ productos: 2 });
+    vi.mocked(api.getUnidades).mockResolvedValue([UNIDAD] as never);
+    getProductos.mockResolvedValue([producto({ id: 7, nombre: "Arroz con leche", icono: llave, unidadMedida: UNIDAD })]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByText("Arroz con leche"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    });
+    // El campo lo dice con el ícono puesto (el nombre accesible del botón es el del <label> «Ícono»).
+    fireEvent.click(screen.getByText("Ícono propio").closest("button")!);
+
+    const misIconos = within(await screen.findByRole("region", { name: "Mis íconos" }));
+    await misIconos.findByRole("button", { name: "Vaso grande" });
+    fireEvent.click(misIconos.getByRole("button", { name: "Administrar" }));
+    fireEvent.click(misIconos.getByRole("button", { name: "Borrar «Vaso grande»" }));
+    const pedidosAntes = getProductos.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "¿Borrar este ícono?" })).getByRole("button", { name: "Borrar" }));
+    });
+
+    expect(apiIconos.borrar).toHaveBeenCalledWith(10);
+    expect(getProductos.mock.calls.length).toBeGreaterThan(pedidosAntes);
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Elegí un ícono" })).getByRole("button", { name: "Cerrar" }));
+    expect(screen.queryByRole("dialog", { name: "Elegí un ícono" })).toBeNull();
+    expect(screen.getByText("Sin ícono").closest("button")).toHaveTextContent("Tocá para elegir");
+  }, 40_000);
 });

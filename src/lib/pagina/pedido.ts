@@ -1,3 +1,6 @@
+import { firmaDeAgregados } from "../agregados/calculo";
+import type { AgregadoElegido, CatalogoAgregados } from "../agregados/tipos";
+import { vistaDeLinea, type HijaDeLinea } from "./agregadosPagina";
 import { formatoPrecio } from "./catalogo";
 import type { ItemCatalogoPublico } from "./tipos";
 
@@ -20,9 +23,41 @@ export interface LineaPedido {
   cantidad: number;
   /** Para la miniatura del carrito; opcionales porque un pedido viejo guardado no los trae. */
   fotoUrl?: string | null;
+  /** La foto no tiene fondo: va entera sobre el tinte. Ausente (o un pedido viejo) = con fondo. */
+  fotoSinFondo?: boolean;
   icono?: string | null;
   /** Un servicio (un corte): va una sola vez, sin cantidad. */
   servicio?: boolean;
+  /**
+   * Los toppings que el cliente eligió para UNA unidad del vaso, en el orden en
+   * que los tocó (PLAN-AGREGADOS §8.3). Dos vasos con toppings distintos son dos
+   * líneas: la identidad de la línea es `claveLinea`.
+   */
+  agregados?: AgregadoElegido[];
+  /** Esos toppings ya repartidos entre incluidos y extras, para dibujarlos. */
+  hijas?: HijaDeLinea[];
+  /** Cuánto suman los extras por UNIDAD del vaso (Bs). */
+  extra?: number;
+}
+
+/**
+ * Lo que distingue una línea de otra: el ítem y, con toppings, cuáles. El mismo
+ * ítem sin toppings sigue siendo `String(id)`, así que nada de lo anterior cambia.
+ */
+export function claveLinea(l: Pick<LineaPedido, "id" | "agregados">): string {
+  const firma = firmaDeAgregados(l.agregados);
+  return firma ? `${l.id}|${firma}` : String(l.id);
+}
+
+/** El precio de UNA unidad del vaso con sus extras (null si el vaso no tiene precio). */
+export function precioConExtras(l: LineaPedido): number | null {
+  return l.precio == null ? null : Math.round((l.precio + (l.extra ?? 0)) * 100) / 100;
+}
+
+/** Lo elegido en la hoja y el catálogo con que se calculó (los precios son los de la sucursal). */
+export interface ToppingsElegidos {
+  elegidos: AgregadoElegido[];
+  catalogo: CatalogoAgregados | null;
 }
 
 export type Entrega = "RETIRO" | "DELIVERY";
@@ -34,21 +69,31 @@ export interface DatosPedido {
   nota: string;
 }
 
-export function agregarLinea(lineas: LineaPedido[], item: ItemCatalogoPublico): LineaPedido[] {
-  const ya = lineas.find((l) => l.id === item.id);
+/**
+ * Suma un ítem al pedido. Con toppings, la línea es la de ESE vaso con ESOS
+ * toppings: otro vaso con otros toppings es otra línea; con los mismos, suma
+ * cantidad. El límite de líneas cuenta sólo los vasos.
+ */
+export function agregarLinea(lineas: LineaPedido[], item: ItemCatalogoPublico, toppings?: ToppingsElegidos): LineaPedido[] {
+  const elegidos = toppings && toppings.elegidos.length > 0 ? toppings.elegidos : undefined;
+  const clave = claveLinea({ id: item.id, agregados: elegidos });
+  const ya = lineas.find((l) => claveLinea(l) === clave);
   // Un servicio no se pide de a tres: ya está, queda como está.
   if (ya && (ya.servicio || item.servicioId != null)) return lineas;
-  if (ya) return lineas.map((l) => (l.id === item.id ? { ...l, cantidad: Math.min(MAX_CANTIDAD, l.cantidad + 1) } : l));
+  if (ya) return lineas.map((l) => (claveLinea(l) === clave ? { ...l, cantidad: Math.min(MAX_CANTIDAD, l.cantidad + 1) } : l));
   if (lineas.length >= MAX_LINEAS) return lineas;
+  const vista = elegidos && toppings ? vistaDeLinea(elegidos, item.id, toppings.catalogo) : null;
   return [
     ...lineas,
     {
       id: item.id,
+      ...(elegidos && vista ? { agregados: elegidos, hijas: vista.hijas, extra: vista.extra } : {}),
       titulo: item.titulo,
       precio: item.precio,
       desde: item.precioDesde,
       cantidad: 1,
       fotoUrl: item.fotoUrl,
+      ...(item.fotoUrl && item.fotoSinFondo ? { fotoSinFondo: true } : {}),
       icono: item.icono ?? null,
       ...(item.servicioId != null ? { servicio: true } : {}),
     },
@@ -60,15 +105,38 @@ export function cantidadDe(lineas: LineaPedido[], id: number): number {
   return lineas.find((l) => l.id === id)?.cantidad ?? 0;
 }
 
-/** El subtotal de la línea, si se puede calcular (con precio fijo). */
+/** El subtotal de la línea, si se puede calcular (con precio fijo): el vaso más sus extras, por la cantidad. */
 export function subtotalLinea(l: LineaPedido): number | null {
-  return l.precio != null && !l.desde ? Math.round(l.precio * l.cantidad * 100) / 100 : null;
+  return l.precio != null && !l.desde ? Math.round((l.precio + (l.extra ?? 0)) * l.cantidad * 100) / 100 : null;
 }
 
-export function cambiarCantidad(lineas: LineaPedido[], id: number, delta: number): LineaPedido[] {
+/** `ref` es la clave de la línea (`claveLinea`) o, para una sin toppings, el id del ítem. */
+export function cambiarCantidad(lineas: LineaPedido[], ref: number | string, delta: number): LineaPedido[] {
+  const clave = String(ref);
   return lineas
-    .map((l) => (l.id === id ? { ...l, cantidad: Math.min(l.servicio ? 1 : MAX_CANTIDAD, l.cantidad + delta) } : l))
+    .map((l) => (claveLinea(l) === clave ? { ...l, cantidad: Math.min(l.servicio ? 1 : MAX_CANTIDAD, l.cantidad + delta) } : l))
     .filter((l) => l.cantidad > 0);
+}
+
+/**
+ * Cambia los toppings de una línea (tocarla en el carrito reabre la hoja). Si
+ * quedan iguales a los de otra línea del mismo vaso, las dos se juntan en una
+ * con la suma de cantidades.
+ */
+export function cambiarAgregados(lineas: LineaPedido[], ref: string, toppings: ToppingsElegidos): LineaPedido[] {
+  const actual = lineas.find((l) => claveLinea(l) === ref);
+  if (!actual) return lineas;
+  const elegidos = toppings.elegidos.length > 0 ? toppings.elegidos : undefined;
+  const vista = elegidos ? vistaDeLinea(elegidos, actual.id, toppings.catalogo) : null;
+  const { agregados: _a, hijas: _h, extra: _e, ...base } = actual;
+  const nueva: LineaPedido = { ...base, ...(elegidos && vista ? { agregados: elegidos, hijas: vista.hijas, extra: vista.extra } : {}) };
+  const claveNueva = claveLinea(nueva);
+  const gemela = lineas.find((l) => l !== actual && claveLinea(l) === claveNueva);
+  return lineas.flatMap((l) => {
+    if (l === actual) return gemela ? [] : [nueva];
+    if (l === gemela) return [{ ...l, cantidad: Math.min(MAX_CANTIDAD, l.cantidad + actual.cantidad) }];
+    return [l];
+  });
 }
 
 export function cantidadTotal(lineas: LineaPedido[]): number {
@@ -82,7 +150,7 @@ export function totalPedido(lineas: LineaPedido[]): { total: number; aConfirmar:
   for (const l of lineas) {
     if (l.precio == null) aConfirmar = true;
     else {
-      total += l.precio * l.cantidad;
+      total += (l.precio + (l.extra ?? 0)) * l.cantidad;
       if (l.desde) aConfirmar = true;
     }
   }
@@ -94,14 +162,24 @@ export function totalPedido(lineas: LineaPedido[]): { total: number; aConfirmar:
  * y lo que ahí no se ofrece sale del pedido. Lo que no está en el catálogo
  * (una línea vieja de otra visita) se deja como estaba.
  */
-export function ajustarASucursal(lineas: LineaPedido[], items: ItemCatalogoPublico[], todos: ItemCatalogoPublico[]): LineaPedido[] {
+export function ajustarASucursal(
+  lineas: LineaPedido[],
+  items: ItemCatalogoPublico[],
+  todos: ItemCatalogoPublico[],
+  /** Los toppings con los precios de la sucursal nueva: los extras se recalculan. */
+  catalogoAgregados?: CatalogoAgregados | null,
+): LineaPedido[] {
   const ahora = new Map(items.map((it) => [it.id, it]));
   const conocidos = new Set(todos.map((it) => it.id));
   return lineas
     .filter((l) => ahora.has(l.id) || !conocidos.has(l.id))
     .map((l) => {
       const it = ahora.get(l.id);
-      return it ? { ...l, precio: it.precio, desde: it.precioDesde } : l;
+      if (!it) return l;
+      const nueva = { ...l, precio: it.precio, desde: it.precioDesde };
+      if (!l.agregados?.length || !catalogoAgregados) return nueva;
+      const vista = vistaDeLinea(l.agregados, l.id, catalogoAgregados);
+      return { ...nueva, hijas: vista.hijas, extra: vista.extra };
     });
 }
 
@@ -131,9 +209,12 @@ export function mensajePedido(
   etiqueta = "Sucursal",
 ): string {
   const filas = lineas.map((l) => {
-    const unitario = formatoPrecio(l.precio, l.desde);
-    const sub = l.precio != null && !l.desde ? ` = ${formatoPrecio(l.precio * l.cantidad)}` : "";
-    return `• ${l.cantidad} × ${l.titulo}${unitario ? ` (${unitario})${sub}` : " (precio a consultar)"}`;
+    const unitario = formatoPrecio(precioConExtras(l), l.desde);
+    const sub = l.precio != null && !l.desde ? ` = ${formatoPrecio(subtotalLinea(l))}` : "";
+    const principal = `• ${l.cantidad} × ${l.titulo}${unitario ? ` (${unitario})${sub}` : " (precio a consultar)"}`;
+    // Los toppings, una línea debajo del vaso: «+ Oreo, 2 × Chubi (extra)».
+    const toppings = (l.hijas ?? []).map((h) => `${h.cantidad > 1 ? `${h.cantidad} × ` : ""}${h.nombre}${h.incluido ? "" : " (extra)"}`);
+    return toppings.length ? `${principal}\n   + ${toppings.join(", ")}` : principal;
   });
   const { total, aConfirmar } = totalPedido(lineas);
   const totalTexto = total > 0 ? `${formatoPrecio(total)}${aConfirmar ? " + lo que confirmen" : ""}` : "a confirmar";

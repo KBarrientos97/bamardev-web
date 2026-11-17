@@ -30,7 +30,7 @@ function montar(props: Partial<React.ComponentProps<typeof DialogoPedidoPlatafor
 }
 
 describe("DialogoPedidoPlataforma", () => {
-  it("muestra el detalle del carrito, el total y el aviso de que no se cobra", () => {
+  it("muestra el detalle del carrito, el total y dónde queda registrado", () => {
     montar();
     expect(screen.getByRole("dialog", { name: "Pedido de Yango" })).toBeInTheDocument();
     expect(screen.getByText("Arroz con leche L")).toBeInTheDocument();
@@ -38,14 +38,14 @@ describe("DialogoPedidoPlataforma", () => {
     // 2 × Bs 35 y el total del pedido.
     expect(screen.getByText(/Bs.70,00/)).toBeInTheDocument();
     expect(screen.getAllByText(/Bs.80,00/).length).toBeGreaterThan(0);
-    expect(screen.getByText("No se cobra ni entra a la caja. Queda en el reporte de Yango.")).toBeInTheDocument();
+    expect(screen.getByText("Queda en el reporte de Yango.")).toBeInTheDocument();
     expect(screen.getByLabelText("N° de pedido de Yango (opcional)")).toBeInTheDocument();
   });
 
   it("dice PedidosYa (junto, como la marca) cuando es esa plataforma", () => {
     montar({ plataforma: "PEDIDOS_YA" });
     expect(screen.getByLabelText("N° de pedido de PedidosYa (opcional)")).toBeInTheDocument();
-    expect(screen.getByText("No se cobra ni entra a la caja. Queda en el reporte de PedidosYa.")).toBeInTheDocument();
+    expect(screen.getByText("Queda en el reporte de PedidosYa.")).toBeInTheDocument();
   });
 
   it("Registrar sin N° manda undefined; con N° lo manda recortado", async () => {

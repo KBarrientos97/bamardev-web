@@ -1,5 +1,7 @@
 import type {
   Existencia,
+  EstadoPausa,
+  PausadosDeSucursal,
   ApunteStock,
   PrecioSucursal,
   PrecioSucursalInput,
@@ -95,6 +97,7 @@ import type {
   TurnoMesero,
   ZonaSalon,
 } from "../types/salon";
+import type { CambioConfigAgregados, CatalogoAgregados, ConfigAgregados, GrupoAgregados, GuardarGrupoInput } from "./agregados/tipos";
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
@@ -539,16 +542,37 @@ export const api = {
     * sin él, el POS mostraba el precio de lista y la venta cobraba el de la
     * sucursal, así que el cobro fallaba con "los pagos no suman el total".
     */
-  getProductos: (eliminados?: boolean, sucursalId?: number | null) =>
+  getProductos: (eliminados?: boolean, sucursalId?: number | null, paraVenta?: boolean) =>
     request<Producto[]>(
       `/productos${qs({
         // El backend compara el texto `=== 'true'`: con `1` daba el activo.
         eliminados: eliminados ? "true" : undefined,
         sucursalId: sucursalId ?? undefined,
+        // La grilla del POS: sin los toppings (`soloAgregado`) cuando el negocio
+        // usa agregados. Sin el ajuste el backend lo ignora (PLAN-AGREGADOS §7.6).
+        paraVenta: paraVenta ? "true" : undefined,
       })}`,
     ),
   getProducto: (id: number, sucursalId?: number | null) =>
     request<Producto>(`/productos/${id}${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /**
+   * Los productos PAUSADOS en una sucursal (PLAN-ELGANADERO-16NOV §4.1). Lo
+   * lee todo el que ve el catálogo: sin el permiso de pausar la tarjeta sale
+   * igual en gris y avisa al venderla. Sin `sucursalId`, la del usuario o la principal.
+   */
+  productosPausados: (sucursalId?: number | null) =>
+    request<PausadosDeSucursal>(`/productos/pausados${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /** Pausa el producto en la sucursal (`productos.pausar`). Idempotente. */
+  pausarProducto: (id: number, sucursalId?: number | null) =>
+    request<EstadoPausa>(`/productos/${id}/pausar${qs({ sucursalId: sucursalId ?? undefined })}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  /** Lo reactiva: borra la pausa (y el «agotado hoy» si lo había). Idempotente. */
+  reactivarProducto: (id: number, sucursalId?: number | null) =>
+    request<EstadoPausa>(`/productos/${id}/pausar${qs({ sucursalId: sucursalId ?? undefined })}`, {
+      method: "DELETE",
+    }),
   /**
    * La búsqueda del mostrador: filtra y pagina en el servidor.
    *
@@ -926,6 +950,32 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ controlaStock: true, almacenId, conteo }),
     }),
+
+  // ── Productos con agregados (toppings, PLAN-AGREGADOS §7) ──────────────────
+  /** El ajuste de Configuración; pide `negocio.configurar`, como el del stock. */
+  configAgregados: () => request<ConfigAgregados>("/agregados/config"),
+  /** Parcial (§8.1): el interruptor general y/o dónde se usan, con el mismo permiso. */
+  cambiarConfigAgregados: (cambio: CambioConfigAgregados) =>
+    request<ConfigAgregados>("/agregados/config", {
+      method: "PATCH",
+      body: JSON.stringify(cambio),
+    }),
+  cambiarUsaAgregados: (usaAgregados: boolean) =>
+    request<ConfigAgregados>("/agregados/config", {
+      method: "PATCH",
+      body: JSON.stringify({ usaAgregados }),
+    }),
+  /** Lo que el POS necesita para dibujar la hoja; con el ajuste apagado viene vacío. */
+  catalogoAgregados: (sucursalId?: number | null) =>
+    request<CatalogoAgregados>(`/agregados/catalogo${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /** Inventario → «Agregados» (`catalogo.editar`); con el ajuste apagado el backend da 403. */
+  getGruposAgregados: () => request<GrupoAgregados[]>("/agregados/grupos"),
+  crearGrupoAgregados: (input: GuardarGrupoInput) =>
+    request<GrupoAgregados>("/agregados/grupos", { method: "POST", body: JSON.stringify(input) }),
+  actualizarGrupoAgregados: (id: number, input: GuardarGrupoInput) =>
+    request<GrupoAgregados>(`/agregados/grupos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  eliminarGrupoAgregados: (id: number) =>
+    request<{ mensaje?: string }>(`/agregados/grupos/${id}`, { method: "DELETE" }),
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),

@@ -366,7 +366,7 @@ describe("la venta dice a qué caja va", () => {
     sesion.cajas = [BRISAS, PLAZUELA];
     localStorage.setItem("bamardev.caja.sede:1:1", "39");
     await montar();
-    expect(api.getProductos).toHaveBeenCalledWith(false, 39);
+    expect(api.getProductos).toHaveBeenCalledWith(false, 39, true);
     await cobrarUnArroz();
     const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as { almacenId?: number };
     expect(cuerpo.almacenId).toBe(39);

@@ -25,11 +25,24 @@ export interface DocumentoPdf {
   columnas: string[];
   grupos: GrupoPdf[];
   total: TotalPdf;
+  /**
+   * Lo que va después del TOTAL, dentro de la misma tabla y con el mismo
+   * formato (PLAN-PEDIDOS-PLATAFORMA §11: los pedidos de Yango y PedidosYa,
+   * aparte de lo vendido). No entra en el total.
+   */
+  despuesDelTotal?: GrupoPdf[];
   notas?: string[];
 }
 
 export interface GrupoPdf {
   titulo: string;
+  /**
+   * Con `aclaracion` el grupo es el ENCABEZADO DE UNA SECCIÓN (una plataforma):
+   * título sin pasar a mayúsculas, en `color`, con la aclaración debajo, y las
+   * categorías que le siguen viajan con él en la hoja.
+   */
+  aclaracion?: string;
+  color?: string;
   /** Una por cada columna de cifras. */
   celdas: CeldaPdf[];
   filas: FilaPdf[];
@@ -68,6 +81,8 @@ const ALTO_PIE = 16;
 const ALTO_CABECERA = 22;
 const INICIO_RESTO = MARGEN + 20;
 const FIN_DE_HOJA = ALTO - MARGEN - ALTO_PIE;
+/** El encabezado de una sección (una plataforma): aire arriba, título, aclaración y raya. */
+const ALTO_SECCION = 18 + 11 + 13 + 14;
 
 const NEGRO = "#111827";
 const GRIS = "#6B7280";
@@ -96,7 +111,10 @@ export function repartirEnHojas(renglones: Renglon[], disponible: (hoja: number)
     const r = renglones[i];
     const anterior = bloques[bloques.length - 1];
     const ultimoDelAnterior = anterior?.[anterior.length - 1];
+    const soloEncabezado = anterior?.length === 1 && anterior[0].tipo === "grupo" && anterior[0].grupo.aclaracion != null;
     if (r.tipo === "total" && anterior) anterior.push(r);
+    // El encabezado de una sección no queda solo al pie: su primera categoría baja con él.
+    else if (r.tipo === "grupo" && soloEncabezado) anterior.push(r);
     else if (r.tipo === "fila" && ultimoDelAnterior?.tipo === "grupo") anterior.push(r);
     else bloques.push([r]);
   }
@@ -225,6 +243,7 @@ const F = {
   detalle: { tam: 9, color: GRIS_CLARO },
   cabecera: { tam: 8.5, negrita: true, color: GRIS },
   grupo: { tam: 9.5, negrita: true },
+  seccion: { tam: 11, negrita: true },
   totalEtiqueta: { tam: 12, negrita: true },
   nota: { tam: 9, color: GRIS_CLARO },
   pie: { tam: 8, color: GRIS_CLARO },
@@ -261,7 +280,7 @@ function dibujar(pdf: jsPDF, doc: DocumentoPdf, marca: string, ahora: Date) {
   // Cada columna de cifras mide su texto más ancho (la cabecera incluida).
   const anchos = Array.from({ length: columnasCifra }, (_, i) => {
     const textos: [string, Fuente][] = [[doc.columnas[i + 1], F.cabecera]];
-    for (const g of doc.grupos) {
+    for (const g of [...doc.grupos, ...(doc.despuesDelTotal ?? [])]) {
       textos.push([g.celdas[i]?.texto ?? "", F.grupo]);
       for (const f of g.filas) textos.push([f.celdas[i]?.texto ?? "", F.cifra]);
     }
@@ -278,15 +297,19 @@ function dibujar(pdf: jsPDF, doc: DocumentoPdf, marca: string, ahora: Date) {
   }
 
   const renglones: Renglon[] = [];
-  for (const g of doc.grupos) {
-    renglones.push({ tipo: "grupo", alto: 10 + F.grupo.tam + 9, grupo: g });
-    for (const f of g.filas) {
-      const lineas = enDosRenglones(pdf, f.nombre, anchoNombre - 8, F.texto);
-      const alto = 8 + lineas.length * 13 + (f.detalle ? 11 : 0) + 4;
-      renglones.push({ tipo: "fila", alto, fila: f, lineas });
+  const sumar = (grupos: GrupoPdf[]) => {
+    for (const g of grupos) {
+      renglones.push({ tipo: "grupo", alto: g.aclaracion != null ? ALTO_SECCION : 10 + F.grupo.tam + 9, grupo: g });
+      for (const f of g.filas) {
+        const lineas = enDosRenglones(pdf, f.nombre, anchoNombre - 8, F.texto);
+        const alto = 8 + lineas.length * 13 + (f.detalle ? 11 : 0) + 4;
+        renglones.push({ tipo: "fila", alto, fila: f, lineas });
+      }
     }
-  }
+  };
+  sumar(doc.grupos);
   renglones.push({ tipo: "total", alto: 14 + tamTotal + 14, total: doc.total });
+  sumar(doc.despuesDelTotal ?? []);
 
   // El encabezado de la primera hoja.
   const encabezado: { texto: string; f: Fuente; color?: string; alto: number }[] = [];
@@ -331,7 +354,19 @@ function dibujar(pdf: jsPDF, doc: DocumentoPdf, marca: string, ahora: Date) {
     y += ALTO_CABECERA;
 
     for (const r of hoja) {
-      if (r.tipo === "grupo") {
+      if (r.tipo === "grupo" && r.grupo.aclaracion != null) {
+        // El encabezado de una sección: aire arriba, el título en su color y la aclaración debajo.
+        const color = r.grupo.color ?? marca;
+        const base = y + 18 + F.seccion.tam;
+        usar(pdf, F.seccion, color);
+        pdf.text(limpio(r.grupo.titulo), inicioTabla, base);
+        r.grupo.celdas.forEach((c, i) => cifra(c, i, base, F.seccion, color));
+        usar(pdf, F.detalle);
+        pdf.text(limpio(r.grupo.aclaracion), inicioTabla, base + 13);
+        pdf.setDrawColor(color);
+        pdf.setLineWidth(1);
+        pdf.line(inicioTabla, base + 20, ANCHO - MARGEN - RELLENO, base + 20);
+      } else if (r.tipo === "grupo") {
         const base = y + 10 + F.grupo.tam;
         usar(pdf, F.grupo, marca);
         pdf.text(limpio(r.grupo.titulo.toLocaleUpperCase("es")), inicioTabla, base);

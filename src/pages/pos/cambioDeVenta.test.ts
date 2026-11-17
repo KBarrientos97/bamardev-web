@@ -115,6 +115,25 @@ describe("dónde se ofrece modificar", () => {
     conProfesional.detalles![0].recursoId = 4;
     expect(motivoNoModificable(conProfesional, 3)).toMatch(/profesional/);
   });
+
+  it("con toppings: no, y dice lo mismo que el backend", () => {
+    // PLAN-AGREGADOS §7.3: en F1 el servidor da 400; la web ni ofrece el botón.
+    const conToppings = venta();
+    conToppings.detalles![0].id = 501;
+    conToppings.detalles!.push({
+      id: 502,
+      lineaPadreId: 501,
+      incluido: true,
+      productoId: 9,
+      producto: "Oreo",
+      cantidad: 1,
+      precio: 0,
+      subtotal: 0,
+      nota: null,
+      consumo: "LLEVAR",
+    });
+    expect(motivoNoModificable(conToppings, 3)).toBe("Esta venta tiene toppings: anulala y cargala de nuevo.");
+  });
 });
 
 describe("el carrito con el que arranca el cambio", () => {

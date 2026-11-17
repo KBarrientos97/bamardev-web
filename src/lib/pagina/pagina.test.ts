@@ -202,6 +202,35 @@ describe("vista previa desde el editor", () => {
     ]);
   });
 
+  it("«Imagen de cada producto: Foto»: la foto del producto si tiene; si no, como siempre", () => {
+    const producto = (id: number, foto: string | null, fotoSinFondo: boolean) => ({
+      id,
+      nombre: `Producto ${id}`,
+      precio: 10,
+      icono: null,
+      categoria: null,
+      orden: id,
+      vendible: true,
+      foto,
+      fotoSinFondo,
+    });
+    const base = editor({
+      productosCatalogo: [producto(1, "/publico/pantallas/foto/1/a", false), producto(2, "/publico/pantallas/foto/2/b", true), producto(3, null, false)],
+    });
+    const con = (catalogoImagen?: "ICONO" | "FOTO") =>
+      vistaDesdeEditor({ ...base, pagina: { ...base.pagina, catalogoModo: "PRODUCTOS", catalogoImagen } }).catalogo!.items;
+    // Con el ícono (o un backend anterior, sin el ajuste) nada cambia: sin foto.
+    for (const items of [con(), con("ICONO")]) {
+      expect(items.map((x) => x.fotoUrl)).toEqual([null, null, null]);
+      expect(items.some((x) => "fotoSinFondo" in x)).toBe(false);
+    }
+    const fotos = con("FOTO");
+    expect(fotos.map((x) => x.fotoUrl)).toEqual(["/publico/pantallas/foto/1/a", "/publico/pantallas/foto/2/b", null]);
+    // `fotoSinFondo` sólo cuando hay foto y no tiene fondo, como lo manda el backend.
+    expect(fotos.map((x) => x.fotoSinFondo)).toEqual([undefined, true, undefined]);
+    expect("fotoSinFondo" in fotos[0]).toBe(false);
+  });
+
   it("hoy en Bolivia es UTC−4", () => {
     expect(hoyBolivia(new Date("2026-10-07T03:00:00Z"))).toBe("2026-10-06");
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");

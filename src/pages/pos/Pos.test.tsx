@@ -29,6 +29,9 @@ const sesion = vi.hoisted(() => ({
   sinPermisos: [] as string[],
   /** Secciones que no se ven (como «Cuentas por cobrar» en el instituto). */
   sinSecciones: [] as string[],
+  /** Toppings (PLAN-AGREGADOS §8): el interruptor general y si la caja los usa. */
+  usaAgregados: false,
+  agregadosEnPos: undefined as boolean | undefined,
   /** Plan Emprendedor: sin cupo en todos los casos de siempre. */
   cupo: undefined as import("../../types").CupoEstado | undefined,
   actualizarCupo: vi.fn(),
@@ -40,7 +43,13 @@ vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
   return {
     useAuth: () => ({
-      negocio: { id: 1, nombre: "Prueba", features: sesion.features },
+      negocio: {
+        id: 1,
+        nombre: "Prueba",
+        features: sesion.features,
+        usaAgregados: sesion.usaAgregados,
+        ...(sesion.agregadosEnPos !== undefined ? { agregadosEnPos: sesion.agregadosEnPos } : {}),
+      },
       usuario: {
         id: 1,
         username: "caja",
@@ -79,6 +88,7 @@ vi.mock("../../lib/api", () => ({
     mesasPorCobrar: vi.fn(async () => []),
     entregasMesero: vi.fn(async () => null),
     crearVenta: vi.fn(),
+    catalogoAgregados: vi.fn(async () => ({ activo: true, grupos: [], productos: [] })),
   },
 }));
 
@@ -257,6 +267,8 @@ beforeEach(() => {
   sesion.sinPermisos = [];
   sesion.sinSecciones = [];
   sesion.cupo = undefined;
+  sesion.usaAgregados = false;
+  sesion.agregadosEnPos = undefined;
 });
 
 describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () => {
@@ -264,8 +276,37 @@ describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () =>
     await montar();
     // Sin la sucursal, al dueño le llegaba el precio de lista y la venta
     // cobraba el de la sucursal ("los pagos no suman el total").
-    expect(api.getProductos).toHaveBeenCalledWith(false, 1);
+    expect(api.getProductos).toHaveBeenCalledWith(false, 1, true);
     expect(api.getProductos).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("toppings en el punto de venta (PLAN-AGREGADOS §8.2)", () => {
+  it("con el interruptor apagado la caja no pide el catálogo de toppings", async () => {
+    await montar();
+    expect(api.catalogoAgregados).not.toHaveBeenCalled();
+  });
+
+  it("prendido para la página pero no para la caja (enPos apagado): la caja vende como antes, sin pedir toppings", async () => {
+    sesion.usaAgregados = true;
+    sesion.agregadosEnPos = false;
+    await montar();
+    expect(api.catalogoAgregados).not.toHaveBeenCalled();
+    // El catálogo de la grilla se sigue pidiendo igual (el backend deja los toppings sueltos).
+    expect(api.getProductos).toHaveBeenCalledWith(false, 1, true);
+  });
+
+  it("con enPos prendido la caja pide los toppings de la sucursal del turno", async () => {
+    sesion.usaAgregados = true;
+    sesion.agregadosEnPos = true;
+    await montar();
+    expect(api.catalogoAgregados).toHaveBeenCalledWith(1);
+  });
+
+  it("un backend anterior (sin agregadosEnPos) con el interruptor prendido sigue usando el POS", async () => {
+    sesion.usaAgregados = true;
+    await montar();
+    expect(api.catalogoAgregados).toHaveBeenCalledWith(1);
   });
 });
 

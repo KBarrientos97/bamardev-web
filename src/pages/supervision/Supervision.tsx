@@ -236,7 +236,7 @@ export default function Supervision() {
 
             {/* Aparte de lo vendido: no se cobra en caja, no suma a «Vendido» ni a los medios de pago. */}
             {plat && (
-              <Tarjeta icono="moto" titulo={`Yango / PedidosYa ${sinCaja ? "de hoy" : "del turno"}`} extra="No se cobra en caja" cuerpo="px-4 py-3 sm:px-5">
+              <Tarjeta icono="moto" titulo={`Yango / PedidosYa ${sinCaja ? "de hoy" : "del turno"}`} cuerpo="px-4 py-3 sm:px-5">
                 <dl className={`grid gap-2 text-[12px] ${columnas(plat.resumen.length)}`}>
                   {plat.resumen.map((r) => (
                     <div key={r.plataforma} className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">

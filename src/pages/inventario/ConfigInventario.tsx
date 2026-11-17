@@ -14,6 +14,7 @@ import { useAuth } from "../../store/AuthContext";
 import type { EstadoControlStock, Producto } from "../../types";
 import { veFicha } from "../reportes/catalogo";
 import { SiNo, Tarjeta } from "../tickets/piezas";
+import TarjetaAgregados from "./TarjetaAgregados";
 
 /**
  * Configuración › Inventario y stock (pedido del 09-nov): si el stock frena la
@@ -147,6 +148,10 @@ export default function ConfigInventario() {
               </Boton>
             </Tarjeta>
           )}
+
+          {/* Toppings y extras (PLAN-AGREGADOS §7.6): se prende acá, al lado del
+              stock, con el mismo permiso. Es del restaurante, como esta pantalla. */}
+          <TarjetaAgregados />
 
           <Tarjeta titulo="Cómo funciona">
             <ul className="space-y-2.5 text-[13px] text-texto-2">

@@ -272,6 +272,28 @@ describe("iconosArticulo", () => {
     expect(colorDeCategoria(undefined)).toEqual(defecto);
   });
 
+  it("una llave propia (mio:<token>) se resuelve a la imagen que subió el negocio (16-nov)", () => {
+    const llave = "mio:0123456789abcdef01234567";
+    const i = iconoPorLlave(llave);
+    expect(i).toEqual({
+      llave,
+      src: `${import.meta.env.VITE_API_URL || "/api"}/publico/iconos/0123456789abcdef01234567`,
+      etiqueta: "Ícono propio",
+      categoria: "propios",
+    });
+    // Con forma de propia pero mal escrita, es una llave desconocida: monograma.
+    expect(iconoPorLlave("mio:no-es-un-token")).toBeNull();
+    // Abre en «Mis íconos» aunque el rubro diga otra cosa.
+    expect(categoriaInicial(llave, "FARMACIA")).toBe("propios");
+  });
+
+  it("los íconos propios no entran al catálogo ni a sus secciones", () => {
+    expect(ICONOS_ARTICULO).toHaveLength(231);
+    expect(ICONOS_ARTICULO.some((i) => i.llave.startsWith("mio:"))).toBe(false);
+    expect(CATEGORIAS_ICONO.some((c) => (c.clave as string) === "propios")).toBe(false);
+    expect(buscarIconos("propio")).toEqual([]);
+  });
+
   it("el por defecto es el verde de siempre, pero se puede teñir con la paleta (B-24)", () => {
     // Sin la variable (restaurante, farmacia) el navegador usa el respaldo.
     expect(colorDeCategoria(null)).toEqual({

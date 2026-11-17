@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { Icon, type NombreIcono } from "../../components/Icon";
+import MarcaPlataforma from "../../components/MarcaPlataforma";
 import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
-import type { ReporteCierreProductos } from "../../types";
+import type { MedioVendido, PlataformaVendida, ReporteCierreProductos } from "../../types";
 import {
+  LEYENDA_FIADO,
+  mediosDelTurno,
+  plataformasDelTurno,
   redondearCantidad,
   renglonesVisibles,
   renglonVendido,
@@ -11,11 +15,18 @@ import {
   textoAlFiado,
   textoCantidadPorPrecio,
   textoCobrosDeFiado,
+  textoEncabezadoMedio,
+  textoEncabezadoPlataforma,
   textoFiadoDelTurno,
   textoMesasCobradas,
+  textoPedidos,
   textoProductos,
+  textoTotalDeUnidades,
   textoUnidades,
+  textoUnidadesPorCategoria,
+  textoVentas,
   type RenglonVendido,
+  type VistaProductos,
 } from "./productosVendidos";
 
 /**
@@ -35,12 +46,45 @@ import {
  * El billar cobra el tiempo jugado como un producto más ("Tiempo de mesa"):
  * acá va aparte, arriba, y no cuenta como unidades (ver `separarTiempoDeMesa`).
  *
+ * Los pedidos de Yango y PedidosYa del turno (`plataformas`, §11 de
+ * PLAN-PEDIDOS-PLATAFORMA) van DESPUÉS, una sección por plataforma con su
+ * marca: no se cobran en caja y no suman al total vendido de arriba. Contra un
+ * backend anterior, o sin pedidos, la lista es la de siempre.
+ *
+ * Por forma de pago (§11 bis): si el backend manda `porMedio`, la lista se ve
+ * por defecto en una sección por medio (Efectivo, QR, Mixto, otras, Al fiado),
+ * después las plataformas y al final «Total vendido en caja» y «Total de
+ * unidades» con su desglose por categoría; un selector deja ver «Todo junto»,
+ * la lista de siempre. Sólo en la lista a ancho completo (el modal del cierre
+ * y Reportes › Cierres): la tarjeta compacta de Supervisión (con `limite`) y
+ * el billar (el tiempo de mesa se cobra como un producto más y no tiene
+ * dónde ir por medio) siguen como estaban. `vista`/`onVista` dejan que quien
+ * exporta el PDF sepa cuál se está mirando.
+ *
  * `limite`: cuántos productos se ven de entrada; el resto con "Ver los N". En
  * Supervisión la tarjeta crecía sin tope en el celular y empujaba las mesas,
  * que es lo que se vigila, más de una pantalla y media abajo. Sin `limite`
  * (el modal del cierre, que tiene su propio scroll) se ven todos.
  */
-export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierreProductos; limite?: number }) {
+export default function ListaProductosVendidos({
+  d,
+  limite,
+  vista: vistaElegida,
+  onVista,
+}: {
+  d: ReporteCierreProductos;
+  limite?: number;
+  vista?: VistaProductos;
+  onVista?: (v: VistaProductos) => void;
+}) {
+  const [vistaPropia, setVistaPropia] = useState<VistaProductos>("medio");
+  const vista = vistaElegida ?? vistaPropia;
+  const elegir = (v: VistaProductos) => {
+    setVistaPropia(v);
+    onVista?.(v);
+  };
+  const medios = limite == null ? mediosDelTurno(d) : [];
+  const porMedio = medios.length > 0 && vista === "medio";
   const { tiempo, productos } = separarTiempoDeMesa(d);
   const hayProductos = productos.lineas > 0;
   // Lo que salió al fiado y lo que entró de cobros de fiado (11-nov), para
@@ -48,12 +92,15 @@ export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierre
   // el cobro entró y no salió nada. En ámbar lo que se debe, como en toda la app.
   const fiado = productos.fiado && productos.fiado.unidades > 0 ? productos.fiado : null;
   const cobros = productos.cobrosDeFiado && productos.cobrosDeFiado.total > 0 ? productos.cobrosDeFiado.total : 0;
+  const plataformas = plataformasDelTurno(productos);
   return (
     <div className="@container space-y-3">
+      {medios.length > 0 && <SelectorDeVista vista={vista} onElegir={elegir} />}
       {(tiempo || hayProductos) && (
         <div className="divide-y divide-borde rounded-xl bg-muted text-[13px]">
           {tiempo && <Resumen icono="clock" texto={`Tiempo de mesa · ${textoMesasCobradas(tiempo.mesas)}`} total={tiempo.total} />}
-          {hayProductos && (
+          {/* Por forma de pago el total va al final, en «Total vendido en caja». */}
+          {hayProductos && !porMedio && (
             <Resumen texto={`${textoUnidades(productos.unidades)} · ${textoProductos(productos.lineas)}`} total={productos.total} />
           )}
           {fiado && <Resumen tono="fiado" texto={`Al fiado · ${textoUnidades(fiado.unidades)}`} total={fiado.porCobrar} />}
@@ -65,7 +112,9 @@ export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierre
           {cobros > 0 && <span>{textoCobrosDeFiado(cobros)}</span>}
         </p>
       )}
-      {hayProductos ? (
+      {porMedio ? (
+        medios.map((m) => <SeccionMedio key={m.medio} m={m} limite={limite} />)
+      ) : hayProductos ? (
         <TablaDeProductos
           limite={limite}
           grupos={productos.categorias.map((c) => ({
@@ -79,7 +128,127 @@ export default function ListaProductosVendidos({ d, limite }: { d: ReporteCierre
       ) : (
         tiempo && <p className="text-[13px] text-texto-3">Ningún producto: sólo tiempo de mesa.</p>
       )}
+      {plataformas.map((p) => (
+        <SeccionPlataforma key={p.plataforma} p={p} limite={limite} />
+      ))}
+      {porMedio && <ResumenFinal d={productos} />}
     </div>
+  );
+}
+
+/** «Por forma de pago | Todo junto»: dos botones, el elegido con `aria-pressed`. */
+function SelectorDeVista({ vista, onElegir }: { vista: VistaProductos; onElegir: (v: VistaProductos) => void }) {
+  const opciones: { clave: VistaProductos; texto: string }[] = [
+    { clave: "medio", texto: "Por forma de pago" },
+    { clave: "todo", texto: "Todo junto" },
+  ];
+  return (
+    <div role="group" aria-label="Cómo ver lo vendido" className="flex gap-1 rounded-xl bg-muted p-1 text-[13px] font-semibold">
+      {opciones.map((o) => (
+        <button
+          key={o.clave}
+          type="button"
+          aria-pressed={vista === o.clave}
+          onClick={() => onElegir(o.clave)}
+          className={`min-h-9 flex-1 rounded-lg px-2 ${
+            vista === o.clave ? "bg-white text-texto shadow-sm" : "text-texto-3 hover:text-texto-2"
+          }`}
+        >
+          {o.texto}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Las ventas de una forma de pago: «Efectivo · 4 ventas · 7 unidades · Bs
+ * 140,00» y debajo sus categorías y productos con el formato de siempre. Lo
+ * fiado, en ámbar (la regla de color de toda la app) y diciendo que no entró.
+ */
+function SeccionMedio({ m, limite }: { m: MedioVendido; limite?: number }) {
+  const fiado = m.medio === "FIADO";
+  return (
+    <section aria-label={textoEncabezadoMedio(m)} data-medio={m.medio} className="space-y-3">
+      <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className={`min-w-0 font-semibold ${fiado ? "text-amber-700" : "text-texto"}`}>{m.nombre}</span>
+          <span className={`shrink-0 font-bold tabular-nums ${fiado ? "text-amber-700" : "text-texto"}`}>{fmtMoney(m.total)}</span>
+        </div>
+        <p className="text-texto-2">
+          {textoVentas(m.ventas)} · {textoUnidades(m.unidades)}
+        </p>
+        {fiado && <p className="text-[12px] text-texto-3">{LEYENDA_FIADO}</p>}
+      </div>
+      {m.categorias.length > 0 && (
+        <TablaDeProductos
+          limite={limite}
+          grupos={m.categorias.map((c) => ({
+            clave: c.nombre,
+            nombre: c.nombre,
+            unidades: c.unidades,
+            total: c.total,
+            // Todo lo de esta sección es fiado: no hace falta decirlo en cada renglón.
+            renglones: c.items.map((i, n) => (fiado ? { ...renglonVendido(i, n), fiado: undefined } : renglonVendido(i, n))),
+          }))}
+        />
+      )}
+    </section>
+  );
+}
+
+/**
+ * El cierre de la lista por forma de pago: lo que entró a la caja y cuántas
+ * unidades salieron en total (ventas y pedidos de plataforma juntos), con el
+ * desglose por categoría para saber cuántas son de cada tipo.
+ */
+function ResumenFinal({ d }: { d: ReporteCierreProductos }) {
+  const desglose = textoUnidadesPorCategoria(d);
+  return (
+    <div className="divide-y divide-borde rounded-xl bg-muted text-[13px]">
+      <Resumen texto="Total vendido en caja" total={d.total} />
+      {d.todo && (
+        <div className="px-3.5 py-2.5">
+          <p className="font-bold text-texto">{textoTotalDeUnidades(d.todo.unidades)}</p>
+          {desglose && <p className="text-texto-2">{desglose}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Los pedidos de una plataforma en el turno: su marca, cuántos pedidos y
+ * unidades, lo que suman (lo paga la app de delivery) y debajo sus categorías
+ * y productos con el mismo formato que las ventas.
+ */
+function SeccionPlataforma({ p, limite }: { p: PlataformaVendida; limite?: number }) {
+  return (
+    <section aria-label={textoEncabezadoPlataforma(p)} data-plataforma-seccion={p.plataforma} className="space-y-3 pt-1">
+      <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
+        <div className="flex items-center justify-between gap-x-3 gap-y-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-texto-2">
+            <MarcaPlataforma plataforma={p.plataforma} />
+            <span>
+              {textoPedidos(p.pedidos)} · {textoUnidades(p.unidades)}
+            </span>
+          </span>
+          <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(p.total)}</span>
+        </div>
+      </div>
+      {p.categorias.length > 0 && (
+        <TablaDeProductos
+          limite={limite}
+          grupos={p.categorias.map((c) => ({
+            clave: c.nombre,
+            nombre: c.nombre,
+            unidades: c.unidades,
+            total: c.total,
+            renglones: c.items.map(renglonVendido),
+          }))}
+        />
+      )}
+    </section>
   );
 }
 

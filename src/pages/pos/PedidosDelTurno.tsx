@@ -1,3 +1,4 @@
+import { agruparHijas } from "../../lib/agregados/hijas";
 import { Icon } from "../../components/Icon";
 import MarcaPlataforma from "../../components/MarcaPlataforma";
 import { Badge, Boton, Modal } from "../../components/ui";
@@ -8,7 +9,7 @@ import { NOMBRE_PLATAFORMA, type PedidoPlataforma } from "../../lib/pedidosPlata
 /**
  * Las piezas de los pedidos de Yango y PedidosYa en «Ventas del turno»
  * (PLAN-PEDIDOS-PLATAFORMA §10.2). Son filas propias, con la marca de la
- * plataforma y la leyenda «No se cobra»: no son una venta y no suman a nada
+ * plataforma (sin leyenda de cobro): no son una venta y no suman a nada
  * del turno (eso lo cuida `PantallaHistorial`; acá sólo se dibujan).
  */
 
@@ -40,18 +41,20 @@ export function FilaPedidoDelTurno({ p, onAbrir }: { p: PedidoPlataforma; onAbri
             {anulado && <Badge tono="rojo">Anulado</Badge>}
           </div>
           <p className="mt-0.5 text-xs text-texto-3">
-            {fmtHora(p.fecha)} · {p.detalles.length} {p.detalles.length === 1 ? "producto" : "productos"}
+            {fmtHora(p.fecha)} · {vasos(p).length} {vasos(p).length === 1 ? "producto" : "productos"}
             {p.usuario ? ` · ${p.usuario.nombre}` : ""}
           </p>
         </div>
         <div className="shrink-0 text-right">
           <p className={`text-sm font-bold ${anulado ? "text-texto-4 line-through" : "text-texto"}`}>{fmtMoney(p.total)}</p>
-          <p className="text-[11px] font-semibold text-texto-3">No se cobra</p>
         </div>
       </button>
     </li>
   );
 }
+
+/** Los vasos del pedido: los toppings (líneas hijas) no cuentan como un producto más. */
+const vasos = (p: PedidoPlataforma) => agruparHijas(p.detalles);
 
 /** Lo que llevaba, quién lo registró y cuándo; y «Anular» sólo a quien puede. */
 export function DetallePedidoDelTurno({
@@ -99,12 +102,24 @@ export function DetallePedidoDelTurno({
         </div>
 
         <ul className="divide-y divide-borde-soft rounded-xl border border-borde-soft">
-          {p.detalles.map((d, k) => (
-            <li key={`${d.productoId ?? "x"}-${k}`} className="flex items-center justify-between gap-3 px-3.5 py-2 text-[13px]">
-              <span className="min-w-0 truncate text-texto-2">
-                <b className="text-texto">{fmtCantidad(d.cantidad)}×</b> {d.nombre}
-              </span>
-              <span className="shrink-0 font-semibold tabular-nums text-texto">{fmtMoney(d.subtotal)}</span>
+          {agruparHijas(p.detalles).map(({ linea: d, hijas }, k) => (
+            <li key={`${d.productoId ?? "x"}-${k}`} className="px-3.5 py-2 text-[13px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate text-texto-2">
+                  <b className="text-texto">{fmtCantidad(d.cantidad)}×</b> {d.nombre}
+                </span>
+                <span className="shrink-0 font-semibold tabular-nums text-texto">{fmtMoney(d.subtotal)}</span>
+              </div>
+              {/* Los toppings del vaso (PLAN-AGREGADOS §7.3), con sangría. */}
+              {hijas.map((h, j) => (
+                <div key={j} className="flex items-center justify-between gap-3 pl-4 text-xs text-texto-3">
+                  <span className="min-w-0 truncate">
+                    + {h.cantidad !== 1 ? `${fmtCantidad(h.cantidad)} × ` : ""}
+                    {h.nombre}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums">{h.incluido || h.subtotal === 0 ? "incluido" : fmtMoney(h.subtotal)}</span>
+                </div>
+              ))}
             </li>
           ))}
         </ul>
@@ -137,7 +152,7 @@ export function DetallePedidoDelTurno({
           </p>
         ) : (
           <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
-            No se cobra ni entra a la caja: la app de {nombre} le cobra al cliente y le paga al local después.
+            La app de {nombre} le cobra al cliente y le paga al local después.
             {!onAnular && " Si hay que anularlo, pedíselo a un encargado."}
           </p>
         )}
@@ -179,7 +194,6 @@ export function PedidosSinSubir({ pedidos }: { pedidos: PedidoPlataformaEncolado
             </div>
             <div className="shrink-0 text-right">
               <p className="text-sm font-bold text-texto">{fmtMoney(p.resumen.total)}</p>
-              <p className="text-[11px] font-semibold text-texto-3">No se cobra</p>
             </div>
           </li>
         ))}

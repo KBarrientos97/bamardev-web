@@ -546,3 +546,61 @@ describe("el manifiesto del turno y el latido del equipo (cierre confirmado por 
     expect(await manifiestoDelTurno(5)).toBeNull();
   });
 });
+
+describe("el ticket local con toppings (PLAN-AGREGADOS §7.3)", () => {
+  const catalogo = {
+    activo: true,
+    grupos: [
+      {
+        id: 7,
+        nombre: "Toppings",
+        incluidos: 2,
+        precioExtra: null,
+        maximo: null,
+        opciones: [
+          { productoId: 31, nombre: "Chubi", precio: 5, icono: null },
+          { productoId: 32, nombre: "Oreo", precio: 5, icono: null },
+          { productoId: 33, nombre: "Canela", precio: 5, icono: null },
+        ],
+      },
+    ],
+    productos: [{ productoId: 1, grupos: [{ grupoId: 7, incluidos: 2 }] }],
+  };
+
+  it("arma las hijas debajo del vaso y suma los extras al total, por cantidad del vaso", () => {
+    const agregados = [
+      { productoId: 32, cantidad: 1, grupoId: 7 },
+      { productoId: 31, cantidad: 1, grupoId: 7 },
+      { productoId: 33, cantidad: 1, grupoId: 7, precio: 5 },
+    ];
+    const c = cuerpoEncolado(
+      venta({
+        detalles: [{ productoId: 1, cantidad: 2, precio: 50, consumo: "LLEVAR", agregados }],
+        pagos: [{ formaPagoId: 1, monto: 110, recibido: 110 }],
+      }),
+    );
+    const r = reciboLocal(c, { productos, formasPago, agregados: catalogo });
+    expect(r.detalles?.map((d) => [d.producto, d.cantidad, d.subtotal, d.incluido ?? false])).toEqual([
+      ["Pollo entero", 2, 100, false],
+      ["Oreo", 2, 0, true],
+      ["Chubi", 2, 0, true],
+      ["Canela", 2, 10, false],
+    ]);
+    // Las hijas cuelgan del vaso por su id local.
+    const [vaso, ...hijas] = r.detalles ?? [];
+    expect(hijas.every((h) => h.lineaPadreId === vaso.id)).toBe(true);
+    expect(r.total).toBe(110);
+  });
+
+  it("sin toppings el ticket es el de siempre", () => {
+    const r = reciboLocal(cuerpoEncolado(venta()), { productos, formasPago, agregados: catalogo });
+    expect(r.detalles?.every((d) => d.id === undefined && d.lineaPadreId === undefined)).toBe(true);
+  });
+
+  it("la cola conserva los toppings con el precio de cada extra para que el servidor los respete", () => {
+    const agregados = [{ productoId: 33, cantidad: 1, grupoId: 7, precio: 5 }];
+    const c = cuerpoEncolado(venta({ detalles: [{ productoId: 1, cantidad: 1, agregados }] }));
+    expect(c.detalles[0].agregados).toEqual(agregados);
+    expect(c.encolada).toBe(true);
+  });
+});

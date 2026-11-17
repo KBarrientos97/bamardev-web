@@ -2,6 +2,7 @@ import { aCentavos } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import { esBelleza, esBillar, esFarmacia } from "../../lib/rubro";
 import type { DetalleVentaInput, FormaPago, Producto, Venta } from "../../types";
+import { tieneHijas } from "../../lib/agregados/hijas";
 import type { LineaCarrito } from "./useCarrito";
 
 /**
@@ -49,6 +50,9 @@ export function motivoNoModificable(venta: Venta, cajaAbiertaId: number | null |
   if ((venta.detalles ?? []).some((d) => d.recursoId != null || d.paquete != null || d.cuotaId != null)) {
     return "Esta venta tiene servicios con profesional, paquetes o cuotas.";
   }
+  // Con toppings el backend responde 400 (PLAN-AGREGADOS §7.3): modificarla es
+  // una fase posterior. Mismo mensaje que el servidor, para que se lea igual.
+  if (tieneHijas(venta.detalles)) return "Esta venta tiene toppings: anulala y cargala de nuevo.";
   return null;
 }
 

@@ -1,3 +1,4 @@
+import { agruparHijas } from "../../lib/agregados/hijas";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import InputMonto from "../../components/InputMonto";
@@ -493,15 +494,33 @@ function DetalleEntrega({
             )}
 
             <ul className="divide-y divide-borde-soft">
-              {(p.detalles ?? []).map((d, i) => (
-                <li key={i} className="flex items-start justify-between gap-3 py-2.5">
-                  <p className="text-[13px] text-texto">
-                    <span className="font-bold">{fmtNum(d.cantidad)}×</span> {d.producto}
-                    {d.nota && (
-                      <span className="block text-xs italic text-texto-3">{d.nota}</span>
-                    )}
-                  </p>
-                  <span className="shrink-0 text-[13px] font-bold">{fmtMoney(d.subtotal)}</span>
+              {agruparHijas(p.detalles ?? []).map(({ linea: d, hijas }, i) => (
+                <li key={i} className="py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-[13px] text-texto">
+                      <span className="font-bold">{fmtNum(d.cantidad)}×</span> {d.producto}
+                      {d.nota && (
+                        <span className="block text-xs italic text-texto-3">{d.nota}</span>
+                      )}
+                    </p>
+                    <span className="shrink-0 text-[13px] font-bold">{fmtMoney(d.subtotal)}</span>
+                  </div>
+                  {/* Los toppings del vaso, indentados debajo: el repartidor sabe qué lleva y qué se cobró aparte. */}
+                  {hijas.length > 0 && (
+                    <ul className="mt-0.5 space-y-0.5 border-l-2 border-borde pl-3" data-testid="toppings-entrega">
+                      {hijas.map((h, j) => (
+                        <li key={j} className="flex items-start justify-between gap-3 text-xs text-texto-2">
+                          <span>
+                            + {h.cantidad !== 1 ? `${fmtNum(h.cantidad)} × ` : ""}
+                            {h.producto}
+                          </span>
+                          <span className={`shrink-0 ${h.incluido ? "text-texto-3" : "font-semibold text-texto"}`}>
+                            {h.incluido ? "incluido" : fmtMoney(h.subtotal)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>

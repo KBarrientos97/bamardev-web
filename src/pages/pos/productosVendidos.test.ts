@@ -150,6 +150,22 @@ describe("cómo se lee cada renglón de lo vendido", () => {
     expect(renglonVendido({ nombre: "Paceña", cantidad: 1, precio: 15, total: 15 }, 3).clave).toBe("Paceña-3");
     expect(renglonVendido({ nombre: "Paceña", cantidad: 3, precio: 9.33, total: 28 }, 0).precio).toBeNull();
   });
+
+  it("un producto borrado (productoId 0) no repite la key: usa el nombre con su lugar", () => {
+    // El backend manda `productoId: 0` y categoría «Sin categoría» para lo
+    // borrado: dos borrados con la misma key `p0` se pisaban en la lista.
+    const a = renglonVendido({ productoId: 0, nombre: "Borrado A", cantidad: 1, precio: 10, total: 10 }, 0);
+    const b = renglonVendido({ productoId: 0, nombre: "Borrado B", cantidad: 1, precio: 10, total: 10 }, 1);
+    expect(a.clave).toBe("Borrado A-0");
+    expect(b.clave).toBe("Borrado B-1");
+    expect(a.clave).not.toBe(b.clave);
+    // Aunque se llamen igual, el lugar los distingue.
+    expect(renglonVendido({ productoId: 0, nombre: "X", cantidad: 1, precio: 1, total: 1 }, 0).clave).not.toBe(
+      renglonVendido({ productoId: 0, nombre: "X", cantidad: 1, precio: 1, total: 1 }, 1).clave,
+    );
+    // Un id real sigue igual.
+    expect(renglonVendido({ productoId: 7, nombre: "Real", cantidad: 1, precio: 1, total: 1 }, 4).clave).toBe("p7");
+  });
 });
 
 describe("cuántos renglones se ven de entrada", () => {

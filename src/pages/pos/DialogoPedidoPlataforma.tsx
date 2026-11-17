@@ -19,7 +19,10 @@ export interface LineaDelPedido {
   clave: number | string;
   nombre: string;
   cantidad: number;
+  /** El precio de UNA unidad con sus toppings extra, para que el total cuadre. */
   precio: number;
+  /** Los toppings del vaso en una línea («+ Oreo, Chubi»), si los lleva. */
+  agregados?: string;
 }
 
 /** El N° de la app: el backend lo guarda hasta 64 caracteres. */
@@ -82,8 +85,11 @@ export default function DialogoPedidoPlataforma({
         <ul className="divide-y divide-borde-soft rounded-xl border border-borde-soft">
           {lineas.map((l) => (
             <li key={l.clave} className="flex items-center justify-between gap-3 px-3.5 py-2 text-[13px]">
-              <span className="min-w-0 truncate text-texto-2">
-                <b className="text-texto">{fmtCantidad(l.cantidad)}×</b> {l.nombre}
+              <span className="min-w-0 text-texto-2">
+                <span className="block truncate">
+                  <b className="text-texto">{fmtCantidad(l.cantidad)}×</b> {l.nombre}
+                </span>
+                {l.agregados && <span className="block text-xs text-texto-3">{l.agregados}</span>}
               </span>
               <span className="shrink-0 font-semibold tabular-nums text-texto">
                 {fmtMoney(l.precio * l.cantidad)}
@@ -110,7 +116,7 @@ export default function DialogoPedidoPlataforma({
         </Campo>
 
         <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
-          No se cobra ni entra a la caja. Queda en el reporte de {nombre}.
+          Queda en el reporte de {nombre}.
         </p>
 
         <ErrorMsg>{error}</ErrorMsg>

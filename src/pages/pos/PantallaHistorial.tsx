@@ -1,3 +1,4 @@
+import { agruparHijas, tieneHijas } from "../../lib/agregados/hijas";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chips } from "../../components/filtros";
@@ -192,7 +193,7 @@ export default function PantallaHistorial({
               {esPositivo(fiado) && <span className="text-warning-text"> · {fmtMoney(fiado)} fiado</span>}
             </p>
             {/* Aparte y sin sumar: no son ventas ni entraron a la caja. */}
-            {resumenPl && <p className="text-xs text-texto-3">{resumenPl} · no se cobran</p>}
+            {resumenPl && <p className="text-xs text-texto-3">{resumenPl}</p>}
           </div>
         </div>
         <Boton variante="ghost" icono="lock" onClick={onCierre}>
@@ -793,12 +794,22 @@ function DetalleVenta({
             )}
 
             <ul className="divide-y divide-borde-soft">
-              {(v.detalles ?? []).map((d, i) => (
+              {agruparHijas(v.detalles ?? []).map(({ linea: d, hijas }, i) => (
                 <li key={i} className="flex items-start justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[13px] text-texto">
                       <span className="font-bold">{fmtNum(d.cantidad)}×</span> {nombreDeLinea(d, v)}
                     </p>
+                    {/* Los toppings (PLAN-AGREGADOS §7.3), debajo de su vaso. */}
+                    {hijas.map((h, j) => (
+                      <p key={j} className="flex justify-between gap-3 pl-3 text-xs text-texto-3">
+                        <span className="min-w-0">
+                          + {h.cantidad !== 1 ? `${fmtNum(h.cantidad)} × ` : ""}
+                          {h.producto}
+                        </span>
+                        <span className="shrink-0 font-semibold">{h.incluido || h.subtotal === 0 ? "incluido" : fmtMoney(h.subtotal)}</span>
+                      </p>
+                    ))}
                     {/* D6: qué módulos cubre la cuota, con su nombre. */}
                     {textoModulosDeLinea(d, v) && <p className="text-xs text-texto-3">{textoModulosDeLinea(d, v)}</p>}
                     {(mostrarConsumo || d.nota) && (
@@ -816,6 +827,12 @@ function DetalleVenta({
                 </li>
               ))}
             </ul>
+
+            {tieneHijas(v.detalles) && v.estado === "APROBADO" && (
+              <p className="mb-3 rounded-lg bg-muted px-3 py-2 text-xs text-texto-2">
+                Esta venta tiene toppings: para cambiarla, anulala y cargala de nuevo.
+              </p>
+            )}
 
             <dl className="space-y-1 border-t border-borde pt-3 text-sm">
               <div className="flex justify-between text-base font-extrabold text-texto">
