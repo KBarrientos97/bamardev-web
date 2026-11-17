@@ -1,7 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Producto, TipoPedido } from "../../types";
-import { controlaStock, idsGuardados, paraVender, topeStock, useCarrito } from "./useCarrito";
+import type { AgregadoElegido, CatalogoAgregados } from "../../lib/agregados/tipos";
+import { claveDeLinea, controlaStock, idsGuardados, paraVender, topeStock, useCarrito } from "./useCarrito";
 
 function producto(over: Partial<Producto> = {}): Producto {
   return {
@@ -429,5 +430,142 @@ describe("useCarrito · en memoria (modificar una venta ya cobrada, 15-nov)", ()
       { productoId: 2, cantidad: 1, precio: 23, consumo: "MESA" },
       { productoId: 2, cantidad: 1, precio: 23, consumo: "LLEVAR" },
     ]);
+  });
+});
+
+// ── Toppings (PLAN-AGREGADOS §7.4) ─────────────────────────────────────────
+
+describe("useCarrito · vasos con toppings", () => {
+  beforeEach(() => sessionStorage.clear());
+
+  /** El Ganadero: un vaso de Bs 20 que trae 2 toppings y cobra los extras a su precio. */
+  const vaso = producto({ id: 12, nombre: "Arroz con leche M", precio: 20, stockTotal: 10 });
+  const catalogo: CatalogoAgregados = {
+    activo: true,
+    grupos: [
+      {
+        id: 7,
+        nombre: "Toppings",
+        incluidos: 2,
+        precioExtra: null,
+        maximo: null,
+        opciones: [
+          { productoId: 31, nombre: "Chubi", precio: 5, icono: null },
+          { productoId: 32, nombre: "Oreo", precio: 5, icono: null },
+          { productoId: 33, nombre: "Canela", precio: 5, icono: null },
+        ],
+      },
+    ],
+    productos: [{ productoId: 12, grupos: [{ grupoId: 7, incluidos: 2 }] }],
+  };
+  const tres: AgregadoElegido[] = [
+    { grupoId: 7, productoId: 32, cantidad: 1 },
+    { grupoId: 7, productoId: 31, cantidad: 1 },
+    { grupoId: 7, productoId: 33, cantidad: 1 },
+  ];
+
+  it("el total suma los extras: vaso de Bs 20 con 2 incluidos y 1 extra es Bs 25", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso, tres));
+    expect(result.current.total).toBe(25);
+    expect(result.current.totalAgregados).toBe(5);
+    // Un vaso es una unidad: los toppings no inflan el contador.
+    expect(result.current.unidades).toBe(1);
+    expect(result.current.lineas[0].vista?.hijas.map((h) => [h.nombre, h.incluido])).toEqual([
+      ["Oreo", true],
+      ["Chubi", true],
+      ["Canela", false],
+    ]);
+  });
+
+  it("con cantidad 2 cada vaso trae sus incluidos: los extras se multiplican", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso, tres));
+    act(() => result.current.agregar(vaso, tres));
+    expect(result.current.lineas).toHaveLength(1);
+    expect(result.current.lineas[0].cantidad).toBe(2);
+    expect(result.current.total).toBe(50);
+  });
+
+  it("dos vasos iguales con toppings distintos son líneas distintas", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso, tres));
+    act(() => result.current.agregar(vaso, [tres[1]]));
+    act(() => result.current.agregar(vaso));
+    expect(result.current.lineas).toHaveLength(3);
+    expect(result.current.unidades).toBe(3);
+    expect(result.current.total).toBe(25 + 20 + 20);
+  });
+
+  it("el tope de stock es del producto: las líneas con toppings distintos comparten el stock", () => {
+    const poco = producto({ id: 12, precio: 20, stockTotal: 2 });
+    const { result } = renderHook(() => useCarrito("LOCAL", [poco], true, undefined, catalogo));
+    act(() => result.current.agregar(poco, tres));
+    act(() => result.current.agregar(poco, [tres[0]]));
+    act(() => result.current.agregar(poco, [tres[1]]));
+    expect(result.current.unidades).toBe(2);
+  });
+
+  it("aDetalles manda los toppings en orden, con el precio de cada extra, en las dos mitades de una línea partida", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso, tres));
+    act(() => result.current.agregar(vaso, tres));
+    const clave = claveDeLinea(result.current.lineas[0]);
+    act(() => result.current.setEnMesa(clave, 1));
+    const esperados = [
+      { productoId: 32, cantidad: 1, grupoId: 7 },
+      { productoId: 31, cantidad: 1, grupoId: 7 },
+      { productoId: 33, cantidad: 1, grupoId: 7, precio: 5 },
+    ];
+    expect(result.current.aDetalles()).toEqual([
+      { productoId: 12, cantidad: 1, precio: 20, consumo: "MESA", agregados: esperados },
+      { productoId: 12, cantidad: 1, precio: 20, consumo: "LLEVAR", agregados: esperados },
+    ]);
+  });
+
+  it("una línea sin toppings no manda el campo", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso));
+    expect(result.current.aDetalles()[0]).not.toHaveProperty("agregados");
+    expect(result.current.totalAgregados).toBe(0);
+  });
+
+  it("editar los toppings de una línea que queda igual a otra las junta", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso, tres));
+    act(() => result.current.agregar(vaso, [tres[0]]));
+    const segunda = claveDeLinea(result.current.lineas[1]);
+    act(() => result.current.setAgregados(segunda, tres));
+    expect(result.current.lineas).toHaveLength(1);
+    expect(result.current.lineas[0].cantidad).toBe(2);
+  });
+
+  it("quitar toda la selección deja el vaso sin toppings", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => result.current.agregar(vaso, tres));
+    act(() => result.current.setAgregados(claveDeLinea(result.current.lineas[0]), []));
+    expect(result.current.lineas[0].agregados).toBeUndefined();
+    expect(result.current.total).toBe(20);
+  });
+
+  it("un F5 conserva lo elegido y recalcula los extras con el catálogo de hoy", () => {
+    const primero = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, catalogo));
+    act(() => primero.result.current.agregar(vaso, tres));
+    primero.unmount();
+
+    const hoy: CatalogoAgregados = {
+      ...catalogo,
+      grupos: [{ ...catalogo.grupos[0], opciones: catalogo.grupos[0].opciones.map((o) => ({ ...o, precio: 6 })) }],
+    };
+    const segundo = renderHook(() => useCarrito("LOCAL", [vaso], true, undefined, hoy));
+    expect(segundo.result.current.lineas[0].agregados).toEqual(tres);
+    expect(segundo.result.current.total).toBe(26);
+  });
+
+  it("sin el catálogo de toppings (ajuste apagado) las líneas son las de siempre", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [vaso]));
+    act(() => result.current.agregar(vaso));
+    expect(result.current.total).toBe(20);
+    expect(result.current.lineas[0].vista).toBeUndefined();
   });
 });

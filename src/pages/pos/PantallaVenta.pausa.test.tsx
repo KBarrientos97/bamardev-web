@@ -52,6 +52,7 @@ function carritoVacio(): Carrito {
     total: 0,
     agregar: vi.fn(),
     setCantidad: vi.fn(),
+    setAgregados: vi.fn(),
     setNota: vi.fn(),
     setEnMesa: vi.fn(),
     setConsumo: vi.fn(),
