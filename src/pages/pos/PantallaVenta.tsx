@@ -33,6 +33,7 @@ import { usePausados } from "./usePausados";
 import { configPosDe, normalizarConfigPos, ordenarCategorias } from "../../lib/configPos";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import VistaColumnas from "./VistaColumnas";
+import { claveDeBloque } from "./columnasPos";
 
 const TODAS = "__todas__";
 /** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
@@ -232,16 +233,21 @@ export default function PantallaVenta({
   const idsFiltrados = useMemo(() => filtrados.map(idDe), [filtrados]);
   /** Lo que scrollea la grilla: se desplaza sola al llevar una card a su borde. */
   const grillaRef = useRef<HTMLDivElement>(null);
+  /** La lista de cada producto en la vista en columnas (su categoría). */
+  const bloqueDe = useMemo(() => new Map(productos.map((p) => [p.id, claveDeBloque(p)])), [productos]);
   const arrastre = useArrastreGrilla({
     ids: idsFiltrados,
     onReordenar: alReordenar,
     // Con el carrito abierto en móvil la grilla está tapada: no hay nada que
-    // arrastrar y el gesto sólo estorbaría al scroll de la hoja. En la vista
-    // en columnas tampoco: el orden de las columnas es el del dueño y dentro de
-    // cada una manda el que el cajero armó en las tarjetas, así que ahí no se
-    // arrastra nada.
-    activo: !carritoAbierto && !enColumnas,
+    // arrastrar y el gesto sólo estorbaría al scroll de la hoja. Mientras se
+    // registra el cobro incrustado, tampoco (ver `quieto`).
+    activo: !carritoAbierto && !quieto,
     contenedor: grillaRef,
+    // En la lista en columnas (17-nov) cada fila se acomoda dentro de su
+    // categoría: las alitas suben o bajan entre los pollos, pero no se van a
+    // las bebidas. El orden de las columnas lo elige el dueño en Configuración.
+    // Las tarjetas, a cualquier lugar, como siempre.
+    aceptaDestino: enColumnas ? (levantada, destino) => bloqueDe.get(levantada) === bloqueDe.get(destino) : undefined,
   });
 
   /** Lo que se pinta: durante el arrastre manda el orden en vuelo. */
@@ -489,7 +495,8 @@ export default function PantallaVenta({
             />
           ) : enColumnas ? (
             <VistaColumnas
-              productos={filtrados}
+              // Durante el arrastre, en el orden en vuelo (como las tarjetas).
+              productos={visibles}
               categorias={categoriasPos}
               enCarrito={enCarrito}
               conIcono={config.iconos}
@@ -499,6 +506,7 @@ export default function PantallaVenta({
               onAgregar={tocarProducto}
               onQuitar={quitarUna}
               onMenu={puedePausar ? setHojaPausa : undefined}
+              arrastre={arrastre}
             />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
