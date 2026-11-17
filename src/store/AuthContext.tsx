@@ -34,6 +34,7 @@ import {
   type Seccion,
 } from "../lib/permisos";
 import { conPerfilDelEstado } from "../lib/perfilNegocio";
+import { mismaConfigPos, normalizarConfigPos, type ConfigPos } from "../lib/configPos";
 import type { Vocabulario } from "../lib/rubro";
 import type { CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
@@ -101,6 +102,12 @@ interface AuthValue {
    * guardan ya efectivos: con el interruptor apagado quedan en `false`.
    */
   fijarUsaAgregados: (usa: boolean, dondeSeUsa?: { enPos?: boolean; enPagina?: boolean }) => void;
+  /**
+   * Pisa `negocio.pos` con lo recién guardado en Configuración › Punto de
+   * venta: el POS de quien lo cambió se ve (y cobra) distinto sin volver a
+   * entrar. Recibe la configuración ya completa (la respuesta del PATCH).
+   */
+  fijarConfigPos: (pos: ConfigPos) => void;
   /**
    * Pisa `negocio.pedidosWeb` con lo que acaba de publicar Mi página («Recibir
    * pedidos en el sistema»): «Pedidos web» sale (o se va) del menú sin esperar
@@ -342,6 +349,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Comparado por contenido y no por objeto: el chequeo de la licencia trae uno
+   * nuevo cada 15 min y, si dice lo mismo, la sesión no cambia (el POS no se
+   * redibuja para nada). Se guarda ya completo, así una sesión rehidratada
+   * después de un F5 lee lo mismo que la que lo recibió.
+   */
+  const fijarConfigPos = useCallback((pos: unknown) => {
+    const nueva = normalizarConfigPos(pos);
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      if (previo.pos && mismaConfigPos(normalizarConfigPos(previo.pos), nueva)) return previo;
+      const actualizado = { ...previo, pos: nueva };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
+  /**
    * Cómo se entregan los pedidos de la página (`negocio.entregaPedidosWeb` y
    * `servicioDeliveryExterno`, PLAN-DELIVERY-EXTERNO §2.6): sigue a `/licencia/estado`
    * para que un cambio hecho en el panel llegue a la sesión abierta.
@@ -504,6 +528,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (typeof estado.usaAgregados === "boolean") {
             fijarUsaAgregados(estado.usaAgregados, { enPos: estado.agregadosEnPos, enPagina: estado.agregadosEnPagina });
           }
+          // Lo mismo con el punto de venta: si el dueño lo cambió en otro equipo,
+          // la caja abierta lo toma en el próximo chequeo. Sin el campo (backend
+          // viejo) se queda con lo que trajo el login.
+          if (estado.pos && typeof estado.pos === "object") fijarConfigPos(estado.pos);
           // Ausente (un backend viejo) = repartidores propios, como siempre.
           if (estado.entregaPedidosWeb !== undefined || estado.servicioDeliveryExterno !== undefined) {
             fijarEntregaPedidos(estado.entregaPedidosWeb ?? "PROPIO", estado.servicioDeliveryExterno ?? null);
@@ -544,6 +572,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refrescarPerfil,
     fijarPedidosWeb,
     fijarUsaAgregados,
+    fijarConfigPos,
     fijarEntregaPedidos,
     fijarVariante,
     refrescarPermisos,
@@ -640,6 +669,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refrescarCupo,
       fijarUsaDespacho,
       fijarUsaAgregados,
+      fijarConfigPos,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     }),
@@ -660,6 +690,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refrescarCupo,
       fijarUsaDespacho,
       fijarUsaAgregados,
+      fijarConfigPos,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     ],
