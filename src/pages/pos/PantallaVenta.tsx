@@ -26,6 +26,9 @@ import { useAgotadosHoy } from "../../lib/menuDigital/useAgotadosHoy";
 import { tienePermiso } from "../../lib/permisos";
 import HojaPausa, { textoVenderPausado } from "./HojaPausa";
 import { usePausados } from "./usePausados";
+import { configPosDe, normalizarConfigPos, ordenarCategorias } from "../../lib/configPos";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
+import VistaColumnas from "./VistaColumnas";
 
 const TODAS = "__todas__";
 /** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
@@ -100,8 +103,31 @@ export default function PantallaVenta({
   catalogoAgregados?: CatalogoAgregados | null;
 }) {
   const { negocio, usuario, rubro } = useAuth();
+  /**
+   * Cómo se ve el catálogo (Configuración › Punto de venta, 16-nov). Lo de
+   * fábrica es el POS de siempre. Modificar una venta ya cobrada no lo toma: es
+   * otra tarea, con su propio pie, y se hace como siempre. La farmacia tampoco
+   * (`configPosDe` ya le da lo de fábrica: arma su catálogo aparte).
+   */
+  const conAjustes = !modificacion;
+  const config = useMemo(
+    () => (conAjustes ? configPosDe(negocio) : normalizarConfigPos(null)),
+    [conAjustes, negocio],
+  );
+  // La lista en columnas es para pantalla grande: en el celular se trabaja con
+  // las tarjetas de siempre (con su arrastre), diga lo que diga el ajuste.
+  const pantallaParaColumnas = useCoincideMedia("(min-width: 768px)");
+  const enColumnas = config.vista === "COLUMNAS" && pantallaParaColumnas;
+  /** Las categorías en el orden del dueño: el de los chips y el de las columnas. */
+  const categoriasPos = useMemo(
+    () => ordenarCategorias(categorias, config.ordenCategorias),
+    [categorias, config.ordenCategorias],
+  );
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState<string>(TODAS);
+  const [catElegida, setCat] = useState<string>(TODAS);
+  // Sin la fila de chips no hay cómo elegir otra cosa que «Todos»: si el ajuste
+  // se apagó con una categoría elegida, no queda filtrando a escondidas.
+  const cat = config.filtros ? catElegida : TODAS;
   // En móvil el carrito es una hoja que se abre; en escritorio es una columna
   // siempre visible, así que este estado sólo pesa abajo de lg.
   const [carritoAbierto, setCarritoAbierto] = useState(false);
@@ -185,8 +211,11 @@ export default function PantallaVenta({
     ids: idsFiltrados,
     onReordenar: alReordenar,
     // Con el carrito abierto en móvil la grilla está tapada: no hay nada que
-    // arrastrar y el gesto sólo estorbaría al scroll de la hoja.
-    activo: !carritoAbierto,
+    // arrastrar y el gesto sólo estorbaría al scroll de la hoja. En la vista
+    // en columnas tampoco: el orden de las columnas es el del dueño y dentro de
+    // cada una manda el que el cajero armó en las tarjetas, así que ahí no se
+    // arrastra nada.
+    activo: !carritoAbierto && !enColumnas,
     contenedor: grillaRef,
   });
 
@@ -212,6 +241,16 @@ export default function PantallaVenta({
   const pedirAgregar = (p: Producto) => {
     if (gruposDelProducto(catalogoAgregados, p.id).length > 0) setHojaAgregados({ producto: p });
     else carrito.agregar(p);
+  };
+  /**
+   * Tocar un producto, en la tarjeta o en la fila de las columnas. Un pausado
+   * no está en la página pero la caja lo puede tener: pregunta antes de
+   * agregarlo. Ya en el carrito (ya dijo que sí) los toques siguientes suman
+   * sin volver a preguntar.
+   */
+  const tocarProducto = (p: Producto) => {
+    if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
+    else pedirAgregar(p);
   };
   /** El «−» de la tarjeta baja la última línea de ese producto (puede haber varias con toppings). */
   const quitarUna = (p: Producto) => {
@@ -320,11 +359,14 @@ export default function PantallaVenta({
             />
           </div>
 
+          {/* Sin los filtros (Configuración › Punto de venta) no hay fila de
+              chips: se ven todos y se busca con el buscador. */}
+          {config.filtros && (
           <div className="flex gap-2 overflow-x-auto pb-0.5">
             <ChipCat activo={cat === TODAS} onClick={() => setCat(TODAS)}>
               Todos
             </ChipCat>
-            {categorias.map((c) => (
+            {categoriasPos.map((c) => (
               <ChipCat
                 key={c.id}
                 activo={cat === String(c.id)}
@@ -339,6 +381,7 @@ export default function PantallaVenta({
               </ChipCat>
             )}
           </div>
+          )}
         </div>
 
         <div ref={grillaRef} className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 lg:pb-4">
@@ -350,6 +393,21 @@ export default function PantallaVenta({
                 q ? "Probá con otro texto." : cat === PAUSADOS ? "No hay productos pausados." : "No hay productos en esta categoría."
               }
             />
+          ) : enColumnas ? (
+            <VistaColumnas
+              productos={filtrados}
+              categorias={categoriasPos}
+              // Una categoría elegida o una búsqueda: pocos bloques, las filas usan el ancho.
+              repartir={cat !== TODAS || q.trim() !== ""}
+              enCarrito={enCarrito}
+              conIcono={config.iconos}
+              agotadosHoy={agotadosHoy}
+              pausados={pausados.ids}
+              incluyeDe={(id) => textoIncluyeDe(catalogoAgregados, id)}
+              onAgregar={tocarProducto}
+              onQuitar={quitarUna}
+              onMenu={puedePausar ? setHojaPausa : undefined}
+            />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {visibles.map((p) => (
@@ -357,14 +415,7 @@ export default function PantallaVenta({
                   key={p.id}
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
-                  // Un pausado no está en la página pero la caja lo puede tener:
-                  // pregunta antes de agregarlo. Ya en el carrito (ya dijo que
-                  // sí) los toques siguientes suman sin volver a preguntar.
-                  onAgregar={() =>
-                    pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0
-                      ? setVenderPausado(p)
-                      : pedirAgregar(p)
-                  }
+                  onAgregar={() => tocarProducto(p)}
                   onQuitar={() => quitarUna(p)}
                   incluye={textoIncluyeDe(catalogoAgregados, p.id)}
                   arrastre={arrastre.props(p.id)}
@@ -374,6 +425,7 @@ export default function PantallaVenta({
                   agotadoHoy={agotadosHoy.has(p.id)}
                   pausado={pausados.ids.has(p.id)}
                   onMenu={puedePausar ? () => setHojaPausa(p) : undefined}
+                  conIcono={config.iconos}
                 />
               ))}
             </ul>
@@ -502,10 +554,16 @@ function TarjetaVenta({
   pausado = false,
   onMenu,
   incluye,
+  conIcono = true,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /**
+   * El ícono del producto (Configuración › Punto de venta). Sin él, la tarjeta
+   * es nombre y precio. De fábrica va, como siempre.
+   */
+  conIcono?: boolean;
   /** «Incluye 2 toppings»: el producto lleva un grupo de agregados y al tocarlo abre su hoja. */
   incluye?: string;
   /** Marcado "agotado hoy" en el Menú digital: no se ofrece aunque no tenga stock que contar. */
@@ -542,6 +600,9 @@ function TarjetaVenta({
   // toque, pero en silencio: el cajero tocaba y no pasaba nada, sin saber por
   // qué. Es el mismo tope del carrito, como en la app.
   const alTope = cantidad >= topeStock(p);
+  // La fila de arriba lleva el ícono y lo que dice el stock. Sin ícono y sin
+  // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
+  const conFila = conIcono || agotado || pausado || controla;
 
   return (
     <li
@@ -574,13 +635,17 @@ function TarjetaVenta({
           disabled={agotado}
           className="flex flex-1 flex-col text-left"
         >
-          <div className={`flex items-start justify-between gap-1.5${onMenu ? " pr-7" : ""}`}>
-            <IconoProducto
-              nombre={p.nombre}
-              icono={p.icono}
-              categoria={p.categoria?.nombre}
-              size={40}
-            />
+          {conFila && (
+          // Sin ícono, lo del stock queda arriba a la derecha, como con él.
+          <div className={`flex items-start ${conIcono ? "justify-between" : "justify-end"} gap-1.5${onMenu ? " pr-7" : ""}`}>
+            {conIcono && (
+              <IconoProducto
+                nombre={p.nombre}
+                icono={p.icono}
+                categoria={p.categoria?.nombre}
+                size={40}
+              />
+            )}
             {/* Como en la app: el que vende ve cuánto queda antes de
                 ofrecerlo, no recién cuando se agota. Antes el número sólo
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
@@ -601,6 +666,7 @@ function TarjetaVenta({
               </span>
             )}
           </div>
+          )}
           {/* Tres renglones y no dos: en la compu (4 columnas) «Arroz con leche
               con dulce de leche – Mediano» quedaba «…con dulce de leche –…» y
               la cajera no distinguía el tamaño, sólo por el precio (13-nov).
@@ -608,7 +674,10 @@ function TarjetaVenta({
               letra del tamaño ya no queda sola abajo («Leche condensada / M»
               pasa a «Leche / condensada M»). No suma renglones ni cambia el
               alto; donde el navegador no lo sabe hacer, queda como antes. */}
-          <h3 className="mt-2 line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto">
+          {/* Sin la fila de arriba el nombre encabeza la tarjeta: deja lugar al «⋯». */}
+          <h3
+            className={`${conFila ? "mt-2" : onMenu ? "pr-7" : ""} line-clamp-3 text-balance text-[13px] font-bold leading-snug text-texto`.trim()}
+          >
             {p.nombre}
           </h3>
           {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,
