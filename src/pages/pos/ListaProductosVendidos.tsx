@@ -6,7 +6,6 @@ import { fmtCantidad, fmtMoney } from "../../lib/format";
 import type { MedioVendido, PlataformaVendida, ReporteCierreProductos } from "../../types";
 import {
   LEYENDA_FIADO,
-  LEYENDA_PLATAFORMA,
   mediosDelTurno,
   plataformasDelTurno,
   redondearCantidad,
@@ -236,7 +235,6 @@ function SeccionPlataforma({ p, limite }: { p: PlataformaVendida; limite?: numbe
           </span>
           <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(p.total)}</span>
         </div>
-        <p className="mt-1 text-[12px] text-texto-3">{LEYENDA_PLATAFORMA}</p>
       </div>
       {p.categorias.length > 0 && (
         <TablaDeProductos

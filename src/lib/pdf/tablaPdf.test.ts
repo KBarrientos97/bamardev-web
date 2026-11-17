@@ -38,7 +38,7 @@ describe("dónde se corta la hoja del PDF", () => {
     const seccion: Renglon = {
       tipo: "grupo",
       alto: 20,
-      grupo: { titulo: "Yango", aclaracion: "No se cobra en caja", celdas: [], filas: [] },
+      grupo: { titulo: "Yango", aclaracion: "", celdas: [], filas: [] },
     };
     // Entran 4 renglones por hoja: el total cierra la hoja y la sección no puede quedar sola abajo.
     const hojas = repartirEnHojas([grupo("POLLOS"), fila("a"), fila("b"), total, seccion, grupo("BEBIDAS"), fila("c")], () => 100);

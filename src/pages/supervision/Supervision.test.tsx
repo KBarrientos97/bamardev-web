@@ -492,11 +492,11 @@ describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLAT
     ],
   });
 
-  it("la tarjeta dice cantidad y total por plataforma, con su marca, y que no se cobra en caja", async () => {
+  it("la tarjeta dice cantidad y total por plataforma, con su marca y sin leyenda de cobro", async () => {
     ver.mockImplementation(async () => conActividad(respuesta()));
     await montar();
     const t = seccion("Yango / PedidosYa del turno");
-    expect(t).toHaveTextContent("No se cobra en caja");
+    expect(t).not.toHaveTextContent(/No se cobra/);
     expect(within(t).getByText("Yango")).toBeInTheDocument();
     expect(within(t).getByText("PedidosYa")).toBeInTheDocument();
     expect(t).toHaveTextContent(/Bs\s120,00/);
@@ -520,7 +520,7 @@ describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLAT
     expect(within(filas[0]).getByText("Yango")).toBeInTheDocument();
     expect(filas[0]).toHaveTextContent("N° A-123");
     expect(filas[0]).toHaveTextContent("2× Arroz con leche L");
-    expect(filas[0]).toHaveTextContent("No se cobra");
+    expect(filas[0]).not.toHaveTextContent(/No se cobra/);
     expect(within(filas[1]).getByText("PedidosYa")).toBeInTheDocument();
     expect(within(filas[1]).getByText("Pedido #30")).toHaveClass("line-through");
     expect(filas[1]).toHaveTextContent(/Autorizó la anulación Marta Admin.*Error al cargar/);

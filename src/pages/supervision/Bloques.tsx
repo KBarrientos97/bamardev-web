@@ -337,7 +337,6 @@ function FilaPedidoPlataforma({ p, ahora }: { p: PedidoPlataformaSupervision; ah
         </div>
         <div className="flex shrink-0 flex-col items-end">
           <span className={`text-[15px] font-extrabold tabular-nums ${anulado ? "line-through text-texto-3" : "text-texto"}`}>{fmtMoney(p.total)}</span>
-          <span className="text-[11px] font-semibold text-texto-3">No se cobra</span>
         </div>
       </div>
     </li>

@@ -116,7 +116,7 @@ export default function DialogoPedidoPlataforma({
         </Campo>
 
         <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
-          No se cobra ni entra a la caja. Queda en el reporte de {nombre}.
+          Queda en el reporte de {nombre}.
         </p>
 
         <ErrorMsg>{error}</ErrorMsg>
