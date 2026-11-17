@@ -402,7 +402,7 @@ export default function PantallaCobro({
 
               {qrNum > 0 && (
                 <div className={`rounded-2xl border border-borde bg-white ${incrustado ? "p-3" : "p-5"}`}>
-                  {extraQr > 0 && (
+                  {extraQr > 0 && !incrustado && (
                     <p className="mb-3 text-center text-sm font-semibold text-texto">
                       Cobrá {fmtMoney(qrConPropina(qrNum))} por QR
                       <span className="block text-xs font-normal text-texto-3">
@@ -415,6 +415,20 @@ export default function PantallaCobro({
                     onConfirmar={() => setQrConfirmado(true)}
                     sinBoton={qrEnUnPaso}
                     monto={fmtMoney(qrConPropina(qrNum))}
+                    // En el carrito, el QR al lado del botón (ver QrParaCobrar).
+                    compacto={incrustado}
+                    leyenda={
+                      incrustado ? (
+                        <p className="text-sm font-semibold leading-snug text-texto">
+                          Cobrá {fmtMoney(qrConPropina(qrNum))} por QR
+                          {extraQr > 0 && (
+                            <span className="block text-xs font-normal text-texto-3">
+                              incluye {fmtMoney(extraQr)} de propina
+                            </span>
+                          )}
+                        </p>
+                      ) : undefined
+                    }
                   />
                 </div>
               )}
@@ -504,6 +518,7 @@ export default function PantallaCobro({
 
           {metodo === "QR" && !nadaQueCobrar && (
             <div className={`rounded-2xl border border-borde bg-white ${incrustado ? "p-3" : "p-5"}`}>
+              {!incrustado && (
               <p className="mb-3 text-center text-sm font-semibold text-texto">
                 Cobrá {fmtMoney(qrConPropina(aCubrir))} por QR
                 {extraQr > 0 && (
@@ -512,11 +527,27 @@ export default function PantallaCobro({
                   </span>
                 )}
               </p>
+              )}
               <QrParaCobrar
                 confirmado={qrConfirmado}
                 onConfirmar={() => setQrConfirmado(true)}
                 sinBoton={qrEnUnPaso}
                 monto={fmtMoney(qrConPropina(aCubrir))}
+                // En el carrito, el QR al lado del botón y el monto arriba de él:
+                // uno debajo del otro no entraba en 1366×768 (QA 16-nov).
+                compacto={incrustado}
+                leyenda={
+                  incrustado ? (
+                    <p className="text-sm font-semibold leading-snug text-texto">
+                      Cobrá {fmtMoney(qrConPropina(aCubrir))} por QR
+                      {extraQr > 0 && (
+                        <span className="block text-xs font-normal text-texto-3">
+                          incluye {fmtMoney(extraQr)} de propina
+                        </span>
+                      )}
+                    </p>
+                  ) : undefined
+                }
               />
               {/* QA DIA-02 (c): el QR no lleva la propina en efectivo, pero la
                   caja la espera. Sin el aviso, nadie la cobraba. */}
