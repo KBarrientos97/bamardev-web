@@ -597,6 +597,33 @@ function textoIncluyeDe(catalogo: CatalogoAgregados | null | undefined, producto
   return grupos.map((g) => textoIncluye(g.grupo.nombre, g.incluidos)).join(" · ");
 }
 
+/**
+ * Las clases de los tres lugares de «Pausado» en la tarjeta (ver `TarjetaVenta`),
+ * por el ancho útil de la tarjeta. Con el «⋯»: la etiqueta de siempre desde
+ * 146 px; la pastilla en la fila desde 126 (ícono 40 + 6 + pastilla 56 + aire
+ * hasta los puntos del «⋯»); debajo del nombre, menos. Sin el «⋯», desde 118 y 102.
+ * Escritas enteras: Tailwind sólo genera las clases que ve en el código.
+ */
+const PAUSADO_CON_MENU = {
+  arriba: "hidden @min-[146px]:inline-flex",
+  chica: "mr-auto hidden @min-[126px]:inline-flex @min-[146px]:hidden",
+  abajo: "mt-1 flex @min-[126px]:hidden",
+};
+const PAUSADO_SIN_MENU = {
+  arriba: "hidden @min-[118px]:inline-flex",
+  chica: "mr-auto hidden @min-[102px]:inline-flex @min-[118px]:hidden",
+  abajo: "mt-1 flex @min-[102px]:hidden",
+};
+
+/** «Pausado» chico, como en la lista en columnas (`VistaColumnas`). */
+function PastillaPausado() {
+  return (
+    <span className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-px text-[11px] font-bold text-texto-3">
+      Pausado
+    </span>
+  );
+}
+
 function ChipCat({
   activo,
   onClick,
@@ -680,6 +707,18 @@ function TarjetaVenta({
   // La fila de arriba lleva el ícono y lo que dice el stock. Sin ícono y sin
   // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
   const conFila = conIcono || agotado || pausado || controla;
+  /**
+   * Dónde va «Pausado» según el ancho de la tarjeta (17-nov). En la angosta
+   * (1366 con el menú abierto) quedaba pegado al «⋯», y en 1024 se salía de
+   * la tarjeta. Se mide la tarjeta (`@container`, su ancho útil):
+   * - con lugar, la etiqueta de siempre, arriba a la derecha;
+   * - si no entra, una pastilla chica en la misma fila, pegada al ícono, con
+   *   aire hasta el «⋯» (así la tarjeta no crece);
+   * - si tampoco entra (1024), la pastilla debajo del nombre, como en la
+   *   lista en columnas.
+   * Sin el «⋯» (sin permiso de pausar) hay más lugar en la fila.
+   */
+  const lugarPausado = onMenu ? PAUSADO_CON_MENU : PAUSADO_SIN_MENU;
 
   return (
     <li
@@ -695,7 +734,7 @@ function TarjetaVenta({
           elegido sin abrir el carrito es lo que evita cargarlo dos veces. */}
       <div
         className={[
-          "relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          "@container relative flex h-full flex-col rounded-2xl border p-3 transition-shadow",
           enCarrito
             ? "border-primary bg-primary-50 shadow-sm"
             : pausado
@@ -728,7 +767,16 @@ function TarjetaVenta({
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
             {/* Pausado y agotado a la vez: gana «Agotado», que sí frena la venta. */}
-            {pausado && !agotado && <Badge tono="gris">Pausado</Badge>}
+            {pausado && !agotado && (
+              <>
+                <span className={lugarPausado.chica}>
+                  <PastillaPausado />
+                </span>
+                <span className={lugarPausado.arriba}>
+                  <Badge tono="gris">Pausado</Badge>
+                </span>
+              </>
+            )}
             {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controla && (
@@ -757,6 +805,12 @@ function TarjetaVenta({
           >
             {p.nombre}
           </h3>
+          {/* En la tarjeta más angosta «Pausado» no entra arriba: va acá (ver `lugarPausado`). */}
+          {pausado && !agotado && (
+            <span className={lugarPausado.abajo}>
+              <PastillaPausado />
+            </span>
+          )}
           {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,
               antes de tocarlo. */}
           {incluye && <p className="mt-1 text-[11px] font-bold text-primary-700">{incluye}</p>}

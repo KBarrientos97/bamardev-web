@@ -94,7 +94,10 @@ describe("la tarjeta de un producto pausado", () => {
     await montar();
     expect(api.productosPausados).toHaveBeenCalledWith(3);
     const tarjeta = screen.getByRole("heading", { name: "Nutella L" }).closest("li")!;
-    expect(within(tarjeta).getByText("Pausado")).toBeInTheDocument();
+    // Tres lugares (17-nov): la etiqueta de siempre si la tarjeta es ancha, una
+    // pastilla al lado del ícono si es angosta, o debajo del nombre si es más
+    // angosta todavía. Cuál se ve lo decide el CSS por el ancho de la tarjeta.
+    expect(within(tarjeta).getAllByText("Pausado")).toHaveLength(3);
     expect(tarjeta.firstElementChild!.className).toContain("grayscale");
     // La que no está pausada no cambia.
     const otra = screen.getByRole("heading", { name: "Oreo" }).closest("li")!;
@@ -172,7 +175,7 @@ describe("la hoja de pausar", () => {
     expect(api.pausarProducto).toHaveBeenCalledWith(2, 3);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const tarjeta = screen.getByRole("heading", { name: "Oreo" }).closest("li")!;
-    expect(within(tarjeta).getByText("Pausado")).toBeInTheDocument();
+    expect(within(tarjeta).getAllByText("Pausado").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Pausados (1)" })).toBeInTheDocument();
   });
 
@@ -180,7 +183,7 @@ describe("la hoja de pausar", () => {
     sesion.permisos = ["ventas.vender"];
     vi.mocked(api.productosPausados).mockResolvedValue(lista([1]));
     await montar();
-    expect(screen.getByText("Pausado")).toBeInTheDocument();
+    expect(screen.getAllByText("Pausado").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /^(Pausar|Reactivar) / })).not.toBeInTheDocument();
     // Y el aviso al venderlo es el mismo.
     fireEvent.click(screen.getByRole("heading", { name: "Nutella L" }));
