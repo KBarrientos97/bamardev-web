@@ -181,7 +181,8 @@ describe("el cobro en el carrito", () => {
   it("los pedidos de las apps de delivery quedan después del cobro, como alternativa", async () => {
     await montar({ plataformas: { disponibles: ["YANGO"], onElegir: vi.fn() } });
     const panel = carritoEnPantalla();
-    const plataforma = within(panel).getByRole("button", { name: /🛵/ });
+    // El 🛵 es de adorno (aria-hidden): se busca el botón que lo lleva.
+    const plataforma = within(panel).getByText("🛵").closest("button")!;
     const fiado = within(panel).getByRole("button", { name: "Vender a crédito (fiado)" });
     expect(fiado.compareDocumentPosition(plataforma) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
