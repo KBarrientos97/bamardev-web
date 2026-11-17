@@ -122,6 +122,17 @@ describe("ticket de cierre: el formato del plan", () => {
     expect(lineas.find((l) => l.includes("Dulce de leche con"))).toMatch(/ 1234\.50$/);
   });
 
+  it("la cabecera no se corta: el cajero largo sigue en el renglón de abajo, sin perder letras", () => {
+    const lineas = lineasTicketCierre(VENDIDO, { ...DATOS, cajero: "Administrador del local de pruebas" });
+    const desde = lineas.indexOf("Cajero: Administrador del local");
+    expect(desde).toBeGreaterThan(-1);
+    expect(lineas[desde + 1]).toBe("de pruebas");
+    // Una palabra más larga que el papel se parte en el borde y sigue entera.
+    const sede = "x".repeat(40);
+    const conSede = lineasTicketCierre(VENDIDO, { ...DATOS, sede });
+    expect(conSede.slice(1, 3).join("")).toBe(sede);
+  });
+
   it("sin los campos nuevos (un backend anterior) salen los productos y el total", () => {
     const { porMedio: _m, plataformas: _p, ...viejo } = VENDIDO;
     const lineas = lineasTicketCierre(viejo, DATOS);
