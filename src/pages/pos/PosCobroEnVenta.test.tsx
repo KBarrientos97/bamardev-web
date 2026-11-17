@@ -232,6 +232,28 @@ describe("cobrar en la misma pantalla, en efectivo", () => {
     expect(screen.getByText("recibo")).toBeInTheDocument();
   });
 
+  it("el error del servidor se borra cuando la cajera cambia el pedido, no antes", async () => {
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(new Error("Stock insuficiente de Pollo entero"));
+    await montar();
+    tocar("Pollo entero");
+    tocar("Pollo entero");
+    fireEvent.change(recibido(), { target: { value: "100" } });
+    await act(async () => {
+      fireEvent.click(confirmar());
+    });
+    const error = "Stock insuficiente de Pollo entero";
+    expect(within(carrito()).getByText(error)).toBeInTheDocument();
+    // Teclear otro efectivo no cambia el pedido: el aviso queda.
+    fireEvent.change(recibido(), { target: { value: "80" } });
+    expect(within(carrito()).getByText(error)).toBeInTheDocument();
+    // Saca un pollo: el pedido es otro y el aviso viejo se va.
+    await act(async () => {
+      fireEvent.click(within(carrito()).getByRole("button", { name: "Quitar una unidad" }));
+    });
+    expect(within(carrito()).queryByText(error)).not.toBeInTheDocument();
+    expect(confirmar()).toHaveTextContent("Bs 35,00");
+  });
+
   it("cambiar el pedido no borra lo tecleado en el efectivo", async () => {
     await montar();
     tocar("Pollo entero");

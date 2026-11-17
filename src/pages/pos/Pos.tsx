@@ -1104,6 +1104,22 @@ function PuntoDeVenta() {
     !datosEntrega &&
     tipoPedido === "LOCAL";
 
+  /**
+   * El error de un cobro incrustado es de ESE pedido: si el backend lo rechazó
+   * («Stock insuficiente de…») y la cajera lo corrige, el mensaje viejo no
+   * puede quedar pegado a «Confirmar» como si el pedido nuevo también fallara.
+   * Se borra cuando cambian las líneas o el total. (La pantalla aparte ya lo
+   * borra al volver al carrito, que es la única forma de cambiar el pedido.)
+   */
+  const firmaDelPedido =
+    carritoVenta.lineas.map((l) => `${claveDeLinea(l)}x${l.cantidad}`).join(",") + `=${aCentavos(totalCarrito)}`;
+  const firmaVista = useRef(firmaDelPedido);
+  useEffect(() => {
+    if (firmaVista.current === firmaDelPedido) return;
+    firmaVista.current = firmaDelPedido;
+    if (cobroEnLaVenta) setError("");
+  }, [firmaDelPedido, cobroEnLaVenta]);
+
   const dialogoCobroIncompleto = (
     <Confirmar
       abierto={!!cobroIncompleto}
