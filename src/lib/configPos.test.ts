@@ -7,7 +7,16 @@ import { CONFIG_POS_DE_SIEMPRE, configPosDe, mismaConfigPos, normalizarConfigPos
  * manda no pueden cambiar cómo se cobra.
  */
 
-const DE_SIEMPRE = { vista: "TARJETAS", cobro: "APARTE", iconos: true, filtros: true, ordenCategorias: [] };
+// Los billetes (Configuración › Caja, 17-nov) valen «sí» de fábrica: contar al abrir y al cerrar es lo de siempre.
+const DE_SIEMPRE = {
+  vista: "TARJETAS",
+  cobro: "APARTE",
+  iconos: true,
+  filtros: true,
+  ordenCategorias: [],
+  billetesAlAbrir: true,
+  billetesAlCerrar: true,
+};
 
 describe("normalizarConfigPos", () => {
   it.each([undefined, null, "COLUMNAS", 3, []])("sin un objeto (%s): lo de fábrica", (crudo) => {
@@ -17,7 +26,15 @@ describe("normalizarConfigPos", () => {
   it("lo que viene bien se respeta", () => {
     expect(
       normalizarConfigPos({ vista: "COLUMNAS", cobro: "EN_VENTA", iconos: false, filtros: false, ordenCategorias: [4, 2] }),
-    ).toEqual({ vista: "COLUMNAS", cobro: "EN_VENTA", iconos: false, filtros: false, ordenCategorias: [4, 2] });
+    ).toEqual({
+      vista: "COLUMNAS",
+      cobro: "EN_VENTA",
+      iconos: false,
+      filtros: false,
+      ordenCategorias: [4, 2],
+      billetesAlAbrir: true,
+      billetesAlCerrar: true,
+    });
   });
 
   it("un campo roto no tira abajo a los demás: vale lo de fábrica sólo ése", () => {
@@ -34,6 +51,12 @@ describe("normalizarConfigPos", () => {
 
   it("un campo que esta versión no conoce (el destino del pedido, que no es un ajuste) se ignora", () => {
     expect(normalizarConfigPos({ consumo: "LLEVAR" })).toEqual(DE_SIEMPRE);
+  });
+
+  it("los billetes se leen aparte: apagar uno no toca al otro, y un dato roto vale «sí»", () => {
+    expect(normalizarConfigPos({ billetesAlAbrir: false })).toEqual({ ...DE_SIEMPRE, billetesAlAbrir: false });
+    expect(normalizarConfigPos({ billetesAlCerrar: false })).toEqual({ ...DE_SIEMPRE, billetesAlCerrar: false });
+    expect(normalizarConfigPos({ billetesAlAbrir: "no", billetesAlCerrar: null })).toEqual(DE_SIEMPRE);
   });
 
   it("devuelve copias: tocar el resultado no cambia lo de fábrica", () => {

@@ -53,6 +53,16 @@ export const OPCIONES_CONFIGURACION: readonly OpcionConfiguracion[] = [
     icono: "cart",
   },
   {
+    // Sin sección propia (17-nov): es la misma caja y la misma gente que
+    // «Punto de venta», y sus ajustes viajan en el mismo `/pos/config`. Así
+    // el permiso y el rubro no se pueden desalinear de la pantalla de al lado.
+    seccion: "config_pos",
+    a: "/configuracion/caja",
+    titulo: "Caja",
+    detalle: "Lo que se cuenta al abrir y al cerrar el turno.",
+    icono: "lock",
+  },
+  {
     seccion: "config_recibo",
     a: "/configuracion/recibo",
     titulo: "Ticket y recibo",

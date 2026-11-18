@@ -1,4 +1,5 @@
 import { request } from "../../lib/api";
+import type { EstadoConteoSucursal } from "../../types";
 import type { Plataforma } from "../../lib/pedidosPlataforma/tipos";
 
 /**
@@ -261,6 +262,12 @@ export interface SupervisionRestaurante {
    * la pantalla no muestra nada nuevo.
    */
   plataformas?: PlataformasSupervision | null;
+  /**
+   * El conteo por categoría de la sucursal que se mira (17-nov): cuántos
+   * quedan de cada una. `null` con el conteo apagado; AUSENTE con un backend
+   * anterior. En los dos casos la pantalla no muestra nada nuevo.
+   */
+  conteo?: EstadoConteoSucursal | null;
 }
 
 // ── Las rutas ───────────────────────────────────────────────────────────────

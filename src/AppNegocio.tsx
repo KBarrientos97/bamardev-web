@@ -97,6 +97,7 @@ const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
 // «Configuración» del restaurante (15-nov): la lista de sus opciones.
 const Configuracion = lazy(() => import("./pages/configuracion/Configuracion"));
 const ConfigPuntoDeVenta = lazy(() => import("./pages/configuracion/ConfigPuntoDeVenta"));
+const ConfigCaja = lazy(() => import("./pages/configuracion/ConfigCaja"));
 const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
 const Agregados = lazy(() => import("./pages/inventario/Agregados"));
 const ConfigTickets = lazy(() => import("./pages/tickets/ConfigTickets"));
@@ -806,6 +807,18 @@ function Rutas() {
             <Protegida seccion="config_pos">
               <Suspense fallback={null}>
                 <ConfigPuntoDeVenta />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Si se cuentan los billetes al abrir y al cerrar el turno (17-nov). Mismo permiso que Punto de venta. */}
+        <Route
+          path="/configuracion/caja"
+          element={
+            <Protegida seccion="config_pos">
+              <Suspense fallback={null}>
+                <ConfigCaja />
               </Suspense>
             </Protegida>
           }

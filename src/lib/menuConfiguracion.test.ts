@@ -44,6 +44,8 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
     expect(opciones(ctx("ADMIN", SIN_TVS))).toEqual([
       // Primera, y sólo en la web (16-nov).
       "Punto de venta",
+      // Caja (17-nov): justo después, con el mismo permiso que Punto de venta.
+      "Caja",
       "Ticket y recibo",
       "QR de cobro",
       "Inventario y stock",
@@ -54,6 +56,7 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
   it("con los tickets también está Tickets y despacho, en su orden", () => {
     expect(opciones(ctx("ADMIN", CON_TICKETS))).toEqual([
       "Punto de venta",
+      "Caja",
       "Ticket y recibo",
       "Tickets y despacho",
       "QR de cobro",
@@ -64,7 +67,7 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
 
   it("con sólo el menú digital no hay Tickets y despacho: no saca número", () => {
     expect(opciones(ctx("ADMIN", CON_MENU))).not.toContain("Tickets y despacho");
-    expect(opciones(ctx("ADMIN", CON_MENU)).slice(0, 2)).toEqual(["Punto de venta", "Ticket y recibo"]);
+    expect(opciones(ctx("ADMIN", CON_MENU)).slice(0, 3)).toEqual(["Punto de venta", "Caja", "Ticket y recibo"]);
   });
 
   it("Punto de venta (16-nov): del dueño, con `negocio.configurar`, sin feature del plan", () => {
@@ -122,6 +125,7 @@ describe("Configuración del restaurante: qué opciones ve cada quien", () => {
   it("cada opción lleva a la pantalla que ya existía", () => {
     expect(OPCIONES_CONFIGURACION.map((o) => [o.titulo, o.a])).toEqual([
       ["Punto de venta", "/configuracion/punto-de-venta"],
+      ["Caja", "/configuracion/caja"],
       ["Ticket y recibo", "/configuracion/recibo"],
       ["Tickets y despacho", "/configuracion/tickets"],
       ["QR de cobro", "/configuracion/qr-cobro"],

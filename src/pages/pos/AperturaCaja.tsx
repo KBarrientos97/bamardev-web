@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { configPosDe } from "../../lib/configPos";
+import { conteoEnUso, normalizarConfigConteo } from "../../lib/conteo";
+import ConteoDeApertura from "./ConteoDeApertura";
 import InputMonto from "../../components/InputMonto";
 import CorteDeCaja from "../../components/CorteDeCaja";
 import { CargarQrCobro } from "../../components/QrCobro";
@@ -28,7 +31,13 @@ export default function AperturaCaja({
    */
   sucursalInicial?: number | null;
 }) {
-  const { usuario, rubro, vocabulario } = useAuth();
+  const { usuario, rubro, vocabulario, negocio } = useAuth();
+  // Lo que se cuenta al abrir es un ajuste del dueño (Configuración › Caja y
+  // › Inventario y stock): de fábrica los billetes sí y el conteo no.
+  const contarBilletes = configPosDe(negocio).billetesAlAbrir;
+  const conteo = normalizarConfigConteo(negocio?.conteo);
+  const conContar = conteoEnUso(conteo);
+  const [lineasConteo, setLineasConteo] = useState<{ categoriaId: number; cantidad: number }[]>([]);
   // "Sucursal" o como la llame el rubro (en un instituto, "Sede").
   const palabraSucursal = conMayuscula(termino(rubro, "sucursal", vocabulario));
   const [monto, setMonto] = useState("");
@@ -75,6 +84,8 @@ export default function AperturaCaja({
         montoApertura: montoNum,
         ...(descripcion.trim() ? { descripcion: descripcion.trim() } : {}),
         ...(elegirSucursal && elegida != null ? { almacenId: elegida } : {}),
+        // Sin cambios no va la clave: la apertura queda como siempre.
+        ...(conContar && lineasConteo.length > 0 ? { conteoCategorias: lineasConteo } : {}),
       });
       onAbierta(caja);
     } catch (err) {
@@ -156,10 +167,22 @@ export default function AperturaCaja({
               que hace el cajero al abrir, y tecleando el total de cabeza es
               donde se cuelan los errores. Con lo que dice el campo: si se
               corrige a mano (o con un atajo), el conteo se descarta. */}
-          <CorteDeCaja
-            monto={leerMonto(monto)}
-            onTotal={(t) => setMonto(t > 0 ? montoParaEditar(t) : "")}
-          />
+          {contarBilletes && (
+            <CorteDeCaja
+              monto={leerMonto(monto)}
+              onTotal={(t) => setMonto(t > 0 ? montoParaEditar(t) : "")}
+            />
+          )}
+
+          {/* Los vasos de cada tamaño: lo que quedó, y lo que se repuso. */}
+          {conContar && (
+            <ConteoDeApertura
+              nombre={conteo.nombre}
+              categorias={conteo.categorias}
+              sucursalId={elegirSucursal ? elegida : null}
+              onCambio={setLineasConteo}
+            />
+          )}
 
           <CargarQrCobro />
 
