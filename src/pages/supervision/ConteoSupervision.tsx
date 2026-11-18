@@ -154,7 +154,9 @@ function ReponerConteo({
       }
     >
       <div className="space-y-3">
-        <p className="text-[13px] text-texto-3">Escribí cuántos agregás: se suman a lo que queda, no lo reemplazan.</p>
+        <p className="text-balance text-[13px] text-texto-3">
+          Escribí cuántos agregás: se suman a lo que queda, no lo reemplazan.
+        </p>
         <ErrorMsg>{error}</ErrorMsg>
         <ul className="divide-y divide-borde-soft">
           {conteo.items.map((i) => {

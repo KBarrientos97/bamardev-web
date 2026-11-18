@@ -102,7 +102,8 @@ export default function ConteoDeApertura({
 
       {abierto && (
         <div className="space-y-3 border-t border-borde-soft p-3.5">
-          <p className="text-[12px] text-texto-3">
+          {/* `text-balance`: sin esto «ahora.» quedaba sola en el renglón de abajo. */}
+          <p className="text-balance text-[12px] text-texto-3">
             Lo que quedó del turno anterior. Si repusiste, escribí cuántos hay ahora.
           </p>
           {sinDato && (
