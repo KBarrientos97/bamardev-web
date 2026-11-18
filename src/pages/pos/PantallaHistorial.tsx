@@ -45,6 +45,7 @@ import VentasSinSubir from "../../components/offline/VentasSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja, ModificacionVenta, Venta } from "../../types";
 import { cambioDeProductos, motivoNoModificable, plataDelCambio, rubroModificaVentas } from "./cambioDeVenta";
+import { direccionParaMostrar } from "../repartidor/direccionEntrega";
 
 export default function PantallaHistorial({
   caja,
@@ -81,6 +82,9 @@ export default function PantallaHistorial({
   );
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [entregando, setEntregando] = useState<Venta | null>(null);
+  // Quien maneja el reparto también cobra un delivery acá (18-nov): el
+  // repartidor volvió con la plata. Ver `seEntregaEnCaja`.
+  const cobraDelivery = tienePermiso(usuario, "delivery.asignar");
 
   // Los pedidos de Yango y PedidosYa de esta caja (PLAN-PEDIDOS-PLATAFORMA
   // §10.2): se mezclan con las ventas pero NO son ventas y no suman a nada.
@@ -259,8 +263,14 @@ export default function PantallaHistorial({
                         <p className="truncate text-[11px] font-semibold text-texto-2">{p.almacen.nombre}</p>
                       )}
                       <p className="truncate text-xs text-texto-3">
-                        {p.tipoPedido === "DELIVERY" ? p.clienteDireccion : "Pasa a recoger"}
-                        {p.repartidor ? ` · ${p.repartidor.nombre}` : p.entregaExterna ? ` · Envío por ${nombreServicio(p.entregaExterna)}` : ""}
+                        {/* Sin dirección (un pedido de la página que sólo marcó el pin)
+                            no queda un renglón vacío ni uno que arranca con « · ». */}
+                        {[
+                          p.tipoPedido === "DELIVERY" ? direccionParaMostrar(p) : "Pasa a recoger",
+                          p.repartidor ? p.repartidor.nombre : p.entregaExterna ? `Envío por ${nombreServicio(p.entregaExterna)}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -268,11 +278,12 @@ export default function PantallaHistorial({
                       <Badge tono={p.prepagado ? "verde" : "amarillo"}>
                         {p.prepagado ? "Pagado" : "Cobra al entregar"}
                       </Badge>
-                      {/* Un DELIVERY lo cierra el repartidor desde su pantalla.
-                          Un RECOGER lo cierra quien está en la caja: el cliente
+                      {/* Un RECOGER lo cierra quien está en la caja: el cliente
                           pasa por el mostrador y no hay nadie más que lo haga —
-                          sin esto el pedido quedaba pendiente para siempre. */}
-                      {p.tipoPedido === "RECOGER" && (
+                          sin esto el pedido quedaba pendiente para siempre. Un
+                          DELIVERY propio, además del repartidor, quien maneja el
+                          reparto (18-nov): el repartidor volvió con la plata. */}
+                      {seEntregaEnCaja(p, cobraDelivery) && (
                         <button
                           onClick={(e) => {
                             // Que el botón no abra además el detalle de la fila.
@@ -281,7 +292,7 @@ export default function PantallaHistorial({
                           }}
                           className="mt-1.5 block w-full rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-white"
                         >
-                          {p.prepagado ? "Entregar" : "Cobrar y entregar"}
+                          {textoEntregarEnCaja(p)}
                         </button>
                       )}
                     </div>
@@ -439,6 +450,7 @@ export default function PantallaHistorial({
       {entregando && (
         <EntregarRecoger
           pedido={entregando}
+          delivery={entregando.tipoPedido === "DELIVERY" ? { envio: entregando.tarifaEnvio ?? 0 } : undefined}
           onClose={() => setEntregando(null)}
           onEntregado={() => {
             setEntregando(null);
@@ -604,7 +616,10 @@ function DetalleVenta({
    *
    * - un RECOGER pendiente lo entrega quien está en la caja: el cliente pasa
    *   por el mostrador y no hay nadie más que lo haga;
-   * - un DELIVERY no tiene acción acá: lo cobra y entrega el repartidor;
+   * - un DELIVERY lo cobra y entrega el repartidor; desde el 18-nov, uno
+   *   propio también quien maneja el reparto (`delivery.asignar`): el
+   *   repartidor volvió con la plata. El de un servicio externo avanza desde
+   *   Pedidos web (ver `seEntregaEnCaja`);
    * - el comprobante se ofrece sólo cuando ya no queda nada por cobrar
    *   (prepagado o entregado): un comprobante de algo impago se lee como
    *   recibo de pago.
@@ -612,6 +627,9 @@ function DetalleVenta({
   const esPedido = v.tipoPedido !== "LOCAL";
   const entregado = v.estadoEntrega === "ENTREGADO";
   const pendiente = esPedido && v.estado === "APROBADO" && v.estadoEntrega === "PENDIENTE";
+  // Si lo lleva un servicio externo se sabe por la fila de la lista, por si el
+  // detalle completo no lo trae: ése no se entrega desde acá.
+  const pedidoDeEntrega: Venta = { ...v, entregaExterna: v.entregaExterna ?? venta.entregaExterna ?? null };
   // Una venta de mostrador ya está cobrada: su recibo se puede volver a dar
   // (QA PER-08: una vez que se salía del recibo no había forma de reimprimirlo).
   const conComprobante = v.estado === "APROBADO" && (!esPedido || v.prepagado || entregado);
@@ -630,9 +648,9 @@ function DetalleVenta({
                 Ver comprobante
               </Boton>
             )}
-            {pendiente && v.tipoPedido === "RECOGER" && onEntregar && (
-              <Boton icono="check" onClick={() => onEntregar(v)}>
-                {v.prepagado ? "Entregar" : "Cobrar y entregar"}
+            {pendiente && onEntregar && seEntregaEnCaja(pedidoDeEntrega, tienePermiso(usuario, "delivery.asignar")) && (
+              <Boton icono="check" onClick={() => onEntregar(pedidoDeEntrega)}>
+                {textoEntregarEnCaja(v)}
               </Boton>
             )}
             {puedeModificar && (
@@ -715,7 +733,7 @@ function DetalleVenta({
                     </p>
                     <p className="mt-0.5 text-xs text-texto-3">
                       {v.tipoPedido === "DELIVERY"
-                        ? (v.clienteDireccion ?? "Sin dirección")
+                        ? direccionParaMostrar({ ...v, pedidoWeb: v.pedidoWeb ?? venta.pedidoWeb })
                         : "Recoge en tienda"}
                     </p>
                     <p className={`mt-0.5 text-xs ${v.clienteTelefono ? "text-texto-2" : "text-texto-4"}`}>
@@ -925,12 +943,19 @@ export type PedidoParaEntregar = Pick<Venta, "id" | "clienteNombre" | "total" | 
 export function EntregarRecoger({
   pedido,
   entregar = (pagos) => api.entregarPedido(pedido.id, pagos),
+  delivery,
   onClose,
   onEntregado,
 }: {
   pedido: PedidoParaEntregar;
   /** Cómo se entrega: por defecto `POST ventas/:id/entregar` (el historial). */
   entregar?: (pagos?: PagoEntrega[]) => Promise<unknown>;
+  /**
+   * Un DELIVERY propio que cobra la caja (18-nov): el repartidor volvió con la
+   * plata. Se cobra lo del pedido (`total`, sin el envío, que es suyo) y se
+   * dice. Sin esto, el recojo de siempre.
+   */
+  delivery?: { envio: number };
   onClose: () => void;
   onEntregado: () => void;
 }) {
@@ -938,10 +963,15 @@ export function EntregarRecoger({
   const formasPago = useApi(() => api.getFormasPago(), []);
   const [metodo, setMetodo] = useState<"EFECTIVO" | "QR" | "MIXTO">("EFECTIVO");
   // Un pedido de la página en efectivo que dijo con cuánto paga: «Efectivo recibido» arranca ahí (QA R1, N17).
+  // En un delivery no: el cliente le pagó al repartidor (con el envío) y él
+  // ya le dio el vuelto; a la caja le trae otra cosa.
   const [recibido, setRecibido] = useState(() => {
-    const dicho = pedido.pedidoWeb?.formaPago === "EFECTIVO" ? recibidoSugerido(pedido.pedidoWeb.pagaCon, pedido.total) : null;
+    const dicho =
+      !delivery && pedido.pedidoWeb?.formaPago === "EFECTIVO" ? recibidoSugerido(pedido.pedidoWeb.pagaCon, pedido.total) : null;
     return dicho != null ? montoParaEditar(dicho) : "";
   });
+  const titulo = delivery && pedido.prepagado ? "Marcar entregado" : pedido.prepagado ? "Entregar pedido" : "Cobrar y entregar";
+  const etiquetaOk = delivery && pedido.prepagado ? "Marcar entregado" : pedido.prepagado ? "Entregar" : "Cobrar y entregar";
   const [montoQr, setMontoQr] = useState("");
   const [qrConfirmado, setQrConfirmado] = useState(false);
   const [error, setError] = useState("");
@@ -1021,7 +1051,7 @@ export function EntregarRecoger({
   return (
     <Modal
       abierto
-      titulo={pedido.prepagado ? "Entregar pedido" : "Cobrar y entregar"}
+      titulo={titulo}
       subtitulo={pedido.clienteNombre ?? `Pedido #${pedido.id}`}
       onClose={onClose}
       acciones={
@@ -1030,7 +1060,7 @@ export function EntregarRecoger({
             Cancelar
           </Boton>
           <Boton onClick={confirmar} disabled={enviando}>
-            {enviando ? "Confirmando…" : pedido.prepagado ? "Entregar" : "Cobrar y entregar"}
+            {enviando ? "Confirmando…" : etiquetaOk}
           </Boton>
         </>
       }
@@ -1041,11 +1071,19 @@ export function EntregarRecoger({
             <span>Total del pedido</span>
             <span>{fmtMoney(total)}</span>
           </div>
+          {/* Lo que se cobra es lo del negocio: el envío lo cobró y se lo queda el repartidor. */}
+          {delivery && !pedido.prepagado && esPositivo(delivery.envio) && (
+            <p className="mt-1 text-[12px] text-texto-3">
+              El envío ({fmtMoney(delivery.envio)}) es del repartidor: no entra a la caja.
+            </p>
+          )}
         </div>
 
         {pedido.prepagado ? (
           <p className="text-[13px] text-texto-3">
-            Este pedido ya se cobró al tomarlo. Confirmá que el cliente lo retiró.
+            {delivery
+              ? "Este pedido ya se cobró al tomarlo. Confirmá que llegó al cliente."
+              : "Este pedido ya se cobró al tomarlo. Confirmá que el cliente lo retiró."}
           </p>
         ) : (
           <>
@@ -1199,6 +1237,27 @@ function esPedido(v: Pick<Venta, "tipoPedido">): boolean {
  */
 function porCobrarAlEntregar(v: Pick<Venta, "tipoPedido" | "prepagado" | "estadoEntrega">): boolean {
   return esPedido(v) && !v.prepagado && v.estadoEntrega !== "ENTREGADO";
+}
+
+/**
+ * ¿Este pedido pendiente se entrega (y se cobra) desde la caja?
+ *
+ * - un RECOGER, siempre: el cliente pasa por el mostrador;
+ * - un DELIVERY propio, sólo quien maneja el reparto (`delivery.asignar`, la
+ *   misma regla del backend para `POST ventas/:id/entregar`): el repartidor
+ *   volvió con la plata y la cajera lo cierra (18-nov). Se cobra el total del
+ *   pedido sin el envío, que es del repartidor;
+ * - el de un servicio externo, no: avanza desde Pedidos web.
+ */
+function seEntregaEnCaja(v: Pick<Venta, "tipoPedido" | "entregaExterna">, cobraDelivery: boolean): boolean {
+  if (v.tipoPedido === "RECOGER") return true;
+  return v.tipoPedido === "DELIVERY" && !v.entregaExterna && cobraDelivery;
+}
+
+/** «Cobrar y entregar»; ya pagado, «Entregar» si es un recojo y «Marcar entregado» si es un delivery. */
+function textoEntregarEnCaja(v: Pick<Venta, "tipoPedido" | "prepagado">): string {
+  if (!v.prepagado) return "Cobrar y entregar";
+  return v.tipoPedido === "DELIVERY" ? "Marcar entregado" : "Entregar";
 }
 
 /**

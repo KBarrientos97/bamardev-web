@@ -112,6 +112,7 @@ import type {
   Plataforma,
   ReportePedidosPlataforma,
 } from "./pedidosPlataforma/tipos";
+import type { RecibidoDeRendicion } from "./repartoRendicion";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -1596,6 +1597,27 @@ export const api = {
     }>,
   ) => request<Mesa>(`/mesas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   eliminarMesa: (id: number) => request<void>(`/mesas/${id}`, { method: "DELETE" }),
+
+  // ── Cuadre con los repartidores (delivery propio, 18-nov) ─────────────────
+
+  /**
+   * Qué llevó cada repartidor en la jornada, cuánto cobró y cuánta plata le
+   * falta entregar (`activa` = «Controlar la plata de los repartidores»). Al
+   * repartidor el backend le manda sólo lo suyo; `almacenId` filtra para quien
+   * ve varias sucursales. Viene crudo: se lee con `normalizarRendicion`.
+   */
+  rendicionReparto: (filtro: { repartidorId?: number; almacenId?: number } = {}) =>
+    request<unknown>(`/reparto/rendicion${qs(filtro)}`),
+  /**
+   * La caja recibió esa plata: las filas pasan de PENDIENTE a RECIBIDA y dejan
+   * de restarse del esperado. Devuelve sólo lo que de verdad cambió (repetirlo
+   * da `recibidas: 0`).
+   */
+  recibirRendicionReparto: (ids: number[]) =>
+    request<RecibidoDeRendicion>("/reparto/rendicion/recibir", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 };
 
 /** Pago con el que el repartidor cobra un pedido contra entrega. */

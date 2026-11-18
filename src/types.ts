@@ -1307,6 +1307,15 @@ export interface ResumenCaja {
   /** Lo mismo, por mesero: dice a quién pedirle la plata. */
   meserosPendientes?: { meseroId: number | null; nombre: string | null; monto: number }[];
   /**
+   * Lo mismo con el delivery propio (18-nov): el efectivo que los repartidores
+   * cobraron y la caja todavía no recibió. Ya restado de `saldoEsperado`. Sólo
+   * hay algo con «Controlar la plata de los repartidores» prendido; un backend
+   * anterior no lo manda (= 0). Ver `enPoderDeRepartidores`.
+   */
+  enPoderDeRepartidores?: number;
+  /** Lo mismo, por repartidor (de más a menos), con cuántas entregas son. */
+  repartidoresPendientes?: { repartidorId: number; nombre: string | null; monto: number; entregas: number }[];
+  /**
    * Belleza (QA DIA-11): de `ingresos`, las propinas dejadas en efectivo; de
    * `egresos`, las entregadas a los profesionales (o devueltas al anular). Y
    * las dejadas por QR o tarjeta, que no pasan por el cajón (informativo).
