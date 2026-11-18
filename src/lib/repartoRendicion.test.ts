@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   aEntregar,
+  aEntregarDelRepartidor,
+  cobradosPorLaCaja,
   delRepartidor,
   entregasPorRecibir,
   hayRepartidores,
+  horaSinCortes,
   idsTildados,
   marcarTodas,
   normalizarRendicion,
@@ -35,6 +38,7 @@ function entrega(extra: Partial<EntregaDeRendicion> = {}): EntregaDeRendicion {
     recibidaPorNombre: null,
     puedeRecibir: true,
     cajaDe: null,
+    cobroLaCaja: false,
     ...extra,
   };
 }
@@ -50,6 +54,7 @@ function repartidor(extra: Partial<RepartidorDeRendicion> = {}): RepartidorDeRen
     envios: 21,
     pendiente: 130,
     recibido: 120,
+    aEntregar: null,
     entregas: [],
     productos: { unidades: 0, categorias: [] },
     ...extra,
@@ -95,8 +100,20 @@ describe("los pedidos del repartidor", () => {
   });
 
   it("el renglón de la casilla: comprobante, cliente y hora; sin comprobante, el número de venta", () => {
-    expect(textoEntrega(entrega())).toBe(`V-000900 · Carla Mamani · ${fmtHora("2026-11-18T01:15:00.000Z")}`);
-    expect(textoEntrega(entrega({ comprobante: null, cliente: null }))).toBe(`#900 · ${fmtHora("2026-11-18T01:15:00.000Z")}`);
+    const hora = horaSinCortes("2026-11-18T01:15:00.000Z");
+    expect(textoEntrega(entrega())).toBe(`V-000900 · Carla Mamani · ${hora}`);
+    expect(textoEntrega(entrega({ comprobante: null, cliente: null }))).toBe(`#900 · ${hora}`);
+  });
+
+  it("QA 18-nov: la hora no se parte nunca («03:13 a.» / «m.» a 390 px): sus espacios son duros", () => {
+    const iso = "2026-11-18T07:13:00.000Z";
+    const hora = horaSinCortes(iso);
+    // Es la misma hora de siempre, letra por letra, salvo los espacios.
+    expect(hora.replace(/ /g, " ")).toBe(fmtHora(iso).replace(/\s/g, " "));
+    expect(hora).not.toMatch(/[ \t ]/);
+    const renglon = textoEntrega(entrega({ entregadoEn: iso }));
+    // Los separadores « · » sí pueden partir; la hora, entera al final.
+    expect(renglon.endsWith(` · ${hora}`)).toBe(true);
   });
 });
 
@@ -252,5 +269,78 @@ describe("la plata que cuenta el arqueo de otra caja", () => {
     ]);
     expect(entregasPorRecibir(p).map((e) => e.id)).toEqual([55, 57]);
     expect(sumaTildada(p, new Set())).toBe(155);
+  });
+});
+
+describe("QA 18-nov, bug 1: lo que tiene que entregar es el `aEntregar` del backend", () => {
+  // El caso de la captura: apagado, cobró 257 en la jornada, pero 33 los cobró
+  // la caja y 148 ya se los recibió: le quedan 76. Decía «Tiene que entregar Bs 257».
+  it("si viene, es ESE número, con el control prendido o apagado", () => {
+    expect(aEntregar(repartidor({ cobradoEfectivo: 257, pendiente: 0, aEntregar: 76 }), false)).toBe(76);
+    expect(aEntregar(repartidor({ pendiente: 80, aEntregar: 80 }), true)).toBe(80);
+    // Un cero del backend es un cero, no «no vino».
+    expect(aEntregar(repartidor({ cobradoEfectivo: 181, pendiente: 0, aEntregar: 0 }), false)).toBe(0);
+  });
+
+  it("un backend anterior no lo manda: lo de antes (prendido lo pendiente, apagado lo cobrado)", () => {
+    expect(aEntregar(repartidor({ aEntregar: null }), true)).toBe(130);
+    expect(aEntregar(repartidor({ aEntregar: null }), false)).toBe(250);
+  });
+
+  it("se lee de la respuesta (por repartidor y en la raíz); ausente o ilegible, null", () => {
+    const r = normalizarRendicion({
+      activa: false,
+      aEntregar: "76.00",
+      repartidores: [
+        { repartidorId: 129, nombre: "Pedro Rojas", aEntregar: 76 },
+        { repartidorId: 130, nombre: "Luis Vaca" },
+        { repartidorId: 131, nombre: "Ana Paz", aEntregar: "" },
+      ],
+    })!;
+    expect(r.aEntregar).toBe(76);
+    expect(r.repartidores.map((x) => x.aEntregar)).toEqual([76, null, null]);
+    expect(normalizarRendicion({ activa: true, repartidores: [] })!.aEntregar).toBeNull();
+  });
+
+  it("un pedido que cobró la caja nunca se tilda, aunque viniera PENDIENTE, y se lista aparte", () => {
+    const rep = repartidor({
+      entregas: [
+        entrega({ id: 55, efectivo: 130 }),
+        entrega({ id: null, ventaId: 903, estado: null, efectivo: 0, qr: 0, total: 33, cobroLaCaja: true }),
+        entrega({ id: 58, ventaId: 904, efectivo: 0, total: 20, cobroLaCaja: true }),
+      ],
+    });
+    expect(entregasPorRecibir(rep).map((e) => e.id)).toEqual([55]);
+    expect(pendientesDeOtraCaja(rep)).toEqual([]);
+    expect(sumaTildada(rep, new Set())).toBe(130);
+    expect(cobradosPorLaCaja(rep).map((e) => e.ventaId)).toEqual([903, 904]);
+  });
+
+  it("`cobroLaCaja` ausente (backend anterior) es false", () => {
+    const r = normalizarRendicion({
+      activa: true,
+      repartidores: [{ repartidorId: 1, nombre: "Pedro Rojas", entregas: [{ id: 1, estado: "PENDIENTE" }, { id: 2, cobroLaCaja: true }] }],
+    })!;
+    expect(r.repartidores[0].entregas.map((e) => e.cobroLaCaja)).toEqual([false, true]);
+  });
+});
+
+describe("QA 18-nov, bug 2: el número del repartidor sale del mismo lugar que «Te falta entregar»", () => {
+  const conCuadre = (activa: boolean, extra: Record<string, unknown>) =>
+    normalizarRendicion({ activa, repartidores: [{ repartidorId: 129, nombre: "Pedro Rojas", pendiente: 0, recibido: 148, ...extra }] });
+
+  it("con `aEntregar`, ese número (la caja ya le recibió todo: 0), prendido o apagado", () => {
+    expect(aEntregarDelRepartidor(conCuadre(true, { aEntregar: 0 }), 129)).toBe(0);
+    expect(aEntregarDelRepartidor(conCuadre(false, { aEntregar: 76 }), 129)).toBe(76);
+  });
+
+  it("backend anterior: prendido, lo pendiente (lo mismo que «Te falta entregar»); apagado, null (la cuenta de siempre)", () => {
+    expect(aEntregarDelRepartidor(conCuadre(true, { pendiente: 80 }), 129)).toBe(80);
+    expect(aEntregarDelRepartidor(conCuadre(false, {}), 129)).toBeNull();
+  });
+
+  it("sin rendición, o si no es suya, null", () => {
+    expect(aEntregarDelRepartidor(null, 129)).toBeNull();
+    expect(aEntregarDelRepartidor(conCuadre(true, { aEntregar: 0 }), 7)).toBeNull();
   });
 });

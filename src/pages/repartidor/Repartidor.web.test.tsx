@@ -100,6 +100,8 @@ describe("los botones del repartidor en un pedido de la página", () => {
     const detalle = await abrir(ENTREGA_WEB);
     const maps = within(detalle).getByRole("link", { name: /Ir con Google Maps/ });
     expect(maps).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=-17.76,-63.18");
+    // El texto no se parte en dos renglones a 390 px (QA 18-nov): ninguno de los dos botones lo corta.
+    expect(maps).toHaveClass("whitespace-nowrap");
     expect(within(detalle).getByRole("link", { name: /Abrir en Waze/ })).toHaveAttribute("href", "https://waze.com/ul?ll=-17.76,-63.18&navigate=yes");
     expect(detalle).toHaveTextContent("Portón negro");
     expect(detalle).toHaveTextContent(/paga con efectivo/);

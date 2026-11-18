@@ -247,55 +247,59 @@ export default function PantallaHistorial({
                         setDetalle(p);
                       }
                     }}
-                    className="card flex cursor-pointer items-center gap-3 p-3.5 transition-shadow hover:shadow-md"
+                    className="card cursor-pointer p-3.5 transition-shadow hover:shadow-md"
                   >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
-                      <Icon name={p.tipoPedido === "DELIVERY" ? "truck" : "clock"} size={19} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold text-texto">
-                        {p.clienteNombre ?? "Sin nombre"}
-                      </p>
-                      {/* Con varios locales, de cuál es: quien administra ve los pendientes de
-                          todos, y «Cobrar y entregar» no decía de qué sede (QA R2, M6). El cobro
-                          entra a la caja de ese local, no a la de acá. */}
-                      {hayVariasSucursales && p.almacen?.nombre && (
-                        <p className="truncate text-[11px] font-semibold text-texto-2">{p.almacen.nombre}</p>
-                      )}
-                      <p className="truncate text-xs text-texto-3">
-                        {/* Sin dirección (un pedido de la página que sólo marcó el pin)
-                            no queda un renglón vacío ni uno que arranca con « · ». */}
-                        {[
-                          p.tipoPedido === "DELIVERY" ? direccionParaMostrar(p) : "Pasa a recoger",
-                          p.repartidor ? p.repartidor.nombre : p.entregaExterna ? `Envío por ${nombreServicio(p.entregaExterna)}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
+                    {/* Nada cortado con «…» (QA 18-nov: «Calle Jordán 120 · Pedr…»):
+                        el texto baja de renglón y el botón va abajo, a lo ancho. */}
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
+                        <Icon name={p.tipoPedido === "DELIVERY" ? "truck" : "clock"} size={19} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-[13px] font-bold text-texto">
+                          {p.clienteNombre ?? "Sin nombre"}
+                        </p>
+                        {/* Con varios locales, de cuál es: quien administra ve los pendientes de
+                            todos, y «Cobrar y entregar» no decía de qué sede (QA R2, M6). El cobro
+                            entra a la caja de ese local, no a la de acá. */}
+                        {hayVariasSucursales && p.almacen?.nombre && (
+                          <p className="break-words text-[11px] font-semibold text-texto-2">{p.almacen.nombre}</p>
+                        )}
+                        <p className="break-words text-xs text-texto-3">
+                          {/* Sin dirección (un pedido de la página que sólo marcó el pin)
+                              no queda un renglón vacío ni uno que arranca con « · ». */}
+                          {[
+                            p.tipoPedido === "DELIVERY" ? direccionParaMostrar(p) : "Pasa a recoger",
+                            p.repartidor ? p.repartidor.nombre : p.entregaExterna ? `Envío por ${nombreServicio(p.entregaExterna)}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[13px] font-bold text-texto">{fmtMoney(p.total)}</p>
+                        <Badge tono={p.prepagado ? "verde" : "amarillo"} className="whitespace-nowrap">
+                          {p.prepagado ? "Pagado" : "Cobra al entregar"}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-[13px] font-bold text-texto">{fmtMoney(p.total)}</p>
-                      <Badge tono={p.prepagado ? "verde" : "amarillo"}>
-                        {p.prepagado ? "Pagado" : "Cobra al entregar"}
-                      </Badge>
-                      {/* Un RECOGER lo cierra quien está en la caja: el cliente
-                          pasa por el mostrador y no hay nadie más que lo haga —
-                          sin esto el pedido quedaba pendiente para siempre. Un
-                          DELIVERY propio, además del repartidor, quien maneja el
-                          reparto (18-nov): el repartidor volvió con la plata. */}
-                      {seEntregaEnCaja(p, cobraDelivery) && (
-                        <button
-                          onClick={(e) => {
-                            // Que el botón no abra además el detalle de la fila.
-                            e.stopPropagation();
-                            setEntregando(p);
-                          }}
-                          className="mt-1.5 block w-full rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-white"
-                        >
-                          {textoEntregarEnCaja(p)}
-                        </button>
-                      )}
-                    </div>
+                    {/* Un RECOGER lo cierra quien está en la caja: el cliente
+                        pasa por el mostrador y no hay nadie más que lo haga —
+                        sin esto el pedido quedaba pendiente para siempre. Un
+                        DELIVERY propio, además del repartidor, quien maneja el
+                        reparto (18-nov): el repartidor volvió con la plata. */}
+                    {seEntregaEnCaja(p, cobraDelivery) && (
+                      <button
+                        onClick={(e) => {
+                          // Que el botón no abra además el detalle de la fila.
+                          e.stopPropagation();
+                          setEntregando(p);
+                        }}
+                        className="mt-2.5 block w-full rounded-lg bg-primary px-3 py-2 text-[13px] font-bold text-white"
+                      >
+                        {textoEntregarEnCaja(p)}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

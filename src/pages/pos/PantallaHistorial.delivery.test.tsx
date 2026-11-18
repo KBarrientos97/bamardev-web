@@ -186,6 +186,20 @@ describe("«Cobrar y entregar» un delivery propio desde la caja", () => {
   });
 });
 
+describe("QA 18-nov: el renglón del pendiente no se corta con «…»", () => {
+  it("la dirección y el repartidor bajan de renglón y el botón va abajo, a lo ancho", async () => {
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([
+      { ...DELIVERY, clienteDireccion: "Calle Jordán 120 entre Antezana y Baptista, edificio azul" } as Venta,
+    ]);
+    montar();
+    const f = await fila("Carla Mamani");
+    expect(within(f).getByText("Calle Jordán 120 entre Antezana y Baptista, edificio azul · Pedro Rojas")).not.toHaveClass("truncate");
+    expect(f.querySelectorAll(".truncate")).toHaveLength(0);
+    // El botón ya no comparte la columna del monto: va debajo de todo el renglón.
+    expect(within(f).getByRole("button", { name: "Cobrar y entregar" }).parentElement).toBe(f);
+  });
+});
+
 describe("la dirección que puede venir vacía", () => {
   it("un pedido de la página sin dirección dice «Ubicación marcada en el mapa», sin « · » colgando", async () => {
     const sinDir = {

@@ -1,26 +1,30 @@
 import { esPositivo } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
-import { delRepartidor } from "../../lib/repartoRendicion";
-import { useApi } from "../../lib/useApi";
+import { aEntregarDelRepartidor, delRepartidor, type RendicionReparto } from "../../lib/repartoRendicion";
 import LoQueLlevo from "../reparto/LoQueLlevo";
-import { pedirRendicionSiHay } from "../reparto/pedirRendicion";
 
 /**
  * Lo que suma la rendición del repartidor con el cuadre de la caja (18-nov):
  * qué llevó por categoría y, con «Controlar la plata de los repartidores»
  * prendido, cuánto ya entregó a la caja y cuánto le falta. Sale de
- * `GET /reparto/rendicion`, que al repartidor le manda sólo lo suyo: es el
- * mismo número que la cajera ve en «Repartidores», así que no se recalcula.
+ * `GET /reparto/rendicion` (lo pide `Repartidor`, que con el mismo número
+ * arma «A rendir» y «A entregar al negocio»), que al repartidor le manda sólo
+ * lo suyo: es el mismo número que la cajera ve en «Repartidores».
  *
- * Es un agregado: un backend anterior, sin permiso o sin señal, no dibuja nada
- * y la rendición queda como siempre.
+ * Es un agregado: sin la rendición (backend anterior, sin permiso o sin señal)
+ * no dibuja nada y la rendición queda como siempre.
  */
-export default function CuadreConLaCaja({ usuarioId }: { usuarioId: number | null | undefined }) {
-  const rendicion = useApi(() => pedirRendicionSiHay(), []);
-  const r = rendicion.datos;
+export default function CuadreConLaCaja({
+  rendicion: r,
+  usuarioId,
+}: {
+  rendicion: RendicionReparto | null | undefined;
+  usuarioId: number | null | undefined;
+}) {
   const mio = delRepartidor(r, usuarioId);
   if (!r || !mio) return null;
-  const falta = mio.pendiente;
+  // El mismo número que el cartel de arriba y «A rendir»: nunca se contradicen.
+  const falta = aEntregarDelRepartidor(r, usuarioId) ?? mio.pendiente;
   return (
     <div className="space-y-3">
       {r.activa && (
