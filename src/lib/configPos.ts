@@ -28,6 +28,13 @@ export interface ConfigPos {
   filtros: boolean;
   /** Ids de categoría en el orden elegido; vacío = el orden en que llegan. */
   ordenCategorias: number[];
+  /**
+   * Configuración › Caja (17-nov): si al abrir y al cerrar el turno se ofrece
+   * contar el efectivo billete por billete. De fábrica sí, como siempre: un
+   * local que cobra sólo con QR o que no cuenta el cajón al abrir lo apaga.
+   */
+  billetesAlAbrir: boolean;
+  billetesAlCerrar: boolean;
 }
 
 /*
@@ -44,6 +51,8 @@ export const CONFIG_POS_DE_SIEMPRE: Readonly<ConfigPos> = {
   iconos: true,
   filtros: true,
   ordenCategorias: [],
+  billetesAlAbrir: true,
+  billetesAlCerrar: true,
 };
 
 /**
@@ -65,6 +74,8 @@ export function normalizarConfigPos(crudo: unknown): ConfigPos {
       ? // Sin repetidos ni basura: un id que aparece dos veces no puede ocupar dos lugares.
         [...new Set(c.ordenCategorias.filter((x): x is number => Number.isInteger(x)))]
       : [],
+    billetesAlAbrir: typeof c.billetesAlAbrir === "boolean" ? c.billetesAlAbrir : d.billetesAlAbrir,
+    billetesAlCerrar: typeof c.billetesAlCerrar === "boolean" ? c.billetesAlCerrar : d.billetesAlCerrar,
   };
 }
 
@@ -89,6 +100,8 @@ export function mismaConfigPos(a: ConfigPos, b: ConfigPos): boolean {
     a.cobro === b.cobro &&
     a.iconos === b.iconos &&
     a.filtros === b.filtros &&
+    a.billetesAlAbrir === b.billetesAlAbrir &&
+    a.billetesAlCerrar === b.billetesAlCerrar &&
     a.ordenCategorias.length === b.ordenCategorias.length &&
     a.ordenCategorias.every((id, i) => id === b.ordenCategorias[i])
   );

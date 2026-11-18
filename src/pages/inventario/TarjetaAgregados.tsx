@@ -5,7 +5,8 @@ import { api } from "../../lib/api";
 import type { CambioConfigAgregados } from "../../lib/agregados/tipos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { SiNo, Tarjeta } from "../tickets/piezas";
+import { SiNo } from "../tickets/piezas";
+import TarjetaPlegable from "./TarjetaPlegable";
 
 /**
  * Configuración › Inventario y stock › «Productos con agregados» (PLAN-AGREGADOS
@@ -57,7 +58,10 @@ export default function TarjetaAgregados() {
 
   const datos = estado.datos;
   return (
-    <Tarjeta titulo="Agregados (toppings, extras)">
+    <TarjetaPlegable
+      titulo="Agregados (toppings, extras)"
+      estado={datos ? (datos.usaAgregados ? { texto: "Prendido", tono: "verde" } : { texto: "Apagado", tono: "gris" }) : undefined}
+    >
       {estado.error ? (
         <ErrorMsg onReintentar={estado.recargar}>{estado.error}</ErrorMsg>
       ) : !datos ? (
@@ -108,7 +112,7 @@ export default function TarjetaAgregados() {
           )}
         </>
       )}
-    </Tarjeta>
+    </TarjetaPlegable>
   );
 }
 

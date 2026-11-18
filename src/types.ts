@@ -203,6 +203,12 @@ export interface SesionNegocio {
    */
   pos?: Partial<ConfigPos> | null;
   /**
+   * El conteo por categoría (Configuración › Inventario y stock, 17-nov).
+   * Crudo, como viene: se lee SIEMPRE con `normalizarConfigConteo`. Sin el
+   * dato (sesión o backend viejo) está apagado.
+   */
+  conteo?: Partial<ConfigConteo> | null;
+  /**
    * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
    * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
    * (CONTRATO-PEDIDOS-WEB §9). La entrada «Pedidos web», la franja del POS, el
@@ -398,6 +404,51 @@ export interface EventoRol {
  *                               lleva y venderlo no descuenta los ingredientes)
  */
 export type TipoProducto = "ALMACENABLE" | "SERVICIO" | "COMPUESTO";
+
+/**
+ * Conteo por categoría (17-nov): vasos, cajas o envases que se llevan por
+ * tamaño y por sucursal. Los nombres de campo son los del backend.
+ */
+export interface CategoriaContada {
+  id: number;
+  nombre: string;
+}
+export interface ConfigConteo {
+  activo: boolean;
+  /** Lo que se cuenta, en plural ("Vasos"); vacío se lee "Unidades". */
+  nombre: string;
+  categorias: CategoriaContada[];
+}
+export interface ItemConteoSucursal {
+  categoriaId: number;
+  nombre: string;
+  /** El último conteo de la sucursal; null = nunca se contó. */
+  contado: number | null;
+  /** Cuándo (ms epoch). */
+  contadoEn: number | null;
+  repuesto: number;
+  vendido: number;
+  /** contado + repuesto − vendido; null si nunca se contó. Puede ser negativo. */
+  quedan: number | null;
+}
+export interface EstadoConteoSucursal {
+  activo: boolean;
+  nombre: string;
+  sucursalId: number;
+  items: ItemConteoSucursal[];
+}
+export interface ItemConteoCaja {
+  categoriaId: number;
+  nombre: string;
+  alAbrir: number | null;
+  repuesto: number;
+  vendido: number;
+  quedan: number | null;
+}
+export interface ConteoDeCaja {
+  nombre: string;
+  items: ItemConteoCaja[];
+}
 
 export interface Categoria {
   id: number;
@@ -1287,6 +1338,12 @@ export interface ResumenCaja {
    */
   productos?: ReporteCierreProductos;
   /**
+   * El conteo por categoría del turno (17-nov): al abrir, vendido, repuesto y
+   * lo que queda. Sólo viene con el conteo prendido y con categorías: sin la
+   * clave (backend o negocio sin conteo) el cierre queda como siempre.
+   */
+  conteo?: ConteoDeCaja;
+  /**
    * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y
    * citas que esta caja cobró y quedaron para revisar (cobro repetido o cita
    * ya cerrada). Opcionales: un backend anterior no los manda.
@@ -2153,6 +2210,8 @@ export interface EstadoLicencia {
   agregadosEnPagina?: boolean;
   /** Lo mismo que `negocio.pos` del login: si el dueño lo cambia desde otro equipo, la caja abierta se entera. */
   pos?: Partial<ConfigPos> | null;
+  /** Lo mismo que `negocio.conteo` del login: si el dueño lo cambia desde otro equipo, la caja abierta se entera. */
+  conteo?: Partial<ConfigConteo> | null;
   /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
   entregaPedidosWeb?: EntregaPedidosWeb;
   servicioDeliveryExterno?: string | null;

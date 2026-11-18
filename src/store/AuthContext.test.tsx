@@ -280,7 +280,17 @@ describe("Configuración › Punto de venta: negocio.pos sigue al estado de la l
         <p>pos:{negocio?.pos ? `${negocio.pos.vista}/${negocio.pos.cobro}` : "-"}</p>
         <button
           onClick={() =>
-            fijarConfigPos({ vista: "TARJETAS", cobro: "EN_VENTA", iconos: true, filtros: true, ordenCategorias: [] })
+            // Completa, como la respuesta del PATCH: la función normaliza todo, y un
+            // objeto a medias dejaría en «de fábrica» lo que no viaja.
+            fijarConfigPos({
+              vista: "TARJETAS",
+              cobro: "EN_VENTA",
+              iconos: true,
+              filtros: true,
+              ordenCategorias: [],
+              billetesAlAbrir: true,
+              billetesAlCerrar: true,
+            })
           }
         >
           guardar
@@ -310,6 +320,9 @@ describe("Configuración › Punto de venta: negocio.pos sigue al estado de la l
       iconos: true,
       filtros: true,
       ordenCategorias: [],
+      // Configuración › Caja (17-nov): completos también, de fábrica en «sí».
+      billetesAlAbrir: true,
+      billetesAlCerrar: true,
     });
   });
 

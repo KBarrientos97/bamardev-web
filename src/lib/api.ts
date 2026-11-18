@@ -62,6 +62,8 @@ import type {
   Producto,
   ProductoInput,
   RangoReporte,
+  ConfigConteo,
+  EstadoConteoSucursal,
   ReporteCierreGanancia,
   ReporteCierreProductos,
   ReporteCompraDocumento,
@@ -965,6 +967,28 @@ export const api = {
       body: JSON.stringify(cambios),
     }),
 
+  // ── Conteo por categoría (17-nov) ──────────────────────────────────────────
+  /** El ajuste de Configuración (`negocio.configurar`); trae las categorías elegidas aunque esté apagado. */
+  configConteo: () => request<ConfigConteo>("/conteo/config"),
+  /** Parcial: lo que se manda es lo que cambia. Prender sin categorías da 400. */
+  cambiarConfigConteo: (cambio: { activo?: boolean; nombre?: string | null; categoriaIds?: number[] }) =>
+    request<ConfigConteo>("/conteo/config", { method: "PATCH", body: JSON.stringify(cambio) }),
+  /** Cuántos quedan de cada categoría en una sucursal (`caja.operar`): lo que ve el cajero al abrir. */
+  estadoConteo: (sucursalId?: number | null) =>
+    request<EstadoConteoSucursal>(`/conteo${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /** Suma al conteo de una sucursal (`caja.ver_todas`) y devuelve el estado ya con lo repuesto. */
+  reponerConteo: (input: { sucursalId?: number | null; lineas: { categoriaId: number; cantidad: number }[] }) =>
+    request<EstadoConteoSucursal>("/conteo/reponer", {
+      method: "POST",
+      body: JSON.stringify({
+        ...(input.sucursalId != null ? { sucursalId: input.sucursalId } : {}),
+        lineas: input.lineas,
+      }),
+    }),
+  /** «Productos vendidos» del turno que mira la Supervisión: lo mismo que el del cierre. */
+  productosDelTurnoSupervision: (cajaId: number) =>
+    request<ReporteCierreProductos>(`/supervision/turno/${cajaId}/productos`),
+
   // ── Productos con agregados (toppings, PLAN-AGREGADOS §7) ──────────────────
   /** El ajuste de Configuración; pide `negocio.configurar`, como el del stock. */
   configAgregados: () => request<ConfigAgregados>("/agregados/config"),
@@ -1013,6 +1037,8 @@ export const api = {
     montoApertura: number;
     descripcion?: string;
     almacenId?: number;
+    /** Conteo por categoría: sólo las filas que el cajero cambió (ver `lineasCambiadas`). */
+    conteoCategorias?: { categoriaId: number; cantidad: number }[];
   }) =>
     request<Caja>("/caja/abrir", { method: "POST", body: JSON.stringify(input) }),
   resumenCaja: (id: number) => request<ResumenCaja>(`/caja/${id}/resumen`),

@@ -54,6 +54,8 @@ import {
   type VistaProductos,
 } from "./productosVendidos";
 import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
+import ConteoDelTurno from "./ConteoDelTurno";
+import { configPosDe } from "../../lib/configPos";
 
 /**
  * La fila del billar en el arqueo, con el signo en el valor. El número es un
@@ -416,6 +418,8 @@ export default function PantallaCierre({
             </div>
 
             <section className="card p-4 lg:sticky lg:top-0">
+              {/* Los vasos de cada tamaño: lo que se vendió y lo que queda. Sólo con el conteo prendido. */}
+              {r.conteo && r.conteo.items.length > 0 && <ConteoDelTurno conteo={r.conteo} className="mb-4" />}
               <Campo
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
@@ -444,15 +448,18 @@ export default function PantallaCierre({
                   />
                 )}
 
-                <div className="mb-2">
-                  {/* Con lo que dice el campo: si el cajero corrige el monto a
-                      mano, el conteo se descarta (ver `CorteDeCaja`). */}
-                  <CorteDeCaja
-                    titulo="Contar billete por billete"
-                    monto={contadoNum}
-                    onTotal={(t) => cambiarContado(t > 0 ? montoParaEditar(t) : "")}
-                  />
-                </div>
+                {/* Configuración › Caja (17-nov): se puede apagar y el total se escribe directo. */}
+                {configPosDe(negocio).billetesAlCerrar && (
+                  <div className="mb-2">
+                    {/* Con lo que dice el campo: si el cajero corrige el monto a
+                        mano, el conteo se descarta (ver `CorteDeCaja`). */}
+                    <CorteDeCaja
+                      titulo="Contar billete por billete"
+                      monto={contadoNum}
+                      onTotal={(t) => cambiarContado(t > 0 ? montoParaEditar(t) : "")}
+                    />
+                  </div>
+                )}
                 <InputMonto
                   value={contado}
                   onChange={cambiarContado}
@@ -569,7 +576,7 @@ export default function PantallaCierre({
  * cargado dice cuánto antes de abrirlo ("12 productos · 40 unidades"), como la
  * app.
  */
-function BotonProductosVendidos({
+export function BotonProductosVendidos({
   rubro,
   productos,
   className = "",
@@ -1250,6 +1257,10 @@ function ComprobanteCompleto({
             </dl>
           </section>
 
+          {r?.conteo && r.conteo.items.length > 0 && (
+            <ConteoDelTurno conteo={r.conteo} className="border-t border-borde pt-3" />
+          )}
+
           {caja.notaCierre && (
             <p className="border-t border-borde pt-2 text-[13px] italic text-texto-3">
               {caja.notaCierre}
@@ -1366,6 +1377,7 @@ export function ProductosDelTurno({
   sede,
   productos,
   ticket,
+  cargar,
   onClose,
 }: {
   cajaId: number;
@@ -1382,10 +1394,17 @@ export function ProductosDelTurno({
    * esto (Reportes › Cierres, el billar) no hay botón.
    */
   ticket?: DatosTicketCierre;
+  /**
+   * De dónde se pide lo vendido cuando no viene cargado. Sin esto, de los
+   * reportes del cierre (`reporteCierreProductos`). La Supervisión lo pasa
+   * con su ruta propia: el dueño que mira el turno de un cajero no tiene por
+   * qué tener Reportes, y la ruta del cierre le daría 403.
+   */
+  cargar?: () => Promise<ReporteCierreProductos>;
   onClose: () => void;
 }) {
   const remoto = useApi(
-    () => (productos ? Promise.resolve(null) : api.reporteCierreProductos(cajaId)),
+    () => (productos ? Promise.resolve(null) : (cargar ?? (() => api.reporteCierreProductos(cajaId)))()),
     [cajaId, productos != null],
   );
   const d = productos ?? remoto.datos;

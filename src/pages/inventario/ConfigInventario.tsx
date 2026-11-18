@@ -15,6 +15,8 @@ import type { EstadoControlStock, Producto } from "../../types";
 import { veFicha } from "../reportes/catalogo";
 import { SiNo, Tarjeta } from "../tickets/piezas";
 import TarjetaAgregados from "./TarjetaAgregados";
+import TarjetaConteo from "./TarjetaConteo";
+import TarjetaPlegable from "./TarjetaPlegable";
 
 /**
  * Configuración › Inventario y stock (pedido del 09-nov): si el stock frena la
@@ -100,7 +102,16 @@ export default function ConfigInventario() {
         <Cargando />
       ) : (
         <>
-          <Tarjeta titulo="Control de stock">
+          {/* Las tarjetas se pliegan (17-nov): cerradas sólo dicen cómo están.
+              «Cómo funciona» de abajo no: es lo que se lee antes de tocar nada. */}
+          <TarjetaPlegable
+            titulo="Control de stock"
+            estado={
+              datos.sePuedeApagar && !datos.controlaStock
+                ? { texto: "Apagado", tono: "gris" }
+                : { texto: "Prendido", tono: "verde" }
+            }
+          >
             {datos.sePuedeApagar ? (
               <SiNo
                 activo={datos.controlaStock}
@@ -132,13 +143,13 @@ export default function ConfigInventario() {
                 <EnlaceReporte antes="Mientras tanto, lo que se vende sin estar cargado lo ves en " />
               </div>
             )}
-          </Tarjeta>
+          </TarjetaPlegable>
 
           {/* El control ya prendido no cuenta los demás locales solo: cada
               uno se carga con su conteo. Sólo la organización con 2+ locales: el
               usuario de una sede sólo cuenta la suya y no tiene otro que contar. */}
           {datos.sePuedeApagar && datos.controlaStock && suc.modo === "organizacion" && (
-            <Tarjeta titulo="Contar otro local">
+            <TarjetaPlegable titulo="Contar otro local">
               <p className="text-[13px] text-texto-2">
                 El control de stock ya está prendido. Si todavía no cargaste lo que hay en alguno de tus locales,
                 contalo acá: el stock de ese local queda en lo que escribas.
@@ -146,12 +157,15 @@ export default function ConfigInventario() {
               <Boton className="mt-3" icono="archive" variante="ghost" onClick={() => setContando(true)}>
                 Contar un local
               </Boton>
-            </Tarjeta>
+            </TarjetaPlegable>
           )}
 
           {/* Toppings y extras (PLAN-AGREGADOS §7.6): se prende acá, al lado del
               stock, con el mismo permiso. Es del restaurante, como esta pantalla. */}
           <TarjetaAgregados />
+
+          {/* Vasos, cajas o envases por tamaño y por sucursal (17-nov). Apagado de fábrica. */}
+          <TarjetaConteo />
 
           <Tarjeta titulo="Cómo funciona">
             <ul className="space-y-2.5 text-[13px] text-texto-2">

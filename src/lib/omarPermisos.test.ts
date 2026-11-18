@@ -238,8 +238,12 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
     // Desde el 16-nov la lista empieza por «Punto de venta» (cómo se ve y cómo
     // cobra el POS): lo de fábrica es el POS de siempre, así que nada cambia
     // para quien no entra ahí.
+    // Desde el 17-nov le sigue «Caja» (si se cuentan los billetes al abrir y
+    // al cerrar): mismo permiso y rubro que «Punto de venta», y de fábrica los
+    // dos ajustes van prendidos, así que la caja de quien no entra no cambia.
     const EN_LA_LISTA = [
       "Punto de venta",
+      "Caja",
       "Ticket y recibo",
       "QR de cobro",
       "Inventario y stock",
