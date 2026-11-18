@@ -2,6 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Consumo, DetalleVentaInput, Producto, TipoPedido } from "../../types";
 import { agregadosParaEnviar, firmaDeAgregados, vistaDeAgregados, type VistaAgregados } from "../../lib/agregados/calculo";
 import type { AgregadoElegido, CatalogoAgregados } from "../../lib/agregados/tipos";
+import {
+  entraOtra,
+  gastoPorUnidad,
+  topeDeLinea,
+  unidadesPorCategoria,
+  type CategoriaDe,
+  type SaldosConteo,
+} from "../../lib/conteo";
 
 /**
  * Una línea del carrito. El split Mesa/Llevar se guarda como cantidad en mesa:
@@ -193,6 +201,14 @@ export function useCarrito(
    * llegó) las líneas con toppings valen lo del vaso solo.
    */
   catalogoAgregados?: CatalogoAgregados | null,
+  /**
+   * El conteo por categoría del local de la caja (vasos por tamaño, 18-nov):
+   * categoría → cuántos quedan (null = nunca se contó ahí). Con él no se carga
+   * más de lo que queda de un tamaño, sumando TODOS sus productos: 60 «Dulce de
+   * leche C» y 40 «Nutella C» llenan un C de 100. Sin él —Modificar venta, que
+   * no lleva tope; la farmacia; un negocio sin conteo— no hay tope de conteo.
+   */
+  saldosConteo?: SaldosConteo | null,
 ): Carrito {
   const clave = `${CLAVE_CARRITO}.${tipoPedido}`;
   const sinGuardar = enMemoria !== undefined;
@@ -226,18 +242,30 @@ export function useCarrito(
     setRehidratado(true);
   }, [catalogo, catalogoListo, clave, rehidratado, sinGuardar]);
 
+  /** La línea con sus toppings calculados contra el catálogo de agregados. */
+  const conVista = useCallback(
+    (l: LineaCarrito): LineaCarrito =>
+      l.agregados?.length ? { ...l, vista: vistaDeAgregados(l.agregados, l.producto.id, catalogoAgregados) } : l,
+    [catalogoAgregados],
+  );
+
   /**
    * Las líneas con sus toppings ya calculados. Se arma acá y no al agregar
    * porque lo guardado en la pestaña es sólo lo elegido: después de un F5 los
    * extras salen del catálogo de hoy, igual que el precio del producto.
    */
-  const lineas = useMemo(
-    () =>
-      lineasBase.map((l) =>
-        l.agregados?.length ? { ...l, vista: vistaDeAgregados(l.agregados, l.producto.id, catalogoAgregados) } : l,
-      ),
-    [lineasBase, catalogoAgregados],
-  );
+  const lineas = useMemo(() => lineasBase.map(conVista), [lineasBase, conVista]);
+
+  /** Con saldos del conteo hay tope por categoría; vacío o ausente, el carrito de siempre. */
+  const saldos = saldosConteo && saldosConteo.size > 0 ? saldosConteo : null;
+  /**
+   * De qué categoría es cada artículo del catálogo: un topping EXTRA de una
+   * categoría contada también gasta (el servidor lo cuenta así).
+   */
+  const categoriaDe = useMemo<CategoriaDe>(() => {
+    const porId = new Map(catalogo.map((p) => [p.id, p.categoria?.id ?? null]));
+    return (id) => porId.get(id);
+  }, [catalogo]);
 
   // Y se guarda con cada cambio. Recién después de rehidratar, para que el
   // estado vacío del primer render no borre lo que había guardado.
@@ -283,6 +311,16 @@ export function useCarrito(
         // mismo stock, así que se cuentan juntos.
         const tope = topeStock(p);
         if (unidadesDe(prev, p.id) >= tope) return prev;
+        // Y el del conteo es de la CATEGORÍA (18-nov): un vaso C más no entra
+        // si los C del carrito, de cualquier producto, ya son todos los que
+        // quedan. Igual que con el stock, el toque se ignora: la tarjeta ya
+        // apagó su «+» y dice por qué.
+        if (saldos) {
+          // Lo que gasta un vaso más de éste, con sus toppings.
+          const unidad = conVista({ producto: p, cantidad: 1, enMesa: 0, nota: "", agregados: elegidos });
+          const enCarrito = unidadesPorCategoria(prev.map(conVista), saldos, categoriaDe);
+          if (!entraOtra(gastoPorUnidad(unidad, saldos, categoriaDe), saldos, enCarrito)) return prev;
+        }
         if (!ex) {
           return [
             ...prev,
@@ -303,7 +341,7 @@ export function useCarrito(
         );
       });
     },
-    [enMesaPorDefecto],
+    [enMesaPorDefecto, saldos, conVista, categoriaDe],
   );
 
   const quitar = useCallback((id: ClaveLinea) => {
@@ -313,12 +351,22 @@ export function useCarrito(
   const setCantidad = useCallback(
     (id: ClaveLinea, cantidad: number) => {
       if (cantidad < 1) return quitar(id);
-      setLineas((prev) =>
-        prev.map((l) => {
+      setLineas((prev) => {
+        const conteo = saldos ? { saldos, enCarrito: unidadesPorCategoria(prev.map(conVista), saldos, categoriaDe) } : null;
+        return prev.map((l) => {
           if (!mismaClave(claveDeLinea(l), id)) return l;
           // Lo que queda del stock del producto sin contar esta línea.
           const tope = topeStock(l.producto) - (unidadesDe(prev, l.producto.id) - l.cantidad);
-          const nueva = Math.min(cantidad, tope);
+          let nueva = Math.min(cantidad, tope);
+          // El conteo (18-nov): lo que queda de la categoría menos lo que llevan
+          // las OTRAS líneas de ese tamaño. Sólo frena lo que SUBE: un carrito
+          // que ya se pasaba porque otra caja vendió mientras tanto no se
+          // recorta solo (al cobrar el servidor lo dice con su texto), y el «−»
+          // baja de a uno, como siempre, en vez de saltar al tope.
+          if (conteo && nueva > l.cantidad) {
+            const topeConteo = topeDeLinea(conVista(l), conteo.saldos, conteo.enCarrito, categoriaDe);
+            nueva = Math.min(nueva, Math.max(l.cantidad, topeConteo));
+          }
           // Una línea entera en un consumo se queda entera en ese consumo al
           // cambiar la cantidad: subir de 2 a 3 en una mesa no manda la tercera
           // unidad a "llevar" sola. Si estaba partida, el reparto se conserva y
@@ -330,10 +378,10 @@ export function useCarrito(
             cantidad: nueva,
             enMesa: pura ? nueva : Math.min(l.enMesa, nueva),
           };
-        }),
-      );
+        });
+      });
     },
-    [quitar],
+    [quitar, saldos, conVista, categoriaDe],
   );
 
   const setAgregados = useCallback((id: ClaveLinea, agregados: AgregadoElegido[]) => {

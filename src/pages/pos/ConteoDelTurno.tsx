@@ -8,9 +8,11 @@ import type { ConteoDeCaja } from "../../types";
  * quedan.
  *
  * «Quedan» es lo del LOCAL, no de esta caja: cuenta también lo vendido por
- * otras cajas de la misma sucursal y lo repuesto desde Supervisión. Por eso
- * puede no cuadrar con «al abrir + repuesto − vendido» y, cuando no cuadra, la
- * nota lo dice en vez de dejar al cajero buscando una venta que no hizo.
+ * otras cajas de la misma sucursal, lo repuesto desde Supervisión y, desde el
+ * 18-nov, los pedidos por cobrar que todavía no se entregaron (el vaso sale al
+ * tomar el pedido; «Vendidos» los suma recién al entregarlos). Por eso puede
+ * no cuadrar con «al abrir + repuesto − vendido» y, cuando no cuadra, la nota
+ * lo dice en vez de dejar al cajero buscando una venta que no hizo.
  *
  * Un negativo se pinta en rojo, no se esconde: se vendió más de lo que se
  * contó y el dueño tiene que verlo (el conteo de la apertura quedó corto).
@@ -56,7 +58,8 @@ export default function ConteoDelTurno({
       </ul>
       {hayDescuadre && (
         <p className="mt-1.5 text-balance text-[12px] text-texto-3">
-          «Quedan» es lo del local: cuenta también lo vendido en otras cajas y lo repuesto.
+          «Quedan» es lo del local: cuenta también lo vendido en otras cajas, los pedidos que todavía no se
+          entregaron y lo repuesto.
         </p>
       )}
     </section>

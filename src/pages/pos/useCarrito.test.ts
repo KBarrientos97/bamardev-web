@@ -569,3 +569,144 @@ describe("useCarrito · vasos con toppings", () => {
     expect(result.current.lineas[0].vista).toBeUndefined();
   });
 });
+
+// ── El conteo por categoría (vasos por tamaño, 18-nov) ─────────────────────
+
+describe("useCarrito · el tope del conteo es del tamaño, no del producto", () => {
+  beforeEach(() => sessionStorage.clear());
+
+  const C = { id: 1, nombre: "C" };
+  const L = { id: 3, nombre: "L" };
+  // El arroz con leche se prepara al vender: no lleva stock, sólo gasta vaso.
+  const dulce = producto({ id: 21, nombre: "Dulce de leche C", tipoProducto: "SERVICIO", stockTotal: 0, categoria: C });
+  const nutella = producto({ id: 22, nombre: "Nutella C", tipoProducto: "SERVICIO", stockTotal: 0, categoria: C });
+  const gaseosa = producto({ id: 30, nombre: "Gaseosa", stockTotal: 500, categoria: { id: 5, nombre: "Bebidas" } });
+  const catalogo = [dulce, nutella, gaseosa];
+  const quedanC = (n: number | null) => new Map([[C.id, n]]);
+  const cantidades = (lineas: { producto: Producto; cantidad: number }[]) =>
+    lineas.map((l) => [l.producto.id, l.cantidad]);
+
+  it("60 «Dulce de leche C» y 40 «Nutella C» llenan un C de 100: ninguno suma más, lo no contado sí", () => {
+    const saldos = quedanC(100);
+    const { result } = renderHook(() => useCarrito("LOCAL", catalogo, true, undefined, undefined, saldos));
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.setCantidad(dulce.id, 60));
+    act(() => result.current.agregar(nutella));
+    act(() => result.current.setCantidad(nutella.id, 40));
+    expect(result.current.unidades).toBe(100);
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.agregar(nutella));
+    act(() => result.current.setCantidad(nutella.id, 41));
+    expect(cantidades(result.current.lineas)).toEqual([
+      [21, 60],
+      [22, 40],
+    ]);
+    act(() => result.current.agregar(gaseosa));
+    expect(result.current.unidades).toBe(101);
+  });
+
+  it("setCantidad recorta a lo que queda menos lo que llevan las OTRAS líneas de ese tamaño", () => {
+    const saldos = quedanC(100);
+    const { result } = renderHook(() => useCarrito("LOCAL", catalogo, true, undefined, undefined, saldos));
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.setCantidad(dulce.id, 60));
+    act(() => result.current.agregar(nutella));
+    act(() => result.current.setCantidad(nutella.id, 75));
+    expect(cantidades(result.current.lineas)).toEqual([
+      [21, 60],
+      [22, 40],
+    ]);
+  });
+
+  it("con 0 o menos en el local no entra ninguno de ese tamaño", () => {
+    const saldos = quedanC(-2);
+    const { result } = renderHook(() => useCarrito("LOCAL", catalogo, true, undefined, undefined, saldos));
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.agregar(nutella));
+    expect(result.current.lineas).toHaveLength(0);
+  });
+
+  it("nunca contado en el local (null) = sin tope", () => {
+    const saldos = quedanC(null);
+    const { result } = renderHook(() => useCarrito("LOCAL", catalogo, true, undefined, undefined, saldos));
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.setCantidad(dulce.id, 500));
+    expect(result.current.unidades).toBe(500);
+  });
+
+  it("sin saldos (Modificar venta, la farmacia, un negocio sin conteo) es el carrito de siempre", () => {
+    const sinNada = renderHook(() => useCarrito("LOCAL", catalogo, true));
+    act(() => sinNada.result.current.agregar(dulce));
+    act(() => sinNada.result.current.setCantidad(dulce.id, 500));
+    expect(sinNada.result.current.unidades).toBe(500);
+
+    // Modificar una venta ya cobrada: en memoria y sin tope de conteo.
+    const enMemoria = renderHook(() =>
+      useCarrito("LOCAL", catalogo, true, { inicial: [{ producto: dulce, cantidad: 3, enMesa: 3, nota: "" }] }),
+    );
+    act(() => enMemoria.result.current.setCantidad(dulce.id, 300));
+    expect(enMemoria.result.current.unidades).toBe(300);
+
+    // El mapa vacío (el conteo apagado en el POS) también.
+    const vacio = new Map<number, number | null>();
+    const apagado = renderHook(() => useCarrito("DELIVERY", catalogo, true, undefined, undefined, vacio));
+    act(() => apagado.result.current.agregar(nutella));
+    act(() => apagado.result.current.setCantidad(nutella.id, 250));
+    expect(apagado.result.current.unidades).toBe(250);
+  });
+
+  it("si otra caja vendió y el saldo bajó, el carrito no se recorta solo: no suma más y el «−» baja de a uno", () => {
+    let saldos = quedanC(10);
+    const { result, rerender } = renderHook(() => useCarrito("LOCAL", catalogo, true, undefined, undefined, saldos));
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.setCantidad(dulce.id, 8));
+    saldos = quedanC(5);
+    rerender();
+    expect(result.current.lineas[0].cantidad).toBe(8);
+    act(() => result.current.agregar(dulce));
+    act(() => result.current.setCantidad(dulce.id, 9));
+    expect(result.current.lineas[0].cantidad).toBe(8);
+    act(() => result.current.setCantidad(dulce.id, 7));
+    expect(result.current.lineas[0].cantidad).toBe(7);
+  });
+
+  it("el topping incluido no gasta vaso; uno EXTRA de una categoría contada, sí (como en el saldo del servidor)", () => {
+    const vasoL = producto({ id: 12, nombre: "Arroz con leche L", tipoProducto: "SERVICIO", stockTotal: 0, precio: 20, categoria: L });
+    // Los toppings, de una categoría que también se cuenta (raro, pero el servidor lo cuenta así).
+    const toppings = [31, 32, 33].map((id) => producto({ id, nombre: `Topping ${id}`, precio: 5, categoria: C }));
+    const catalogoToppings: CatalogoAgregados = {
+      activo: true,
+      grupos: [
+        {
+          id: 7,
+          nombre: "Toppings",
+          incluidos: 2,
+          precioExtra: null,
+          maximo: null,
+          opciones: toppings.map((t) => ({ productoId: t.id, nombre: t.nombre, precio: 5, icono: null })),
+        },
+      ],
+      productos: [{ productoId: 12, grupos: [{ grupoId: 7, incluidos: 2 }] }],
+    };
+    // Dos incluidos y un extra (el 33).
+    const tres: AgregadoElegido[] = [
+      { grupoId: 7, productoId: 32, cantidad: 1 },
+      { grupoId: 7, productoId: 31, cantidad: 1 },
+      { grupoId: 7, productoId: 33, cantidad: 1 },
+    ];
+    const saldos = new Map<number, number | null>([
+      [L.id, 10],
+      [C.id, 1],
+    ]);
+    const { result } = renderHook(() =>
+      useCarrito("LOCAL", [vasoL, ...toppings], true, undefined, catalogoToppings, saldos),
+    );
+    act(() => result.current.agregar(vasoL, tres));
+    // El segundo pide otro C para su extra, y ya no queda.
+    act(() => result.current.agregar(vasoL, tres));
+    expect(result.current.unidades).toBe(1);
+    // Con sólo un incluido no gasta C: entra.
+    act(() => result.current.agregar(vasoL, [tres[0]]));
+    expect(result.current.unidades).toBe(2);
+  });
+});

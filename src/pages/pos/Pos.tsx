@@ -98,10 +98,12 @@ import {
   type AsignacionProfesional,
 } from "../../lib/agenda/ventaDirecta";
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
-import type { ProfesionalesDelCarrito } from "./PantallaVenta";
+import type { ConteoEnLaVenta, ProfesionalesDelCarrito } from "./PantallaVenta";
 import PublicarEnSitio from "./PublicarEnSitio";
 import { configPosDe } from "../../lib/configPos";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
+import { conteoEnUso, normalizarConfigConteo, type CategoriaDe, type LineaParaConteo } from "../../lib/conteo";
+import { useConteoPos } from "./useConteoPos";
 
 type Pantalla =
   | "venta"
@@ -202,6 +204,40 @@ function PuntoDeVenta() {
    * tarjeta y los extras del total. Con la sucursal de la caja, como el catálogo.
    */
   const catalogoAgregados = useCatalogoAgregados(almacenCaja, agregadosEnPos(negocio));
+  /**
+   * El conteo por categoría (vasos por tamaño, 18-nov): cuántos quedan en el
+   * local de la caja. Cada producto de un tamaño contado lo dice y el carrito
+   * no deja cargar más (el servidor igual rechaza la venta que se pase). Vive
+   * acá y no en la pantalla de venta, que se desmonta cada vez que se recarga
+   * el catálogo. Sin el conteo prendido, en la farmacia o sin caja abierta no
+   * pide nada y el POS es el de siempre.
+   */
+  const conConteo = conteoEnUso(normalizarConfigConteo(negocio?.conteo)) && !esFarmacia(rubro);
+  const conteoPos = useConteoPos(almacenCaja, conConteo && caja.datos?.caja != null);
+  const { recargar: recargarConteo, descontar: descontarConteo, enCola: conteoEnCola } = conteoPos;
+  const conteoEnVenta = useMemo<ConteoEnLaVenta | undefined>(
+    () => (conteoPos.saldos.size > 0 ? { nombre: conteoPos.nombre, saldos: conteoPos.saldos } : undefined),
+    [conteoPos.nombre, conteoPos.saldos],
+  );
+  /** De qué categoría es cada artículo: los toppings extra de una categoría contada también gastan. */
+  const categoriaDe = useMemo<CategoriaDe>(() => {
+    const porId = new Map((productos.datos ?? []).map((p) => [p.id, p.categoria?.id ?? null]));
+    return (id) => porId.get(id);
+  }, [productos.datos]);
+  /**
+   * Los vasos después de vender o registrar un pedido (§3.5 y §3.8 del
+   * contrato). Lo que quedó en la cola sin señal el servidor todavía no lo
+   * conoce: se baja acá. Y mientras la cola tenga algo sin subir, el número
+   * del servidor tampoco sirve (viene sin esas ventas): también se baja acá.
+   * Si no, se vuelve a pedir, como el catálogo.
+   */
+  const conteoTrasVender = useCallback(
+    (lineas: readonly LineaParaConteo[], encolada: boolean) => {
+      if (encolada || conteoEnCola > 0) descontarConteo(lineas, categoriaDe);
+      else recargarConteo();
+    },
+    [conteoEnCola, descontarConteo, recargarConteo, categoriaDe],
+  );
   /**
    * `crearVenta`, o la cola si no hay señal (sólo en la app instalada). El
    * ticket de una venta encolada lo arma el equipo con este catálogo.
@@ -420,7 +456,15 @@ function PuntoDeVenta() {
     () => catalogoConCita(productos.datos ?? [], citaCobrando),
     [productos.datos, citaCobrando],
   );
-  const carritoPropio = useCarrito(tipoPedido, catalogoPos, catalogoPos.length > 0, undefined, catalogoAgregados);
+  // Con los saldos del conteo: el tope por tamaño (sin conteo, el mapa vacío y el carrito de siempre).
+  const carritoPropio = useCarrito(
+    tipoPedido,
+    catalogoPos,
+    catalogoPos.length > 0,
+    undefined,
+    catalogoAgregados,
+    conteoPos.saldos,
+  );
   // En una farmacia la venta vive por encima del POS (ver VentaFarmaciaProvider.tsx):
   // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
   // tal venta y el POS usa la suya, como siempre.
@@ -816,23 +860,31 @@ function PuntoDeVenta() {
         return { productoId: l.producto.id, cantidad: l.cantidad, ...(agregados ? { agregados } : {}) };
       });
       const precios = new Map(carritoVenta.lineas.map((l) => [l.producto.id, l.producto.precio]));
-      const r = await registrarPedidoOEncolar(
-        {
-          clienteRequestId: intentoPedido.actual(huellaDeCobro(detalles, plataforma)),
-          plataforma,
-          ...(codigoExterno ? { codigoExterno } : {}),
-          // Con varias cajas abiertas el pedido dice a cuál sucursal va, como
-          // la venta: la cola lo sube tiempo después y la sede activa puede ser otra.
-          ...(variasSedes && almacenCaja != null ? { almacenId: almacenCaja } : {}),
-          // La caja abierta del POS, como en la venta (§10.1): de ahí sale
-          // «Ventas del turno». La cola la sube con la que estaba abierta al
-          // tomarlo; el backend la descarta sin rechazar si ya no sirve.
-          ...(idCaja != null ? { cajaId: idCaja } : {}),
-          detalles,
-        },
-        api.crearPedidoPlataforma,
-        precios,
-      );
+      let r: Awaited<ReturnType<typeof registrarPedidoOEncolar>>;
+      try {
+        r = await registrarPedidoOEncolar(
+          {
+            clienteRequestId: intentoPedido.actual(huellaDeCobro(detalles, plataforma)),
+            plataforma,
+            ...(codigoExterno ? { codigoExterno } : {}),
+            // Con varias cajas abiertas el pedido dice a cuál sucursal va, como
+            // la venta: la cola lo sube tiempo después y la sede activa puede ser otra.
+            ...(variasSedes && almacenCaja != null ? { almacenId: almacenCaja } : {}),
+            // La caja abierta del POS, como en la venta (§10.1): de ahí sale
+            // «Ventas del turno». La cola la sube con la que estaba abierta al
+            // tomarlo; el backend la descarta sin rechazar si ya no sirve.
+            ...(idCaja != null ? { cajaId: idCaja } : {}),
+            detalles,
+          },
+          api.crearPedidoPlataforma,
+          precios,
+        );
+      } catch (e) {
+        // El diálogo muestra el error (lo atrapa él). Los vasos se releen igual:
+        // lo más probable es que otra caja se haya llevado los últimos.
+        recargarConteo();
+        throw e;
+      }
       intentoPedido.registrado();
       // Sin señal el stock de la copia baja igual que con una venta encolada.
       if (r.encolado) await descontarDeLaCopia(copiaCatalogo(almacenCaja), detalles);
@@ -867,8 +919,24 @@ function PuntoDeVenta() {
         );
       // El stock cambió: el catálogo tiene que reflejarlo.
       productos.recargar();
+      // Y los vasos del conteo: el pedido de plataforma también gasta (§3.5).
+      conteoTrasVender(carritoVenta.lineas, r.encolado);
     },
-    [carritoVenta, intentoPedido, variasSedes, almacenCaja, idCaja, limpiar, setAvisoPedido, productos, negocio, usuario, caja.datos],
+    [
+      carritoVenta,
+      intentoPedido,
+      variasSedes,
+      almacenCaja,
+      idCaja,
+      limpiar,
+      setAvisoPedido,
+      productos,
+      negocio,
+      usuario,
+      caja.datos,
+      recargarConteo,
+      conteoTrasVender,
+    ],
   );
 
   const cobrar = useCallback(
@@ -923,7 +991,15 @@ function PuntoDeVenta() {
         setPantalla("recibo");
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
+        // Y los vasos del conteo (18-nov). Lo que se comió en una mesa lo sabe
+        // el servidor (no hay carrito que bajar): se relee.
+        if (mesaCobrando) recargarConteo();
+        else conteoTrasVender(carritoVenta.lineas, !!creada.pendienteSync);
       } catch (err) {
+        // Cualquier rechazo puede ser el conteo: otra caja vendió los últimos
+        // vasos de ese tamaño. Se releen, así la grilla dice lo que de verdad
+        // queda; el mensaje del servidor se muestra igual, abajo.
+        recargarConteo();
         // Otro equipo usó el último lugar del día (403 CUPO_AGOTADO): se abre
         // la hoja de compra y el carrito sigue armado para reintentar.
         cobroEnDuda.current = quedoEnDuda(err);
@@ -970,6 +1046,9 @@ function PuntoDeVenta() {
       // render, y cobrar el carrito en vez de la mesa.
       mesaCobrando,
       porCobrar,
+      carritoVenta,
+      recargarConteo,
+      conteoTrasVender,
     ],
   );
 
@@ -1006,7 +1085,11 @@ function PuntoDeVenta() {
         limpiar();
         setPantalla("pedidoOk");
         productos.recargar();
+        // El pedido por cobrar gasta el vaso apenas se toma, no al entregarlo (§1.5).
+        conteoTrasVender(carritoVenta.lineas, !!creada.pendienteSync);
       } catch (err) {
+        // Como en el cobro: el rechazo puede ser que otra caja vendió los últimos vasos.
+        recargarConteo();
         cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
         setError(err instanceof Error ? err.message : "No se pudo crear el pedido");
@@ -1014,7 +1097,20 @@ function PuntoDeVenta() {
         setEnviando(false);
       }
     },
-    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos, hayLugar, rechazoPorCupo, registrarConsumo, vender],
+    [
+      carritoVenta,
+      tipoPedido,
+      limpiar,
+      productos,
+      intento,
+      descuentos,
+      hayLugar,
+      rechazoPorCupo,
+      registrarConsumo,
+      vender,
+      recargarConteo,
+      conteoTrasVender,
+    ],
   );
 
   /**
@@ -1049,7 +1145,10 @@ function PuntoDeVenta() {
         setReimpresion(false);
         setPantalla("recibo");
         productos.recargar();
+        conteoTrasVender(carritoVenta.lineas, !!creada.pendienteSync);
       } catch (err) {
+        // Como en el cobro: el rechazo puede ser que otra caja vendió los últimos vasos.
+        recargarConteo();
         cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
         // CRE-4: el backend frenó el fiado por el límite del cliente (la deuda
@@ -1075,6 +1174,8 @@ function PuntoDeVenta() {
       rechazoPorCupo,
       registrarConsumo,
       vender,
+      recargarConteo,
+      conteoTrasVender,
     ],
   );
 
@@ -1328,6 +1429,8 @@ function PuntoDeVenta() {
           setPantalla("recibo");
           // El stock cambió: lo que salió del pedido volvió y lo nuevo bajó.
           productos.recargar();
+          // Los vasos también (modificar no lleva tope, pero sí cambia el saldo).
+          recargarConteo();
         }}
       />
     );
@@ -1545,6 +1648,7 @@ function PuntoDeVenta() {
     {cobroEnLaVenta && dialogoCobroIncompleto}
     <PantallaVenta
       catalogoAgregados={catalogoAgregados}
+      conteo={conteoEnVenta}
       cobro={
         cobroEnLaVenta
           ? {

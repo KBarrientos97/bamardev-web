@@ -34,6 +34,13 @@ export const claveCatalogo = (almacenId: number | null) => `productos:${almacenI
  */
 export const claveCaja = (sedeId: number | null) => (sedeId == null ? "caja" : `caja:${sedeId}`);
 
+/**
+ * El conteo por categoría (vasos por tamaño, 18-nov) también es por sucursal:
+ * cada local cuenta sus vasos. Sin sucursal, el del usuario (lo decide el
+ * servidor).
+ */
+export const claveConteo = (sucursalId: number | null) => `conteo:${sucursalId ?? "propio"}`;
+
 export const SIN_COPIA =
   "Sin conexión y sin datos guardados. Conectate al menos una vez para usar el modo offline.";
 
@@ -84,6 +91,22 @@ export async function descontarDeLaCopia(nombre: string, detalles: DetalleVentaI
       : p,
   );
   await almacen.guardar(k, nuevo).catch(() => {});
+}
+
+/**
+ * Cambia una copia guardada sin pedir nada al servidor. Es lo de
+ * `descontarDeLaCopia` para lo que no es el catálogo: el conteo de vasos baja
+ * lo vendido sin señal y, al reabrir el POS sin internet, vuelve el número de
+ * ahora y no el de antes de vender. Sin copia (o en el navegador común, donde
+ * no se guarda nada) no hace nada.
+ */
+export async function cambiarCopia<T>(nombre: string, cambiar: (copia: T) => T): Promise<void> {
+  const ambito = ambitoSesion();
+  if (!ambito) return;
+  const k = claveDe(ambito, nombre);
+  const copia = await almacen.leer<T>(k).catch(() => undefined);
+  if (copia === undefined) return;
+  await almacen.guardar(k, cambiar(copia)).catch(() => {});
 }
 
 /** La copia tal cual, sin pedir nada (para armar el ticket de una venta encolada). */

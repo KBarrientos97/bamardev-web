@@ -1,10 +1,12 @@
 import { useMemo, useRef, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
+import { QUEDA_POCO, type ConteoDeCategoria } from "../../lib/conteo";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { useAncho } from "../../lib/agenda/useEsCelular";
 import type { Categoria, Producto } from "../../types";
 import { agruparPorCategoria, columnasQueEntran, repartirEnColumnas, type BloqueCategoria } from "./columnasPos";
+import RotuloConteo from "./RotuloConteo";
 import { controlaStock, topeStock } from "./useCarrito";
 import type { Arrastre } from "./useArrastreGrilla";
 
@@ -21,6 +23,10 @@ import type { Arrastre } from "./useArrastreGrilla";
  * pausado y la hoja de toppings, que decide quien la usa), en el carrito se
  * resalta y muestra la cantidad con su «−» (sin cambiar de alto), y dice
  * «Agotado», «Pausado» o cuánto queda cuando queda poco o ya no suma.
+ *
+ * Con el conteo por categoría (vasos por tamaño, 18-nov), la cabecera de cada
+ * tamaño contado dice cuántos vasos se pueden cargar todavía: una vez por
+ * categoría y no en cada fila, porque todos sus productos gastan el mismo vaso.
  *
  * Y se acomoda arrastrando, como la tarjeta (17-nov): con el dedo, mantener
  * presionado; con el mouse, apretar y mover (`useArrastreGrilla`). Cada fila
@@ -99,6 +105,7 @@ export default function VistaColumnas({
   agotadosHoy,
   pausados,
   incluyeDe,
+  conteoDe,
   onAgregar,
   onQuitar,
   onMenu,
@@ -113,6 +120,11 @@ export default function VistaColumnas({
   agotadosHoy: Set<number>;
   pausados: Set<number>;
   incluyeDe: (productoId: number) => string | undefined;
+  /**
+   * El conteo por categoría (vasos por tamaño, 18-nov): lo que dice de una
+   * categoría. Sin esto —conteo apagado— la lista es la de siempre.
+   */
+  conteoDe?: (categoria: Producto["categoria"]) => ConteoDeCategoria | null;
   onAgregar: (p: Producto) => void;
   onQuitar: (p: Producto) => void;
   /** El «⋯» de pausar o reactivar; sólo con `productos.pausar`. */
@@ -150,6 +162,7 @@ export default function VistaColumnas({
       incluye={incluyeDe(p.id)}
       agotadoHoy={agotadosHoy.has(p.id)}
       pausado={pausados.has(p.id)}
+      conteo={conteoDe?.(p.categoria) ?? null}
       onAgregar={() => onAgregar(p)}
       onQuitar={() => onQuitar(p)}
       onMenu={onMenu ? () => onMenu(p) : undefined}
@@ -162,7 +175,18 @@ export default function VistaColumnas({
     <div ref={medir} className="flex items-start gap-3">
       {pilas.map((pila, i) => (
         <div key={i} className="flex min-w-0 flex-1 flex-col gap-3">
-          {pila.map((b) => (
+          {pila.map((b) => {
+            // Las filas son de alto fijo a propósito (ver `FilaProducto`): el
+            // número de vasos de una categoría contada va UNA vez, acá arriba,
+            // junto a cuántos productos tiene (18-nov). Todos sus productos
+            // gastan el mismo vaso, así que es el mismo número para todas.
+            const conteoBloque = conteoDe?.(b.productos[0]?.categoria) ?? null;
+            const cuenta = (
+              <span className="shrink-0 text-[12px] font-semibold tabular-nums text-texto-4">
+                {fmtNum(b.productos.length)}
+              </span>
+            );
+            return (
             <section
               key={b.clave}
               aria-label={b.nombre}
@@ -173,15 +197,21 @@ export default function VistaColumnas({
                 <h3 className="min-w-0 break-words text-[12px] font-bold uppercase tracking-[0.08em] text-texto-2">
                   {b.nombre}
                 </h3>
-                <span className="shrink-0 text-[12px] font-semibold tabular-nums text-texto-4">
-                  {fmtNum(b.productos.length)}
-                </span>
+                {conteoBloque ? (
+                  <span className="flex shrink-0 items-center gap-2">
+                    <RotuloConteo conteo={conteoBloque} />
+                    {cuenta}
+                  </span>
+                ) : (
+                  cuenta
+                )}
               </header>
               {/* Sola, la categoría usa el ancho: sus filas se reparten en
                   columnas, y cada fila entera en la suya. */}
               <ul className={repartir ? "columns-[15rem] gap-x-3" : undefined}>{b.productos.map(fila)}</ul>
             </section>
-          ))}
+            );
+          })}
         </div>
       ))}
     </div>
@@ -195,6 +225,7 @@ function FilaProducto({
   incluye,
   agotadoHoy,
   pausado,
+  conteo,
   onAgregar,
   onQuitar,
   onMenu,
@@ -207,6 +238,8 @@ function FilaProducto({
   incluye?: string;
   agotadoHoy: boolean;
   pausado: boolean;
+  /** Lo que el conteo por categoría dice de su tamaño (18-nov); null = la fila de siempre. */
+  conteo?: ConteoDeCategoria | null;
   onAgregar: () => void;
   onQuitar: () => void;
   onMenu?: () => void;
@@ -219,14 +252,36 @@ function FilaProducto({
   const cantidadRef = useRef<HTMLSpanElement>(null);
   // Las mismas reglas que la tarjeta (ver TarjetaVenta en PantallaVenta).
   const controla = controlaStock(p);
-  const agotado = (controla && p.stockTotal <= 0) || agotadoHoy;
+  const agotado = (controla && p.stockTotal <= 0) || agotadoHoy || !!conteo?.agotado;
   const enCarrito = cantidad > 0;
   // Ya está en el carrito todo lo que hay: tocar la fila no suma más.
-  const alTope = !agotado && cantidad >= topeStock(p);
+  const alTopeStock = !agotado && cantidad >= topeStock(p);
+  // O el carrito ya lleva todos los vasos que quedan de su tamaño, de
+  // cualquier producto (conteo por categoría, 18-nov).
+  const llenoConteo = !agotado && !!conteo?.lleno;
+  const alTope = alTopeStock || llenoConteo;
   // En la lista el número sólo sale cuando queda poco (al lado de cada nombre
   // sería ruido; lo que el cajero necesita es el aviso antes de que se acabe),
   // o cuando ya no suma: así se entiende por qué tocarla no hace nada.
-  const quedaPoco = !agotado && controla && (p.stockTotal <= p.stockMinimo || alTope);
+  const quedaPoco = !agotado && controla && (p.stockTotal <= p.stockMinimo || alTopeStock);
+  /**
+   * Lo mismo para el conteo: el número de siempre va en la cabecera de la
+   * categoría, y en la fila sólo el aviso, cuando quedan pocos o ya no suma.
+   * «Pocos» mira lo que queda en el LOCAL y no lo libre: si mirara lo libre,
+   * cargar el décimo vaso le sumaría un renglón a todas las filas de ese
+   * tamaño en medio del pedido, y el toque siguiente caería en otra fila (por
+   * eso son de alto fijo). Así el aviso ya está al abrir la lista y no aparece
+   * por tocar; su número sí baja con el carrito.
+   */
+  const avisoConteo = !agotado && conteo && (conteo.lleno || conteo.quedan <= QUEDA_POCO) ? conteo : null;
+  // El nombre entero para el mouse, o por qué ya no suma.
+  const titulo = conteo?.agotado
+    ? conteo.aviso
+    : alTopeStock
+      ? "No hay más disponibles"
+      : llenoConteo
+        ? conteo?.aviso
+        : p.nombre;
   const levantada = !!arrastre?.["data-arrastrando"];
   /**
    * Apretar la fila la puede levantar, salvo sobre la cantidad: el número deja
@@ -268,8 +323,7 @@ function FilaProducto({
           }}
           disabled={agotado || alTope}
           aria-label={p.nombre}
-          // El nombre entero para el mouse, o por qué ya no suma.
-          title={alTope ? "No hay más disponibles" : p.nombre}
+          title={titulo}
           // Levantada, sin el gris del mouse: taparía el contorno (FILA_LEVANTADA).
           className={`absolute inset-0 rounded-lg transition-colors${levantada ? "" : " enabled:hover:bg-muted/70"}`}
         />
@@ -290,7 +344,7 @@ function FilaProducto({
             {p.nombre}
           </span>
           {incluye && <span className="block text-[11px] font-bold leading-snug text-primary-700">{incluye}</span>}
-          {(agotado || pausado || quedaPoco) && (
+          {(agotado || pausado || quedaPoco || !!avisoConteo) && (
             <span className="mt-0.5 flex flex-wrap gap-1">
               {agotado ? (
                 <EstadoFila tono="rojo">Agotado</EstadoFila>
@@ -298,6 +352,11 @@ function FilaProducto({
                 <EstadoFila tono="gris">Pausado</EstadoFila>
               ) : null}
               {quedaPoco && <EstadoFila tono="aviso">{fmtCantidad(p.stockTotal)} disp.</EstadoFila>}
+              {avisoConteo && (
+                <EstadoFila tono="aviso" etiqueta={avisoConteo.etiqueta}>
+                  {fmtCantidad(avisoConteo.libre)} u.
+                </EstadoFila>
+              )}
             </span>
           )}
         </span>
@@ -351,8 +410,25 @@ function FilaProducto({
 }
 
 /** «Agotado», «Pausado», «3 disp.»: el mismo tamaño que el de la tarjeta, sin mayúsculas forzadas. */
-function EstadoFila({ tono, children }: { tono: "rojo" | "gris" | "aviso"; children: ReactNode }) {
+function EstadoFila({
+  tono,
+  etiqueta,
+  children,
+}: {
+  tono: "rojo" | "gris" | "aviso";
+  /** Lo que dice entero, para el mouse y el lector de pantalla («Quedan 4 vasos L»). */
+  etiqueta?: string;
+  children: ReactNode;
+}) {
   const colores =
     tono === "rojo" ? "bg-danger-bg text-danger-text" : tono === "aviso" ? "bg-warning-bg text-warning-text" : "bg-slate-200 text-texto-3";
-  return <span className={`inline-flex items-center rounded-md px-1.5 py-px text-[11px] font-bold ${colores}`}>{children}</span>;
+  return (
+    <span
+      title={etiqueta}
+      aria-label={etiqueta}
+      className={`inline-flex items-center rounded-md px-1.5 py-px text-[11px] font-bold ${colores}`}
+    >
+      {children}
+    </span>
+  );
 }

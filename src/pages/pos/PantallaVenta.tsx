@@ -34,12 +34,24 @@ import { configPosDe, normalizarConfigPos, ordenarCategorias } from "../../lib/c
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import VistaColumnas from "./VistaColumnas";
 import { claveDeBloque } from "./columnasPos";
+import {
+  conteoDeCategoria,
+  entraOtra,
+  gastoPorUnidad,
+  unidadesPorCategoria,
+  type CategoriaDe,
+  type ConteoDeCategoria,
+  type SaldosConteo,
+} from "../../lib/conteo";
+import RotuloConteo from "./RotuloConteo";
 
 const TODAS = "__todas__";
 /** El chip «Pausados (N)»: filtra la grilla a los pausados para reactivarlos de un toque. */
 const PAUSADOS = "__pausados__";
 /** Desde qué alto el cobro en la misma pantalla se aprieta (ver `PanelCarrito`). */
 const VENTANA_BAJA = "(max-height: 860px)";
+/** Sin conteo, el carrito no lleva nada contado: el mismo mapa vacío en cada dibujo. */
+const SIN_CONTEO: ReadonlyMap<number, number> = new Map();
 
 const idDe = (p: Producto) => p.id;
 
@@ -58,11 +70,19 @@ export default function PantallaVenta({
   modificacion,
   catalogoAgregados,
   cobro,
+  conteo,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
+  /**
+   * El conteo por categoría del local (vasos por tamaño, 18-nov): cada
+   * producto de un tamaño contado dice cuántos quedan, y el número baja al
+   * cargar cualquier producto de ese tamaño. Sin esto —conteo apagado, que es
+   * casi todo negocio, o modificar una venta— la pantalla es la de siempre.
+   */
+  conteo?: ConteoEnLaVenta;
   /**
    * El cobro en la misma pantalla (Configuración › Punto de venta, 16-nov):
    * en la columna del carrito, donde va «Cobrar», el medio de pago, el
@@ -260,6 +280,37 @@ export default function PantallaVenta({
   }, [carrito.lineas]);
 
   /**
+   * El conteo por categoría (18-nov): cuánto lleva el carrito de cada tamaño
+   * contado, sumando todos sus productos; de ahí sale lo que dice cada tarjeta
+   * y cuándo deja de sumar. Es la misma cuenta que hace el carrito para su
+   * tope. Modificar una venta no lo toma (no lleva tope) y la farmacia
+   * tampoco (arma su catálogo aparte).
+   */
+  const saldosConteo: SaldosConteo | null =
+    conteo && conteo.saldos.size > 0 && !modificacion && !esFarmacia(rubro) ? conteo.saldos : null;
+  const categoriaDe = useMemo<CategoriaDe>(() => {
+    const porId = new Map(productos.map((p) => [p.id, p.categoria?.id ?? null]));
+    return (id) => porId.get(id);
+  }, [productos]);
+  const porCategoria = useMemo(
+    () => (saldosConteo ? unidadesPorCategoria(carrito.lineas, saldosConteo, categoriaDe) : SIN_CONTEO),
+    [saldosConteo, carrito.lineas, categoriaDe],
+  );
+  const nombreDelConteo = conteo?.nombre;
+  /** Lo que el conteo dice del tamaño de un producto; null = nada nuevo en pantalla. */
+  const conteoDe = (categoria: Producto["categoria"]): ConteoDeCategoria | null =>
+    saldosConteo ? conteoDeCategoria(categoria, nombreDelConteo, saldosConteo, porCategoria) : null;
+  /** El conteo no deja sumar otro de ese tamaño: no queda nada, o el carrito ya lleva todo lo que queda. */
+  const sinLugarEnConteo = (p: Producto) => {
+    const c = conteoDe(p.categoria);
+    return !!c && (c.agotado || c.lleno);
+  };
+  /** Lo mismo para el «+» de una línea del carrito, con sus toppings: el cálculo del tope del carrito. */
+  const lineaSinLugar = saldosConteo
+    ? (l: LineaCarrito) => !entraOtra(gastoPorUnidad(l, saldosConteo, categoriaDe), saldosConteo, porCategoria)
+    : undefined;
+
+  /**
    * La hoja de toppings: el producto que se está armando y, si se edita una
    * línea del carrito, su clave y lo que ya tenía elegido.
    */
@@ -271,6 +322,9 @@ export default function PantallaVenta({
   /** Suma el producto al carrito: con grupo de toppings abre su hoja, sin él entra directo. */
   const pedirAgregar = (p: Producto) => {
     if (quieto) return;
+    // Sin lugar en el conteo no suma: ni se abre la hoja de toppings, que el
+    // carrito ignoraría al confirmar.
+    if (sinLugarEnConteo(p)) return;
     if (gruposDelProducto(catalogoAgregados, p.id).length > 0) setHojaAgregados({ producto: p });
     else carrito.agregar(p);
   };
@@ -287,6 +341,8 @@ export default function PantallaVenta({
   const tocarProducto = (p: Producto) => {
     if (quieto) return;
     if (cat === PAUSADOS && puedePausar && pausados.ids.has(p.id)) setHojaPausa(p);
+    // Sin lugar en el conteo no se pregunta por el pausado: no se va a sumar.
+    else if (sinLugarEnConteo(p)) return;
     else if (pausados.ids.has(p.id) && (enCarrito.get(p.id) ?? 0) === 0) setVenderPausado(p);
     else pedirAgregar(p);
   };
@@ -387,6 +443,7 @@ export default function PantallaVenta({
       lineasExtra={lineasExtra}
       modificacion={modificacion}
       notasAbiertas={notasAbiertas}
+      lineaSinLugar={lineaSinLugar}
       onEditarAgregados={
         catalogoAgregados?.activo
           ? (l) => setHojaAgregados({ producto: l.producto, clave: claveDeLinea(l), inicial: l.agregados })
@@ -503,6 +560,7 @@ export default function PantallaVenta({
               agotadosHoy={agotadosHoy}
               pausados={pausados.ids}
               incluyeDe={(id) => textoIncluyeDe(catalogoAgregados, id)}
+              conteoDe={saldosConteo ? conteoDe : undefined}
               onAgregar={tocarProducto}
               onQuitar={quitarUna}
               onMenu={puedePausar ? setHojaPausa : undefined}
@@ -529,6 +587,7 @@ export default function PantallaVenta({
                   pausado={pausados.ids.has(p.id)}
                   onMenu={puedePausar ? () => setHojaPausa(p) : undefined}
                   conIcono={config.iconos}
+                  conteo={conteoDe(p.categoria)}
                 />
               ))}
             </ul>
@@ -686,10 +745,16 @@ function TarjetaVenta({
   incluye,
   conIcono = true,
   onMas,
+  conteo,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /**
+   * Lo que el conteo por categoría dice de su tamaño (18-nov): cuántos vasos
+   * quedan, o que no queda ninguno. null o ausente = la tarjeta de siempre.
+   */
+  conteo?: ConteoDeCategoria | null;
   /** El «+» del stepper; sin esto hace lo mismo que tocar la tarjeta. */
   onMas?: () => void;
   /**
@@ -726,13 +791,20 @@ function TarjetaVenta({
   // se ofrecía siempre y el cobro rebotaba al confirmar (POS-2).
   const controla = controlaStock(p);
   // Un elaborado sí se agota cuando el encargado lo marca en el Menú digital
-  // (se terminó el pollo): la TV ya lo muestra tachado.
-  const agotado = (controla && p.stockTotal <= 0) || agotadoHoy;
+  // (se terminó el pollo): la TV ya lo muestra tachado. Y cuando no queda
+  // ningún vaso de su tamaño (conteo por categoría, 18-nov): sin vaso no hay
+  // arroz con leche que servir, aunque el producto no lleve stock.
+  const agotado = (controla && p.stockTotal <= 0) || agotadoHoy || !!conteo?.agotado;
   const enCarrito = cantidad > 0;
   // El "+" se apaga al llegar a lo que hay (POS-10). El carrito ya ignoraba el
   // toque, pero en silencio: el cajero tocaba y no pasaba nada, sin saber por
-  // qué. Es el mismo tope del carrito, como en la app.
-  const alTope = cantidad >= topeStock(p);
+  // qué. Es el mismo tope del carrito, como en la app. Con el conteo, también
+  // cuando el carrito ya lleva todos los vasos que quedan de ese tamaño.
+  const alTope = cantidad >= topeStock(p) || !!conteo?.lleno;
+  /** «45 u.» en el renglón del precio; agotada (por lo que sea) ya lo dice «Agotado». */
+  const rotuloConteo = conteo && !agotado ? conteo : null;
+  /** Por qué el conteo no la deja sumar, al pasar el mouse: el mismo texto que el servidor. */
+  const avisoConteo = conteo && (conteo.agotado || (!agotado && conteo.lleno)) ? conteo.aviso : undefined;
   // La fila de arriba lleva el ícono y lo que dice el stock. Sin ícono y sin
   // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
   const conFila = conIcono || agotado || pausado || controla;
@@ -778,6 +850,7 @@ function TarjetaVenta({
             if (!ignorarClic()) onAgregar();
           }}
           disabled={agotado}
+          title={avisoConteo}
           className="flex flex-1 flex-col text-left"
         >
           {conFila && (
@@ -843,9 +916,22 @@ function TarjetaVenta({
           {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,
               antes de tocarlo. */}
           {incluye && <p className="mt-1 text-[11px] font-bold text-primary-700">{incluye}</p>}
-          <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
-            {fmtMoney(p.precio)}
-          </p>
+          {/* Con el conteo (18-nov), cuántos vasos de su tamaño quedan, en el
+              renglón del precio: abajo y no arriba, para no tocar la fila del
+              ícono (el stock, «Pausado», el «⋯»). Si no entran los dos (la
+              tarjeta angosta de 1024), el rótulo baja entero debajo del
+              precio antes de que el precio se apriete: el precio se porta
+              como siempre. Sin conteo, el renglón de siempre. */}
+          {rotuloConteo ? (
+            <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pt-2">
+              <p className="text-[15px] font-extrabold text-primary-700">{fmtMoney(p.precio)}</p>
+              <RotuloConteo conteo={rotuloConteo} />
+            </div>
+          ) : (
+            <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
+              {fmtMoney(p.precio)}
+            </p>
+          )}
         </button>
 
         {onMenu && (
@@ -924,6 +1010,14 @@ export interface ModoModificacion {
   vacio: string;
 }
 
+/** El conteo por categoría que dibuja la pantalla de venta (vasos por tamaño, 18-nov). */
+export interface ConteoEnLaVenta {
+  /** Lo que se cuenta, como lo escribió el admin («Vasos»). */
+  nombre: string;
+  /** Categoría contada → cuántos quedan en el local (null = nunca se contó ahí). */
+  saldos: SaldosConteo;
+}
+
 /**
  * El cobro en la misma pantalla de la venta: lo mismo que el POS le pasa a la
  * pantalla de cobro de siempre, para dibujarlo en el carrito.
@@ -958,6 +1052,7 @@ function PanelCarrito({
   lineasExtra,
   modificacion,
   notasAbiertas,
+  lineaSinLugar,
   onEditarAgregados,
   plataformas,
   onCobrar,
@@ -966,6 +1061,8 @@ function PanelCarrito({
   quieto = false,
   carrito: carritoRecibido,
 }: {
+  /** Con el conteo por categoría: si a esa línea ya no le entra otra unidad (ver `PantallaVenta`). */
+  lineaSinLugar?: (l: LineaCarrito) => boolean;
   /** El cobro incrustado en vez de «Cobrar» (ver `PantallaVenta`). */
   cobro?: CobroEnLaVenta;
   /** Se está registrando el cobro incrustado: las líneas no se tocan (ver `PantallaVenta`). */
@@ -1134,6 +1231,7 @@ function PanelCarrito({
                 linea={l}
                 carrito={carrito}
                 notasAbiertas={notasAbiertas}
+                sinLugarEnConteo={lineaSinLugar?.(l) ?? false}
                 onEditarAgregados={onEditarAgregados ? () => onEditarAgregados(l) : undefined}
                 conMesaLlevar={conMesaLlevar}
                 venta={venta}
@@ -1293,6 +1391,7 @@ function FilaCarrito({
   linea: l,
   carrito,
   notasAbiertas,
+  sinLugarEnConteo = false,
   onEditarAgregados,
   conMesaLlevar,
   venta,
@@ -1303,6 +1402,8 @@ function FilaCarrito({
   linea: LineaCarrito;
   carrito: Carrito;
   notasAbiertas: RefObject<Map<ClaveLinea, string>>;
+  /** El conteo por categoría ya no deja sumar otra unidad de esta línea (18-nov). */
+  sinLugarEnConteo?: boolean;
   /** Tocar los toppings de la línea la reabre en su hoja; ausente = no se edita. */
   onEditarAgregados?: () => void;
   conMesaLlevar: boolean;
@@ -1413,8 +1514,11 @@ function FilaCarrito({
           <button
             onClick={() => carrito.setCantidad(id, l.cantidad + 1)}
             // Apagado en el tope, igual que el "+" de la card (POS-10). El tope
-            // es del producto: lo que ya hay en otras líneas con otros toppings cuenta.
-            disabled={enOtrasLineas(carrito, l) + l.cantidad >= topeStock(l.producto)}
+            // es del producto: lo que ya hay en otras líneas con otros toppings
+            // cuenta. Y el del conteo, que es del tamaño: lo que llevan las
+            // demás líneas de ese tamaño también cuenta (18-nov).
+            disabled={enOtrasLineas(carrito, l) + l.cantidad >= topeStock(l.producto) || sinLugarEnConteo}
+            title={sinLugarEnConteo ? "No hay más disponibles" : undefined}
             aria-label="Agregar una unidad"
             className="p-2.5 text-texto-2 hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent"
           >
