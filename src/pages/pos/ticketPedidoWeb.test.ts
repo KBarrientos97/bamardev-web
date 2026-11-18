@@ -70,13 +70,12 @@ describe("ticket del pedido web", () => {
     expect(Math.max(...textoTicketPedidoWeb(EJEMPLO).split("\n").map((l) => l.length))).toBeLessThanOrEqual(32);
   });
 
-  it("sin dirección: «Ubicación marcada en el mapa» (33 columnas con «Dir: »: sigue en el renglón de abajo)", () => {
+  it("sin dirección: «Dir: Ubicación en el mapa», en un solo renglón (la frase de las pantallas no entraba)", () => {
     const l = lineasTicketPedidoWeb({ ...EJEMPLO, direccion: null, referencia: null });
-    const i = l.indexOf("Dir: Ubicación marcada en el");
-    expect(i).toBeGreaterThan(0);
-    expect(l[i + 1]).toBe("mapa");
+    expect(l).toContain("Dir: Ubicación en el mapa");
+    expect(l).not.toContain("mapa");
     expect(l.join("\n")).not.toContain("Ref:");
-    expect(lineasTicketPedidoWeb({ ...EJEMPLO, direccion: "   " })).toContain("Dir: Ubicación marcada en el");
+    expect(lineasTicketPedidoWeb({ ...EJEMPLO, direccion: "   " })).toContain("Dir: Ubicación en el mapa");
   });
 
   it("regla 8 · para recoger: sin dirección, referencia, repartidor ni envío, aunque vengan", () => {
@@ -117,8 +116,8 @@ describe("ticket del pedido web", () => {
     expect(textoPagoPedidoWeb("EFECTIVO", null, 249)).toBe("Paga en efectivo");
     expect(textoPagoPedidoWeb("EFECTIVO", 300, 249)).toBe("Paga con Bs 300 - cambio Bs 51");
     expect(textoPagoPedidoWeb("EFECTIVO", 200, 100.5)).toBe("Paga con Bs 200 - cambio Bs 99.50");
-    // Justo: el cambio se sabe y es cero.
-    expect(textoPagoPedidoWeb("EFECTIVO", 249, 249)).toBe("Paga con Bs 249 - cambio Bs 0");
+    // Justo: no hay cambio que llevar, y se dice así (no «cambio Bs 0»). Android imprime lo mismo.
+    expect(textoPagoPedidoWeb("EFECTIVO", 249, 249)).toBe("Paga con Bs 249 - justo");
     // La caja subió el envío al aceptar y el billete ya no alcanza; o no se sabe el total.
     expect(textoPagoPedidoWeb("EFECTIVO", 240, 249)).toBe("Paga con Bs 240");
     expect(textoPagoPedidoWeb("EFECTIVO", 300, null)).toBe("Paga con Bs 300");
@@ -180,7 +179,7 @@ describe("del pedido de la bandeja al ticket", () => {
     const d = datosDePedidoWeb(PEDIDO);
     expect(d).toMatchObject({ numero: 7, cliente: "Carla Mamani", direccion: null, envio: 7, total: 249, productos: 242, repartidor: "Pedro Rojas" });
     const l = lineasTicketPedidoWeb({ ...d, negocio: "Nombre del negocio" });
-    expect(l).toContain("Dir: Ubicación marcada en el");
+    expect(l).toContain("Dir: Ubicación en el mapa");
     expect(l).toContain("  + 2 x Llajua");
     expect(l).toContain("Paga con Bs 300 - cambio Bs 51");
   });

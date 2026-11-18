@@ -1,5 +1,4 @@
 import type { FormaPagoWeb, PedidoWeb, TipoPedidoWeb } from "../../lib/pedidosWeb/tipos";
-import { TEXTO_SIN_DIRECCION } from "../../lib/pedidosWeb/direccion";
 import { totalDe } from "../pedidos-web/logica";
 import {
   RAYA_TICKET,
@@ -40,6 +39,14 @@ import {
  *     --------------------------------
  */
 
+/**
+ * Lo que dice el papel cuando el delivery no trae dirección escrita. Más corta
+ * que la frase de las pantallas («Ubicación marcada en el mapa»): con «Dir: »
+ * adelante aquélla mide 33 columnas y el papel tiene 32, así que partía «mapa»
+ * al renglón de abajo. Android imprime la misma (`TicketPedidoWeb.SIN_DIRECCION`).
+ */
+export const SIN_DIRECCION_EN_TICKET = "Ubicación en el mapa";
+
 export interface DatosTicketPedidoWeb {
   negocio: string;
   /** El local, sólo si corresponde mostrarlo (lo decide quien llama, como en el cierre). */
@@ -66,9 +73,10 @@ export interface DatosTicketPedidoWeb {
 }
 
 /**
- * «Paga por QR», «Paga con Bs 300 - cambio Bs 51», «Paga con Bs 300» (si no
- * se sabe el cambio o el billete no alcanza: la caja subió el envío al
- * aceptar) o «Paga en efectivo» (no dijo con cuánto). La plata, corta.
+ * «Paga por QR», «Paga con Bs 300 - cambio Bs 51», «Paga con Bs 249 - justo»,
+ * «Paga con Bs 300» (si no se sabe el cambio o el billete no alcanza: la caja
+ * subió el envío al aceptar) o «Paga en efectivo» (no dijo con cuánto). La
+ * plata, corta.
  */
 export function textoPagoPedidoWeb(formaPago: FormaPagoWeb, pagaCon: number | null | undefined, total: number | null | undefined): string {
   if (formaPago === "QR") return "Paga por QR";
@@ -76,7 +84,9 @@ export function textoPagoPedidoWeb(formaPago: FormaPagoWeb, pagaCon: number | nu
   const con = `Paga con ${bsCortoTicket(pagaCon)}`;
   if (total == null || !Number.isFinite(total)) return con;
   const cambio = Math.round((pagaCon - total) * 100) / 100;
-  return cambio >= 0 ? `${con} - cambio ${bsCortoTicket(cambio)}` : con;
+  if (cambio < 0) return con;
+  // Justo: no hay cambio que llevar, y se dice así («cambio Bs 0» hace dudar al que arma la bolsa).
+  return cambio === 0 ? `${con} - justo` : `${con} - cambio ${bsCortoTicket(cambio)}`;
 }
 
 export function lineasTicketPedidoWeb(d: DatosTicketPedidoWeb): string[] {
@@ -95,7 +105,7 @@ export function lineasTicketPedidoWeb(d: DatosTicketPedidoWeb): string[] {
   if (d.telefono?.trim()) lineas.push(...partirTicket(`Tel: ${d.telefono}`));
   // Para recoger no va nada de la entrega: ni dirección, ni referencia, ni repartidor (ni envío, abajo).
   if (delivery) {
-    lineas.push(...partirTicket(`Dir: ${d.direccion?.trim() || TEXTO_SIN_DIRECCION}`));
+    lineas.push(...partirTicket(`Dir: ${d.direccion?.trim() || SIN_DIRECCION_EN_TICKET}`));
     if (d.referencia?.trim()) lineas.push(...partirTicket(`Ref: ${d.referencia}`));
     if (d.repartidor?.trim()) lineas.push(...partirTicket(`Repartidor: ${d.repartidor}`));
   }

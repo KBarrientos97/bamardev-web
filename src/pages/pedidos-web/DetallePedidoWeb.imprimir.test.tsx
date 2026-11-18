@@ -86,7 +86,7 @@ describe("«Imprimir pedido»", () => {
     expect(papel).toHaveClass("papel-negrita");
     const texto = papel.textContent!;
     expect(texto).toContain("PEDIDO WEB N° 07 - DELIVERY");
-    expect(texto).toContain("Dir: Ubicación marcada en el\nmapa");
+    expect(texto).toContain("Dir: Ubicación en el mapa");
     expect(texto).toContain("Repartidor: Pedro Rojas");
     expect(texto).toContain("TOTAL A COBRAR         Bs 249.00");
     expect(texto).toContain("Paga con Bs 300 - cambio Bs 51");
