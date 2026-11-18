@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CarritoCita } from "../../lib/agenda/tiposAgenda";
 import type { Producto } from "../../types";
 import type { Carrito } from "./useCarrito";
-import type { ProfesionalesDelCarrito } from "./PantallaVenta";
+import type { ConteoEnLaVenta, ProfesionalesDelCarrito } from "./PantallaVenta";
 
 /**
  * El POS entero, con la venta y el cobro de mentira: lo que se prueba acá es
@@ -36,6 +36,8 @@ const sesion = vi.hoisted(() => ({
   cupo: undefined as import("../../types").CupoEstado | undefined,
   actualizarCupo: vi.fn(),
   refrescarCupo: vi.fn(async () => {}),
+  /** El conteo por categoría (18-nov) como lo trae la sesión; ausente = apagado, lo de fábrica. */
+  conteo: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -49,6 +51,7 @@ vi.mock("../../store/AuthContext", async () => {
         features: sesion.features,
         usaAgregados: sesion.usaAgregados,
         ...(sesion.agregadosEnPos !== undefined ? { agregadosEnPos: sesion.agregadosEnPos } : {}),
+        ...(sesion.conteo ? { conteo: sesion.conteo } : {}),
       },
       usuario: {
         id: 1,
@@ -89,6 +92,7 @@ vi.mock("../../lib/api", () => ({
     entregasMesero: vi.fn(async () => null),
     crearVenta: vi.fn(),
     catalogoAgregados: vi.fn(async () => ({ activo: true, grupos: [], productos: [] })),
+    estadoConteo: vi.fn(),
   },
 }));
 
@@ -137,9 +141,16 @@ vi.mock("./PantallaVenta", () => ({
     onCobrar: () => void;
     cabecera?: ReactNode;
     profesionales?: ProfesionalesDelCarrito;
+    conteo?: ConteoEnLaVenta;
   }) => (
     <div>
       {props.cabecera}
+      {/* El conteo por categoría que le llega a la venta (18-nov): «Vasos 30=40». */}
+      {props.conteo && (
+        <p>
+          conteo: {props.conteo.nombre} {[...props.conteo.saldos].map(([k, v]) => `${k}=${v}`).join(",")}
+        </p>
+      )}
       <ul>
         {props.carrito.lineas.map((l) => {
           // QA PER-07b: lo que la línea del carrito dice de su profesional.
@@ -269,6 +280,74 @@ beforeEach(() => {
   sesion.cupo = undefined;
   sesion.usaAgregados = false;
   sesion.agregadosEnPos = undefined;
+  sesion.conteo = undefined;
+});
+
+describe("conteo por categoría (vasos por tamaño, 18-nov): el saldo del local en el POS", () => {
+  const NUTELLA_L = {
+    id: 41,
+    nombre: "Nutella L",
+    precio: 35,
+    tipoProducto: "SERVICIO",
+    stockTotal: 0,
+    habilitado: true,
+    componentes: [],
+    categoria: { id: 30, nombre: "L" },
+  } as unknown as Producto;
+  const estado = (quedan: number) => ({
+    activo: true,
+    nombre: "Vasos",
+    sucursalId: 1,
+    items: [{ categoriaId: 30, nombre: "L", contado: 100, contadoEn: 0, repuesto: 0, vendido: 100 - quedan, quedan }],
+  });
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja"];
+    sesion.conteo = { activo: true, nombre: "Vasos", categorias: [{ id: 30, nombre: "L" }] };
+    vi.mocked(api.getProductos).mockResolvedValue([NUTELLA_L]);
+    vi.mocked(api.estadoConteo).mockResolvedValue(estado(40) as never);
+    sessionStorage.setItem("bamar.carrito.LOCAL", JSON.stringify([{ id: 41, cantidad: 2, enMesa: 2, nota: "" }]));
+  });
+
+  async function cobrar() {
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 70" }));
+    });
+    await act(async () => {});
+  }
+
+  it("apagado (lo de fábrica) no pide nada ni le pasa nada a la venta", async () => {
+    sesion.conteo = undefined;
+    await montar();
+    expect(api.estadoConteo).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^conteo:/)).not.toBeInTheDocument();
+  });
+
+  it("prendido, pide el saldo del local de la caja y se lo pasa a la venta", async () => {
+    await montar();
+    expect(api.estadoConteo).toHaveBeenCalledWith(1);
+    expect(screen.getByText("conteo: Vasos 30=40")).toBeInTheDocument();
+  });
+
+  it("después de cobrar se vuelve a pedir: los vasos que se vendieron ya no están", async () => {
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 80 } as never);
+    await montar();
+    vi.mocked(api.estadoConteo).mockClear();
+    await cobrar();
+    expect(screen.getByText("recibo")).toBeInTheDocument();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el servidor rechaza la venta (otra caja vendió los últimos vasos), también se vuelve a pedir y el texto se ve", async () => {
+    const { ApiError } = await import("../../lib/api");
+    vi.mocked(api.crearVenta).mockRejectedValueOnce(new ApiError("Vasos L: sólo queda 1 y la venta lleva 2.", 400));
+    await montar();
+    vi.mocked(api.estadoConteo).mockClear();
+    await cobrar();
+    expect(screen.getByText("error del cobro: Vasos L: sólo queda 1 y la venta lleva 2.")).toBeInTheDocument();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () => {
