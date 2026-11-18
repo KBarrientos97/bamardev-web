@@ -85,7 +85,7 @@ export default function MenuLateral({
   /** Mientras se pregunta por la caja: el botón no admite otro toque. */
   cerrandoSesion?: boolean;
 }) {
-  const { logout, usuario } = useAuth();
+  const { logout, usuario, puede } = useAuth();
   const uid = useId();
   const navRef = useRef<HTMLElement>(null);
   const { bloques, pathname } = menu;
@@ -421,7 +421,12 @@ export default function MenuLateral({
   // solo botón al pie. Sueltos debajo de los bloques eran hasta seis renglones
   // que se leían como pantallas del negocio y alargaban el menú.
   const panelMas = `${uid}-mas-opciones`;
-  const enMas = pathname === "/notificaciones" || pathname === "/tutoriales";
+  // «Mi punto de venta» (18-nov) va acá y no con Configuración: es cómo ve los
+  // productos y cómo cobra quien está sentado, de su cuenta como los avisos.
+  // Sólo el cajero del restaurante: el dueño lo cambia para todos en
+  // Configuración › Punto de venta (ver `mi_pos` en permisos.ts).
+  const conMiPos = puede("mi_pos");
+  const enMas = pathname === "/notificaciones" || pathname === "/tutoriales" || pathname === "/mi-punto-de-venta";
   const elegir = (accion: () => void) => {
     setTip(null);
     setMasAbierto(false);
@@ -520,6 +525,22 @@ export default function MenuLateral({
                   <Icon name="download" size={19} />
                   {!compacta && <span>{textoInstalar()}</span>}
                 </button>
+              )}
+
+              {conMiPos && (
+                <Link
+                  to="/mi-punto-de-venta"
+                  onClick={() => elegir(onNavegar)}
+                  aria-label={compacta ? "Mi punto de venta" : undefined}
+                  aria-current={pathname === "/mi-punto-de-venta" ? "page" : undefined}
+                  data-fila=""
+                  data-nav-id="mi-punto-de-venta"
+                  {...mostrarTip("Mi punto de venta")}
+                  className={claseOpcion(pathname === "/mi-punto-de-venta")}
+                >
+                  <Icon name="settings" size={19} />
+                  {!compacta && <span>Mi punto de venta</span>}
+                </Link>
               )}
 
               {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol.

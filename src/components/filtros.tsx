@@ -291,7 +291,11 @@ export function EncabezadoPagina({
   volver,
 }: {
   titulo: string;
-  subtitulo?: string;
+  /**
+   * Casi siempre un texto. Puede llevar un segundo renglón (un `<span>` en
+   * bloque): Configuración › Punto de venta dice debajo para quién vale.
+   */
+  subtitulo?: ReactNode;
   accion?: ReactNode;
   /**
    * Pantalla a la que se vuelve, para las que cuelgan de otra (Gastos

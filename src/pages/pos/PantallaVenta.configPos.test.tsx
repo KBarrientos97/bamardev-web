@@ -6,9 +6,9 @@ import type { Categoria, Producto } from "../../types";
 /**
  * El punto de venta según Configuración › Punto de venta (16-nov): el orden de
  * las categorías, los filtros, los íconos y la vista en columnas. Con lo de
- * fábrica (o sin el dato) el POS es el de siempre; la farmacia y la
- * modificación de una venta no lo toman, y en el celular las columnas vuelven
- * a ser las tarjetas de siempre.
+ * fábrica (o sin el dato) el POS es el de siempre; la farmacia no lo toma, y en
+ * el celular las columnas vuelven a ser las tarjetas de siempre. Modificar una
+ * venta lo toma desde el 18-nov (menos el cobro en la misma pantalla).
  */
 
 const sesion = vi.hoisted(() => ({
@@ -634,15 +634,22 @@ describe("dónde las columnas no se usan", () => {
     expect(columnas().length).toBeGreaterThan(0);
   });
 
-  it("modificando una venta ya cobrada: el POS de siempre, con sus íconos y sus chips", async () => {
-    sesion.pos = { vista: "COLUMNAS", iconos: false, filtros: false, ordenCategorias: [3] };
+  it("modificando una venta ya cobrada: la vista de quien modifica (18-nov), con el pie de la modificación", async () => {
+    // Hasta el 18-nov volvía a las tarjetas de fábrica: con «Columnas por
+    // categoría», la cajera modificaba en otra pantalla que la de vender.
+    sesion.pos = { vista: "COLUMNAS", iconos: false, filtros: false, ordenCategorias: [3], cobro: "EN_VENTA" };
     await montar({
+      lineas: [{ producto: ENTERO, cantidad: 1, enMesa: 1, nota: "" }],
       modificacion: { titulo: "Cambio de V-000012", resumen: null, etiqueta: "Continuar", vacio: "Sin nada" },
+      // Aunque llegara el cobro en la misma pantalla, al modificar no va: el pie es el del cambio.
+      cobro: { total: 21, formasPago: [], onConfirmar: vi.fn(), enviando: false, error: "" },
     });
-    expect(screen.queryAllByRole("region")).toEqual([]);
-    expect(chips()).toEqual(["Todos", "Pollos", "Bebidas", "Extras"]);
-    const tarjeta = screen.getByRole("heading", { name: "Pollo entero" }).closest("li")!;
-    expect(within(tarjeta).getByText("PE")).toBeInTheDocument();
+    expect(columnas().map(([n]) => n)).toEqual(["Extras", "Pollos", "Bebidas", "Otros"]);
+    expect(chips()).toEqual([]);
+    expect(within(fila("Pollo entero")).queryByText("PE")).not.toBeInTheDocument();
+    expect(screen.getByText("Cambio de V-000012")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirmar/ })).not.toBeInTheDocument();
   });
 
   it("la farmacia: su catálogo de siempre, diga lo que diga", async () => {

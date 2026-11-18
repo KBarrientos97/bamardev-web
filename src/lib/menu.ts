@@ -833,6 +833,8 @@ const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/notificaciones\/?$/, "Notificaciones"],
   // Lo mismo: se llega desde "Más opciones", al pie de la barra.
   [/^\/tutoriales\/?$/, "Tutoriales"],
+  // Lo del cajero (18-nov): desde "Más opciones" o desde la cabecera del POS.
+  [/^\/mi-punto-de-venta\/?$/, "Mi punto de venta"],
 ];
 
 /** Título de la barra móvil. */

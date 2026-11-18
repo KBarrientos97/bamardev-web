@@ -1848,6 +1848,22 @@ function PuntoDeVenta() {
               titulo="Cerrar caja"
               onClick={() => setPantalla("cierre")}
             />
+            {/* Los ajustes del punto de venta (18-nov), a un toque: el dueño va a
+                los de todo el negocio y el cajero a los suyos. Sólo en el
+                restaurante, donde existen esas dos pantallas. Sólo el ícono, de
+                la misma altura que los de al lado, para sumarle a la fila lo
+                menos posible de ancho. */}
+            {(puede("config_pos") || puede("mi_pos")) && (
+              <button
+                type="button"
+                onClick={() => navigate(puede("config_pos") ? "/configuracion/punto-de-venta" : "/mi-punto-de-venta")}
+                aria-label="Ajustes del punto de venta"
+                title="Ajustes del punto de venta"
+                className="inline-flex items-center justify-center rounded-lg border border-borde p-1.5 text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
+              >
+                <Icon name="settings" size={16} />
+              </button>
+            )}
           </div>
         </div>
 

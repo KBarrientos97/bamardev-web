@@ -1,4 +1,5 @@
 import type { SesionNegocio } from "../types";
+import { tienePermiso } from "./permisos";
 
 /**
  * Cómo se ve y cómo cobra el punto de venta (Configuración › Punto de venta,
@@ -12,6 +13,12 @@ import type { SesionNegocio } from "../types";
  * fábrica. Todo el POS lo lee por `configPosDe` y no del campo crudo, así un
  * dato raro (un valor que el backend sumó después, un `null`) nunca deja la
  * caja a medio dibujar.
+ *
+ * Desde el 18-nov hay dos capas (CONTRATO-pos-por-cajero R1–R4): la del
+ * negocio, que fija el dueño, y encima lo PROPIO de cada cajero (`MiConfigPos`,
+ * `PATCH /pos/config/mia`). La sesión ya trae la mezcla de las dos —la
+ * configuración efectiva de quien entró—, así que el POS la sigue leyendo igual
+ * que antes y un cajero que nunca tocó nada ve lo del negocio.
  */
 
 /** Cómo se ven los productos: en tarjetas (lo de siempre) o una columna por categoría. */
@@ -96,17 +103,86 @@ export function normalizarConfigPos(crudo: unknown): ConfigPos {
 }
 
 /**
+ * Si el rubro tiene punto de venta configurable. Sólo el restaurante: la
+ * pantalla para cambiarlo existe sólo ahí (`config_pos` y `mi_pos`, ver
+ * permisos.ts), y lo mismo el arrastre de las categorías en el POS.
+ */
+export function rubroConConfigPos(tipoNegocio: string | null | undefined): boolean {
+  return tipoNegocio === "RESTAURANTE";
+}
+
+/**
  * La configuración del punto de venta de ESTE negocio, lista para usar.
  *
- * Sólo el restaurante la tiene: la pantalla para cambiarla existe sólo ahí
- * (`config_pos`, ver permisos.ts). Si un backend la mandara en otro rubro (un
- * negocio que cambió de rubro después de elegir algo), el POS sigue siendo el
- * de siempre: la farmacia arma su catálogo aparte y el salón de belleza cobra
- * con sus propinas y sus vales, y ninguno de los dos pidió esto.
+ * Sólo el restaurante la tiene (`rubroConConfigPos`). Si un backend la mandara
+ * en otro rubro (un negocio que cambió de rubro después de elegir algo), el POS
+ * sigue siendo el de siempre: la farmacia arma su catálogo aparte y el salón de
+ * belleza cobra con sus propinas y sus vales, y ninguno de los dos pidió esto.
  */
 export function configPosDe(negocio: Pick<SesionNegocio, "pos" | "tipoNegocio"> | null | undefined): ConfigPos {
-  if (negocio?.tipoNegocio !== "RESTAURANTE") return normalizarConfigPos(null);
-  return normalizarConfigPos(negocio.pos);
+  if (!rubroConConfigPos(negocio?.tipoNegocio)) return normalizarConfigPos(null);
+  return normalizarConfigPos(negocio?.pos);
+}
+
+// ── Lo propio de cada cajero (18-nov) ─────────────────────────────────────
+
+/**
+ * Lo que cada cajero puede cambiar PARA ÉL (R3), en el orden fijo en que lo
+ * manda el backend en `propios`. «Controlar la plata de los repartidores» no
+ * está a propósito: es un control de plata sobre la caja, no una comodidad (si
+ * cada cajero lo apagara, el cierre no cuadraría). Los billetes de Configuración
+ * › Caja, tampoco: los dos quedan del negocio, sólo el dueño.
+ */
+export const CAMPOS_PROPIOS = ["vista", "cobro", "iconos", "filtros", "ordenCategorias", "imprimirPlataformas"] as const;
+export type CampoPropio = (typeof CAMPOS_PROPIOS)[number];
+
+/**
+ * Lo que se manda a `PATCH /pos/config/mia`. Por campo: ausente no se toca, un
+ * valor queda propio (`ordenCategorias: []` también: «mi orden es el de
+ * siempre») y `null` lo vuelve a lo que eligió el negocio.
+ */
+export type CambiosMiConfigPos = { [K in CampoPropio]?: ConfigPos[K] | null };
+
+/** `GET /pos/config/mia`: lo que ve este usuario y qué parte es suya. */
+export interface MiConfigPos {
+  /** La configuración efectiva: lo del negocio con lo propio encima. */
+  config: ConfigPos;
+  /** Lo que este usuario cambió para él (vacío: ve todo como lo eligió el negocio). */
+  propios: CampoPropio[];
+  /** Tiene `negocio.configurar`: no tiene capa propia, lo suyo es lo del negocio. */
+  esDelNegocio: boolean;
+}
+
+/** Lee la respuesta de `/pos/config/mia` como `normalizarConfigPos`: lo que no se entiende no rompe nada. */
+export function normalizarMiConfigPos(crudo: unknown): MiConfigPos {
+  const c = crudo && typeof crudo === "object" ? (crudo as Record<string, unknown>) : {};
+  const esDelNegocio = c.esDelNegocio === true;
+  const lista = Array.isArray(c.propios) ? c.propios : [];
+  return {
+    config: normalizarConfigPos(c.config),
+    // En el orden fijo y sin lo que esta versión no conoce: un campo que el
+    // backend sume mañana no aparece como «tuyo» en una pantalla que no lo muestra.
+    propios: esDelNegocio ? [] : CAMPOS_PROPIOS.filter((campo) => lista.includes(campo)),
+    esDelNegocio,
+  };
+}
+
+/**
+ * Si lo que este usuario cambia del punto de venta es lo de TODO el negocio
+ * (R2): quien tiene `negocio.configurar` (el dueño) no tiene capa propia, y lo
+ * que toca —en Configuración o arrastrando una categoría en el POS— va a
+ * `PATCH /pos/config`; así nunca ve en su POS algo distinto de lo que dice su
+ * Configuración. Los demás escriben SIEMPRE en lo suyo (`/pos/config/mia`).
+ *
+ * Es la única regla: todo lo que guarda el punto de venta pregunta acá.
+ */
+export function configuraElNegocio(usuario: Parameters<typeof tienePermiso>[0]): boolean {
+  return tienePermiso(usuario, "negocio.configurar");
+}
+
+/** Si dos órdenes de categorías dicen lo mismo (un arrastre que volvió a su lugar no se guarda). */
+export function mismoOrden(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
 }
 
 /** Si dos configuraciones dicen lo mismo (para no reescribir la sesión en cada chequeo). */

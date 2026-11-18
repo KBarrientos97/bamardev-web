@@ -812,6 +812,19 @@ function Rutas() {
           }
         />
 
+        {/* «Mi punto de venta» (18-nov): la misma pantalla, para el cajero, que
+            cambia sólo lo suyo. El dueño no entra: lo suyo es lo del negocio. */}
+        <Route
+          path="/mi-punto-de-venta"
+          element={
+            <Protegida seccion="mi_pos">
+              <Suspense fallback={null}>
+                <ConfigPuntoDeVenta />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
         {/* Si se cuentan los billetes al abrir y al cerrar el turno (17-nov). Mismo permiso que Punto de venta. */}
         <Route
           path="/configuracion/caja"
