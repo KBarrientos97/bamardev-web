@@ -11,6 +11,8 @@ import {
   type ConfigPos,
   type VistaPos,
 } from "../../lib/configPos";
+import { plataformasPrendidas } from "../../lib/pedidosPlataforma/acceso";
+import { tieneFeature } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { SiNo, Tarjeta } from "../tickets/piezas";
@@ -29,6 +31,9 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
  *    productos, sin cambiar de pantalla (sólo en pantalla ancha).
  *  - **Íconos y filtros**, y **el orden de las categorías**, que vale para los
  *    filtros y para las columnas.
+ *  - (Delivery full, 18-nov) **Imprimir el pedido de Yango/PedidosYa** al
+ *    registrarlo, sólo con alguna de esas features, y **controlar la plata de
+ *    los repartidores**, sólo con `delivery`. Los dos apagados de fábrica.
  *
  * Mesa o para llevar no está acá a propósito: el dueño lo quiere como se
  * trabaja hoy (cada línea nace en mesa y el carrito lo cambia).
@@ -41,10 +46,14 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
  */
 
 /** Dónde se dice que algo no se guardó: al lado de lo que se tocó, no arriba de todo. */
-type Seccion = "vista" | "cobro" | "mostrar" | "orden";
+type Seccion = "vista" | "cobro" | "mostrar" | "orden" | "plataformas" | "repartidores";
 
 export default function ConfigPuntoDeVenta() {
-  const { rubro, fijarConfigPos } = useAuth();
+  const { rubro, fijarConfigPos, negocio } = useAuth();
+  // Delivery full (18-nov): cada sección, sólo a quien tiene con qué usarla.
+  // Yango y PedidosYa son extras explícitos (no fallan abiertos, como sus botones del POS).
+  const conPlataformas = plataformasPrendidas(negocio?.features).length > 0;
+  const conDelivery = tieneFeature(negocio?.features, "delivery");
   const estado = useApi(() => api.configPos().then(normalizarConfigPos), []);
   const categorias = useApi(() => api.getCategorias(false), []);
 
@@ -223,6 +232,30 @@ export default function ConfigPuntoDeVenta() {
             </div>
             {errorDe("orden")}
           </Tarjeta>
+
+          {conPlataformas && (
+            <Tarjeta titulo="Pedidos de Yango y PedidosYa">
+              <SiNo
+                activo={actual.imprimirPlataformas}
+                onCambiar={(imprimirPlataformas) => guardar({ imprimirPlataformas }, "plataformas")}
+                etiqueta="Imprimir el pedido al registrarlo"
+                detalle="Al registrar un pedido de Yango o PedidosYa se abre su ticket para imprimirlo. Apagado, se registra y listo, como siempre."
+              />
+              {errorDe("plataformas")}
+            </Tarjeta>
+          )}
+
+          {conDelivery && (
+            <Tarjeta titulo="Delivery propio">
+              <SiNo
+                activo={actual.rendirRepartidores}
+                onCambiar={(rendirRepartidores) => guardar({ rendirRepartidores }, "repartidores")}
+                etiqueta="Controlar la plata de los repartidores"
+                detalle="Lo que el repartidor cobra en efectivo figura como plata en su poder hasta que la caja la recibe. La caja no se cierra con plata sin recibir."
+              />
+              {errorDe("repartidores")}
+            </Tarjeta>
+          )}
         </>
       )}
     </div>

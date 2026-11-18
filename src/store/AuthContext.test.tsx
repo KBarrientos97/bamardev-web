@@ -290,6 +290,8 @@ describe("Configuración › Punto de venta: negocio.pos sigue al estado de la l
               ordenCategorias: [],
               billetesAlAbrir: true,
               billetesAlCerrar: true,
+              imprimirPlataformas: false,
+              rendirRepartidores: false,
             })
           }
         >
@@ -323,6 +325,8 @@ describe("Configuración › Punto de venta: negocio.pos sigue al estado de la l
       // Configuración › Caja (17-nov): completos también, de fábrica en «sí».
       billetesAlAbrir: true,
       billetesAlCerrar: true,
+      imprimirPlataformas: false,
+      rendirRepartidores: false,
     });
   });
 

@@ -35,6 +35,17 @@ export interface ConfigPos {
    */
   billetesAlAbrir: boolean;
   billetesAlCerrar: boolean;
+  /**
+   * Delivery full (18-nov): al registrar un pedido de Yango o PedidosYa se abre
+   * su ticket para imprimirlo. Apagado (lo de fábrica), se registra y listo.
+   */
+  imprimirPlataformas: boolean;
+  /**
+   * Delivery full (18-nov): lo que el repartidor cobra en efectivo queda en su
+   * poder hasta que la caja lo recibe, y la caja no cierra con plata sin
+   * recibir. La rendición lo lee de la respuesta del backend (`activa`), no de acá.
+   */
+  rendirRepartidores: boolean;
 }
 
 /*
@@ -53,6 +64,8 @@ export const CONFIG_POS_DE_SIEMPRE: Readonly<ConfigPos> = {
   ordenCategorias: [],
   billetesAlAbrir: true,
   billetesAlCerrar: true,
+  imprimirPlataformas: false,
+  rendirRepartidores: false,
 };
 
 /**
@@ -76,6 +89,9 @@ export function normalizarConfigPos(crudo: unknown): ConfigPos {
       : [],
     billetesAlAbrir: typeof c.billetesAlAbrir === "boolean" ? c.billetesAlAbrir : d.billetesAlAbrir,
     billetesAlCerrar: typeof c.billetesAlCerrar === "boolean" ? c.billetesAlCerrar : d.billetesAlCerrar,
+    // Un `pos` de antes de estos dos ajustes no los trae: apagados, como siempre.
+    imprimirPlataformas: c.imprimirPlataformas === true,
+    rendirRepartidores: c.rendirRepartidores === true,
   };
 }
 
@@ -102,6 +118,8 @@ export function mismaConfigPos(a: ConfigPos, b: ConfigPos): boolean {
     a.filtros === b.filtros &&
     a.billetesAlAbrir === b.billetesAlAbrir &&
     a.billetesAlCerrar === b.billetesAlCerrar &&
+    a.imprimirPlataformas === b.imprimirPlataformas &&
+    a.rendirRepartidores === b.rendirRepartidores &&
     a.ordenCategorias.length === b.ordenCategorias.length &&
     a.ordenCategorias.every((id, i) => id === b.ordenCategorias[i])
   );

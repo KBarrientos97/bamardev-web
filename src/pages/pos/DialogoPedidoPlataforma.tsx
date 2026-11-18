@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
+import { useCabeceraDelPapel, useImpresionTexto, VistaTicketTexto } from "./ImprimirTicketTexto";
+import { textoTicketPlataforma, type PedidoParaImprimir } from "./ticketPlataforma";
 
 /**
  * Confirmar un pedido de Yango o PedidosYa tomado desde el POS
@@ -121,6 +123,45 @@ export default function DialogoPedidoPlataforma({
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * Registrado el pedido, con «Imprimir el pedido al registrarlo» prendido
+ * (CONTRATO-DELIVERY-FULL-18NOV §9): la vista del ticket con «Imprimir» y
+ * «Listo». Con el ajuste apagado esta ventana no existe: sale el aviso de
+ * siempre. Sin señal el pedido quedó en la cola y se imprime igual, con lo
+ * que se cargó en el carrito.
+ */
+export function PedidoPlataformaRegistrado({ pedido, onListo }: { pedido: PedidoParaImprimir; onListo: () => void }) {
+  const nombre = NOMBRE_PLATAFORMA[pedido.plataforma];
+  const cabecera = useCabeceraDelPapel(pedido.sede);
+  const { imprimir, papel } = useImpresionTexto("ticket-plataforma");
+  const texto = textoTicketPlataforma({ ...pedido, ...cabecera });
+  return (
+    <Modal
+      abierto
+      titulo={
+        pedido.encolado
+          ? `Pedido de ${nombre} guardado: sube solo cuando vuelva la señal`
+          : `Pedido de ${nombre} registrado`
+      }
+      onClose={onListo}
+      ancho="max-w-md"
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onListo}>
+            Listo
+          </Boton>
+          <Boton icono="printer" onClick={() => imprimir(texto)}>
+            Imprimir
+          </Boton>
+        </>
+      }
+    >
+      <VistaTicketTexto texto={texto} />
+      {papel}
     </Modal>
   );
 }

@@ -16,6 +16,9 @@ import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
+import { direccionParaMostrar } from "../../lib/pedidosWeb/direccion";
+import ImprimirTicketTexto, { useCabeceraDelPapel } from "../pos/ImprimirTicketTexto";
+import { datosDePedidoWeb, textoTicketPedidoWeb } from "../pos/ticketPedidoWeb";
 import { MOTIVOS_RECHAZO, aceptadoPorDe, haceCuanto, totalDe } from "./logica";
 
 // MapLibre (~1 MB) se baja recién cuando se abre un pedido con ubicación.
@@ -104,6 +107,10 @@ export default function DetallePedidoWeb({
   const wa = Telefono.paraWhatsApp(p.telefono);
   const mensaje = `Hola ${p.nombre}, te escribimos de ${negocio?.nombre ?? "el local"} por tu pedido N° ${String(p.numero).padStart(2, "0")}.`;
   const pin = p.latitud != null && p.longitud != null ? { latitud: p.latitud, longitud: p.longitud } : null;
+  // «Imprimir pedido»: en cualquier estado menos rechazado o vencido (también el que venció recién, sin
+  // respuesta del servidor todavía), y sólo con las líneas ya a la vista: un papel sin productos no sirve.
+  const imprimible = p.estado !== "RECHAZADO" && p.estado !== "VENCIDO" && !vencidoYa && p.lineas.length > 0;
+  const cabeceraPapel = useCabeceraDelPapel(p.sucursal);
 
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-4 p-5 pb-4">
@@ -242,12 +249,23 @@ export default function DetallePedidoWeb({
           )}
           .
         </p>
+        {/* Para la cocina y para la bolsa (delivery full, 18-nov): el ticket de 58 mm del pedido. */}
+        {imprimible && (
+          <div className="mt-3 flex justify-end">
+            <ImprimirTicketTexto
+              etiqueta="Imprimir pedido"
+              testId="ticket-pedido-web"
+              texto={() => textoTicketPedidoWeb({ ...datosDePedidoWeb(p), ...cabeceraPapel })}
+            />
+          </div>
+        )}
       </section>
 
       {delivery && (
         <section className="card space-y-3 p-4" aria-label="Entrega">
           <div>
-            <p className="text-sm font-bold text-texto">{p.direccion}</p>
+            {/* La dirección es opcional desde el 18-nov: el pin manda. */}
+            <p className="break-words text-sm font-bold text-texto">{direccionParaMostrar(p.direccion)}</p>
             {p.referencia && <p className="text-[13px] text-texto-3">{p.referencia}</p>}
           </div>
           {externo && (

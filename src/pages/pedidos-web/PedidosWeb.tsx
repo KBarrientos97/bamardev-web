@@ -5,6 +5,7 @@ import { AvisoOk, Badge, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import { EVENTO_PEDIDOS_WEB } from "../../lib/pedidosWeb/contador";
+import { direccionParaMostrar } from "../../lib/pedidosWeb/direccion";
 import { esExterno, nombreServicio } from "../../lib/pedidosWeb/entrega";
 import type { Bandeja, PedidoWeb } from "../../lib/pedidosWeb/tipos";
 import { useSucursales } from "../../lib/useSucursales";
@@ -270,7 +271,7 @@ function Lista({
                   N° {String(p.numero).padStart(2, "0")} · {p.nombre}
                 </p>
                 <p className="truncate text-xs text-texto-3">
-                  {p.tipo === "DELIVERY" ? p.direccion : "Paso a recoger"}
+                  {p.tipo === "DELIVERY" ? direccionParaMostrar(p.direccion) : "Paso a recoger"}
                   {p.sucursal ? ` · ${p.sucursal}` : ""}
                 </p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">

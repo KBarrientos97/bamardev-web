@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ResumenCaja } from "../../types";
-import { efectivoDelTurno, mediosDelTurno, vendidoDelTurno } from "./movimientoDelTurno";
+import {
+  cierreFrenadoPorRepartidores,
+  efectivoDelTurno,
+  enPoderDeRepartidores,
+  mediosDelTurno,
+  textoEnPoder,
+  vendidoDelTurno,
+} from "./movimientoDelTurno";
 
 function resumen(extra: Partial<ResumenCaja> = {}): ResumenCaja {
   return {
@@ -175,5 +182,52 @@ describe("lo que entró por cada medio que no es efectivo", () => {
       }),
     );
     expect(qr.total).toBe(0.3);
+  });
+});
+
+describe("18-nov: la plata en poder de los repartidores", () => {
+  const conRepartidores = resumen({
+    enPoderDeRepartidores: 190,
+    repartidoresPendientes: [
+      { repartidorId: 129, nombre: "Pedro Rojas", monto: 130, entregas: 2 },
+      { repartidorId: 130, nombre: "Luis Vaca", monto: 60, entregas: 1 },
+    ],
+  });
+
+  it("el monto de la fila y a quién pedírsela, en el orden del servidor", () => {
+    expect(enPoderDeRepartidores(conRepartidores)).toEqual({
+      monto: 190,
+      quienes: [
+        { nombre: "Pedro Rojas", monto: 130 },
+        { nombre: "Luis Vaca", monto: 60 },
+      ],
+    });
+    expect(textoEnPoder(enPoderDeRepartidores(conRepartidores).quienes)).toBe("Pedro Rojas Bs 130,00 · Luis Vaca Bs 60,00");
+  });
+
+  it("un backend anterior no manda los campos: cero y nadie, como siempre", () => {
+    expect(enPoderDeRepartidores(resumen())).toEqual({ monto: 0, quienes: [] });
+    expect(cierreFrenadoPorRepartidores(resumen())).toBeNull();
+    expect(cierreFrenadoPorRepartidores(null)).toBeNull();
+  });
+
+  it("un residuo de centavo no es plata pendiente, ni un repartidor en cero", () => {
+    const r = resumen({
+      enPoderDeRepartidores: 0.001,
+      repartidoresPendientes: [{ repartidorId: 1, nombre: "Pedro Rojas", monto: 0, entregas: 0 }],
+    });
+    expect(enPoderDeRepartidores(r)).toEqual({ monto: 0, quienes: [] });
+    expect(cierreFrenadoPorRepartidores(r)).toBeNull();
+  });
+
+  it("sin nombre, «Repartidor»: la fila nunca queda con un hueco", () => {
+    const r = resumen({ enPoderDeRepartidores: 50, repartidoresPendientes: [{ repartidorId: 1, nombre: null, monto: 50, entregas: 1 }] });
+    expect(textoEnPoder(enPoderDeRepartidores(r).quienes)).toBe("Repartidor Bs 50,00");
+  });
+
+  it("con plata sin recibir, el cierre se frena con el mensaje del backend y la plata como la ve la cajera", () => {
+    expect(cierreFrenadoPorRepartidores(conRepartidores)).toBe(
+      "Hay efectivo de repartidores sin recibir: Pedro Rojas Bs 130,00 · Luis Vaca Bs 60,00. Recibilo en «Repartidores» antes de cerrar la caja.",
+    );
   });
 });
