@@ -91,6 +91,10 @@ export default function TarjetaConteo() {
     const ids = lista.filter((c) => (c.id === id ? marcar : marcadas.has(c.id))).map((c) => c.id);
     // Desmarcar la última con el conteo prendido lo apaga: prendido sin
     // categorías es un estado que el backend no acepta.
+    // Las casillas se quedan a la vista (con el aviso de que falta marcar una):
+    // sin esto desaparecían en el mismo toque y, para volver a marcar, había que
+    // tocar un interruptor que no prendía.
+    if (ids.length === 0) setPreparando(true);
     void cambiar(ids.length === 0 && datos?.activo ? { activo: false, categoriaIds: ids } : { categoriaIds: ids });
   };
 

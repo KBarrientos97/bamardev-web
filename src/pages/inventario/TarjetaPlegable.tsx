@@ -41,8 +41,12 @@ export default function TarjetaPlegable({
         >
           <span className="min-w-0 flex-1 text-[12px] font-bold uppercase tracking-[0.12em] text-texto-3">{titulo}</span>
           {estado && (
+            // Con tope y recorte: el estado puede llevar un nombre que escribe el
+            // dueño («Prendido · Envases descartables grandes») y, sin tope, en el
+            // celular dejaba el título de la tarjeta partido en tres renglones.
             <span
-              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold normal-case tracking-normal ${
+              title={estado.texto}
+              className={`max-w-[55%] shrink-0 truncate rounded-full px-2.5 py-0.5 text-[11px] font-semibold normal-case tracking-normal ${
                 estado.tono === "verde" ? "bg-primary-50 text-primary-700" : "bg-muted text-texto-3"
               }`}
             >

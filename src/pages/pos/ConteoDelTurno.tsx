@@ -39,20 +39,23 @@ export default function ConteoDelTurno({
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Quedan</p>
+              {/* Sin contar no hay un «quedan» que rotular: se lee igual que en la Supervisión. */}
               {i.quedan == null ? (
                 <p className="text-sm font-semibold text-texto-3">Sin contar</p>
               ) : (
-                <p className={`text-lg font-extrabold leading-tight ${i.quedan < 0 ? "text-danger-text" : "text-texto"}`}>
-                  {fmtNum(i.quedan)}
-                </p>
+                <>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Quedan</p>
+                  <p className={`text-lg font-extrabold leading-tight ${i.quedan < 0 ? "text-danger-text" : "text-texto"}`}>
+                    {fmtNum(i.quedan)}
+                  </p>
+                </>
               )}
             </div>
           </li>
         ))}
       </ul>
       {hayDescuadre && (
-        <p className="mt-1.5 text-[12px] text-texto-3">
+        <p className="mt-1.5 text-balance text-[12px] text-texto-3">
           «Quedan» es lo del local: cuenta también lo vendido en otras cajas y lo repuesto.
         </p>
       )}
