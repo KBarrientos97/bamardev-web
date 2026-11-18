@@ -16,6 +16,9 @@ const DE_SIEMPRE = {
   ordenCategorias: [],
   billetesAlAbrir: true,
   billetesAlCerrar: true,
+  // Delivery full (18-nov): los dos apagados de fábrica.
+  imprimirPlataformas: false,
+  rendirRepartidores: false,
 };
 
 describe("normalizarConfigPos", () => {
