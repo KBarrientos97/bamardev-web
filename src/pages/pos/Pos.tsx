@@ -55,7 +55,8 @@ import { SelectorSedeCaja } from "./SelectorSedeCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
-import DialogoPedidoPlataforma from "./DialogoPedidoPlataforma";
+import DialogoPedidoPlataforma, { PedidoPlataformaRegistrado } from "./DialogoPedidoPlataforma";
+import { pedidoParaImprimir, type PedidoParaImprimir } from "./ticketPlataforma";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
@@ -779,6 +780,8 @@ function PuntoDeVenta() {
    */
   const alVolverDelPedido = useRef<(() => void) | undefined>(undefined);
   const [avisoPedido, setAvisoPedido] = useAviso();
+  /** El ticket del pedido recién registrado, con el ajuste de imprimirlo prendido (18-nov). */
+  const [pedidoImpreso, setPedidoImpreso] = useState<PedidoParaImprimir | null>(null);
   // Su propia identidad, aparte de la del cobro: un reintento tras un 504
   // devuelve el mismo pedido en vez de crear otro y descontar dos veces.
   const intentoPedido = useIntentoDeCobro();
@@ -833,19 +836,39 @@ function PuntoDeVenta() {
       intentoPedido.registrado();
       // Sin señal el stock de la copia baja igual que con una venta encolada.
       if (r.encolado) await descontarDeLaCopia(copiaCatalogo(almacenCaja), detalles);
+      // «Imprimir el pedido al registrarlo» (delivery full, 18-nov): el ticket
+      // se arma ANTES de vaciar el carrito, que es lo único que hay si quedó en
+      // la cola. Apagado (lo de fábrica), el aviso de siempre y nada más.
+      const paraImprimir = configPosDe(negocio).imprimirPlataformas
+        ? pedidoParaImprimir({
+            plataforma,
+            codigoExterno,
+            pedido: r.pedido,
+            carrito: carritoVenta.lineas.map((l) => ({
+              nombre: l.producto.nombre,
+              cantidad: l.cantidad,
+              precio: l.producto.precio,
+              hijas: l.vista?.hijas,
+            })),
+            sede: caja.datos?.caja?.almacen ?? null,
+            atendio: usuario?.nombre?.trim() || usuario?.username || null,
+          })
+        : null;
       alVolverDelPedido.current = undefined;
       setPedidoPlataforma(null);
       limpiar();
       const nombre = NOMBRE_PLATAFORMA[plataforma];
-      setAvisoPedido(
-        r.encolado
-          ? `Pedido de ${nombre} guardado sin internet: se sube solo cuando vuelva la conexión.`
-          : `Pedido de ${nombre} registrado`,
-      );
+      if (paraImprimir) setPedidoImpreso(paraImprimir);
+      else
+        setAvisoPedido(
+          r.encolado
+            ? `Pedido de ${nombre} guardado sin internet: se sube solo cuando vuelva la conexión.`
+            : `Pedido de ${nombre} registrado`,
+        );
       // El stock cambió: el catálogo tiene que reflejarlo.
       productos.recargar();
     },
-    [carritoVenta, intentoPedido, variasSedes, almacenCaja, idCaja, limpiar, setAvisoPedido, productos],
+    [carritoVenta, intentoPedido, variasSedes, almacenCaja, idCaja, limpiar, setAvisoPedido, productos, negocio, usuario, caja.datos],
   );
 
   const cobrar = useCallback(
@@ -1735,6 +1758,7 @@ function PuntoDeVenta() {
             onRegistrar={(codigo) => registrarPedido(pedidoPlataforma, codigo)}
           />
         )}
+        {pedidoImpreso && <PedidoPlataformaRegistrado pedido={pedidoImpreso} onListo={() => setPedidoImpreso(null)} />}
 
         {/* Cambiar de sede con una venta a medias: el carrito era con el stock y
             los precios de la otra, así que se vacía; antes se avisa. */}

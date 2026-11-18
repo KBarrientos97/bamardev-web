@@ -5,6 +5,10 @@ import { Badge, Boton, Modal } from "../../components/ui";
 import { fmtCantidad, fmtFechaHora, fmtHora, fmtMoney } from "../../lib/format";
 import type { PedidoPlataformaEncolado } from "../../lib/offline/cola";
 import { NOMBRE_PLATAFORMA, type PedidoPlataforma } from "../../lib/pedidosPlataforma/tipos";
+import { configPosDe } from "../../lib/configPos";
+import { useAuth } from "../../store/AuthContext";
+import ImprimirTicketTexto, { useCabeceraDelPapel } from "./ImprimirTicketTexto";
+import { datosDePedidoPlataforma, textoTicketPlataforma } from "./ticketPlataforma";
 
 /**
  * Las piezas de los pedidos de Yango y PedidosYa en «Ventas del turno»
@@ -72,6 +76,11 @@ export function DetallePedidoDelTurno({
 }) {
   const nombre = NOMBRE_PLATAFORMA[p.plataforma];
   const anulado = !!p.anuladoEn;
+  // Reimprimir el ticket (delivery full, 18-nov): sólo con «Imprimir el pedido
+  // al registrarlo» prendido, y no de un pedido anulado (no va a la cocina).
+  const { negocio } = useAuth();
+  const conImpresion = configPosDe(negocio).imprimirPlataformas && !anulado;
+  const cabecera = useCabeceraDelPapel(p.almacen?.nombre);
   return (
     <Modal
       abierto
@@ -84,6 +93,12 @@ export function DetallePedidoDelTurno({
           <Boton variante="ghost" onClick={onClose}>
             Cerrar
           </Boton>
+          {conImpresion && (
+            <ImprimirTicketTexto
+              testId="ticket-plataforma"
+              texto={() => textoTicketPlataforma({ ...datosDePedidoPlataforma(p), ...cabecera })}
+            />
+          )}
           {onAnular && !anulado && (
             <Boton variante="danger" onClick={onAnular}>
               Anular
