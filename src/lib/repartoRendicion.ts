@@ -43,6 +43,13 @@ export interface EntregaDeRendicion {
   puedeRecibir: boolean;
   /** Quién abrió la caja dueña de esa plata (para «La recibe la caja de …»). */
   cajaDe: string | null;
+  /**
+   * El pedido lo cobró la cajera con «Cobrar y entregar» (el repartidor volvió
+   * con la plata y ella lo cerró): no es plata del repartidor. Su `efectivo` y
+   * su `qr` vienen en 0 y no cuenta en `cobradoEfectivo`. Nunca se tilda. Un
+   * backend anterior no lo manda: false.
+   */
+  cobroLaCaja: boolean;
 }
 
 export interface ItemLlevado {
@@ -79,6 +86,13 @@ export interface RepartidorDeRendicion {
   pendiente: number;
   /** Plata que la caja ya recibió en la jornada. Con el control apagado, 0. */
   recibido: number;
+  /**
+   * El efectivo que cobró ÉL y la caja todavía no tiene (lo calcula el
+   * backend): con el control prendido es igual a `pendiente`; apagado, lo que
+   * cobró en la jornada sin lo que cobró la caja ni lo ya recibido. null = un
+   * backend anterior que no lo manda (ver `aEntregar`).
+   */
+  aEntregar: number | null;
   entregas: EntregaDeRendicion[];
   productos: ProductosLlevados;
 }
@@ -90,6 +104,8 @@ export interface RendicionReparto {
   desde: string | null;
   pendiente: number;
   recibido: number;
+  /** La suma de `aEntregar` de todos; null con un backend anterior. */
+  aEntregar: number | null;
   repartidores: RepartidorDeRendicion[];
 }
 
@@ -104,6 +120,12 @@ export interface RecibidoDeRendicion {
 const num = (v: unknown): number => {
   const n = Number(v);
   return Number.isFinite(n) ? aCentavos(n) : 0;
+};
+/** Un número que puede no venir (un backend anterior): ausente o ilegible, null; nunca un 0 inventado. */
+const numONull = (v: unknown): number | null => {
+  if (typeof v !== "number" && !(typeof v === "string" && v.trim())) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? aCentavos(n) : null;
 };
 const texto = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 const lista = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -124,6 +146,7 @@ export function normalizarRendicion(raw: unknown): RendicionReparto | null {
     desde: texto(r.desde),
     pendiente: num(r.pendiente),
     recibido: num(r.recibido),
+    aEntregar: numONull(r.aEntregar),
     repartidores: lista(r.repartidores).map((x) => {
       const rep = obj(x);
       const productos = obj(rep.productos);
@@ -137,6 +160,7 @@ export function normalizarRendicion(raw: unknown): RendicionReparto | null {
         envios: num(rep.envios),
         pendiente: num(rep.pendiente),
         recibido: num(rep.recibido),
+        aEntregar: numONull(rep.aEntregar),
         entregas: lista(rep.entregas).map((y) => {
           const e = obj(y);
           const id = Number(e.id);
@@ -156,6 +180,7 @@ export function normalizarRendicion(raw: unknown): RendicionReparto | null {
             // Sólo un `false` explícito la saca de lo que se tilda.
             puedeRecibir: e.puedeRecibir !== false,
             cajaDe: texto(e.cajaDe),
+            cobroLaCaja: e.cobroLaCaja === true,
           };
         }),
         productos: {
@@ -207,13 +232,23 @@ export function textoPedidos(rep: Pick<RepartidorDeRendicion, "entregados" | "en
  */
 export function entregasPorRecibir(rep: Pick<RepartidorDeRendicion, "entregas">): (EntregaDeRendicion & { id: number })[] {
   return rep.entregas.filter(
-    (e): e is EntregaDeRendicion & { id: number } => e.estado === "PENDIENTE" && e.id != null && e.puedeRecibir !== false,
+    (e): e is EntregaDeRendicion & { id: number } =>
+      e.estado === "PENDIENTE" && e.id != null && e.puedeRecibir !== false && !e.cobroLaCaja,
   );
 }
 
 /** Lo pendiente que recibe otra caja: se lista sin casilla, para saber dónde está esa plata. */
 export function pendientesDeOtraCaja(rep: Pick<RepartidorDeRendicion, "entregas">): EntregaDeRendicion[] {
-  return rep.entregas.filter((e) => e.estado === "PENDIENTE" && e.puedeRecibir === false);
+  return rep.entregas.filter((e) => e.estado === "PENDIENTE" && e.puedeRecibir === false && !e.cobroLaCaja);
+}
+
+/**
+ * Los pedidos que cobró la caja («Cobrar y entregar»): se listan sin casilla,
+ * con «Cobró la caja», para que se entienda por qué no están en lo que cobró
+ * el repartidor ni en lo que tiene que entregar.
+ */
+export function cobradosPorLaCaja(rep: Pick<RepartidorDeRendicion, "entregas">): EntregaDeRendicion[] {
+  return rep.entregas.filter((e) => e.cobroLaCaja);
 }
 
 /** «La recibe la caja de Ana Quispe»; sin el nombre, «La recibe otra caja». */
@@ -256,20 +291,51 @@ export function marcarTodas(
   return copia;
 }
 
+/**
+ * La hora sin cortes: «03:13 a. m.» lleva espacios duros, así en 390 px no
+ * queda «03:13 a.» en un renglón y «m.» en el otro.
+ */
+export function horaSinCortes(iso: string): string {
+  return fmtHora(iso).replace(/\s/g, " ");
+}
+
 /** «V-000900 · Carla Mamani · 21:15»: el renglón de la casilla (el monto va aparte, a la derecha). */
 export function textoEntrega(e: Pick<EntregaDeRendicion, "comprobante" | "ventaId" | "cliente" | "entregadoEn">): string {
-  return [e.comprobante ?? `#${e.ventaId}`, e.cliente, e.entregadoEn ? fmtHora(e.entregadoEn) : null]
+  return [e.comprobante ?? `#${e.ventaId}`, e.cliente, e.entregadoEn ? horaSinCortes(e.entregadoEn) : null]
     .filter(Boolean)
     .join(" · ");
 }
 
 /**
- * Lo que tiene que entregar: con el control prendido, lo que la caja todavía
- * no recibió; apagado, todo el efectivo que cobró en la jornada (no hay
- * registro de lo que ya entregó).
+ * Lo que tiene que entregar el repartidor. Si el backend lo manda
+ * (`aEntregar`), es ESE número, con el control prendido o apagado: sólo él
+ * sabe qué cobró la caja y qué ya se recibió. Un backend anterior no lo manda:
+ * prendido, lo que la caja todavía no recibió; apagado, el efectivo que cobró
+ * en la jornada (lo de antes).
  */
-export function aEntregar(rep: Pick<RepartidorDeRendicion, "pendiente" | "cobradoEfectivo">, activa: boolean): number {
+export function aEntregar(
+  rep: Pick<RepartidorDeRendicion, "pendiente" | "cobradoEfectivo"> & { aEntregar?: number | null },
+  activa: boolean,
+): number {
+  if (typeof rep.aEntregar === "number") return rep.aEntregar;
   return activa ? rep.pendiente : rep.cobradoEfectivo;
+}
+
+/**
+ * Lo que el repartidor que mira tiene que entregar, según la rendición del
+ * backend: el número del cartel «A entregar al negocio», del indicador «A
+ * rendir» y de «Te falta entregar», que así nunca se contradicen.
+ *
+ * null = no hay de dónde sacarlo (la rendición no cargó, no es suya, o un
+ * backend anterior con el control apagado): la pantalla sigue con su cuenta de
+ * siempre, la de «Mis entregas».
+ */
+export function aEntregarDelRepartidor(r: RendicionReparto | null | undefined, usuarioId: number | null | undefined): number | null {
+  const mio = delRepartidor(r, usuarioId);
+  if (!r || !mio) return null;
+  if (typeof mio.aEntregar === "number") return mio.aEntregar;
+  // Backend anterior: prendido, «Te falta entregar» es lo pendiente; el cartel dice lo mismo.
+  return r.activa ? mio.pendiente : null;
 }
 
 /**

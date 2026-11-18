@@ -84,12 +84,17 @@ export default function AccionesPedidoWeb({
         ))}
       </ul>
       {web.referencia && <p className="text-[13px] text-texto-2">Referencia: {web.referencia}</p>}
+      {/* «Ir con Google Maps» se partía en dos renglones a 390 px (QA 18-nov):
+          los dos botones se repartían el ancho por igual. Ahora ninguno parte
+          su texto (cada uno ocupa lo que necesita) y, si en una pantalla más
+          angosta no entran lado a lado, el segundo baja entero. Los textos son
+          los mismos que en la app. */}
       {pin && (
-        <div className="flex gap-2">
-          <a href={urlRuta(pin)} target="_blank" rel="noreferrer" className={boton}>
+        <div className="flex flex-wrap gap-2">
+          <a href={urlRuta(pin)} target="_blank" rel="noreferrer" className={`${boton} whitespace-nowrap`}>
             <Icon name="pin" size={15} /> Ir con Google Maps
           </a>
-          <a href={urlWaze(pin.lat, pin.lng)} target="_blank" rel="noreferrer" className={boton}>
+          <a href={urlWaze(pin.lat, pin.lng)} target="_blank" rel="noreferrer" className={`${boton} whitespace-nowrap`}>
             <Icon name="pin" size={15} /> Abrir en Waze
           </a>
         </div>

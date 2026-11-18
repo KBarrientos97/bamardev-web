@@ -5,6 +5,7 @@ import { esPositivo } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import {
   aEntregar,
+  cobradosPorLaCaja,
   entregasPorRecibir,
   idsTildados,
   marcarTodas,
@@ -13,6 +14,7 @@ import {
   textoEntrega,
   textoOtraCaja,
   textoPedidos,
+  type EntregaDeRendicion,
   type RendicionReparto,
   type RepartidorDeRendicion,
 } from "../../lib/repartoRendicion";
@@ -101,6 +103,22 @@ export default function RendicionRepartidores({
   );
 }
 
+/**
+ * Un pedido que se ve pero no se tilda (lo recibe otra caja, o lo cobró la
+ * caja): el mismo renglón que la casilla, punteado y con la aclaración debajo.
+ */
+function FilaSinCasilla({ e, nota, monto }: { e: EntregaDeRendicion; nota: string; monto: number }) {
+  return (
+    <li className="flex items-start gap-3 rounded-xl border border-dashed border-borde bg-muted px-3 py-2.5">
+      <span className="min-w-0 flex-1 break-words text-[13px] text-texto-2">
+        {textoEntrega(e)}
+        <span className="block text-[12px] text-texto-4">{nota}</span>
+      </span>{" "}
+      <span className="shrink-0 text-[13px] font-bold text-texto-3">{fmtMoney(monto)}</span>
+    </li>
+  );
+}
+
 /** Un renglón de plata: la etiqueta (con su aclaración chica debajo) y el monto. */
 function FilaPlata({ etiqueta, nota, valor }: { etiqueta: string; nota?: string; valor: number }) {
   return (
@@ -132,6 +150,8 @@ function TarjetaRepartidor({
   const porRecibir = activa ? entregasPorRecibir(rep) : [];
   // «Le falta entregar» incluye esto; «Recibí Bs X», no.
   const deOtraCaja = activa ? pendientesDeOtraCaja(rep) : [];
+  // Lo que cobró la cajera: no es plata del repartidor (prendido o apagado).
+  const deLaCaja = cobradosPorLaCaja(rep);
   const tildadas = idsTildados(rep, destildadas);
   const suma = sumaTildada(rep, destildadas);
   const falta = aEntregar(rep, activa);
@@ -153,6 +173,9 @@ function TarjetaRepartidor({
     try {
       await onRecibir(tildadas);
       setConfirmando(false);
+      // Lo que queda arranca otra vez todo tildado: un destildado de antes
+      // («ésta me la trae después») ya cumplió su función con este recibo.
+      setDestildadas(new Set());
     } catch (e) {
       setConfirmando(false);
       setError(e instanceof Error ? e.message : "No se pudo registrar lo recibido");
@@ -188,7 +211,7 @@ function TarjetaRepartidor({
         <span className="shrink-0 text-lg font-extrabold">{fmtMoney(falta)}</span>
       </div>
 
-      {(porRecibir.length > 0 || deOtraCaja.length > 0) && (
+      {(porRecibir.length > 0 || deOtraCaja.length > 0 || deLaCaja.length > 0) && (
         <div className="space-y-2">
           {porRecibir.length > 1 && (
             <p className="text-[13px] text-texto-3">
@@ -226,16 +249,11 @@ function TarjetaRepartidor({
             ))}
             {/* La plata que cuenta el arqueo de otra caja: se ve, pero la recibe esa caja. */}
             {deOtraCaja.map((e) => (
-              <li
-                key={e.id ?? `v${e.ventaId}`}
-                className="flex items-start gap-3 rounded-xl border border-dashed border-borde bg-muted px-3 py-2.5"
-              >
-                <span className="min-w-0 flex-1 break-words text-[13px] text-texto-2">
-                  {textoEntrega(e)}
-                  <span className="block text-[12px] text-texto-4">{textoOtraCaja(e)}</span>
-                </span>{" "}
-                <span className="shrink-0 text-[13px] font-bold text-texto-3">{fmtMoney(e.efectivo)}</span>
-              </li>
+              <FilaSinCasilla key={`o${e.ventaId}`} e={e} nota={textoOtraCaja(e)} monto={e.efectivo} />
+            ))}
+            {/* Lo que cobró la cajera con «Cobrar y entregar»: ya está en la caja. */}
+            {deLaCaja.map((e) => (
+              <FilaSinCasilla key={`c${e.ventaId}`} e={e} nota="Cobró la caja" monto={e.total} />
             ))}
           </ul>
           {/* Sólo lo que esta caja puede recibir: si todo es de otra caja, no hay botón. */}

@@ -13,7 +13,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import { api } from "../../lib/api";
-import { fmtHora } from "../../lib/format";
+import { horaSinCortes } from "../../lib/repartoRendicion";
 import RendicionRepartidores from "./RendicionRepartidores";
 
 const PEDRO = {
@@ -106,7 +106,10 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     const casillas = t.getAllByRole("checkbox");
     expect(casillas).toHaveLength(2);
     expect(casillas.every((c) => (c as HTMLInputElement).checked)).toBe(true);
-    expect(t.getByRole("checkbox", { name: `V-000900 · Carla Mamani · ${fmtHora("2026-11-18T01:15:00.000Z")} Bs 130,00` })).toBeChecked();
+    const casilla = t.getByRole("checkbox", { name: /^V-000900 · Carla Mamani · .* Bs 130,00$/ });
+    expect(casilla).toBeChecked();
+    // La hora entera, con espacios duros: a 390 px no se parte «a.» / «m.» (QA 18-nov).
+    expect(casilla.closest("label")!.textContent).toContain(horaSinCortes("2026-11-18T01:15:00.000Z"));
     // 130 + 60,10, sin cola de decimales.
     expect(t.getByRole("button", { name: "Recibí Bs 190,10" })).toBeEnabled();
   });
@@ -161,12 +164,27 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     expect(api.rendicionReparto).toHaveBeenCalledTimes(2);
     expect(onRecibido).toHaveBeenCalledTimes(1);
     expect(onRecibido.mock.calls[0][0]).toMatchObject({ pendiente: 105.1 });
-    // La tarjeta con los números del servidor: queda la otra entrega, que sigue destildada.
+    // La tarjeta con los números del servidor. QA 18-nov, bug 3: lo que queda
+    // vuelve a estar tildado (quedaba destildado con «Elegí qué recibiste»).
     const t2 = tarjeta("Pedro Rojas");
     expect(t2.getByText("Le falta entregar").nextElementSibling).toHaveTextContent("Bs 60,10");
     expect(t2.getAllByRole("checkbox")).toHaveLength(1);
-    expect(t2.getByRole("button", { name: "Elegí qué recibiste" })).toBeDisabled();
+    expect(t2.getByRole("checkbox", { name: /V-000901/ })).toBeChecked();
+    expect(t2.getByRole("button", { name: "Recibí Bs 60,10" })).toBeEnabled();
     expect(screen.queryByRole("dialog", { name: /¿Recibiste/ })).not.toBeInTheDocument();
+  });
+
+  it("si el recibo falla, lo destildado sigue destildado (no se pierde lo que eligió)", async () => {
+    await abrir();
+    const t = tarjeta("Pedro Rojas");
+    fireEvent.click(t.getByRole("checkbox", { name: /V-000901/ }));
+    vi.mocked(api.recibirRendicionReparto).mockRejectedValue(new Error("Sin conexión"));
+    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130,00" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: /¿Recibiste/ })).getByRole("button", { name: "Recibí" }));
+    });
+    expect(tarjeta("Pedro Rojas").getByRole("checkbox", { name: /V-000901/ })).not.toBeChecked();
+    expect(tarjeta("Pedro Rojas").getByRole("button", { name: "Recibí Bs 130,00" })).toBeInTheDocument();
   });
 
   it("si el servidor rechaza (no podés recibir tu propia plata), lo dice en la tarjeta y no avisa al cierre", async () => {
@@ -179,6 +197,56 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     });
     expect(tarjeta("Luis Vaca").getByText("No podés recibir tu propia plata")).toBeInTheDocument();
     expect(onRecibido).not.toHaveBeenCalled();
+  });
+});
+
+describe("QA 18-nov, bug 1: «Tiene que entregar» / «Le falta entregar» es el `aEntregar` del backend", () => {
+  /** V-000903 lo cobró la cajera con «Cobrar y entregar»: su plata ya está en la caja. */
+  const COBRADO_POR_CAJA = {
+    id: null, ventaId: 903, comprobante: "V-000903", cliente: "Ana Torrez", entregadoEn: "2026-11-18T07:20:00.000Z",
+    total: 33, efectivo: 0, qr: 0, envio: 7, estado: null, recibidaEn: null, recibidaPorNombre: null, cobroLaCaja: true,
+  };
+
+  it("apagado: lo que él tiene (sin lo que cobró la caja ni lo ya recibido), no todo lo cobrado", async () => {
+    await abrir({
+      ...ACTIVA,
+      activa: false,
+      repartidores: [
+        {
+          ...PEDRO,
+          cobradoEfectivo: 257,
+          pendiente: 0,
+          recibido: 0,
+          aEntregar: 76,
+          entregas: [...PEDRO.entregas.map((e) => ({ ...e, id: null, estado: null })), COBRADO_POR_CAJA],
+        },
+      ],
+    });
+    const t = tarjeta("Pedro Rojas");
+    expect(t.getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 76,00");
+    // El pedido de la caja se ve, con su aclaración y sin casilla.
+    const deLaCaja = t.getByText(/V-000903 · Ana Torrez/).closest("li") as HTMLElement;
+    expect(deLaCaja).toHaveTextContent("Cobró la caja");
+    expect(deLaCaja).toHaveTextContent("Bs 33,00");
+    expect(t.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("prendido: el mismo número; el pedido que cobró la caja nunca lleva casilla, aunque viniera PENDIENTE", async () => {
+    await abrir({
+      ...ACTIVA,
+      repartidores: [{ ...PEDRO, pendiente: 190.1, aEntregar: 190.1, entregas: [...PEDRO.entregas, { ...COBRADO_POR_CAJA, id: 77, estado: "PENDIENTE" }] }],
+    });
+    const t = tarjeta("Pedro Rojas");
+    expect(t.getByText("Le falta entregar").nextElementSibling).toHaveTextContent("Bs 190,10");
+    expect(t.getAllByRole("checkbox")).toHaveLength(2);
+    expect(t.queryByRole("checkbox", { name: /V-000903/ })).not.toBeInTheDocument();
+    expect(t.getByText(/V-000903 · Ana Torrez/).closest("li")).toHaveTextContent("Cobró la caja");
+    expect(t.getByRole("button", { name: "Recibí Bs 190,10" })).toBeInTheDocument();
+  });
+
+  it("un backend anterior (sin `aEntregar`): apagado, lo cobrado en efectivo, como antes", async () => {
+    await abrir({ ...ACTIVA, activa: false, repartidores: [{ ...PEDRO, pendiente: 0, recibido: 0 }] });
+    expect(tarjeta("Pedro Rojas").getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 250,00");
   });
 });
 

@@ -243,8 +243,132 @@ describe("la rendición con el cuadre de la caja", () => {
   });
 });
 
+describe("QA 18-nov, bug 2: «A rendir» y «A entregar al negocio» bajan cuando la caja recibe la plata", () => {
+  /** Entregó un pedido de Bs 148 cobrado en efectivo: la cuenta de «Mis entregas» dice 148. */
+  const ENTREGADO = {
+    ...PEDIDO,
+    id: 50,
+    clienteNombre: "Juan Pérez",
+    total: 148,
+    totalACobrar: 155,
+    montoRendicion: 148,
+    estadoEntrega: "ENTREGADO",
+    entregadoEn: "2026-11-18T21:00:00.000Z",
+    formasPago: ["Efectivo"],
+    pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 148 }],
+  } as unknown as Venta;
+
+  const cuadre = (activa: boolean, extra: Record<string, unknown>) => ({
+    ...RENDICION,
+    activa,
+    repartidores: [{ ...RENDICION.repartidores[0], ...extra }],
+  });
+
+  const aRendir = () => screen.getByText("A rendir").closest(".card") as HTMLElement;
+
+  async function rendicion() {
+    fireEvent.click(screen.getByRole("button", { name: "Rendición" }));
+    await act(async () => {});
+    return screen.getByRole("dialog", { name: "Rendición del turno" });
+  }
+
+  it("la caja ya le recibió todo: «A rendir», el cartel y «Te falta entregar» dicen Bs 0,00", async () => {
+    vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 0, recibido: 148, aEntregar: 0 }));
+    await montar([ENTREGADO]);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 0,00/);
+    const r = await rendicion();
+    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/A entregar al negocio\s*Bs 0,00/);
+    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 0,00");
+    expect(within(r).getByText("Ya entregaste a la caja").nextElementSibling).toHaveTextContent("Bs 148,00");
+  });
+
+  it("con el control apagado también es el `aEntregar` del backend", async () => {
+    vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(false, { pendiente: 0, recibido: 0, aEntregar: 76 }));
+    await montar([ENTREGADO]);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 76,00/);
+    const r = await rendicion();
+    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/Bs 76,00/);
+  });
+
+  it("un backend sin `aEntregar` con el control prendido: el cartel dice lo mismo que «Te falta entregar»", async () => {
+    vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 80, recibido: 68 }));
+    await montar([ENTREGADO]);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 80,00/);
+    const r = await rendicion();
+    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/Bs 80,00/);
+    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 80,00");
+  });
+
+  it("si la rendición no carga (backend viejo, sin señal), la cuenta de siempre", async () => {
+    vi.mocked(api.rendicionReparto).mockRejectedValue(new Error("Not Found"));
+    await montar([ENTREGADO]);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148,00/);
+  });
+
+  describe("con el refresco", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("la caja recibe mientras mira: «A rendir» baja en el siguiente refresco", async () => {
+      vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 148, recibido: 0, aEntregar: 148 }));
+      await montar([ENTREGADO]);
+      expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148,00/);
+      vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 0, recibido: 148, aEntregar: 0 }));
+      await refrescar([ENTREGADO]);
+      expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 0,00/);
+    });
+
+    it("a un backend que no tiene la rendición no se le vuelve a preguntar cada 20 s", async () => {
+      vi.mocked(api.rendicionReparto).mockRejectedValue(new Error("Not Found"));
+      await montar([ENTREGADO]);
+      await refrescar([ENTREGADO]);
+      await refrescar([ENTREGADO]);
+      expect(api.rendicionReparto).toHaveBeenCalledTimes(1);
+      expect(api.getMisEntregas).toHaveBeenCalledTimes(3);
+    });
+  });
+});
+
 describe("la dirección de respaldo", () => {
   const WEB = { id: 12, numero: 7, latitud: -17.76, longitud: -63.18, referencia: null, formaPago: "QR", pagaCon: null, salioEn: null };
+
+  it("QA 18-nov: la referencia va una sola vez («Referencia: …» del bloque de la página)", async () => {
+    const conRef = {
+      ...PEDIDO,
+      clienteDireccion: "Ubicación marcada en el mapa · Portón negro",
+      pedidoWeb: { ...WEB, referencia: "Portón negro" },
+    } as unknown as Venta;
+    vi.mocked(api.getVenta).mockResolvedValue({ ...conRef, pedidoWeb: undefined } as unknown as Venta);
+    await montar([conRef]);
+    fireEvent.click(screen.getByRole("button", { name: /Carla Mamani/ }));
+    await act(async () => {});
+    const detalle = screen.getByRole("dialog", { name: "Carla Mamani" });
+    expect(within(detalle).getByText("Ubicación marcada en el mapa")).toBeInTheDocument();
+    expect(detalle.textContent!.match(/Portón negro/g)).toHaveLength(1);
+    expect(within(detalle).getByText("Referencia: Portón negro")).toBeInTheDocument();
+    // Los botones del mapa, con sus textos de siempre y sin partirse en dos renglones.
+    expect(within(detalle).getByRole("link", { name: /Ir con Google Maps/ })).toHaveClass("whitespace-nowrap");
+    expect(within(detalle).getByRole("link", { name: /Abrir en Waze/ })).toHaveClass("whitespace-nowrap");
+  });
+
+  it("con dirección escrita y referencia, también una sola vez", async () => {
+    const conDir = {
+      ...PEDIDO,
+      clienteDireccion: "Calle Sucre 450 · Portón negro",
+      pedidoWeb: { ...WEB, referencia: "Portón negro" },
+    } as unknown as Venta;
+    vi.mocked(api.getVenta).mockResolvedValue(conDir);
+    await montar([conDir]);
+    fireEvent.click(screen.getByRole("button", { name: /Carla Mamani/ }));
+    await act(async () => {});
+    const detalle = screen.getByRole("dialog", { name: "Carla Mamani" });
+    expect(within(detalle).getByText("Calle Sucre 450")).toBeInTheDocument();
+    expect(detalle.textContent!.match(/Portón negro/g)).toHaveLength(1);
+  });
 
   it("un pedido de la página sólo con el pin: «Ubicación marcada en el mapa» y sin «Copiar dirección»", async () => {
     const soloPin = { ...PEDIDO, clienteDireccion: "Ubicación marcada en el mapa", pedidoWeb: WEB } as unknown as Venta;
