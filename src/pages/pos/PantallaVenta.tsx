@@ -605,17 +605,22 @@ export default function PantallaVenta({
       {/* Móvil y tablet vertical: píldora flotante + hoja inferior.
           Es una píldora centrada y no una barra de lado a lado: la barra
           ocupaba el ancho entero aunque hubiera un solo ítem, y tapaba la
-          última fila de productos. Sólo aparece cuando hay algo cargado. */}
+          última fila de productos. Sólo aparece cuando hay algo cargado.
+          Se centra entre los márgenes de 16 px (`inset-x-4 mx-auto w-fit`) y
+          no con `left-1/2`: así puede crecer hasta la pantalla entera menos los
+          márgenes, no hasta media pantalla, que a 390 px partía el monto en
+          dos renglones desde Bs 100,00 («Bs» arriba, «100,00» abajo, 18-nov).
+          El monto nunca se parte. */}
       {(carrito.lineas.length > 0 || !!lineasExtra) && (
         <button
           onClick={() => setCarritoAbierto(true)}
-          className="fixed bottom-4 left-1/2 z-30 flex h-14 -translate-x-1/2 items-center gap-3 rounded-full bg-primary px-6 text-white shadow-xl shadow-primary/30 lg:hidden"
+          className="fixed inset-x-4 bottom-4 z-30 mx-auto flex h-14 w-fit items-center gap-3 rounded-full bg-primary px-6 text-white shadow-xl shadow-primary/30 lg:hidden"
         >
           <Icon name="cart" size={22} />
           <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
             {fmtNum(carrito.unidades)}
           </span>
-          <span className="text-lg font-extrabold">
+          <span className="whitespace-nowrap text-lg font-extrabold">
             {fmtMoney(descuentos?.total ?? carrito.total)}
           </span>
         </button>
@@ -683,28 +688,97 @@ function textoIncluyeDe(catalogo: CatalogoAgregados | null | undefined, producto
 }
 
 /**
- * Las clases de los tres lugares de «Pausado» en la tarjeta (ver `TarjetaVenta`),
- * por el ancho útil de la tarjeta. Con el «⋯»: la etiqueta de siempre desde
- * 146 px; la pastilla en la fila desde 126 (ícono 40 + 6 + pastilla 56 + aire
- * hasta los puntos del «⋯»); debajo del nombre, menos. Sin el «⋯», desde 118 y 102.
- * Escritas enteras: Tailwind sólo genera las clases que ve en el código.
+ * La etiqueta de estado de la tarjeta (ver `TarjetaVenta`): «Agotado» en rojo,
+ * que frena la venta, o «Pausado» en gris, que no se pide por la página pero la
+ * caja lo vende igual.
  */
-const PAUSADO_CON_MENU = {
-  arriba: "hidden @min-[146px]:inline-flex",
-  chica: "mr-auto hidden @min-[126px]:inline-flex @min-[146px]:hidden",
-  abajo: "mt-1 flex @min-[126px]:hidden",
-};
-const PAUSADO_SIN_MENU = {
-  arriba: "hidden @min-[118px]:inline-flex",
-  chica: "mr-auto hidden @min-[102px]:inline-flex @min-[118px]:hidden",
-  abajo: "mt-1 flex @min-[102px]:hidden",
+type EstadoTarjeta = "agotado" | "pausado";
+const ESTADOS: Record<EstadoTarjeta, { texto: string; tono: "rojo" | "gris"; colores: string }> = {
+  agotado: { texto: "Agotado", tono: "rojo", colores: "bg-danger-bg text-danger-text" },
+  pausado: { texto: "Pausado", tono: "gris", colores: "bg-slate-200 text-texto-3" },
 };
 
-/** «Pausado» chico, como en la lista en columnas (`VistaColumnas`). */
-function PastillaPausado() {
+/** Las clases de los lugares de la etiqueta de estado (ver `LUGARES`). */
+interface LugaresEstado {
+  /** La etiqueta de siempre, arriba a la derecha. */
+  arriba: string;
+  /** La pastilla chica en la misma fila, pegada al ícono (sin ícono, al principio de la fila). */
+  chica: string;
+  /** La pastilla debajo del nombre. Sin ícono no hay: ver `LUGARES`. */
+  abajo?: string;
+}
+
+/**
+ * Dónde va «Agotado» o «Pausado» en la tarjeta, por su ancho útil (`@container`:
+ * la tarjeta sin el borde ni el `p-3`, 26 px menos). En la tarjeta angosta la
+ * etiqueta entera quedaba encima del «⋯», y a 1024 se salía de la tarjeta y le
+ * metía scroll de costado a la grilla («Pausado» el 17-nov, «Agotado» el 18-nov):
+ * - arriba, la etiqueta de siempre, si entra en la fila: ícono 40 + 6 + la
+ *   etiqueta + los 28 px (`pr-7`) que se le dejan al «⋯»;
+ * - si no, la pastilla chica pegada al ícono, si le quedan 4 px o más hasta los
+ *   puntos del «⋯» (que arrancan 19 px antes del final del ancho útil): la
+ *   tarjeta no crece;
+ * - si tampoco, la pastilla debajo del nombre, como en la lista en columnas.
+ * Sin el «⋯» (sin permiso de pausar) la fila no reserva nada. Sin ícono la fila
+ * lleva sólo la etiqueta y nunca va abajo: la fila quedaría vacía y el nombre,
+ * que con fila no se corre, quedaría debajo del «⋯»; si no entra entera va la
+ * pastilla, al principio de la fila (en la tarjeta más angosta, 81 px útiles a
+ * 1024 con el menú abierto, le quedan 5 px hasta los puntos).
+ * Medido en el navegador (Roboto): «AGOTADO» 71,1 px y su pastilla 57,0;
+ * «PAUSADO» 69,9 y 55,4. De ahí los de «Agotado»: arriba desde 145 (46 + 71,1
+ * + 28 = 145,1; con 145 asoma 0,1 px sobre el `pr-7` y le quedan casi 9 px
+ * hasta los puntos, y así a 1440, 145,5 útiles, sigue arriba como siempre); la
+ * pastilla desde 127 (46 + 57 + 4 + 19 = 126,02; a 1366 con el menú abierto,
+ * 127 útiles, le quedan 5 px); sin «⋯», 118 y 104; sin ícono, 100 y 72. Los de
+ * «Pausado» son los del 17-nov, con uno o dos px de margen sobre la misma cuenta.
+ * Escritas enteras: Tailwind sólo genera las clases que ve en el código.
+ */
+const LUGARES: Record<EstadoTarjeta, Record<"conIcono" | "sinIcono", Record<"conMenu" | "sinMenu", LugaresEstado>>> = {
+  agotado: {
+    conIcono: {
+      conMenu: {
+        arriba: "hidden @min-[145px]:inline-flex",
+        chica: "mr-auto hidden @min-[127px]:inline-flex @min-[145px]:hidden",
+        abajo: "mt-1 flex @min-[127px]:hidden",
+      },
+      sinMenu: {
+        arriba: "hidden @min-[118px]:inline-flex",
+        chica: "mr-auto hidden @min-[104px]:inline-flex @min-[118px]:hidden",
+        abajo: "mt-1 flex @min-[104px]:hidden",
+      },
+    },
+    sinIcono: {
+      conMenu: { arriba: "hidden @min-[100px]:inline-flex", chica: "mr-auto inline-flex @min-[100px]:hidden" },
+      sinMenu: { arriba: "hidden @min-[72px]:inline-flex", chica: "mr-auto inline-flex @min-[72px]:hidden" },
+    },
+  },
+  pausado: {
+    conIcono: {
+      conMenu: {
+        arriba: "hidden @min-[146px]:inline-flex",
+        chica: "mr-auto hidden @min-[126px]:inline-flex @min-[146px]:hidden",
+        abajo: "mt-1 flex @min-[126px]:hidden",
+      },
+      sinMenu: {
+        arriba: "hidden @min-[118px]:inline-flex",
+        chica: "mr-auto hidden @min-[102px]:inline-flex @min-[118px]:hidden",
+        abajo: "mt-1 flex @min-[102px]:hidden",
+      },
+    },
+    sinIcono: {
+      conMenu: { arriba: "hidden @min-[98px]:inline-flex", chica: "mr-auto inline-flex @min-[98px]:hidden" },
+      sinMenu: { arriba: "hidden @min-[70px]:inline-flex", chica: "mr-auto inline-flex @min-[70px]:hidden" },
+    },
+  },
+};
+
+/** La etiqueta de estado chica, como en la lista en columnas (`VistaColumnas`): mismo tamaño para las dos. */
+function PastillaEstado({ estado }: { estado: EstadoTarjeta }) {
   return (
-    <span className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-px text-[11px] font-bold text-texto-3">
-      Pausado
+    <span
+      className={`inline-flex items-center rounded-md px-1.5 py-px text-[11px] font-bold ${ESTADOS[estado].colores}`}
+    >
+      {ESTADOS[estado].texto}
     </span>
   );
 }
@@ -809,17 +883,15 @@ function TarjetaVenta({
   // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
   const conFila = conIcono || agotado || pausado || controla;
   /**
-   * Dónde va «Pausado» según el ancho de la tarjeta (17-nov). En la angosta
-   * (1366 con el menú abierto) quedaba pegado al «⋯», y en 1024 se salía de
-   * la tarjeta. Se mide la tarjeta (`@container`, su ancho útil):
-   * - con lugar, la etiqueta de siempre, arriba a la derecha;
-   * - si no entra, una pastilla chica en la misma fila, pegada al ícono, con
-   *   aire hasta el «⋯» (así la tarjeta no crece);
-   * - si tampoco entra (1024), la pastilla debajo del nombre, como en la
-   *   lista en columnas.
-   * Sin el «⋯» (sin permiso de pausar) hay más lugar en la fila.
+   * «Agotado» o «Pausado», y dónde va según el ancho de la tarjeta (17-nov
+   * «Pausado», 18-nov «Agotado»): en la angosta (1366 con el menú abierto) la
+   * etiqueta entera quedaba encima del «⋯», y a 1024 se salía de la tarjeta.
+   * Arriba a la derecha si entra; si no, una pastilla chica pegada al ícono
+   * (la tarjeta no crece); si tampoco, debajo del nombre (ver `LUGARES`).
+   * Pausado y agotado a la vez: gana «Agotado», que sí frena la venta.
    */
-  const lugarPausado = onMenu ? PAUSADO_CON_MENU : PAUSADO_SIN_MENU;
+  const estado: EstadoTarjeta | null = agotado ? "agotado" : pausado ? "pausado" : null;
+  const lugar = estado ? LUGARES[estado][conIcono ? "conIcono" : "sinIcono"][onMenu ? "conMenu" : "sinMenu"] : null;
 
   return (
     <li
@@ -854,8 +926,10 @@ function TarjetaVenta({
           className="flex flex-1 flex-col text-left"
         >
           {conFila && (
-          // Sin ícono, lo del stock queda arriba a la derecha, como con él.
-          <div className={`flex items-start ${conIcono ? "justify-between" : "justify-end"} gap-1.5${onMenu ? " pr-7" : ""}`}>
+          // Sin ícono, lo del stock queda arriba a la derecha, como con él. Y
+          // si no entra (la pastilla de «Agotado» a 1024 con el «⋯»), arranca
+          // donde arranca el nombre en vez de salirse por la izquierda (`safe`).
+          <div className={`flex items-start ${conIcono ? "justify-between" : "justify-end-safe"} gap-1.5${onMenu ? " pr-7" : ""}`}>
             {conIcono && (
               <IconoProducto
                 nombre={p.nombre}
@@ -864,22 +938,22 @@ function TarjetaVenta({
                 size={40}
               />
             )}
-            {/* Como en la app: el que vende ve cuánto queda antes de
-                ofrecerlo, no recién cuando se agota. Antes el número sólo
-                aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
-            {agotado && <Badge tono="rojo">Agotado</Badge>}
-            {/* Pausado y agotado a la vez: gana «Agotado», que sí frena la venta. */}
-            {pausado && !agotado && (
+            {/* «Agotado» o «Pausado»: la pastilla chica o la etiqueta de
+                siempre, la que entre en la tarjeta (ver `lugar`). */}
+            {estado && lugar && (
               <>
-                <span className={lugarPausado.chica}>
-                  <PastillaPausado />
+                <span className={lugar.chica}>
+                  <PastillaEstado estado={estado} />
                 </span>
-                <span className={lugarPausado.arriba}>
-                  <Badge tono="gris">Pausado</Badge>
+                <span className={lugar.arriba}>
+                  <Badge tono={ESTADOS[estado].tono}>{ESTADOS[estado].texto}</Badge>
                 </span>
               </>
             )}
-            {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
+            {/* Como en la app: el que vende ve cuánto queda antes de
+                ofrecerlo, no recién cuando se agota. Antes el número sólo
+                aparecía bajo el mínimo, y un "1" suelto no decía de qué era.
+                Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controla && (
               <span
@@ -907,10 +981,10 @@ function TarjetaVenta({
           >
             {p.nombre}
           </h3>
-          {/* En la tarjeta más angosta «Pausado» no entra arriba: va acá (ver `lugarPausado`). */}
-          {pausado && !agotado && (
-            <span className={lugarPausado.abajo}>
-              <PastillaPausado />
+          {/* En la tarjeta más angosta «Agotado» o «Pausado» no entra arriba: va acá (ver `lugar`). */}
+          {estado && lugar?.abajo && (
+            <span className={lugar.abajo}>
+              <PastillaEstado estado={estado} />
             </span>
           )}
           {/* PLAN-AGREGADOS §6 #2: lo que trae el producto se dice a la vista,

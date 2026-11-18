@@ -334,8 +334,20 @@ describe("conteoDeCategoria: lo que dice la pantalla de venta", () => {
       agotado: false,
       lleno: false,
       poco: false,
-      etiqueta: "Quedan 42 vasos C",
+      etiqueta: "Vasos C: quedan 42",
     });
+  });
+
+  it("la etiqueta lleva el nombre adelante, como los avisos: «queda 1» y no «Quedan 1 vasos XL»", () => {
+    const XL = { id: 4, nombre: "XL" };
+    const saldos = new Map<number, number | null>([[XL.id, 3], [C.id, 12.5]]);
+    expect(conteoDeCategoria(XL, "Vasos", saldos, new Map([[XL.id, 2]]))?.etiqueta).toBe("Vasos XL: queda 1");
+    expect(conteoDeCategoria(XL, "Vasos", saldos, new Map())?.etiqueta).toBe("Vasos XL: quedan 3");
+    // Con decimales, como los escribe el resto del sistema (sin ceros de más).
+    expect(conteoDeCategoria(C, "Vasos", saldos, new Map([[C.id, 10]]))?.etiqueta).toBe("Vasos C: quedan 2,5");
+    // El nombre es texto libre: va tal cual, sin pasarlo a minúscula ni a singular.
+    expect(conteoDeCategoria(XL, "Cajas PET", saldos, new Map([[XL.id, 2]]))?.etiqueta).toBe("Cajas PET XL: queda 1");
+    expect(conteoDeCategoria(XL, "", saldos, new Map())?.etiqueta).toBe("Unidades XL: quedan 3");
   });
 
   it(`con ${QUEDA_POCO} libres o menos sale en tono de aviso`, () => {
@@ -357,7 +369,7 @@ describe("conteoDeCategoria: lo que dice la pantalla de venta", () => {
       agotado: false,
       lleno: true,
       poco: true,
-      etiqueta: "Quedan 0 vasos L",
+      etiqueta: "Vasos L: quedan 0",
       aviso: "Vasos L: sólo quedan 5.",
     });
   });

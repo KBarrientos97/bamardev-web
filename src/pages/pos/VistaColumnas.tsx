@@ -416,7 +416,7 @@ function EstadoFila({
   children,
 }: {
   tono: "rojo" | "gris" | "aviso";
-  /** Lo que dice entero, para el mouse y el lector de pantalla («Quedan 4 vasos L»). */
+  /** Lo que dice entero, para el mouse y el lector de pantalla («Vasos L: quedan 4»). */
   etiqueta?: string;
   children: ReactNode;
 }) {

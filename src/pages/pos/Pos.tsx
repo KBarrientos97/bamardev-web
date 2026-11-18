@@ -289,6 +289,22 @@ function PuntoDeVenta() {
   // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
   const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
+  /**
+   * Los vasos se vuelven a pedir cada vez que el POS VUELVE a la venta desde
+   * otra pantalla (las ventas del turno, el recibo, el cierre, la entrega,
+   * modificar…), venga por donde venga: anular o cancelar desde «Ventas»
+   * devuelve el vaso en el servidor, y la grilla seguía con el número viejo
+   * hasta el sondeo siguiente, o en «Agotado» si estaba en 0 (18-nov, tras la
+   * prueba en QA). Como Android, cuyo sondeo arranca de nuevo cada vez que se
+   * vuelve a ver el punto de venta. Al abrir el POS no: eso ya lo pide el hook.
+   * Con ventas en la cola sin subir, `recargar` no le pregunta al servidor (§3.8).
+   */
+  const pantallaAnterior = useRef(pantalla);
+  useEffect(() => {
+    const antes = pantallaAnterior.current;
+    pantallaAnterior.current = pantalla;
+    if (pantalla === "venta" && antes !== "venta") recargarConteo();
+  }, [pantalla, recargarConteo]);
   /** Desde acá el carrito es una columna fija al lado de los productos (ver `cobroEnLaVenta`). */
   const pantallaAncha = useCoincideMedia("(min-width: 1024px)");
   // «Publicar en tu sitio» (PLAN-PAGINA-PRO M4): lo diario se publica desde la

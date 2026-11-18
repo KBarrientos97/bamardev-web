@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Categoria, Producto } from "../../types";
@@ -16,12 +16,14 @@ const sesion = vi.hoisted(() => ({
   pos: undefined as Record<string, unknown> | undefined,
   /** El ancho de la pantalla, para las media queries (las columnas son para pantalla grande). */
   ancho: 1366,
+  /** La cajera no pausa: sin «⋯». Con `productos.pausar` la tarjeta lleva el «⋯». */
+  permisos: [] as string[],
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     negocio: { alias: "prueba", tipoNegocio: "RESTAURANTE", pos: sesion.pos },
-    usuario: { username: "cajero", permisos: [] },
+    usuario: { username: "cajero", permisos: sesion.permisos },
     rubro: "RESTAURANTE",
     incluye: () => false,
     puede: () => true,
@@ -119,8 +121,8 @@ async function montar(opc: { conteo?: ConteoEnLaVenta; lineas?: LineaCarrito[]; 
 const tarjeta = (nombre: string) => screen.getByRole("heading", { name: nombre }).closest("li")!;
 /** El cuerpo de la tarjeta: tocarlo suma. */
 const cuerpo = (nombre: string) => screen.getByRole("heading", { name: nombre }).closest("button")!;
-/** Los rótulos del conteo («Quedan 45 vasos C») dentro de algo. */
-const rotulos = (dentro: HTMLElement = document.body) => within(dentro).queryAllByLabelText(/^Quedan /);
+/** Los rótulos del conteo («Vasos C: quedan 45»; con uno, «Vasos XL: queda 1») dentro de algo. */
+const rotulos = (dentro: HTMLElement = document.body) => within(dentro).queryAllByLabelText(/^Vasos \S+: quedan? /);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -128,6 +130,7 @@ beforeEach(() => {
   localStorage.clear();
   sesion.pos = undefined;
   sesion.ancho = 1366;
+  sesion.permisos = [];
   vi.stubGlobal("matchMedia", (q: string) => ({
     matches: sesion.ancho >= Number(/min-width:\s*(\d+)px/.exec(q)?.[1] ?? Infinity),
     addEventListener: () => {},
@@ -143,35 +146,36 @@ afterEach(() => {
 describe("las tarjetas con el conteo por categoría", () => {
   it("cada producto de un tamaño contado dice cuántos vasos quedan, en el renglón del precio; lo no contado, nada", async () => {
     await montar({ conteo: conteo(45, 30) });
-    expect(within(tarjeta("Dulce de leche C")).getByLabelText("Quedan 45 vasos C")).toHaveTextContent("45 u.");
-    expect(within(tarjeta("Nutella C")).getByLabelText("Quedan 45 vasos C")).toHaveTextContent("45 u.");
-    expect(within(tarjeta("Nutella L")).getByLabelText("Quedan 30 vasos L")).toHaveTextContent("30 u.");
+    expect(within(tarjeta("Dulce de leche C")).getByLabelText("Vasos C: quedan 45")).toHaveTextContent("45 u.");
+    expect(within(tarjeta("Nutella C")).getByLabelText("Vasos C: quedan 45")).toHaveTextContent("45 u.");
+    expect(within(tarjeta("Nutella L")).getByLabelText("Vasos L: quedan 30")).toHaveTextContent("30 u.");
     expect(rotulos(tarjeta("Coca 2 L"))).toHaveLength(0);
     // Al lado del precio, no arriba (la fila del ícono, el stock y el «⋯» no se toca).
-    const rotulo = within(tarjeta("Nutella C")).getByLabelText("Quedan 45 vasos C");
+    const rotulo = within(tarjeta("Nutella C")).getByLabelText("Vasos C: quedan 45");
     expect(rotulo.parentElement).toContainElement(within(tarjeta("Nutella C")).getByText(/32,00/));
-    expect(rotulo).toHaveAttribute("title", "Quedan 45 vasos C");
+    expect(rotulo).toHaveAttribute("title", "Vasos C: quedan 45");
   });
 
   it("el número baja al cargar CUALQUIER producto de ese tamaño, en todas sus tarjetas", async () => {
     await montar({ conteo: conteo(45, 30), lineas: [linea(NUTELLA_C, 3)] });
-    expect(within(tarjeta("Dulce de leche C")).getByLabelText("Quedan 42 vasos C")).toHaveTextContent("42 u.");
-    expect(within(tarjeta("Nutella C")).getByLabelText("Quedan 42 vasos C")).toBeInTheDocument();
+    expect(within(tarjeta("Dulce de leche C")).getByLabelText("Vasos C: quedan 42")).toHaveTextContent("42 u.");
+    expect(within(tarjeta("Nutella C")).getByLabelText("Vasos C: quedan 42")).toBeInTheDocument();
     // Los L no se mueven: es otro vaso.
-    expect(within(tarjeta("Nutella L")).getByLabelText("Quedan 30 vasos L")).toBeInTheDocument();
+    expect(within(tarjeta("Nutella L")).getByLabelText("Vasos L: quedan 30")).toBeInTheDocument();
   });
 
   it("con 10 o menos sale en tono de aviso, para pedir que repongan a tiempo", async () => {
     await montar({ conteo: conteo(45, 10) });
-    expect(within(tarjeta("Nutella L")).getByLabelText("Quedan 10 vasos L").className).toContain("bg-warning-bg");
-    expect(within(tarjeta("Nutella C")).getByLabelText("Quedan 45 vasos C").className).toContain("bg-primary-50");
+    expect(within(tarjeta("Nutella L")).getByLabelText("Vasos L: quedan 10").className).toContain("bg-warning-bg");
+    expect(within(tarjeta("Nutella C")).getByLabelText("Vasos C: quedan 45").className).toContain("bg-primary-50");
   });
 
   it("sin vasos en el local (0 o negativo): «Agotado» como el stock, apagada, sin rótulo y con el aviso de reponer", async () => {
     await montar({ conteo: conteo(-2, 0) });
     for (const nombre of ["Nutella L", "Dulce de leche C"]) {
       const t = tarjeta(nombre);
-      expect(within(t).getByText("Agotado")).toBeInTheDocument();
+      // En sus tres lugares; cuál se ve lo decide el ancho (ver el bloque de abajo).
+      expect(within(t).getAllByText("Agotado")).toHaveLength(3);
       expect(cuerpo(nombre)).toBeDisabled();
       expect(t.querySelector(".opacity-50")).not.toBeNull();
       expect(rotulos(t)).toHaveLength(0);
@@ -183,8 +187,8 @@ describe("las tarjetas con el conteo por categoría", () => {
 
   it("el carrito ya lleva todo lo que queda: «0 u.», el «+» apagado y ninguna tarjeta de ese tamaño suma", async () => {
     await montar({ conteo: conteo(45, 3), lineas: [linea(NUTELLA_L, 3)] });
-    expect(within(tarjeta("Nutella L")).getByLabelText("Quedan 0 vasos L")).toHaveTextContent("0 u.");
-    expect(within(tarjeta("Dulce de leche L")).getByLabelText("Quedan 0 vasos L").className).toContain("bg-warning-bg");
+    expect(within(tarjeta("Nutella L")).getByLabelText("Vasos L: quedan 0")).toHaveTextContent("0 u.");
+    expect(within(tarjeta("Dulce de leche L")).getByLabelText("Vasos L: quedan 0").className).toContain("bg-warning-bg");
     const mas = within(tarjeta("Nutella L")).getByRole("button", { name: "Uno más" });
     expect(mas).toBeDisabled();
     expect(mas).toHaveAttribute("title", "No hay más disponibles");
@@ -236,6 +240,90 @@ describe("las tarjetas con el conteo por categoría", () => {
   });
 });
 
+describe("dónde va «Agotado» en la tarjeta (18-nov, tras la prueba en QA)", () => {
+  // En la tarjeta angosta la etiqueta entera quedaba encima del «⋯» (1366 con
+  // el menú abierto) y a 1024 se salía de la tarjeta. Va en los mismos lugares
+  // que «Pausado»: la etiqueta arriba si entra, una pastilla chica en la fila si
+  // no, debajo del nombre si tampoco. Cuál se ve lo decide el CSS por el ancho
+  // útil de la tarjeta (`@container`): acá se mira que estén y que se turnen sin
+  // huecos; las medidas de cada ancho se tomaron en el navegador.
+
+  /** Desde qué ancho útil se ve un lugar (`@min-[Npx]:inline-flex`). */
+  const desde = (lugar: Element) => Number(/@min-\[(\d+)px\]:inline-flex/.exec(lugar.className)?.[1]);
+  /** Hasta qué ancho útil se ve (`@min-[Npx]:hidden`); sin tope, Infinity. */
+  const hasta = (lugar: Element) => Number(/@min-\[(\d+)px\]:hidden/.exec(lugar.className)?.[1] ?? Infinity);
+  /** Los «Agotado» de la tarjeta, en el orden del documento, con el lugar que los muestra u oculta. */
+  const lugares = (nombre: string) =>
+    within(tarjeta(nombre))
+      .queryAllByText("Agotado")
+      .map((texto) => ({ texto, lugar: texto.parentElement! }));
+  const despuesDelNombre = (nombre: string, el: Element) =>
+    !!(within(tarjeta(nombre)).getByRole("heading").compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it("con ícono: la etiqueta de siempre, la pastilla roja en la fila o debajo del nombre, turnándose sin huecos", async () => {
+    await montar({ conteo: conteo(0, 30) });
+    const [chica, arriba, abajo] = lugares("Nutella C");
+    expect(lugares("Nutella C")).toHaveLength(3);
+    // La pastilla, roja y del tamaño de la de «Pausado», pegada al ícono.
+    expect(chica.texto.className).toContain("bg-danger-bg");
+    expect(chica.texto.className).toContain("text-danger-text");
+    expect(chica.texto.className).toContain("text-[11px]");
+    expect(chica.lugar.className).toContain("mr-auto");
+    // La etiqueta de siempre (el Badge rojo, en mayúsculas).
+    expect(arriba.texto.className).toContain("uppercase");
+    expect(arriba.texto.className).toContain("bg-danger-bg");
+    // Nunca dos a la vez ni ninguna: la chica entre la de abajo y la de arriba.
+    expect(desde(arriba.lugar)).toBeGreaterThan(desde(chica.lugar));
+    expect(hasta(chica.lugar)).toBe(desde(arriba.lugar));
+    expect(hasta(abajo.lugar)).toBe(desde(chica.lugar));
+    expect(despuesDelNombre("Nutella C", chica.texto)).toBe(false);
+    expect(despuesDelNombre("Nutella C", abajo.texto)).toBe(true);
+    // El botón apagado y su aviso no cambian.
+    expect(cuerpo("Nutella C")).toBeDisabled();
+    expect(cuerpo("Nutella C")).toHaveAttribute("title", "Vasos C: no quedan. Avisale al encargado para que reponga.");
+  });
+
+  it("con el «⋯» de pausar, cada lugar pide más ancho: la fila le deja su lugar a los puntos", async () => {
+    await montar({ conteo: conteo(0, 30) });
+    const [chicaSin, arribaSin] = lugares("Nutella C");
+    const sinMenu = { chica: desde(chicaSin.lugar), arriba: desde(arribaSin.lugar) };
+    cleanup();
+    sesion.permisos = ["productos.pausar"];
+    await montar({ conteo: conteo(0, 30) });
+    expect(within(tarjeta("Nutella C")).getByRole("button", { name: "Pausar Nutella C" })).toBeInTheDocument();
+    const [chica, arriba] = lugares("Nutella C");
+    expect(desde(chica.lugar)).toBeGreaterThan(sinMenu.chica);
+    expect(desde(arriba.lugar)).toBeGreaterThan(sinMenu.arriba);
+    // Monta la pantalla dos veces: con la máquina cargada no entra en los 5 s de siempre.
+  }, 20_000);
+
+  it("sin ícono la fila lleva sólo la etiqueta y nunca va debajo del nombre, que quedaría bajo el «⋯»", async () => {
+    sesion.pos = { iconos: false };
+    sesion.permisos = ["productos.pausar"];
+    await montar({ conteo: conteo(0, 30) });
+    const [chica, arriba, ...otros] = lugares("Nutella C");
+    expect(otros).toHaveLength(0);
+    expect(despuesDelNombre("Nutella C", chica.texto)).toBe(false);
+    expect(despuesDelNombre("Nutella C", arriba.texto)).toBe(false);
+    // Una de las dos se ve siempre: la pastilla hasta donde entra la etiqueta.
+    expect(chica.lugar.className).not.toMatch(/(^| )hidden( |$)/);
+    expect(hasta(chica.lugar)).toBe(desde(arriba.lugar));
+  });
+
+  it("pausado y agotado a la vez: gana «Agotado», que sí frena la venta", async () => {
+    vi.mocked(api.productosPausados).mockResolvedValue({
+      sucursal: { id: 3, nombre: "Centro" },
+      pausados: [{ productoId: NUTELLA_C.id, nombre: "Nutella C", desde: "2026-11-18T12:00:00Z", por: "encargado" }],
+    });
+    await montar({ conteo: conteo(0, 30) });
+    const t = tarjeta("Nutella C");
+    expect(lugares("Nutella C")).toHaveLength(3);
+    expect(within(t).queryByText("Pausado")).not.toBeInTheDocument();
+    expect(t.firstElementChild!.className).toContain("opacity-50");
+    expect(t.firstElementChild!.className).not.toContain("grayscale");
+  });
+});
+
 describe("la vista en columnas con el conteo", () => {
   beforeEach(() => {
     sesion.pos = { vista: "COLUMNAS" };
@@ -249,7 +337,7 @@ describe("la vista en columnas con el conteo", () => {
 
   it("el número va UNA vez, en la cabecera del tamaño contado, junto a cuántos productos tiene", async () => {
     await montar({ conteo: conteo(45, 30) });
-    expect(within(cabecera("C")).getByLabelText("Quedan 45 vasos C")).toHaveTextContent("45 u.");
+    expect(within(cabecera("C")).getByLabelText("Vasos C: quedan 45")).toHaveTextContent("45 u.");
     expect(within(cabecera("C")).getByText("2")).toBeInTheDocument();
     // Ni en las filas (quedan muchos) ni en lo que no se cuenta.
     expect(rotulos(bloque("C"))).toHaveLength(1);
@@ -258,7 +346,7 @@ describe("la vista en columnas con el conteo", () => {
 
   it("la cabecera baja con el carrito y avisa cuando quedan pocos, sin sumarle renglones a las filas", async () => {
     await montar({ conteo: conteo(45, 30), lineas: [linea(NUTELLA_C, 40)] });
-    const enCabecera = within(cabecera("C")).getByLabelText("Quedan 5 vasos C");
+    const enCabecera = within(cabecera("C")).getByLabelText("Vasos C: quedan 5");
     expect(enCabecera.className).toContain("bg-warning-bg");
     // El aviso de la fila mira lo que queda en el LOCAL (45): cargar no le
     // agrega un renglón a las filas en medio del pedido (son de alto fijo).
@@ -267,7 +355,7 @@ describe("la vista en columnas con el conteo", () => {
 
   it("con pocos en el local la fila avisa, como el stock; sin vasos, «Agotado» y deshabilitada", async () => {
     await montar({ conteo: conteo(0, 4), lineas: [linea(NUTELLA_L, 1)] });
-    expect(within(fila("Dulce de leche L")).getByLabelText("Quedan 3 vasos L")).toHaveTextContent("3 u.");
+    expect(within(fila("Dulce de leche L")).getByLabelText("Vasos L: quedan 3")).toHaveTextContent("3 u.");
     expect(within(fila("Nutella C")).getByText("Agotado")).toBeInTheDocument();
     expect(botonFila("Nutella C")).toBeDisabled();
     expect(botonFila("Nutella C")).toHaveAttribute("title", "Vasos C: no quedan. Avisale al encargado para que reponga.");
@@ -277,7 +365,7 @@ describe("la vista en columnas con el conteo", () => {
     await montar({ conteo: conteo(45, 3), lineas: [linea(NUTELLA_L, 3)] });
     expect(botonFila("Dulce de leche L")).toBeDisabled();
     expect(botonFila("Dulce de leche L")).toHaveAttribute("title", "Vasos L: sólo quedan 3.");
-    expect(within(fila("Dulce de leche L")).getByLabelText("Quedan 0 vasos L")).toBeInTheDocument();
+    expect(within(fila("Dulce de leche L")).getByLabelText("Vasos L: quedan 0")).toBeInTheDocument();
     expect(botonFila("Nutella C")).toBeEnabled();
   });
 
