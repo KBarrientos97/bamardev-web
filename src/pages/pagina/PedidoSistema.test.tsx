@@ -222,6 +222,51 @@ describe("el carrito con pedidos en el sistema", () => {
     expect(cuerpo).not.toHaveProperty("pagaCon");
   });
 
+  describe("la dirección es opcional (delivery full, 18-nov): el pin manda", () => {
+    it("el campo dice que es opcional", async () => {
+      servidor();
+      await montar();
+      await abrirPedido();
+      await screen.findByRole("button", { name: "Marcar mi casa" });
+      expect(screen.getByText("Dirección (opcional)")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["vacía", ""],
+      ["con sólo espacios", "   "],
+      ["de dos letras (antes pedía 5)", "Sd"],
+    ])("con el pin y la dirección %s, manda el pedido", async (_caso, dir) => {
+      const s = servidor();
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      escribir("Tu nombre", "Lucía");
+      escribir("Tu WhatsApp", "71234567");
+      escribir("Dirección", dir);
+      fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+      await screen.findByText("Seguimiento del pedido");
+      const cuerpo = JSON.parse(String(s.posteos()[0].init?.body));
+      expect(cuerpo).toMatchObject({ tipo: "DELIVERY", latitud: -17.77, longitud: -63.18 });
+      // Vacía no viaja: el backend la guarda en null.
+      if (dir.trim()) expect(cuerpo.direccion).toBe(dir.trim());
+      else expect(cuerpo).not.toHaveProperty("direccion");
+      expect(screen.queryByText("Escribí tu dirección.")).not.toBeInTheDocument();
+    });
+
+    it("sin pin ni dirección no manda nada y sólo pide el pin: el pin sigue siendo obligatorio", async () => {
+      const s = servidor();
+      await montar();
+      await abrirPedido();
+      await screen.findByRole("button", { name: "Marcar mi casa" });
+      escribir("Tu nombre", "Lucía");
+      escribir("Tu WhatsApp", "71234567");
+      fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+      expect(await screen.findByText("Marcá en el mapa dónde te lo llevamos.", { selector: "p" })).toBeInTheDocument();
+      expect(screen.queryByText("Escribí tu dirección.")).not.toBeInTheDocument();
+      expect(s.posteos()).toHaveLength(0);
+    });
+  });
+
   it("el WhatsApp tiene que ser de 8 dígitos y empezar con 6 o 7", async () => {
     const s = servidor();
     await montar();

@@ -369,7 +369,7 @@ export default function PanelSistema({
   if (nombre.trim().length < 2) faltas.push({ texto: "Escribí tu nombre completo (mínimo 2 letras).", campo: "nombre" });
   if (!tel) faltas.push({ texto: "Escribí tu WhatsApp de 8 dígitos (empieza con 6 o 7).", campo: "telefono" });
   if (tipoReal === "DELIVERY") {
-    if (direccion.trim().length < 5) faltas.push({ texto: "Escribí tu dirección.", campo: "direccion" });
+    // La dirección es opcional (delivery full, 18-nov): con el pin el repartidor llega igual. El pin sí es obligatorio.
     if (!pin) faltas.push({ texto: "Marcá en el mapa dónde te lo llevamos.", campo: "pin" });
     else if (pinSinAjustar) faltas.push({ texto: "Tu ubicación es poco precisa: movela en el mapa hasta tu puerta.", campo: "pin" });
     else if (!sucursal) faltas.push({ texto: motivoSinCobertura(punto, sucursales) ?? "Ningún local llega a esa dirección ahora.", campo: "pin" });
@@ -420,7 +420,8 @@ export default function PanelSistema({
       formaPago: formaPagoReal,
       ...(tipoReal === "DELIVERY" && pin
         ? {
-            direccion: direccion.trim(),
+            // Vacía no se manda: el backend la guarda en null y las pantallas dicen «Ubicación marcada en el mapa».
+            ...(direccion.trim() ? { direccion: direccion.trim() } : {}),
             ...(referencia.trim() ? { referencia: referencia.trim() } : {}),
             latitud: pin.lat,
             longitud: pin.lng,
@@ -733,8 +734,8 @@ export default function PanelSistema({
                     )}
                   </div>
                   <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={etiqueta}>Dirección</span>
-                    <input ref={guardar("direccion")} aria-invalid={invalido(direccion.trim().length < 5)} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={conError(direccion.trim().length < 5)} />
+                    <span style={etiqueta}>Dirección (opcional)</span>
+                    <input ref={guardar("direccion")} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={campo} />
                   </label>
                   <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <span style={etiqueta}>Referencia (opcional)</span>
