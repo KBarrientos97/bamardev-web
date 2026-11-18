@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto } from "../../types";
@@ -16,11 +16,21 @@ import type { Carrito } from "./useCarrito";
 const sesion = vi.hoisted(() => ({
   features: ["pos", "caja", "pedidos_yango", "pedidos_pedidosya"] as string[],
   permisos: ["ventas.vender", "plataformas.registrar"] as string[],
+  /** Configuración › Punto de venta (delivery full, 18-nov); null = la de fábrica. */
+  pos: null as Record<string, unknown> | null,
+  /** El conteo por categoría (18-nov); null = apagado, lo de fábrica. */
+  conteo: null as Record<string, unknown> | null,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    negocio: { id: 1, nombre: "El Ganadero", features: sesion.features },
+    negocio: {
+      id: 1,
+      nombre: "El Ganadero",
+      features: sesion.features,
+      ...(sesion.pos ? { tipoNegocio: "RESTAURANTE", pos: sesion.pos } : {}),
+      ...(sesion.conteo ? { conteo: sesion.conteo } : {}),
+    },
     usuario: { id: 1, username: "caja", rol: "CAJERO", permisos: sesion.permisos },
     rubro: "RESTAURANTE",
     incluye: () => true,
@@ -54,6 +64,7 @@ vi.mock("../../lib/api", () => ({
     entregasMesero: vi.fn(async () => null),
     crearVenta: vi.fn(),
     crearPedidoPlataforma: vi.fn(),
+    estadoConteo: vi.fn(),
   },
 }));
 
@@ -77,10 +88,13 @@ vi.mock("./PantallaVenta", () => ({
     carrito: Carrito;
     cabecera?: ReactNode;
     plataformas?: { disponibles: string[]; onElegir: (p: string) => void };
+    conteo?: { saldos: ReadonlyMap<number, number | null> };
   }) => (
     <div>
       {props.cabecera}
       <p>{props.carrito.unidades} en el carrito</p>
+      {/* Los vasos L que le llegan a la venta con el conteo prendido (18-nov). */}
+      {props.conteo && <p>quedan {props.conteo.saldos.get(30)} L</p>}
       {props.plataformas?.disponibles.map((p) => (
         <button key={p} onClick={() => props.plataformas!.onElegir(p)}>
           pedido {p}
@@ -130,6 +144,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   sesion.features = ["pos", "caja", "pedidos_yango", "pedidos_pedidosya"];
   sesion.permisos = ["ventas.vender", "plataformas.registrar"];
+  sesion.pos = null;
+  sesion.conteo = null;
   sessionStorage.clear();
   sessionStorage.setItem("bamar.carrito.LOCAL", JSON.stringify([{ id: 5, cantidad: 2, enMesa: 0, nota: "" }]));
   vi.mocked(api.getProductos).mockResolvedValue([ARROZ]);
@@ -265,5 +281,147 @@ describe("sin señal (la app instalada de la compu o del iPhone)", () => {
     expect(hayPorSubir()).toBe(true);
     // Y el aviso de arriba lo cuenta como algo que falta subir.
     expect(screen.getByText(/1 pedido de plataforma.*sin internet/)).toBeInTheDocument();
+  });
+
+  it("con «Imprimir el pedido al registrarlo» prendido, el ticket sale igual, con lo que se cargó", async () => {
+    sesion.pos = { imprimirPlataformas: true };
+    window.print = vi.fn();
+    vi.mocked(api.crearPedidoPlataforma).mockRejectedValue(new ApiError("Sin internet. Revisá la conexión del local.", 0));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    fireEvent.change(screen.getByLabelText("N° de pedido de Yango (opcional)"), { target: { value: "A-123" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+    });
+    const ventana = screen.getByRole("dialog", { name: "Pedido de Yango guardado: sube solo cuando vuelva la señal" });
+    const vista = within(ventana).getByLabelText("Vista del ticket").textContent!;
+    expect(vista).toContain("N° de la app: A-123");
+    const fila = (izq: string, monto: string) => izq + " ".repeat(32 - izq.length - monto.length) + monto;
+    expect(vista).toContain(fila("2 x Arroz con leche L", "70.00"));
+    expect(vista).toContain("Atendió: caja");
+    expect(vista).toContain(fila("TOTAL", "Bs 70.00"));
+    expect(hayPorSubir()).toBe(true);
+    // Sin el aviso de siempre: la ventana ya lo dice.
+    expect(screen.queryByText(/guardado sin internet/)).not.toBeInTheDocument();
+  });
+});
+
+describe("«Imprimir el pedido al registrarlo» (delivery full, 18-nov)", () => {
+  beforeEach(() => {
+    window.print = vi.fn();
+  });
+
+  async function registrar() {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+    });
+  }
+
+  it("apagado (lo de fábrica): el aviso de siempre, sin ventana ni papel", async () => {
+    await registrar();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Pedido de Yango registrado")).toBeInTheDocument();
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it("prendido: abre la vista del ticket con «Imprimir» y «Listo»", async () => {
+    sesion.pos = { imprimirPlataformas: true };
+    await registrar();
+    const ventana = screen.getByRole("dialog", { name: "Pedido de Yango registrado" });
+    const vista = within(ventana).getByLabelText("Vista del ticket").textContent!;
+    expect(vista).toContain("PEDIDO YANGO");
+    expect(vista).toContain("N° de la app: A-123");
+    expect(vista).toContain("2 unidades");
+    expect(screen.getByText("0 en el carrito")).toBeInTheDocument();
+    // «Imprimir» abre el diálogo de impresión con el mismo texto, en negrita.
+    fireEvent.click(within(ventana).getByRole("button", { name: "Imprimir" }));
+    expect(window.print).toHaveBeenCalledTimes(1);
+    const papel = document.getElementById("area-impresion")!;
+    expect(papel).toHaveClass("papel-negrita");
+    expect(papel.textContent).toBe(vista);
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    // «Listo» cierra y el POS queda como siempre.
+    fireEvent.click(within(ventana).getByRole("button", { name: "Listo" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(document.getElementById("area-impresion")).toBeNull();
+  });
+});
+
+describe("conteo por categoría (vasos por tamaño, 18-nov): el pedido de plataforma también gasta vasos", () => {
+  // El arroz con leche se prepara al vender: no lleva stock, sólo gasta su vaso L.
+  const ARROZ_L = { ...ARROZ, tipoProducto: "SERVICIO", stockTotal: 0, categoria: { id: 30, nombre: "L" } } as unknown as Producto;
+  const estado = (quedan: number) => ({
+    activo: true,
+    nombre: "Vasos",
+    sucursalId: 3,
+    items: [{ categoriaId: 30, nombre: "L", contado: 100, contadoEn: 0, repuesto: 0, vendido: 100 - quedan, quedan }],
+  });
+
+  beforeEach(() => {
+    sesion.conteo = { activo: true, nombre: "Vasos", categorias: [{ id: 30, nombre: "L" }] };
+    vi.mocked(api.getProductos).mockResolvedValue([ARROZ_L]);
+    vi.mocked(api.estadoConteo).mockResolvedValue(estado(40) as never);
+  });
+
+  async function registrar() {
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+    });
+    await act(async () => {});
+  }
+
+  it("registrado en vivo, se vuelve a pedir el saldo del local", async () => {
+    await montar();
+    expect(screen.getByText("quedan 40 L")).toBeInTheDocument();
+    vi.mocked(api.estadoConteo).mockClear();
+    await registrar();
+    expect(screen.getByText("Pedido de Yango registrado")).toBeInTheDocument();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el servidor lo rechaza, el diálogo muestra el texto y el saldo se vuelve a pedir igual", async () => {
+    vi.mocked(api.crearPedidoPlataforma).mockRejectedValueOnce(
+      new ApiError("Vasos L: no quedan. Avisale al encargado para que reponga.", 400),
+    );
+    await montar();
+    vi.mocked(api.estadoConteo).mockClear();
+    await registrar();
+    expect(screen.getByText("Vasos L: no quedan. Avisale al encargado para que reponga.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Pedido de Yango" })).toBeInTheDocument();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+  });
+
+  describe("sin señal (la app instalada)", () => {
+    beforeEach(() => {
+      usarAlmacenCola(almacenEnMemoria());
+      usarAlmacenCopias(almacenEnMemoria());
+      localStorage.setItem("usuario", JSON.stringify({ id: 1, username: "caja" }));
+      localStorage.setItem("negocio", JSON.stringify({ id: 1, nombre: "Prueba" }));
+      fijarVentaSinInternet(true);
+    });
+    afterEach(() => {
+      fijarVentaSinInternet(null);
+      hayRespuesta();
+      localStorage.clear();
+    });
+
+    it("el pedido que queda en la cola baja los vasos acá, sin preguntarle al servidor (todavía no lo conoce)", async () => {
+      vi.mocked(api.crearPedidoPlataforma).mockRejectedValue(
+        new ApiError("Sin internet. Revisá la conexión del local.", 0),
+      );
+      await montar();
+      expect(screen.getByText("quedan 40 L")).toBeInTheDocument();
+      vi.mocked(api.estadoConteo).mockClear();
+      await registrar();
+      expect(screen.getByText(/Pedido de Yango guardado sin internet/)).toBeInTheDocument();
+      expect(hayPorSubir()).toBe(true);
+      expect(screen.getByText("quedan 38 L")).toBeInTheDocument();
+      expect(api.estadoConteo).not.toHaveBeenCalled();
+    });
   });
 });

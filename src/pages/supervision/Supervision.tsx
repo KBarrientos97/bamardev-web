@@ -10,6 +10,9 @@ import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import { BotonB, ChipFiltro, Circulo, Nota, SelectorSucursal, Tarjeta } from "../billar/ui";
 import { DialogoAnular, type VentaParaAnular } from "../pos/DialogoAnular";
+import { BotonProductosVendidos, ProductosDelTurno } from "../pos/PantallaCierre";
+import ConteoSupervision from "./ConteoSupervision";
+import { api } from "../../lib/api";
 import type { Actividad, CajaSupervision, SupervisionRestaurante, VentaSupervision } from "./api";
 import { Bloques, type Pestana } from "./Bloques";
 import {
@@ -83,7 +86,7 @@ function paraAnular(v: VentaSupervision): VentaParaAnular {
  */
 export default function Supervision() {
   const { datos, error, llegoEn, ahora, sucursal, elegirSucursal, elegirTurno, recargar } = useSupervision();
-  const { usuario } = useAuth();
+  const { usuario, rubro } = useAuth();
   const suc = useSucursales();
   const [filtro, setFiltro] = useState<FiltroActividad>("todo");
   const [cuantos, setCuantos] = useState(DE_A);
@@ -92,6 +95,7 @@ export default function Supervision() {
   const [ventaAbierta, setVentaAbierta] = useState<number | null>(null);
   const [busqueda, setBusqueda] = useState("");
   const [anulando, setAnulando] = useState<VentaSupervision | null>(null);
+  const [viendoProductos, setViendoProductos] = useState(false);
 
   const turno = useMemo(() => (datos ? situacionDelTurno(datos, ahora) : null), [datos, ahora]);
   const porMedio = useMemo(() => (datos ? resumenPorMedio(datos.turno.porMedio) : null), [datos]);
@@ -223,6 +227,9 @@ export default function Supervision() {
               )}
             </div>
 
+            {/* El mismo «Productos vendidos» del cierre, del turno que se mira: el dueño no tiene que esperar a que el cajero cierre. */}
+            {t.cajaId != null && <BotonProductosVendidos rubro={rubro} onClick={() => setViendoProductos(true)} />}
+
             <Tarjeta icono="coins" titulo="Cobrado por medio" extra={porMedio.mixtas ? plural(porMedio.mixtas, "venta mixta", "ventas mixtas") : undefined} cuerpo="px-4 py-3 sm:px-5">
               <dl className={`grid gap-2 text-[12px] ${columnas(porMedio.medios.length)}`}>
                 {porMedio.medios.map((m) => (
@@ -233,6 +240,11 @@ export default function Supervision() {
                 <p className="mt-2 text-[12px] text-texto-3">Una venta pagada con dos medios cuenta en los dos: la suma de cobros no es la de ventas.</p>
               )}
             </Tarjeta>
+
+            {/* Los vasos (o cajas, o envases) por categoría del local que se mira. Sin el conteo prendido no viene y no se dibuja nada. */}
+            {datos.conteo && datos.conteo.items.length > 0 && (
+              <ConteoSupervision conteo={datos.conteo} sucursal={datos.sucursal.nombre} ahora={ahora} onCambio={() => void recargar()} />
+            )}
 
             {/* Aparte de lo vendido: no se cobra en caja, no suma a «Vendido» ni a los medios de pago. */}
             {plat && (
@@ -348,6 +360,17 @@ export default function Supervision() {
           </aside>
         </div>
       </div>
+
+      {viendoProductos && t.cajaId != null && (
+        <ProductosDelTurno
+          cajaId={t.cajaId}
+          sede={suc.elegir ? datos.sucursal.nombre : undefined}
+          // La ruta propia de la Supervisión (`caja.ver_todas`): quien mira el turno
+          // de otro no tiene por qué tener Reportes. Sin ticket: no es su cierre.
+          cargar={() => api.productosDelTurnoSupervision(t.cajaId as number)}
+          onClose={() => setViendoProductos(false)}
+        />
+      )}
 
       {anulando && (
         <DialogoAnular

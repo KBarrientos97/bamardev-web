@@ -7,7 +7,19 @@ import { CONFIG_POS_DE_SIEMPRE, configPosDe, mismaConfigPos, normalizarConfigPos
  * manda no pueden cambiar cómo se cobra.
  */
 
-const DE_SIEMPRE = { vista: "TARJETAS", cobro: "APARTE", iconos: true, filtros: true, ordenCategorias: [] };
+// Los billetes (Configuración › Caja, 17-nov) valen «sí» de fábrica: contar al abrir y al cerrar es lo de siempre.
+const DE_SIEMPRE = {
+  vista: "TARJETAS",
+  cobro: "APARTE",
+  iconos: true,
+  filtros: true,
+  ordenCategorias: [],
+  billetesAlAbrir: true,
+  billetesAlCerrar: true,
+  // Delivery full (18-nov): los dos apagados de fábrica.
+  imprimirPlataformas: false,
+  rendirRepartidores: false,
+};
 
 describe("normalizarConfigPos", () => {
   it.each([undefined, null, "COLUMNAS", 3, []])("sin un objeto (%s): lo de fábrica", (crudo) => {
@@ -17,7 +29,7 @@ describe("normalizarConfigPos", () => {
   it("lo que viene bien se respeta", () => {
     expect(
       normalizarConfigPos({ vista: "COLUMNAS", cobro: "EN_VENTA", iconos: false, filtros: false, ordenCategorias: [4, 2] }),
-    ).toEqual({ vista: "COLUMNAS", cobro: "EN_VENTA", iconos: false, filtros: false, ordenCategorias: [4, 2] });
+    ).toEqual({ ...DE_SIEMPRE, vista: "COLUMNAS", cobro: "EN_VENTA", iconos: false, filtros: false, ordenCategorias: [4, 2] });
   });
 
   it("un campo roto no tira abajo a los demás: vale lo de fábrica sólo ése", () => {
@@ -34,6 +46,12 @@ describe("normalizarConfigPos", () => {
 
   it("un campo que esta versión no conoce (el destino del pedido, que no es un ajuste) se ignora", () => {
     expect(normalizarConfigPos({ consumo: "LLEVAR" })).toEqual(DE_SIEMPRE);
+  });
+
+  it("los billetes se leen aparte: apagar uno no toca al otro, y un dato roto vale «sí»", () => {
+    expect(normalizarConfigPos({ billetesAlAbrir: false })).toEqual({ ...DE_SIEMPRE, billetesAlAbrir: false });
+    expect(normalizarConfigPos({ billetesAlCerrar: false })).toEqual({ ...DE_SIEMPRE, billetesAlCerrar: false });
+    expect(normalizarConfigPos({ billetesAlAbrir: "no", billetesAlCerrar: null })).toEqual(DE_SIEMPRE);
   });
 
   it("devuelve copias: tocar el resultado no cambia lo de fábrica", () => {
@@ -108,5 +126,37 @@ describe("ordenarCategorias", () => {
     const lista = [POLLOS, BEBIDAS];
     ordenarCategorias(lista, [2, 1]);
     expect(lista).toEqual([POLLOS, BEBIDAS]);
+  });
+});
+
+describe("delivery full (18-nov): imprimir los pedidos de plataforma y controlar la plata de los repartidores", () => {
+  it("de fábrica, los dos apagados", () => {
+    expect(CONFIG_POS_DE_SIEMPRE.imprimirPlataformas).toBe(false);
+    expect(CONFIG_POS_DE_SIEMPRE.rendirRepartidores).toBe(false);
+  });
+
+  it("un pos de antes, que no los trae, los deja apagados y respeta lo demás", () => {
+    expect(normalizarConfigPos({ vista: "COLUMNAS" })).toEqual({ ...DE_SIEMPRE, vista: "COLUMNAS" });
+  });
+
+  it("prendidos se respetan, cada uno por su lado", () => {
+    expect(normalizarConfigPos({ imprimirPlataformas: true })).toMatchObject({ imprimirPlataformas: true, rendirRepartidores: false });
+    expect(normalizarConfigPos({ rendirRepartidores: true })).toMatchObject({ imprimirPlataformas: false, rendirRepartidores: true });
+  });
+
+  it.each([null, "true", 1, "si"])("un valor que no es true (%s) vale apagado", (v) => {
+    expect(normalizarConfigPos({ imprimirPlataformas: v, rendirRepartidores: v })).toEqual(DE_SIEMPRE);
+  });
+
+  it("cuentan para saber si dos configuraciones son la misma", () => {
+    const a = normalizarConfigPos(null);
+    expect(mismaConfigPos(a, normalizarConfigPos({ imprimirPlataformas: true }))).toBe(false);
+    expect(mismaConfigPos(a, normalizarConfigPos({ rendirRepartidores: true }))).toBe(false);
+    expect(mismaConfigPos(normalizarConfigPos({ imprimirPlataformas: true }), normalizarConfigPos({ imprimirPlataformas: true }))).toBe(true);
+  });
+
+  it("sólo el restaurante: en otro rubro siguen apagados aunque lleguen prendidos", () => {
+    expect(configPosDe({ tipoNegocio: "RESTAURANTE", pos: { imprimirPlataformas: true } }).imprimirPlataformas).toBe(true);
+    expect(configPosDe({ tipoNegocio: "FARMACIA", pos: { imprimirPlataformas: true, rendirRepartidores: true } })).toEqual(DE_SIEMPRE);
   });
 });

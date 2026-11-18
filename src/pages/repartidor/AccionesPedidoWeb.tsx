@@ -6,6 +6,7 @@ import { frasesDeCobro } from "../../lib/pedidosWeb/cobro";
 import { urlWaze } from "../../lib/pedidosWeb/navegacion";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import type { PedidoWebDeEntrega } from "../../lib/pedidosWeb/tipos";
+import { direccionEscrita } from "./direccionEntrega";
 
 /**
  * Lo que suma un pedido que vino de la página (13-nov): navegar hasta el pin
@@ -39,6 +40,10 @@ export default function AccionesPedidoWeb({
   const [copiada, setCopiada] = useState(false);
   const [error, setError] = useState("");
   const pin = web.latitud != null && web.longitud != null ? { lat: web.latitud, lng: web.longitud } : null;
+  // Sin dirección escrita (18-nov: el cliente puede marcar sólo el pin), no hay
+  // nada que copiar: «Ubicación marcada en el mapa» no le sirve a nadie pegada
+  // en otra app. Para llegar están los botones del mapa.
+  const paraCopiar = direccionEscrita(direccion);
   const boton =
     "flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted";
 
@@ -59,7 +64,7 @@ export default function AccionesPedidoWeb({
 
   async function copiar() {
     try {
-      await navigator.clipboard.writeText(direccion ?? "");
+      await navigator.clipboard.writeText(paraCopiar ?? "");
       setCopiada(true);
       setTimeout(() => setCopiada(false), 2500);
     } catch {
@@ -79,19 +84,26 @@ export default function AccionesPedidoWeb({
         ))}
       </ul>
       {web.referencia && <p className="text-[13px] text-texto-2">Referencia: {web.referencia}</p>}
+      {/* «Ir con Google Maps» se partía en dos renglones a 390 px (QA 18-nov):
+          los dos botones se repartían el ancho por igual. Ahora ninguno parte
+          su texto (cada uno ocupa lo que necesita) y, si en una pantalla más
+          angosta no entran lado a lado, el segundo baja entero. Los textos son
+          los mismos que en la app. */}
       {pin && (
-        <div className="flex gap-2">
-          <a href={urlRuta(pin)} target="_blank" rel="noreferrer" className={boton}>
+        <div className="flex flex-wrap gap-2">
+          <a href={urlRuta(pin)} target="_blank" rel="noreferrer" className={`${boton} whitespace-nowrap`}>
             <Icon name="pin" size={15} /> Ir con Google Maps
           </a>
-          <a href={urlWaze(pin.lat, pin.lng)} target="_blank" rel="noreferrer" className={boton}>
+          <a href={urlWaze(pin.lat, pin.lng)} target="_blank" rel="noreferrer" className={`${boton} whitespace-nowrap`}>
             <Icon name="pin" size={15} /> Abrir en Waze
           </a>
         </div>
       )}
-      <button type="button" onClick={copiar} className={`${boton} w-full`}>
-        <Icon name="copiar" size={15} /> {copiada ? "Dirección copiada" : "Copiar dirección"}
-      </button>
+      {paraCopiar && (
+        <button type="button" onClick={copiar} className={`${boton} w-full`}>
+          <Icon name="copiar" size={15} /> {copiada ? "Dirección copiada" : "Copiar dirección"}
+        </button>
+      )}
       {salio ? (
         <p className="rounded-lg bg-white px-3 py-2.5 text-[13px] font-semibold text-primary-700">
           {sinUbicacion

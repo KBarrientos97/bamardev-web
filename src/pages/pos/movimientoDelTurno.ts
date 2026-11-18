@@ -1,4 +1,5 @@
-import { aCentavos } from "../../lib/dinero";
+import { aCentavos, esPositivo } from "../../lib/dinero";
+import { fmtMoney } from "../../lib/format";
 import type { ResumenCaja } from "../../types";
 
 /**
@@ -23,7 +24,8 @@ import type { ResumenCaja } from "../../types";
  * 2. Por cada medio que no es efectivo (el QR): ventas + abonos de fiado =
  *    lo que tiene que figurar en la cuenta.
  * 3. El cajón (`FilasDelCajon`): fondo + ventas en efectivo + abonos de fiado
- *    en efectivo ± movimientos − lo de los meseros = efectivo esperado.
+ *    en efectivo ± movimientos − lo de los meseros − lo de los repartidores
+ *    (18-nov, `enPoderDeRepartidores`) = efectivo esperado.
  *
  * Un abono de fiado no es venta del turno (lo vendido no sube), pero sí plata
  * que entró: suma en el bloque del medio por donde entró, nunca en dos.
@@ -148,4 +150,56 @@ export function mediosDelTurno(r: ResumenCaja): MedioDelTurno[] {
       return { nombre, ventas, abonos, total: Math.round((ventas + abonos) * 100) / 100 };
     })
     .filter((m) => m.total > 0);
+}
+
+export interface PlataEnPoderDeRepartidores {
+  /** Lo que el backend ya restó de `saldoEsperado`: la fila del cajón, en negativo. */
+  monto: number;
+  /** A quién pedírsela, de más a menos (como viene del servidor). */
+  quienes: { nombre: string; monto: number }[];
+}
+
+/**
+ * El efectivo que los repartidores cobraron y la caja todavía no recibió
+ * (delivery propio, 18-nov). Es el gemelo de «En poder de meseros»: esa plata
+ * está en las ventas en efectivo, pero en el bolsillo del repartidor y no en
+ * el cajón, así que el backend la resta del esperado. Sin su fila, el cajero
+ * suma las de arriba, le da otro número y sale a buscar un faltante que no
+ * existe.
+ *
+ * Sólo hay algo con «Controlar la plata de los repartidores» prendido. Un
+ * backend anterior no manda los campos: 0 y la fila no aparece, como siempre.
+ */
+export function enPoderDeRepartidores(
+  r: Pick<ResumenCaja, "enPoderDeRepartidores" | "repartidoresPendientes">,
+): PlataEnPoderDeRepartidores {
+  const monto = Number(r.enPoderDeRepartidores ?? 0);
+  return {
+    monto: Number.isFinite(monto) && esPositivo(monto) ? aCentavos(monto) : 0,
+    quienes: (r.repartidoresPendientes ?? [])
+      .filter((x) => esPositivo(Number(x.monto) || 0))
+      .map((x) => ({ nombre: x.nombre?.trim() || "Repartidor", monto: aCentavos(Number(x.monto)) })),
+  };
+}
+
+/** «Pedro Rojas Bs 130,00 · Luis Vaca Bs 60,00»: el renglón chico debajo de la fila. */
+export function textoEnPoder(quienes: { nombre: string; monto: number }[]): string {
+  return quienes.map((q) => `${q.nombre} ${fmtMoney(q.monto)}`).join(" · ");
+}
+
+/**
+ * Por qué la caja no cierra todavía: el mismo mensaje que el backend
+ * (`exigirSinEntregasDeRepartidores`), con la plata como la ve la cajera. Se
+ * dice antes de pedir la confirmación del cierre: preguntar «¿cerrar la
+ * caja?» por algo que el servidor va a rechazar es un paso de más. Sin plata
+ * en poder de repartidores, null y el cierre sigue como siempre.
+ */
+export function cierreFrenadoPorRepartidores(
+  r: Pick<ResumenCaja, "enPoderDeRepartidores" | "repartidoresPendientes"> | null | undefined,
+): string | null {
+  if (!r) return null;
+  const { monto, quienes } = enPoderDeRepartidores(r);
+  if (!(monto > 0)) return null;
+  const quien = quienes.length ? textoEnPoder(quienes) : fmtMoney(monto);
+  return `Hay efectivo de repartidores sin recibir: ${quien}. Recibilo en «Repartidores» antes de cerrar la caja.`;
 }

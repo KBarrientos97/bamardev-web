@@ -35,8 +35,9 @@ import {
 } from "../lib/permisos";
 import { conPerfilDelEstado } from "../lib/perfilNegocio";
 import { mismaConfigPos, normalizarConfigPos, type ConfigPos } from "../lib/configPos";
+import { mismoConteo, normalizarConfigConteo } from "../lib/conteo";
 import type { Vocabulario } from "../lib/rubro";
-import type { CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
+import type { ConfigConteo, CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
 /** Alias del negocio: se recuerda para no re-tipearlo en cada login. */
 const ALIAS_KEY = "bamardev_web_alias";
@@ -108,6 +109,12 @@ interface AuthValue {
    * entrar. Recibe la configuración ya completa (la respuesta del PATCH).
    */
   fijarConfigPos: (pos: ConfigPos) => void;
+  /**
+   * Pisa `negocio.conteo` con lo recién guardado en Configuración › Inventario
+   * y stock › Conteo por categoría: la apertura, el cierre y la Supervisión de
+   * quien lo cambió lo muestran (o dejan de mostrarlo) sin volver a entrar.
+   */
+  fijarConteo: (conteo: ConfigConteo) => void;
   /**
    * Pisa `negocio.pedidosWeb` con lo que acaba de publicar Mi página («Recibir
    * pedidos en el sistema»): «Pedidos web» sale (o se va) del menú sin esperar
@@ -365,6 +372,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /** Igual que `fijarConfigPos`: por contenido, para que el chequeo de la licencia no redibuje la caja si dice lo mismo. */
+  const fijarConteo = useCallback((conteo: unknown) => {
+    const nuevo = normalizarConfigConteo(conteo);
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      if (previo.conteo && mismoConteo(normalizarConfigConteo(previo.conteo), nuevo)) return previo;
+      const actualizado = { ...previo, conteo: nuevo };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   /**
    * Cómo se entregan los pedidos de la página (`negocio.entregaPedidosWeb` y
    * `servicioDeliveryExterno`, PLAN-DELIVERY-EXTERNO §2.6): sigue a `/licencia/estado`
@@ -532,6 +551,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // la caja abierta lo toma en el próximo chequeo. Sin el campo (backend
           // viejo) se queda con lo que trajo el login.
           if (estado.pos && typeof estado.pos === "object") fijarConfigPos(estado.pos);
+          // Y el conteo por categoría, igual: sin el campo (backend viejo) queda lo del login.
+          if (estado.conteo && typeof estado.conteo === "object") fijarConteo(estado.conteo);
           // Ausente (un backend viejo) = repartidores propios, como siempre.
           if (estado.entregaPedidosWeb !== undefined || estado.servicioDeliveryExterno !== undefined) {
             fijarEntregaPedidos(estado.entregaPedidosWeb ?? "PROPIO", estado.servicioDeliveryExterno ?? null);
@@ -573,6 +594,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fijarPedidosWeb,
     fijarUsaAgregados,
     fijarConfigPos,
+    fijarConteo,
     fijarEntregaPedidos,
     fijarVariante,
     refrescarPermisos,
@@ -670,6 +692,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fijarUsaDespacho,
       fijarUsaAgregados,
       fijarConfigPos,
+      fijarConteo,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     }),
@@ -691,6 +714,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fijarUsaDespacho,
       fijarUsaAgregados,
       fijarConfigPos,
+      fijarConteo,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     ],

@@ -36,10 +36,13 @@ import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
 import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
 import {
+  cierreFrenadoPorRepartidores,
   efectivoDelTurno,
+  enPoderDeRepartidores,
   ETIQUETA_DEVUELTO,
   formasCobradas,
   mediosDelTurno,
+  textoEnPoder,
   vendidoDelTurno,
 } from "./movimientoDelTurno";
 import ImprimirTicketCierre from "./ImprimirTicketCierre";
@@ -54,6 +57,12 @@ import {
   type VistaProductos,
 } from "./productosVendidos";
 import { abiertaDesde, turnoDeCaja } from "./turnoDeCaja";
+import ConteoDelTurno from "./ConteoDelTurno";
+import { configPosDe } from "../../lib/configPos";
+import { tieneFeature } from "../../lib/permisos";
+import { hayRepartidores, type RendicionReparto } from "../../lib/repartoRendicion";
+import RendicionRepartidores from "../reparto/RendicionRepartidores";
+import { pedirRendicionSiHay } from "../reparto/pedirRendicion";
 
 /**
  * La fila del billar en el arqueo, con el signo en el valor. El número es un
@@ -88,6 +97,19 @@ export default function PantallaCierre({
   const [enviando, setEnviando] = useState(false);
   const [movimientoAbierto, setMovimientoAbierto] = useState(false);
   const [viendoProductos, setViendoProductos] = useState(false);
+  /**
+   * El delivery propio (18-nov): con la feature `delivery`, lo que llevó cada
+   * repartidor y la plata que tiene que entregar (`GET /reparto/rendicion`).
+   * Sólo un agregado: sin repartos hoy, con un backend anterior (404) o sin
+   * permiso, el botón «Repartidores» no aparece y el cierre es el de siempre.
+   */
+  const conReparto = tieneFeature(negocio?.features, "delivery");
+  const rendicion = useApi(
+    () => (conReparto ? pedirRendicionSiHay(caja.almacenId) : Promise.resolve(null)),
+    [conReparto, caja.id],
+  );
+  const [viendoRepartidores, setViendoRepartidores] = useState(false);
+  const verRepartidores = conReparto ? () => setViendoRepartidores(true) : undefined;
   /**
    * Ventas cobradas sin internet que no subieron (app del iPhone): no están
    * en el resumen del servidor, así que el arqueo saldría con un faltante que
@@ -172,11 +194,14 @@ export default function PantallaCierre({
    */
   const pideConfirmacion = rubro === "RESTAURANTE";
   const [confirmando, setConfirmando] = useState(false);
+  // Plata de repartidores sin recibir (18-nov): el backend no deja cerrar, y
+  // se dice antes de contar de más. Sin el control prendido, siempre null.
+  const frenoRepartidores = cierreFrenadoPorRepartidores(r);
 
   function pedirCierre() {
     // Lo que impide cerrar (ventas sin subir, el conteo vacío) lo dice el
     // mismo `cerrar`, sin preguntar antes nada que igual no se puede hacer.
-    if (!pideConfirmacion || sinSubir > 0 || contadoNum === null) return void cerrar();
+    if (!pideConfirmacion || sinSubir > 0 || contadoNum === null || frenoRepartidores) return void cerrar();
     setError("");
     setConfirmando(true);
   }
@@ -196,6 +221,7 @@ export default function PantallaCierre({
         `No se puede cerrar caja: hay ${sinSubir} ${sinSubir === 1 ? "venta" : "ventas"} sin sincronizar. Esperá a que vuelva la conexión.`,
       );
     if (contadoNum === null) return setError("Contá el efectivo que hay en la caja.");
+    if (frenoRepartidores) return setError(frenoRepartidores);
     setEnviando(true);
     try {
       // Se pasa la caja que devuelve el cierre: es la unica fuente con los
@@ -286,7 +312,12 @@ export default function PantallaCierre({
                   <>
                     <BloquesRestaurante r={r} />
                     <h3 className={TITULO_BLOQUE}>Efectivo en caja</h3>
-                    <FilasDelCajon r={r} rubro={rubro} onIrAEntregas={onIrAEntregas} />
+                    <FilasDelCajon
+                      r={r}
+                      rubro={rubro}
+                      onIrAEntregas={onIrAEntregas}
+                      onRecibirRepartidores={verRepartidores}
+                    />
                   </>
                 ) : enDosBloques(rubro) ? (
                   <>
@@ -294,7 +325,12 @@ export default function PantallaCierre({
                     <h3 className="mb-2 mt-4 border-t border-borde pt-3 text-[12px] font-bold uppercase tracking-wide text-texto-4">
                       Efectivo en caja
                     </h3>
-                    <FilasDelCajon r={r} rubro={rubro} onIrAEntregas={onIrAEntregas} />
+                    <FilasDelCajon
+                      r={r}
+                      rubro={rubro}
+                      onIrAEntregas={onIrAEntregas}
+                      onRecibirRepartidores={verRepartidores}
+                    />
                   </>
                 ) : (
                   <dl className="space-y-1.5 text-sm">
@@ -350,6 +386,7 @@ export default function PantallaCierre({
                         </p>
                       </div>
                     )}
+                    <FilaRepartidores r={r} onRecibir={verRepartidores} />
                     {/* Billar: el efectivo que se cobró a mesas que siguen
                         abiertas (adelanto, tiempo fijo) está en el cajón pero
                         todavía no es una venta, y el backend lo suma al
@@ -416,6 +453,8 @@ export default function PantallaCierre({
             </div>
 
             <section className="card p-4 lg:sticky lg:top-0">
+              {/* Los vasos de cada tamaño: lo que se vendió y lo que queda. Sólo con el conteo prendido. */}
+              {r.conteo && r.conteo.items.length > 0 && <ConteoDelTurno conteo={r.conteo} className="mb-4" />}
               <Campo
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
@@ -443,16 +482,27 @@ export default function PantallaCierre({
                     className="mb-2"
                   />
                 )}
-
-                <div className="mb-2">
-                  {/* Con lo que dice el campo: si el cajero corrige el monto a
-                      mano, el conteo se descarta (ver `CorteDeCaja`). */}
-                  <CorteDeCaja
-                    titulo="Contar billete por billete"
-                    monto={contadoNum}
-                    onTotal={(t) => cambiarContado(t > 0 ? montoParaEditar(t) : "")}
+                {/* Delivery propio (18-nov): sólo si hoy algún repartidor llevó pedidos. */}
+                {verRepartidores && hayRepartidores(rendicion.datos) && (
+                  <BotonRepartidores
+                    rendicion={rendicion.datos!}
+                    className="mb-2"
+                    onClick={verRepartidores}
                   />
-                </div>
+                )}
+
+                {/* Configuración › Caja (17-nov): se puede apagar y el total se escribe directo. */}
+                {configPosDe(negocio).billetesAlCerrar && (
+                  <div className="mb-2">
+                    {/* Con lo que dice el campo: si el cajero corrige el monto a
+                        mano, el conteo se descarta (ver `CorteDeCaja`). */}
+                    <CorteDeCaja
+                      titulo="Contar billete por billete"
+                      monto={contadoNum}
+                      onTotal={(t) => cambiarContado(t > 0 ? montoParaEditar(t) : "")}
+                    />
+                  </div>
+                )}
                 <InputMonto
                   value={contado}
                   onChange={cambiarContado}
@@ -527,6 +577,21 @@ export default function PantallaCierre({
         />
       )}
 
+      {viendoRepartidores && (
+        <RendicionRepartidores
+          almacenId={caja.almacenId}
+          inicial={rendicion.datos}
+          onClose={() => setViendoRepartidores(false)}
+          onRecibido={(nueva) => {
+            // Lo recibido pasa al cajón: el esperado cambió.
+            setError("");
+            resumen.recargar();
+            if (nueva) rendicion.setDatos(nueva);
+            else rendicion.recargar();
+          }}
+        />
+      )}
+
       <Confirmar
         abierto={confirmando}
         titulo="¿Cerrar la caja?"
@@ -569,7 +634,7 @@ export default function PantallaCierre({
  * cargado dice cuánto antes de abrirlo ("12 productos · 40 unidades"), como la
  * app.
  */
-function BotonProductosVendidos({
+export function BotonProductosVendidos({
   rubro,
   productos,
   className = "",
@@ -866,10 +931,13 @@ function FilasDelCajon({
   r,
   rubro,
   onIrAEntregas,
+  onRecibirRepartidores,
 }: {
   r: ResumenCaja;
   rubro: string | undefined;
   onIrAEntregas?: () => void;
+  /** El «Recibir» de la plata de los repartidores (18-nov), sólo en el cierre. */
+  onRecibirRepartidores?: () => void;
 }) {
   // Belleza (QA DIA-11): las propinas están dentro de ingresos/egresos; se
   // muestran aparte y el resto queda como "otros". Sin propinas (Omar), las
@@ -978,6 +1046,7 @@ function FilasDelCajon({
           </p>
         </div>
       )}
+      <FilaRepartidores r={r} onRecibir={onRecibirRepartidores} />
     </dl>
   );
 }
@@ -1250,6 +1319,10 @@ function ComprobanteCompleto({
             </dl>
           </section>
 
+          {r?.conteo && r.conteo.items.length > 0 && (
+            <ConteoDelTurno conteo={r.conteo} className="border-t border-borde pt-3" />
+          )}
+
           {caja.notaCierre && (
             <p className="border-t border-borde pt-2 text-[13px] italic text-texto-3">
               {caja.notaCierre}
@@ -1366,6 +1439,7 @@ export function ProductosDelTurno({
   sede,
   productos,
   ticket,
+  cargar,
   onClose,
 }: {
   cajaId: number;
@@ -1382,10 +1456,17 @@ export function ProductosDelTurno({
    * esto (Reportes › Cierres, el billar) no hay botón.
    */
   ticket?: DatosTicketCierre;
+  /**
+   * De dónde se pide lo vendido cuando no viene cargado. Sin esto, de los
+   * reportes del cierre (`reporteCierreProductos`). La Supervisión lo pasa
+   * con su ruta propia: el dueño que mira el turno de un cajero no tiene por
+   * qué tener Reportes, y la ruta del cierre le daría 403.
+   */
+  cargar?: () => Promise<ReporteCierreProductos>;
   onClose: () => void;
 }) {
   const remoto = useApi(
-    () => (productos ? Promise.resolve(null) : api.reporteCierreProductos(cajaId)),
+    () => (productos ? Promise.resolve(null) : (cargar ?? (() => api.reporteCierreProductos(cajaId)))()),
     [cajaId, productos != null],
   );
   const d = productos ?? remoto.datos;
@@ -1456,5 +1537,72 @@ export function ProductosDelTurno({
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * «En poder de repartidores» (delivery propio, 18-nov): el gemelo de «En poder
+ * de meseros», debajo de esa fila y con su mismo formato. Lo que el repartidor
+ * cobró en efectivo y la caja todavía no recibió: el backend ya lo restó del
+ * esperado, así que la fila tiene que estar para que el cajón sume. Dice a
+ * quién pedírsela y, en el cierre, «Recibir» abre «Repartidores». Sin plata
+ * pendiente (o con un backend anterior), no se dibuja.
+ */
+function FilaRepartidores({ r, onRecibir }: { r: ResumenCaja; onRecibir?: () => void }) {
+  const { monto, quienes } = enPoderDeRepartidores(r);
+  if (!(monto > 0)) return null;
+  return (
+    <div>
+      <Fila etiqueta="En poder de repartidores" valor={-monto} />
+      <p className="pl-3 text-[12px] text-texto-4">
+        {textoEnPoder(quienes)}
+        {onRecibir && (
+          <>
+            {quienes.length > 0 && " · "}
+            <button type="button" onClick={onRecibir} className="font-semibold text-primary-700 underline">
+              Recibir
+            </button>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * El botón «Repartidores» del cierre, junto a «Productos vendidos» y con su
+ * misma forma. Debajo, lo que más importa antes de contar: cuánta plata falta
+ * recibir o, si no falta nada, cuántos repartieron hoy.
+ */
+function BotonRepartidores({
+  rendicion,
+  className = "",
+  onClick,
+}: {
+  rendicion: RendicionReparto;
+  className?: string;
+  onClick: () => void;
+}) {
+  const n = rendicion.repartidores.length;
+  const falta = rendicion.activa && esPositivo(rendicion.pendiente);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted ${className}`}
+    >
+      <Icon name="moto" size={17} />
+      <span className="min-w-0 flex-1">
+        Repartidores
+        <span className={`block text-[12px] ${falta ? "font-semibold text-warning-text" : "font-normal text-texto-3"}`}>
+          {falta
+            ? `Falta recibir ${fmtMoney(rendicion.pendiente)}`
+            : n === 1
+              ? "1 repartidor con pedidos hoy"
+              : `${n} repartidores con pedidos hoy`}
+        </span>
+      </span>
+      <Icon name="chevronRight" size={16} />
+    </button>
   );
 }

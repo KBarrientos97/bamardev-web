@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { desplazamientoAutomatico, moverEnLista, useArrastreGrilla } from "./useArrastreGrilla";
+import { desplazamientoAutomatico, moverEnGrupo, moverEnLista, useArrastreGrilla } from "./useArrastreGrilla";
 
 /**
  * El arrastre de la grilla del POS. Los casos salen de lo que pasaba en la PC
@@ -201,6 +201,53 @@ describe("la grilla se desplaza sola en el borde", () => {
     const afuera = new Event("touchmove", { cancelable: true });
     window.dispatchEvent(afuera);
     expect(afuera.defaultPrevented).toBe(false);
+  });
+});
+
+describe("sólo dentro de su grupo (la lista en columnas, 17-nov)", () => {
+  // Del 1 al 9 son pollos; del 10 en adelante, bebidas. Mezclados, como en el
+  // orden del cajero, que es el mismo de las tarjetas.
+  const delGrupo = (a: number, b: number) => (a < 10) === (b < 10);
+
+  it("moverEnGrupo reacomoda los lugares del grupo y deja los demás donde estaban", () => {
+    expect(moverEnGrupo([1, 10, 2, 20, 3], 1, 3, (id) => id < 10)).toEqual([2, 10, 3, 20, 1]);
+    expect(moverEnGrupo([1, 10, 2, 20, 3], 3, 1, (id) => id < 10)).toEqual([3, 10, 1, 20, 2]);
+    expect(moverEnGrupo([1, 10, 2], 2, 2, (id) => id < 10)).toBeNull();
+  });
+
+  it("pasar por encima de una de otro grupo no la lleva para allá: se queda en el último lugar que valía", () => {
+    const onReordenar = vi.fn();
+    const hook = renderHook(() =>
+      useArrastreGrilla({ ids: [1, 2, 10, 3, 20], onReordenar, aceptaDestino: delGrupo }),
+    );
+    act(() => hook.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(20));
+    debajo(10);
+    act(() => mover(60));
+    expect(hook.result.current.orden).toEqual([1, 2, 10, 3, 20]);
+
+    debajo(3);
+    act(() => mover(100));
+    expect(hook.result.current.orden).toEqual([2, 3, 10, 1, 20]);
+
+    // De vuelta por la bebida y fuera de la lista: no se mueve de donde quedó.
+    debajo(20);
+    act(() => mover(140));
+    debajo(null);
+    act(() => mover(400));
+    expect(hook.result.current.orden).toEqual([2, 3, 10, 1, 20]);
+
+    act(() => soltar());
+    expect(onReordenar).toHaveBeenCalledWith([2, 3, 10, 1, 20]);
+  });
+
+  it("sin la regla (las tarjetas), a cualquier lugar, como siempre", () => {
+    const { hook } = montar();
+    act(() => hook.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(20));
+    debajo(4);
+    act(() => mover(200));
+    expect(hook.result.current.orden).toEqual([2, 3, 4, 1]);
   });
 });
 

@@ -20,6 +20,15 @@ export interface BloqueCategoria {
 }
 
 /**
+ * En qué bloque (en qué lista) va el producto: el id de su categoría, o
+ * «otros» sin categoría. Es la `clave` del bloque, y la que dice hasta dónde se
+ * puede llevar una fila arrastrándola: sólo dentro de la suya.
+ */
+export function claveDeBloque(p: Pick<Producto, "categoria">): string {
+  return p.categoria ? String(p.categoria.id) : "otros";
+}
+
+/**
  * Los productos agrupados por categoría, en el orden de `categorias` (el del
  * dueño, ya aplicado). Dentro de cada bloque, en el orden en que vienen (el
  * que acomodó el cajero en las tarjetas). Una categoría sin productos a la
@@ -48,14 +57,14 @@ export function agruparPorCategoria(
     if (lugar !== undefined) {
       let b = porLugar.get(lugar);
       if (!b) {
-        b = { clave: String(cat.id), nombre: categorias[lugar].nombre, lugar, productos: [] };
+        b = { clave: claveDeBloque(p), nombre: categorias[lugar].nombre, lugar, productos: [] };
         porLugar.set(lugar, b);
       }
       b.productos.push(p);
     } else {
       let b = sueltas.get(cat.id);
       if (!b) {
-        b = { clave: String(cat.id), nombre: cat.nombre, lugar: categorias.length + sueltas.size, productos: [] };
+        b = { clave: claveDeBloque(p), nombre: cat.nombre, lugar: categorias.length + sueltas.size, productos: [] };
         sueltas.set(cat.id, b);
       }
       b.productos.push(p);
@@ -63,7 +72,7 @@ export function agruparPorCategoria(
   }
   const bloques = [...porLugar.values()].sort((a, b) => a.lugar - b.lugar);
   bloques.push(...sueltas.values());
-  if (otros.length > 0) bloques.push({ clave: "otros", nombre: "Otros", lugar: -1, productos: otros });
+  if (otros.length > 0) bloques.push({ clave: claveDeBloque({ categoria: null }), nombre: "Otros", lugar: -1, productos: otros });
   return bloques;
 }
 

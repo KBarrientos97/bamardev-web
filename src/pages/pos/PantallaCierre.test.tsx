@@ -1442,7 +1442,8 @@ describe("§4.2 de PLAN-ELGANADERO-16NOV: el ticket de cierre de 58 mm", () => {
     expect(papel).not.toBeNull();
     // El rollo de 58 mm: la misma variable que usa el recibo.
     expect(papel.style.getPropertyValue("--ancho-ticket")).toBe("48mm");
-    expect(papel.className).not.toContain("papel-negrita");
+    // Siempre en negrita (delivery full, 18-nov): en la térmica la letra normal sale clara.
+    expect(papel.className).toContain("papel-negrita");
     const texto = papel.textContent!;
     expect(texto).toContain("4 Cuarto de pollo");
     expect(texto).toContain(fila("Vendido 6 u", "150.00"));
@@ -1457,7 +1458,7 @@ describe("§4.2 de PLAN-ELGANADERO-16NOV: el ticket de cierre de 58 mm", () => {
     expect(document.getElementById("area-impresion")).toBeNull();
   });
 
-  it("con «Letra gruesa» prendida en Ticket y recibo, el papel va en negrita", async () => {
+  it("con «Letra gruesa» prendida en Ticket y recibo, el papel sigue en negrita", async () => {
     recibo.valor = { recibo: { negrita: true }, logo: null };
     vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: PRODUCTOS }));
     await montar();

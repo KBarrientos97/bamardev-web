@@ -31,6 +31,12 @@ import { notaSinPago, recibidoSugerido } from "../../lib/pedidosWeb/cobro";
 import AccionesPedidoWeb from "./AccionesPedidoWeb";
 import type { FormaPago, Venta } from "../../types";
 import { cobradoPorQr, rendicionDelTurno } from "./rendicion";
+import { activarSonido, useSonidoListo } from "../../lib/pedidosWeb/contador";
+import { REFRESCO_ENTREGAS_MS, useAvisoPedidoNuevo } from "./avisoPedidoNuevo";
+import CuadreConLaCaja from "./CuadreConLaCaja";
+import { aEntregarDelRepartidor } from "../../lib/repartoRendicion";
+import { pedirRendicionSiHay } from "../reparto/pedirRendicion";
+import { direccionParaMostrar, direccionSinReferencia } from "./direccionEntrega";
 
 type Vista = "pendientes" | "entregadas";
 
@@ -53,19 +59,39 @@ const VISTAS = [
 export default function Repartidor() {
   const { usuario } = useAuth();
   const entregas = useApi(() => api.getMisEntregas(), []);
+  /**
+   * El cuadre con la caja (`GET /reparto/rendicion`, 18-nov): cuánto ya le
+   * recibió la caja y cuánto le falta entregar. Con él, «A rendir» y «A
+   * entregar al negocio» dicen lo mismo que «Te falta entregar»; sin él
+   * (backend anterior, sin señal), la cuenta de siempre. Se refresca con la
+   * lista, pero sólo si alguna vez cargó: a un backend que no lo tiene no se
+   * le pregunta cada 20 s.
+   */
+  const cuadre = useApi(() => pedirRendicionSiHay(), []);
+  const cuadreRef = useRef(cuadre);
+  cuadreRef.current = cuadre;
+  const refrescarCuadre = () => {
+    if (cuadreRef.current.datos) cuadreRef.current.recargar();
+  };
 
   /**
-   * Refresco cada minuto: un pedido recién asignado no aparecía hasta salir y
+   * Refresco periódico: un pedido recién asignado no aparecía hasta salir y
    * volver a entrar, y el repartidor se quedaba esperando sin saber que ya
-   * tenía trabajo. Sólo con la pestaña visible — refrescar en segundo plano
-   * gasta datos del celular sin que nadie lo esté mirando.
+   * tenía trabajo. Cada 20 s desde el 18-nov (era un minuto), para que el
+   * aviso del pedido nuevo llegue a tiempo. Sólo con la pestaña visible —
+   * refrescar en segundo plano gasta datos del celular sin que nadie lo esté
+   * mirando (con la pantalla apagada avisa la push).
    */
   useEffect(() => {
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") entregas.recargar();
-    }, 60_000);
+      if (document.visibilityState !== "visible") return;
+      entregas.recargar();
+      refrescarCuadre();
+    }, REFRESCO_ENTREGAS_MS);
     const alVolver = () => {
-      if (document.visibilityState === "visible") entregas.recargar();
+      if (document.visibilityState !== "visible") return;
+      entregas.recargar();
+      refrescarCuadre();
     };
     document.addEventListener("visibilitychange", alVolver);
     return () => {
@@ -77,6 +103,9 @@ export default function Repartidor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const formasPago = useApi(() => api.getFormasPago(), []);
+  // Un pedido que le asignan con la pantalla abierta (18-nov): suena y avisa arriba.
+  const aviso = useAvisoPedidoNuevo(entregas.datos, usuario?.id);
+  const sonidoListo = useSonidoListo();
 
   const [vista, setVista] = useState<Vista>("pendientes");
   const [detalle, setDetalle] = useState<Venta | null>(null);
@@ -88,6 +117,9 @@ export default function Repartidor() {
     () => rendicionDelTurno(entregas.datos ?? []),
     [entregas.datos],
   );
+  // El efectivo que le falta entregar: el del cuadre con la caja si cargó
+  // (baja cuando la caja le recibe la plata); si no, lo de siempre.
+  const aRendir = aEntregarDelRepartidor(cuadre.datos, usuario?.id) ?? enEfectivo;
 
   const mostradas = vista === "pendientes" ? pendientes : entregadas;
 
@@ -113,10 +145,54 @@ export default function Repartidor() {
             {usuario?.nombre ?? usuario?.username}
           </p>
         </div>
-        <Boton variante="ghost" icono="dollar" onClick={() => setRendicionAbierta(true)}>
+        <Boton
+          variante="ghost"
+          icono="dollar"
+          onClick={() => {
+            setRendicionAbierta(true);
+            // Al día al abrirla (y la primera vez que no cargó, se reintenta).
+            cuadre.recargar();
+          }}
+        >
           Rendición
         </Boton>
       </header>
+
+      {aviso.nuevos > 0 && (
+        <div
+          role="alert"
+          className="flex items-center gap-3 rounded-xl border border-warning-text/20 bg-warning-bg px-3.5 py-2.5 text-warning-text"
+        >
+          <Icon name="bell" size={18} />
+          <p className="min-w-0 flex-1 text-[13px] font-bold">
+            {aviso.nuevos === 1
+              ? "Tenés un pedido nuevo para entregar"
+              : `Tenés ${aviso.nuevos} pedidos nuevos para entregar`}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setVista("pendientes");
+              aviso.visto();
+            }}
+            className="shrink-0 rounded-lg border border-warning-text/30 px-3 py-1.5 text-xs font-semibold hover:bg-warning-text/10"
+          >
+            Ver
+          </button>
+        </div>
+      )}
+      {/* El navegador sólo deja sonar después de un toque: cualquiera lo
+          habilita, y mientras tanto se ofrece a propósito. */}
+      {!sonidoListo && (
+        <button
+          type="button"
+          onClick={activarSonido}
+          className="flex w-full items-center gap-2 rounded-xl border border-borde bg-white px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+        >
+          <Icon name="volumen" size={16} />
+          <span className="min-w-0 flex-1">Activar el sonido de los pedidos nuevos</span>
+        </button>
+      )}
 
       {posicion.compartiendo && (
         <p role="status" className="flex items-center gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-semibold text-primary-700">
@@ -132,7 +208,7 @@ export default function Repartidor() {
             adentro le pedía plata que ya estaba en el banco (BUG-pedidos-3). */}
         <Kpi
           etiqueta="A rendir"
-          valor={fmtMoney(enEfectivo)}
+          valor={fmtMoney(aRendir)}
           pie="en efectivo"
           icono="dollar"
           tono="marca"
@@ -162,7 +238,10 @@ export default function Repartidor() {
           {mostradas.map((p) => (
             <li key={p.id}>
               <button
-                onClick={() => setDetalle(p)}
+                onClick={() => {
+                  setDetalle(p);
+                  aviso.visto();
+                }}
                 className="card flex w-full flex-col gap-2 p-4 text-left transition-shadow hover:shadow-md"
               >
                 {/* Arriba el cliente y lo que se cobra; la insignia va en su propio renglón:
@@ -181,7 +260,7 @@ export default function Repartidor() {
                     <p className="truncate text-sm font-bold text-texto">
                       {p.clienteNombre ?? "Sin nombre"}
                     </p>
-                    <p className="truncate text-xs text-texto-3">{p.clienteDireccion}</p>
+                    <p className="truncate text-xs text-texto-3">{direccionParaMostrar(p)}</p>
                   </div>
                   {/* `totalACobrar` YA trae el envío (y en un prepagado es sólo
                       el envío): debajo decía "+Bs 8,00 envío" y un pedido de Bs 58
@@ -229,6 +308,8 @@ export default function Repartidor() {
           onCambio={() => {
             setDetalle(null);
             entregas.recargar();
+            // Entregó (o canceló): cambia lo que tiene que entregar.
+            refrescarCuadre();
           }}
           onSalio={entregas.recargar}
           sinUbicacion={!!posicion.falla}
@@ -254,9 +335,15 @@ export default function Repartidor() {
               <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
                 A entregar al negocio
               </p>
-              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(enEfectivo)}</p>
+              {/* Con el cuadre de la caja, lo que todavía no le entregó: el
+                  mismo número que «Te falta entregar» (QA 18-nov: seguía en
+                  Bs 148 con la plata ya recibida). */}
+              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(aRendir)}</p>
               <p className="mt-0.5 text-xs opacity-90">en efectivo</p>
             </div>
+
+            {/* 18-nov: cuánto ya recibió la caja, cuánto falta y qué llevó. */}
+            <CuadreConLaCaja rendicion={cuadre.datos} usuarioId={usuario?.id} />
 
             {/* Con QR, a dónde fue cada parte: sin esto lo cobrado no cierra
                 con lo que se entrega y parece que falta plata. */}
@@ -265,7 +352,7 @@ export default function Repartidor() {
                 <dl className="grid grid-cols-2 gap-2">
                   <div className="rounded-xl bg-muted px-3 py-2.5">
                     <dt className="text-xs text-texto-3">Efectivo en mano</dt>
-                    <dd className="text-[13px] font-bold text-texto">{fmtMoney(enEfectivo)}</dd>
+                    <dd className="text-[13px] font-bold text-texto">{fmtMoney(aRendir)}</dd>
                   </div>
                   <div className="rounded-xl bg-muted px-3 py-2.5">
                     <dt className="text-xs text-texto-3">Ya cobrado por QR</dt>
@@ -454,7 +541,13 @@ function DetalleEntrega({
         ) : (
           <div className="space-y-4">
             <div className="rounded-xl bg-muted p-3.5">
-              <p className="text-[13px] text-texto">{p.clienteDireccion}</p>
+              <p className="text-[13px] text-texto">
+                {/* Con el bloque de la página a la vista, la referencia va ahí
+                    («Referencia: …»): acá no se repite (QA 18-nov). */}
+                {webBase && pendiente
+                  ? direccionSinReferencia(direccionParaMostrar({ ...p, pedidoWeb: webBase }), webBase.referencia)
+                  : direccionParaMostrar({ ...p, pedidoWeb: p.pedidoWeb ?? pedido.pedidoWeb })}
+              </p>
               {/* De la página, «Paga con…» ya lo dice el bloque de cobro de abajo (con el cambio): no se repite. */}
               {(webDelPedido ? notaSinPago(p.notaPedido) : p.notaPedido) && (
                 <p className="mt-1 text-[13px] italic text-texto-3">{webDelPedido ? notaSinPago(p.notaPedido) : p.notaPedido}</p>

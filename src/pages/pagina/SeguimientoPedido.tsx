@@ -9,6 +9,7 @@ import { alDescansar, precargarMapa } from "../../lib/mapa";
 import { ErrorPedido, apiPedidoPublico } from "../../lib/pedidosWeb/apiPublica";
 import { olvidarPedidoEnCurso } from "../../lib/pedidosWeb/cliente";
 import { teclasDeDialogo } from "../../lib/pedidosWeb/dialogo";
+import { TEXTO_SIN_DIRECCION } from "../../lib/pedidosWeb/direccion";
 import { esExterno, urlDeQr } from "../../lib/pedidosWeb/entrega";
 import { esFinal, fraseDe, pasoActual, pasosDe } from "../../lib/pedidosWeb/estado";
 import type { Seguimiento } from "../../lib/pedidosWeb/tipos";
@@ -423,7 +424,9 @@ export default function SeguimientoPedido() {
               </p>
               {seg.tipo === "DELIVERY" ? (
                 <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-                  Entrega en <strong>{seg.direccion}</strong>
+                  {/* La dirección es opcional desde el 18-nov: sin ella, el pin que marcó el cliente. */}
+                  Entrega en {seg.direccion?.trim() ? "" : "la "}
+                  <strong>{seg.direccion?.trim() ? seg.direccion : TEXTO_SIN_DIRECCION.toLowerCase()}</strong>
                   {seg.referencia ? ` (${seg.referencia})` : ""}.
                 </p>
               ) : (
