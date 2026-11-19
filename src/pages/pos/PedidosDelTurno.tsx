@@ -4,7 +4,13 @@ import MarcaPlataforma from "../../components/MarcaPlataforma";
 import { Badge, Boton, Modal } from "../../components/ui";
 import { fmtCantidad, fmtFechaHora, fmtHora, fmtMoney } from "../../lib/format";
 import type { PedidoPlataformaEncolado } from "../../lib/offline/cola";
-import { NOMBRE_PLATAFORMA, type PedidoPlataforma } from "../../lib/pedidosPlataforma/tipos";
+import {
+  NOMBRE_PLATAFORMA,
+  descuentoDelPedido,
+  observacionesDelPedido,
+  subtotalDelPedido,
+  type PedidoPlataforma,
+} from "../../lib/pedidosPlataforma/tipos";
 import { configPosDe } from "../../lib/configPos";
 import { useAuth } from "../../store/AuthContext";
 import ImprimirTicketTexto, { useCabeceraDelPapel } from "./ImprimirTicketTexto";
@@ -76,6 +82,10 @@ export function DetallePedidoDelTurno({
 }) {
   const nombre = NOMBRE_PLATAFORMA[p.plataforma];
   const anulado = !!p.anuladoEn;
+  // El descuento de la app y la nota del cajero (19-nov). Un pedido de antes, o
+  // de un backend viejo, no los trae: se ve como siempre.
+  const descuento = descuentoDelPedido(p);
+  const observaciones = observacionesDelPedido(p);
   // Reimprimir el ticket (delivery full, 18-nov): sólo con «Imprimir el pedido
   // al registrarlo» prendido, y no de un pedido anulado (no va a la cocina).
   const { negocio } = useAuth();
@@ -138,12 +148,34 @@ export function DetallePedidoDelTurno({
             </li>
           ))}
         </ul>
+        {descuento > 0 && (
+          <div className="space-y-1 px-1 text-[13px] text-texto-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <span>Subtotal</span>
+              <span className={`tabular-nums ${anulado ? "text-texto-4 line-through" : ""}`}>
+                {fmtMoney(subtotalDelPedido(p))}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <span>Descuento</span>
+              <span className={`tabular-nums ${anulado ? "text-texto-4 line-through" : ""}`}>
+                −{fmtMoney(descuento)}
+              </span>
+            </div>
+          </div>
+        )}
         <div className="flex items-baseline justify-between px-1 text-base font-extrabold text-texto">
           <span>Total</span>
           <span className={`tabular-nums ${anulado ? "text-texto-4 line-through" : ""}`}>{fmtMoney(p.total)}</span>
         </div>
 
         <dl className="space-y-1 text-[13px]">
+          {observaciones && (
+            <div className="flex justify-between gap-3">
+              <dt className="shrink-0 text-texto-3">Observaciones</dt>
+              <dd className="min-w-0 break-words text-right font-semibold text-texto">{observaciones}</dd>
+            </div>
+          )}
           <div className="flex justify-between gap-3">
             <dt className="text-texto-3">Lo registró</dt>
             <dd className="font-semibold text-texto">{p.usuario?.nombre ?? "—"}</dd>

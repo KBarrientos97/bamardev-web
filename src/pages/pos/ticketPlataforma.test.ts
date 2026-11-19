@@ -184,6 +184,101 @@ describe("las reglas finas que comparte con la app (18-nov)", () => {
   });
 });
 
+describe("el descuento de la app y las observaciones (CONTRATO-PRECIO-PLATAFORMA, 19-nov)", () => {
+  const BASE: DatosTicketPlataforma = {
+    negocio: "Nombre del negocio",
+    plataforma: "PEDIDOS_YA",
+    fecha: LAS_00_41,
+    lineas: [{ nombre: "Brasa economico", cantidad: 2, subtotal: 42 }],
+  };
+  /** Lo que va de la raya de los productos al final: el ejemplo del contrato. */
+  const pie = (l: string[]) => l.slice(l.indexOf(fila("2 x Brasa economico", "42.00")));
+
+  it("el ejemplo del contrato, letra por letra: subtotal, descuento, total neto y la nota", () => {
+    const l = lineasTicketPlataforma({ ...BASE, total: 41, descuento: 1, observaciones: "sin aji" });
+    expect(pie(l)).toEqual([
+      "2 x Brasa economico        42.00",
+      "--------------------------------",
+      "Subtotal                   42.00",
+      "Descuento                  -1.00",
+      "TOTAL                   Bs 41.00",
+      "2 unidades",
+      "Obs: sin aji",
+      "--------------------------------",
+    ]);
+    expect(ancho(l)).toBeLessThanOrEqual(32);
+  });
+
+  it("sin descuento ni observaciones el papel es el de siempre (0 y vacío no dicen nada)", () => {
+    const antes = lineasTicketPlataforma({ ...BASE, total: 42 });
+    expect(lineasTicketPlataforma({ ...BASE, total: 42, descuento: 0, observaciones: "  " })).toEqual(antes);
+    expect(lineasTicketPlataforma({ ...BASE, total: 42, descuento: null, observaciones: null })).toEqual(antes);
+    expect(antes.join("\n")).not.toMatch(/Subtotal|Descuento|Obs:/);
+  });
+
+  it("de la cola (sin total del servidor): el total es la suma de las líneas menos el descuento", () => {
+    const l = lineasTicketPlataforma({ ...BASE, total: null, descuento: 1.5 });
+    expect(l).toContain(fila("Subtotal", "42.00"));
+    expect(l).toContain(fila("Descuento", "-1.50"));
+    expect(l).toContain(fila("TOTAL", "Bs 40.50"));
+  });
+
+  it("una nota larga se parte a 32 columnas, sin «…»", () => {
+    const l = lineasTicketPlataforma({ ...BASE, total: 42, observaciones: "sin aji, la cliente llama al llegar al portón" });
+    const i = l.indexOf("2 unidades");
+    expect(l.slice(i + 1, i + 3)).toEqual(["Obs: sin aji, la cliente llama", "al llegar al portón"]);
+    expect(ancho(l)).toBeLessThanOrEqual(32);
+    expect(l.join("\n")).not.toContain("…");
+  });
+
+  it("en la cola sin señal sale con los precios de la app, el descuento y la nota del diálogo", () => {
+    const p = pedidoParaImprimir({
+      plataforma: "PEDIDOS_YA",
+      pedido: null,
+      // El precio de la app (21), no el del local (18).
+      carrito: [{ nombre: "Brasa economico", cantidad: 2, precio: 21 }],
+      descuento: 1,
+      observaciones: " sin aji ",
+      sede: null,
+      atendio: null,
+      ahora: LAS_00_41,
+    });
+    expect(p).toMatchObject({ encolado: true, total: 41, descuento: 1, observaciones: "sin aji" });
+    expect(pie(lineasTicketPlataforma({ ...p, negocio: "Nombre del negocio" }))).toEqual([
+      "2 x Brasa economico        42.00",
+      "--------------------------------",
+      "Subtotal                   42.00",
+      "Descuento                  -1.00",
+      "TOTAL                   Bs 41.00",
+      "2 unidades",
+      "Obs: sin aji",
+      "--------------------------------",
+    ]);
+  });
+
+  it("del servidor: el descuento y la nota que guardó; un backend viejo (sin esos campos) da el papel de siempre", () => {
+    const pedido = {
+      id: 1,
+      clienteRequestId: "x",
+      plataforma: "PEDIDOS_YA",
+      codigoExterno: null,
+      fecha: "2026-11-18T04:41:00.000Z",
+      almacen: { id: 1, nombre: "Principal" },
+      usuario: null,
+      total: 41,
+      sinStock: false,
+      anuladoEn: null,
+      motivoAnulacion: null,
+      detalles: [{ id: 1, lineaPadreId: null, productoId: 7, nombre: "Brasa economico", cantidad: 2, precio: 21, subtotal: 42 }],
+    } satisfies PedidoPlataforma;
+    const nuevo = pedidoParaImprimir({ plataforma: "PEDIDOS_YA", pedido: { ...pedido, subtotal: 42, descuento: 1, observaciones: "sin aji" }, carrito: [], sede: null, atendio: null });
+    expect(nuevo).toMatchObject({ total: 41, descuento: 1, observaciones: "sin aji" });
+    const viejo = pedidoParaImprimir({ plataforma: "PEDIDOS_YA", pedido: { ...pedido, total: 42 }, carrito: [], sede: null, atendio: null });
+    expect(viejo).toMatchObject({ total: 42, descuento: 0, observaciones: null });
+    expect(lineasTicketPlataforma({ ...viejo, negocio: "N" }).join("\n")).not.toMatch(/Subtotal|Descuento|Obs:/);
+  });
+});
+
 describe("de dónde salen los productos", () => {
   const PEDIDO: PedidoPlataforma = {
     id: 12,

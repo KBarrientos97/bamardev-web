@@ -60,7 +60,21 @@ export interface PedidoPlataforma {
    * ausente si el backend es viejo. De ahí sale «Ventas del turno».
    */
   cajaId?: number | null;
+  /**
+   * Lo que cobra la app: la suma de los renglones (con toppings) menos el
+   * descuento (CONTRATO-PRECIO-PLATAFORMA, 19-nov). En los de antes de ese
+   * cambio es la suma de los renglones, como siempre.
+   */
   total: number;
+  /**
+   * La suma de los renglones, antes del descuento. Ausente si el backend es
+   * viejo: entonces es igual a `total` (ver `subtotalDelPedido`).
+   */
+  subtotal?: number;
+  /** Lo que la app le descontó al cliente por cuenta del local. 0 o ausente = sin descuento. */
+  descuento?: number;
+  /** La nota del cajero («sin ají», un reclamo). null o ausente = sin nota. */
+  observaciones?: string | null;
   /** Alguna línea dejó el stock en negativo: salió sin respaldo en el inventario. */
   sinStock: boolean;
   anuladoEn: string | null;
@@ -85,7 +99,41 @@ export interface PedidoPlataformaInput {
   fechaCliente?: string;
   /** Viene de la cola: el servidor respeta el precio del equipo. */
   encolado?: boolean;
-  detalles: { productoId: number; cantidad: number; precio?: number; agregados?: AgregadoInput[] }[];
+  /** Bs del pedido entero, >= 0 y no mayor que la suma de los renglones. Ausente = 0. */
+  descuento?: number;
+  /** Hasta 200 letras; vacío no se manda. */
+  observaciones?: string;
+  /** Guardar los `precioApp` de este pedido como el precio de cada producto en esa app. */
+  recordarPrecios?: boolean;
+  detalles: DetallePedidoPlataformaInput[];
+}
+
+export interface DetallePedidoPlataformaInput {
+  productoId: number;
+  cantidad: number;
+  /**
+   * El precio del local que vio el cajero: sólo lo manda la cola (sin señal el
+   * servidor no lo puede poner). No cambia con el precio de la app.
+   */
+  precio?: number;
+  /**
+   * El precio de UNA unidad en la app de delivery, el que confirmó el cajero
+   * en el diálogo (sin los toppings, que se cotizan como siempre). Un backend
+   * viejo lo ignora y usa el del local.
+   */
+  precioApp?: number;
+  agregados?: AgregadoInput[];
+}
+
+/**
+ * El precio de un producto EN una app de delivery (`GET
+ * /pedidos-plataforma/precios`). Se aprende al registrar con «Recordar»; sin
+ * fila, el producto vale en la app lo mismo que en el local.
+ */
+export interface PrecioDePlataforma {
+  productoId: number;
+  plataforma: Plataforma;
+  precio: number;
 }
 
 export interface PeriodoLiquidacion {
@@ -105,7 +153,12 @@ export interface ReportePedidosPlataforma {
   plataforma: Plataforma;
   periodo: PeriodoLiquidacion;
   cantidad: number;
+  /** Lo que pagan las apps: la suma de los `total` (netos) de los pedidos vivos. */
   total: number;
+  /** La suma de los renglones de los pedidos vivos, antes de descuentos. Ausente si el backend es viejo. */
+  subtotal?: number;
+  /** Lo que las apps descontaron en los pedidos vivos. Ausente si el backend es viejo (= 0). */
+  descuentos?: number;
   anulados: { cantidad: number; total: number };
   porDia: { fecha: string; cantidad: number; total: number }[];
   porProducto: { productoId: number | null; nombre: string; cantidad: number; total: number }[];
@@ -123,3 +176,28 @@ export interface AnularPedidoPlataformaInput {
 
 /** El período más viejo que el backend acepta. */
 export const PERIODO_MAS_VIEJO = -60;
+
+// ── Lo nuevo del pedido, leído sin romper con un backend viejo (19-nov) ──────
+//
+// Un backend de antes del precio de la app no manda `descuento`, `subtotal`
+// ni `observaciones`: el pedido se lee como siempre (sin descuento, el
+// subtotal es el total, sin nota). Todas las pantallas leen por acá.
+
+const centavos = (n: number) => Math.round(n * 100) / 100;
+
+/** El descuento del pedido; 0 si no hubo o si el backend no lo manda. */
+export function descuentoDelPedido(p: Pick<PedidoPlataforma, "descuento">): number {
+  const d = Number(p.descuento ?? 0);
+  return Number.isFinite(d) && d > 0 ? centavos(d) : 0;
+}
+
+/** La suma de los renglones: la que manda el backend o, si es viejo, total + descuento. */
+export function subtotalDelPedido(p: Pick<PedidoPlataforma, "subtotal" | "total" | "descuento">): number {
+  const s = Number(p.subtotal);
+  return p.subtotal != null && Number.isFinite(s) ? centavos(s) : centavos(p.total + descuentoDelPedido(p));
+}
+
+/** La nota del cajero, sin espacios de más; null si no hay. */
+export function observacionesDelPedido(p: Pick<PedidoPlataforma, "observaciones">): string | null {
+  return p.observaciones?.trim() || null;
+}

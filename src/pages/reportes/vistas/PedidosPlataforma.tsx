@@ -25,6 +25,9 @@ import {
   textoAnulado,
   textoAnulados,
   textoDelPeriodo,
+  textoDescuentoDelPedido,
+  textoDescuentos,
+  textoObservacionesDelPedido,
 } from "./PedidosPlataforma.datos";
 import ResumenPedidosImpreso from "./ResumenPedidosImpreso";
 
@@ -164,10 +167,11 @@ export default function PedidosPlataforma() {
                 // «Total» a secas: la plataforma ya está elegida arriba, y «Total de PedidosYa»
                 // se cortaba con «…» en una tarjeta de 320 px.
                 etiqueta="Total"
+                // Neto: lo que paga la app, con sus descuentos ya restados (19-nov).
                 valor={fmtMoney(r.total)}
                 tono="marca"
                 icono="dollar"
-                pie={textoAnulados(r.anulados) ?? undefined}
+                pie={pieDelTotal(textoDescuentos(r), textoAnulados(r.anulados))}
               />
             </div>
 
@@ -273,6 +277,16 @@ function FilaPedido({
   onAnular?: () => void;
 }) {
   const anulado = !!p.anuladoEn;
+  // Lo de la app (19-nov), cada cosa en su renglón: el descuento que hizo y la
+  // nota del cajero. El valor de la fila es el total neto, el que paga la app.
+  const descuento = textoDescuentoDelPedido(p);
+  const obs = textoObservacionesDelPedido(p);
+  const extras = (
+    <>
+      {descuento && <span className="block">{descuento}</span>}
+      {obs && <span className="block">{obs}</span>}
+    </>
+  );
   return (
     <div>
       <FilaLista
@@ -303,10 +317,14 @@ function FilaPedido({
           anulado ? (
             <>
               <span className="line-through">{resumenDeLineas(p)}</span>
+              {extras}
               <span className="block">{textoAnulado(p)}</span>
             </>
           ) : (
-            resumenDeLineas(p)
+            <>
+              {resumenDeLineas(p)}
+              {extras}
+            </>
           )
         }
         valor={fmtMoney(p.total)}
@@ -325,6 +343,21 @@ function FilaPedido({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Debajo del Total: cuánto descontaron las apps (si hubo) y, en su renglón,
+ * los anulados que no suman. `undefined` si no hay ninguna de las dos, para
+ * que la tarjeta no reserve el lugar del pie.
+ */
+function pieDelTotal(descuentos: string | null, anulados: string | null): ReactNode {
+  if (!descuentos && !anulados) return undefined;
+  return (
+    <>
+      {descuentos && <span className="block">{descuentos}</span>}
+      {anulados && <span className="block">{anulados}</span>}
+    </>
   );
 }
 

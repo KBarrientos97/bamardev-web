@@ -110,6 +110,7 @@ import type {
   PedidoPlataforma,
   PedidoPlataformaInput,
   Plataforma,
+  PrecioDePlataforma,
   ReportePedidosPlataforma,
 } from "./pedidosPlataforma/tipos";
 import type { RecibidoDeRendicion } from "./repartoRendicion";
@@ -1166,6 +1167,12 @@ export const api = {
    */
   pedidosPlataformaDeLaCaja: (cajaId: number) =>
     request<{ pedidos: PedidoPlataforma[] }>(`/pedidos-plataforma/de-la-caja/${cajaId}`),
+  /**
+   * El precio de cada producto en las apps que el negocio tiene prendidas
+   * (19-nov): con eso el diálogo del pedido ya sale con el precio de la app.
+   * Un backend viejo responde 404; quien lo pide cae a su copia o al del local.
+   */
+  preciosPlataforma: () => request<{ precios: PrecioDePlataforma[] }>("/pedidos-plataforma/precios"),
   getRepartidores: () => request<Repartidor[]>("/ventas/repartidores"),
   /** Un REPARTIDOR ve sólo los suyos; cajera y encargado ven todos. */
   getPedidosPendientes: () => request<Venta[]>("/ventas/pendientes"),

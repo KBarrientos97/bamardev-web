@@ -1,5 +1,6 @@
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, NEGOCIO_KEY, USER_KEY } from "../api";
+import { ApiError, NEGOCIO_KEY, USER_KEY, api } from "../api";
 import { almacenEnMemoria } from "../offline/almacen";
 import {
   cargarCola,
@@ -23,9 +24,16 @@ import {
   plataformasQueVe,
   puedeAnularPedidos,
 } from "./acceso";
+import {
+  clavePreciosPlataforma,
+  guardarPrecios,
+  leerPreciosGuardados,
+  preciosConLoRecordado,
+  usePreciosPlataforma,
+} from "./precios";
 import { etiquetaReferenciaStock } from "./referencia";
 import { cuerpoEncoladoDePedido, registrarPedidoOEncolar } from "./registro";
-import type { PedidoPlataforma, PedidoPlataformaInput } from "./tipos";
+import type { PedidoPlataforma, PedidoPlataformaInput, PrecioDePlataforma } from "./tipos";
 
 /**
  * Pedidos de Yango y PedidosYa en el equipo (PLAN-PEDIDOS-PLATAFORMA §5): quién
@@ -190,6 +198,35 @@ describe("registrar un pedido: con señal, sin señal y en la web normal", () =>
     expect(await leerEncolados()).toHaveLength(1);
   });
 
+  it("sin red, la cola guarda el precio de la app, el descuento, la nota y «recordar», y lista el total del diálogo (19-nov)", async () => {
+    fijarVentaSinInternet(true);
+    const c = cuerpo({
+      plataforma: "PEDIDOS_YA",
+      descuento: 1,
+      observaciones: "sin ají",
+      recordarPrecios: true,
+      detalles: [
+        { productoId: 5, cantidad: 2, precioApp: 40 },
+        { productoId: 6, cantidad: 1, precioApp: 12 },
+      ],
+    });
+    // (40 × 2 + 12) − 1: lo que el cajero vio en el diálogo, no los precios del local (80).
+    await registrarPedidoOEncolar(c, vi.fn().mockRejectedValue(sinRed()), precios, 91);
+    const [rec] = await leerEncolados();
+    expect(rec.resumen).toEqual({ plataforma: "PEDIDOS_YA", total: 91, lineas: 2 });
+    expect(rec.cuerpo).toMatchObject({
+      descuento: 1,
+      observaciones: "sin ají",
+      recordarPrecios: true,
+      encolado: true,
+      // `precio` sigue siendo el del local, como siempre en la cola; el de la app va aparte.
+      detalles: [
+        { productoId: 5, cantidad: 2, precio: 35, precioApp: 40 },
+        { productoId: 6, cantidad: 1, precio: 10, precioApp: 12 },
+      ],
+    });
+  });
+
   it("un precio ya puesto en el cuerpo no se pisa con el del catálogo", () => {
     const c = cuerpoEncoladoDePedido(
       cuerpo({ detalles: [{ productoId: 5, cantidad: 1, precio: 30 }] }),
@@ -301,6 +338,175 @@ describe("la cola con pedidos de plataforma junto a las ventas", () => {
     await sincronizar(vi.fn(), undefined, enviarPedido);
     expect(enviarPedido).not.toHaveBeenCalled();
     expect(hayPorSubir()).toBe(false);
+  });
+});
+
+describe("el precio de cada producto en la app: la copia de este equipo (19-nov)", () => {
+  const PY = (productoId: number, precio: number): PrecioDePlataforma => ({ productoId, plataforma: "PEDIDOS_YA", precio });
+
+  it("la copia es por negocio: otro negocio no la ve", () => {
+    guardarPrecios(7, [PY(12, 21)]);
+    expect(leerPreciosGuardados(7)).toEqual([PY(12, 21)]);
+    expect(leerPreciosGuardados(8)).toEqual([]);
+    expect(localStorage.getItem(clavePreciosPlataforma(7))).toBe(JSON.stringify([PY(12, 21)]));
+  });
+
+  it("una copia rota o sin almacenamiento no rompe nada: vale el precio del local", () => {
+    localStorage.setItem(clavePreciosPlataforma(7), "{no es json");
+    expect(leerPreciosGuardados(7)).toEqual([]);
+    localStorage.setItem(
+      clavePreciosPlataforma(7),
+      JSON.stringify([PY(12, 21), { productoId: 13, plataforma: "OTRA", precio: 5 }, { productoId: 14, plataforma: "YANGO", precio: "x" }]),
+    );
+    expect(leerPreciosGuardados(7)).toEqual([PY(12, 21)]);
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("privado");
+    });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("lleno");
+    });
+    expect(leerPreciosGuardados(7)).toEqual([]);
+    expect(() => guardarPrecios(7, [PY(12, 22)])).not.toThrow();
+    getItem.mockRestore();
+    setItem.mockRestore();
+  });
+
+  it("recordar, con la regla del backend: distinto del local pisa, igual al local borra, vale el último y la otra app no se toca", () => {
+    const antes = [PY(12, 21), PY(13, 25), { productoId: 12, plataforma: "YANGO", precio: 19 } as PrecioDePlataforma];
+    const despues = preciosConLoRecordado(antes, "PEDIDOS_YA", [
+      { productoId: 12, precioApp: 22, precioLocal: 18 },
+      { productoId: 13, precioApp: 18, precioLocal: 18 },
+      { productoId: 14, precioApp: 30, precioLocal: 20 },
+      { productoId: 14, precioApp: 31, precioLocal: 20 },
+    ]);
+    expect(despues).toEqual(expect.arrayContaining([PY(12, 22), PY(14, 31), { productoId: 12, plataforma: "YANGO", precio: 19 }]));
+    expect(despues).toHaveLength(3);
+  });
+
+  describe("el hook del POS", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("pide los precios al entrar, los usa y guarda la copia", async () => {
+      vi.spyOn(api, "preciosPlataforma").mockResolvedValue({ precios: [PY(12, 21)] });
+      const { result } = renderHook(() => usePreciosPlataforma(7, true));
+      await act(async () => {});
+      expect(result.current.de("PEDIDOS_YA", 12)).toBe(21);
+      expect(result.current.de("YANGO", 12)).toBeUndefined();
+      expect(leerPreciosGuardados(7)).toEqual([PY(12, 21)]);
+    });
+
+    it("si el pedido falla (backend viejo, sin señal) usa la copia; sin copia, el precio del local", async () => {
+      const pedir = vi.spyOn(api, "preciosPlataforma").mockRejectedValue(new ApiError("Not Found", 404));
+      guardarPrecios(7, [PY(12, 21)]);
+      const conCopia = renderHook(() => usePreciosPlataforma(7, true));
+      await act(async () => {});
+      expect(conCopia.result.current.de("PEDIDOS_YA", 12)).toBe(21);
+      pedir.mockRejectedValue(sinRed());
+      const sinCopia = renderHook(() => usePreciosPlataforma(8, true));
+      await act(async () => {});
+      // `undefined` = el diálogo arranca con el precio del local.
+      expect(sinCopia.result.current.de("PEDIDOS_YA", 12)).toBeUndefined();
+    });
+
+    it("sin plataformas no pide nada, y «recordar» cambia la copia en el momento", async () => {
+      const pedir = vi.spyOn(api, "preciosPlataforma");
+      const { result } = renderHook(() => usePreciosPlataforma(7, false));
+      await act(async () => {});
+      expect(pedir).not.toHaveBeenCalled();
+      act(() => result.current.recordar("PEDIDOS_YA", [{ productoId: 12, precioApp: 21, precioLocal: 18 }]));
+      expect(result.current.de("PEDIDOS_YA", 12)).toBe(21);
+      expect(leerPreciosGuardados(7)).toEqual([PY(12, 21)]);
+    });
+
+    it("refrescar() vuelve a pedirlos y pisa la copia; si falla no pasa nada; con uno en vuelo no sale otro", async () => {
+      const pedir = vi.spyOn(api, "preciosPlataforma").mockResolvedValue({ precios: [PY(12, 21)] });
+      const { result } = renderHook(() => usePreciosPlataforma(7, true));
+      await act(async () => {});
+      expect(pedir).toHaveBeenCalledTimes(1);
+      // Otro equipo aprendió 23 a media mañana.
+      pedir.mockResolvedValue({ precios: [PY(12, 23)] });
+      await act(async () => {
+        await result.current.refrescar();
+      });
+      expect(result.current.de("PEDIDOS_YA", 12)).toBe(23);
+      expect(leerPreciosGuardados(7)).toEqual([PY(12, 23)]);
+      // Sin señal: queda lo que había, sin romper nada.
+      pedir.mockRejectedValue(sinRed());
+      await act(async () => {
+        await result.current.refrescar();
+      });
+      expect(result.current.de("PEDIDOS_YA", 12)).toBe(23);
+      expect(leerPreciosGuardados(7)).toEqual([PY(12, 23)]);
+      // Dos aperturas seguidas del diálogo: un solo pedido al servidor.
+      pedir.mockClear();
+      pedir.mockResolvedValue({ precios: [PY(12, 24)] });
+      await act(async () => {
+        await Promise.all([result.current.refrescar(), result.current.refrescar()]);
+      });
+      expect(pedir).toHaveBeenCalledTimes(1);
+      expect(result.current.de("PEDIDOS_YA", 12)).toBe(24);
+    });
+
+    it("una respuesta que salió antes de un «Recordar» no pisa el precio recién aprendido", async () => {
+      const pedir = vi.spyOn(api, "preciosPlataforma").mockResolvedValue({ precios: [] });
+      const { result } = renderHook(() => usePreciosPlataforma(7, true));
+      await act(async () => {});
+      let responder: ((r: { precios: PrecioDePlataforma[] }) => void) | undefined;
+      pedir.mockImplementation(
+        () =>
+          new Promise((ok) => {
+            responder = ok;
+          }),
+      );
+      let enCamino!: Promise<void>;
+      await act(async () => {
+        enCamino = result.current.refrescar();
+        await Promise.resolve();
+      });
+      expect(responder).toBeDefined();
+      act(() => result.current.recordar("PEDIDOS_YA", [{ productoId: 12, precioApp: 22, precioLocal: 18 }]));
+      await act(async () => {
+        responder!({ precios: [] });
+        await enCamino;
+      });
+      expect(result.current.de("PEDIDOS_YA", 12)).toBe(22);
+      expect(leerPreciosGuardados(7)).toEqual([PY(12, 22)]);
+    });
+
+    it("lo que espera en la cola con «Recordar» se vuelve a aplicar encima de lo que manda el servidor", async () => {
+      fijarVentaSinInternet(true);
+      // Tomado sin señal con «Recordar»: el 5 a 40 en la app (35 en el local) y el 6 igual al local.
+      await registrarPedidoOEncolar(
+        cuerpo({
+          plataforma: "PEDIDOS_YA",
+          recordarPrecios: true,
+          detalles: [
+            { productoId: 5, cantidad: 1, precioApp: 40 },
+            { productoId: 6, cantidad: 1, precioApp: 10 },
+          ],
+        }),
+        vi.fn().mockRejectedValue(sinRed()),
+        precios,
+        50,
+      );
+      // Uno sin «Recordar» no cuenta.
+      await registrarPedidoOEncolar(
+        cuerpo({ plataforma: "PEDIDOS_YA", detalles: [{ productoId: 7, cantidad: 1, precioApp: 99 }] }),
+        vi.fn(),
+        precios,
+        99,
+      );
+      // El servidor todavía no conoce el pedido de la cola.
+      vi.spyOn(api, "preciosPlataforma").mockResolvedValue({ precios: [PY(6, 12), PY(7, 50)] });
+      const { result } = renderHook(() => usePreciosPlataforma(7, true));
+      await act(async () => {});
+      expect(result.current.de("PEDIDOS_YA", 5)).toBe(40);
+      // Igual al local: vuelve a seguir al local, como lo va a dejar el servidor al subirlo.
+      expect(result.current.de("PEDIDOS_YA", 6)).toBeUndefined();
+      expect(result.current.de("PEDIDOS_YA", 7)).toBe(50);
+      expect(leerPreciosGuardados(7)).toEqual(expect.arrayContaining([PY(5, 40), PY(7, 50)]));
+      expect(leerPreciosGuardados(7)).toHaveLength(2);
+    });
   });
 });
 

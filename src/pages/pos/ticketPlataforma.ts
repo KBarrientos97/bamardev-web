@@ -1,5 +1,11 @@
-import { NOMBRE_PLATAFORMA, type PedidoPlataforma, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
-import { cantidadTicket } from "./ticketCierre";
+import {
+  NOMBRE_PLATAFORMA,
+  descuentoDelPedido,
+  observacionesDelPedido,
+  type PedidoPlataforma,
+  type Plataforma,
+} from "../../lib/pedidosPlataforma/tipos";
+import { cantidadTicket, montoTicket } from "./ticketCierre";
 import {
   RAYA_TICKET,
   bsTicket,
@@ -35,6 +41,19 @@ import {
  *     3 unidades
  *     --------------------------------
  *
+ * Con el descuento de la app y las observaciones (CONTRATO-PRECIO-PLATAFORMA,
+ * 19-nov), sólo cuando hay algo que decir; sin ellos el papel es el de
+ * arriba, carácter por carácter:
+ *
+ *     2 x Brasa economico        42.00
+ *     --------------------------------
+ *     Subtotal                   42.00   ← sólo con descuento
+ *     Descuento                  -1.00   ← sólo con descuento
+ *     TOTAL                   Bs 41.00
+ *     2 unidades
+ *     Obs: sin aji                       ← sólo con observaciones
+ *     --------------------------------
+ *
  * Función pura: arma los renglones y la prueba compara el texto.
  */
 
@@ -50,9 +69,18 @@ export interface DatosTicketPlataforma {
   /** Quién lo registró. */
   atendio?: string | null;
   lineas: LineaTicket[];
-  /** El total que guardó el servidor; sin él (en la cola sin señal) se suman las líneas. */
+  /**
+   * El total que guardó el servidor (ya con el descuento); sin él (en la cola
+   * sin señal) se suman las líneas y se resta el descuento.
+   */
   total?: number | null;
+  /** Lo que descontó la app, del pedido entero. 0 o ausente = sin renglones de descuento. */
+  descuento?: number | null;
+  /** La nota del cajero; vacía o ausente = sin renglón. */
+  observaciones?: string | null;
 }
+
+const centavos = (n: number) => Math.round(n * 100) / 100;
 
 /** «3 unidades», «1 unidad». */
 export const textoUnidades = (n: number): string => `${cantidadTicket(n)} ${n === 1 ? "unidad" : "unidades"}`;
@@ -73,8 +101,17 @@ export function lineasTicketPlataforma(d: DatosTicketPlataforma): string[] {
   lineas.push(...renglonesDeProductos(d.lineas));
   lineas.push(RAYA_TICKET);
 
-  lineas.push(renglonTicket("TOTAL", bsTicket(d.total ?? totalDeLineas(d.lineas))));
+  const descuento = d.descuento != null && d.descuento > 0 ? centavos(d.descuento) : 0;
+  const total = d.total ?? centavos(totalDeLineas(d.lineas) - descuento);
+  if (descuento > 0) {
+    // El subtotal es el total más el descuento, como lo guarda el backend: así
+    // las tres cifras del papel siempre cierran entre sí.
+    lineas.push(renglonTicket("Subtotal", montoTicket(centavos(total + descuento))));
+    lineas.push(renglonTicket("Descuento", `-${montoTicket(descuento)}`));
+  }
+  lineas.push(renglonTicket("TOTAL", bsTicket(total)));
   lineas.push(textoUnidades(unidadesDeLineas(d.lineas)));
+  if (d.observaciones?.trim()) lineas.push(...partirTicket(`Obs: ${d.observaciones}`));
   lineas.push(RAYA_TICKET);
   return lineas;
 }
@@ -134,6 +171,9 @@ export function datosDePedidoPlataforma(
     atendio: p.usuario?.nombre ?? null,
     lineas: lineasDePedidoPlataforma(p),
     total: p.total,
+    // Un backend viejo no los manda: sin descuento ni nota, el papel de siempre.
+    descuento: descuentoDelPedido(p),
+    observaciones: observacionesDelPedido(p),
     sede: p.almacen?.nombre ?? null,
   };
 }
@@ -156,7 +196,11 @@ export function pedidoParaImprimir(o: {
   codigoExterno?: string;
   /** Lo que devolvió el servidor; `null` si quedó en la cola. */
   pedido: PedidoPlataforma | null;
+  /** Con el precio de la APP de cada producto (el del diálogo), no el del local. */
   carrito: LineaDelCarritoParaTicket[];
+  /** El descuento y la nota del diálogo: los usa el papel de la cola, que no tiene respuesta. */
+  descuento?: number;
+  observaciones?: string;
   /** El local de la caja abierta. */
   sede: string | null;
   /** Quien está en la caja. */
@@ -174,13 +218,16 @@ export function pedidoParaImprimir(o: {
     };
   }
   const lineas = lineasDelCarrito(o.carrito);
+  const descuento = p ? descuentoDelPedido(p) : o.descuento && o.descuento > 0 ? centavos(o.descuento) : 0;
   return {
     plataforma: o.plataforma,
     codigoExterno: p?.codigoExterno ?? o.codigoExterno ?? null,
     fecha: p?.fecha ?? o.ahora ?? new Date(),
     atendio: p?.usuario?.nombre ?? o.atendio,
     lineas,
-    total: p?.total ?? totalDeLineas(lineas),
+    total: p?.total ?? centavos(totalDeLineas(lineas) - descuento),
+    descuento,
+    observaciones: p ? observacionesDelPedido(p) : o.observaciones?.trim() || null,
     sede: p?.almacen?.nombre ?? o.sede,
     encolado: !p,
   };
