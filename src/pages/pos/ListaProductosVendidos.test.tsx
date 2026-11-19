@@ -308,6 +308,34 @@ describe("los pedidos de Yango y PedidosYa (PLAN-PEDIDOS-PLATAFORMA §11)", () =
     expect(container.innerHTML).toBe(antes);
   });
 
+  it("con descuentos de la app (19-nov): el encabezado dice lo que paga la app y la tabla termina con «Descuentos»", () => {
+    const [yangoBase, pyaBase] = CON_PLATAFORMAS.plataformas!;
+    render(<ListaProductosVendidos d={{ ...CON_PLATAFORMAS, plataformas: [{ ...yangoBase, descuentos: 6 }, pyaBase] }} />);
+    // 85 de renglones − 6 de descuentos = 79, lo que paga la app.
+    const yango = screen.getByRole("region", { name: "Yango · 3 pedidos · 5 unidades · Bs 79,00" });
+    const fila = yango.querySelector("[data-descuentos-plataforma]")!;
+    expect(fila).toHaveTextContent("Descuentos");
+    expect(fila).toHaveTextContent("−Bs 6,00");
+    // Es lo último de la tabla de la sección, debajo de los productos.
+    expect(yango.lastElementChild?.lastElementChild).toBe(fila);
+    expect(screen.getByText("Brasa medio").compareDocumentPosition(fila) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // La otra plataforma, sin descuentos: como siempre.
+    const pya = screen.getByRole("region", { name: "PedidosYa · 1 pedido · 1 unidad · Bs 15,00" });
+    expect(pya.querySelector("[data-descuentos-plataforma]")).toBeNull();
+  });
+
+  it("sin descuentos (ausente o 0) la sección es exactamente la de hoy", () => {
+    const { container, rerender } = render(<ListaProductosVendidos d={CON_PLATAFORMAS} />);
+    const antes = container.innerHTML;
+    rerender(
+      <ListaProductosVendidos
+        d={{ ...CON_PLATAFORMAS, plataformas: CON_PLATAFORMAS.plataformas!.map((p) => ({ ...p, descuentos: 0 })) }}
+      />,
+    );
+    expect(container.innerHTML).toBe(antes);
+    expect(screen.queryByText("Descuentos")).toBeNull();
+  });
+
   it("un turno con sólo pedidos de plataforma muestra sus secciones", () => {
     render(
       <ListaProductosVendidos
