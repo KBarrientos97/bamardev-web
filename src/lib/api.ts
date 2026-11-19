@@ -100,7 +100,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import type { CambioConfigAgregados, CatalogoAgregados, ConfigAgregados, GrupoAgregados, GuardarGrupoInput } from "./agregados/tipos";
-import type { ConfigPos } from "./configPos";
+import type { CambiosMiConfigPos, ConfigPos } from "./configPos";
 import { reportarError } from "./telemetria";
 import { olvidarTokenDeSoporte, RUTA_SOPORTE, tokenDeSoporte } from "./armado";
 import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
@@ -967,6 +967,20 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(cambios),
     }),
+  /**
+   * Lo propio de cada cajero (18-nov): lo que ve él, encima de lo del negocio.
+   * Crudo: se lee con `normalizarMiConfigPos`. Quien tiene `negocio.configurar`
+   * recibe la del negocio con `esDelNegocio` y no puede cambiarla por acá.
+   */
+  miConfigPos: () => request<unknown>("/pos/config/mia"),
+  /** Parcial: un valor queda suyo y `null` vuelve ese campo a lo del negocio. Devuelve `MiConfigPos`. */
+  guardarMiConfigPos: (cambios: CambiosMiConfigPos) =>
+    request<unknown>("/pos/config/mia", {
+      method: "PATCH",
+      body: JSON.stringify(cambios),
+    }),
+  /** Borra todo lo propio: el cajero vuelve a ver lo que eligió el negocio. Devuelve `MiConfigPos`. */
+  borrarMiConfigPos: () => request<unknown>("/pos/config/mia", { method: "DELETE" }),
 
   // ── Conteo por categoría (17-nov) ──────────────────────────────────────────
   /** El ajuste de Configuración (`negocio.configurar`); trae las categorías elegidas aunque esté apagado. */

@@ -251,6 +251,108 @@ describe("sólo dentro de su grupo (la lista en columnas, 17-nov)", () => {
   });
 });
 
+describe("las categorías (los chips y los bloques de la lista en columnas, 18-nov)", () => {
+  /** Lo que el puntero tiene debajo: un elemento con ese atributo y ese id. */
+  function debajoCon(atributo: string, id: number) {
+    const el = document.createElement("span");
+    el.setAttribute(atributo, String(id));
+    document.elementFromPoint = vi.fn(() => el);
+  }
+
+  it("con su propio atributo: una tarjeta de producto con el mismo id no es destino, ni «Todos» (que no lo lleva)", () => {
+    // La categoría 3 y el producto 3 son cosas distintas: sin atributo propio,
+    // pasar el chip por encima de la tarjeta del producto 3 lo movía.
+    const onReordenar = vi.fn();
+    const hook = renderHook(() => useArrastreGrilla({ ids: [1, 2, 3], onReordenar, atributo: "data-arrastre-chip" }));
+    expect(hook.result.current.props(2)["data-arrastre-chip"]).toBe(2);
+    expect(hook.result.current.props(2)).not.toHaveProperty("data-arrastre-id");
+
+    act(() => hook.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(20));
+    debajo(3);
+    act(() => mover(60));
+    expect(hook.result.current.orden).toEqual([1, 2, 3]);
+    // «Todos»: un chip sin el atributo, ni se mueve ni es destino.
+    const todos = document.createElement("button");
+    document.elementFromPoint = vi.fn(() => todos);
+    act(() => mover(80));
+    expect(hook.result.current.orden).toEqual([1, 2, 3]);
+
+    debajoCon("data-arrastre-chip", 3);
+    act(() => mover(100));
+    expect(hook.result.current.orden).toEqual([2, 3, 1]);
+    act(() => soltar());
+    expect(onReordenar).toHaveBeenCalledWith([2, 3, 1]);
+  });
+
+  it("anti-rebote: lo que quedó debajo después de un cambio no vuelve a cambiar hasta pasar por otro (o por ninguno)", () => {
+    // El chip 2 es más ancho que el 1: después de cambiarlos, el puntero sigue
+    // sobre el 2, y en cada movimiento los volvía a cambiar (parpadeo).
+    const onReordenar = vi.fn();
+    const hook = renderHook(() =>
+      useArrastreGrilla({ ids: [1, 2, 3], onReordenar, atributo: "data-arrastre-chip", antiRebote: true }),
+    );
+    act(() => hook.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(20));
+    debajoCon("data-arrastre-chip", 2);
+    act(() => mover(60));
+    expect(hook.result.current.orden).toEqual([2, 1, 3]);
+    act(() => mover(62));
+    act(() => mover(64));
+    expect(hook.result.current.orden).toEqual([2, 1, 3]);
+
+    // Pasa por la levantada (otro elemento) y vuelve al 2: ahí sí es un movimiento.
+    debajoCon("data-arrastre-chip", 1);
+    act(() => mover(100));
+    debajoCon("data-arrastre-chip", 2);
+    act(() => mover(30));
+    expect(hook.result.current.orden).toEqual([1, 2, 3]);
+    act(() => mover(32));
+    expect(hook.result.current.orden).toEqual([1, 2, 3]);
+
+    // Por el hueco entre dos chips (ninguno) también vuelve a valer.
+    document.elementFromPoint = vi.fn(() => null);
+    act(() => mover(45));
+    debajoCon("data-arrastre-chip", 2);
+    act(() => mover(60));
+    expect(hook.result.current.orden).toEqual([2, 1, 3]);
+    act(() => soltar());
+    expect(onReordenar).toHaveBeenCalledWith([2, 1, 3]);
+  });
+
+  it("uno levantado por vez: con una categoría en la mano no se levanta un producto, ni al revés", () => {
+    const chips = renderHook(() => useArrastreGrilla({ ids: [1, 2], onReordenar: vi.fn(), atributo: "data-arrastre-chip" }));
+    const productos = renderHook(() => useArrastreGrilla({ ids: [1, 2], onReordenar: vi.fn() }));
+    act(() => chips.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(20));
+    expect(chips.result.current.arrastrando).toBe(1);
+    // Otro dedo sobre una tarjeta, mientras tanto: no se levanta.
+    act(() => productos.result.current.props(2).onPointerDown(puntero("touch")));
+    act(() => vi.advanceTimersByTime(500));
+    expect(productos.result.current.arrastrando).toBeNull();
+
+    act(() => soltar());
+    act(() => productos.result.current.props(2).onPointerDown(puntero("touch")));
+    act(() => vi.advanceTimersByTime(500));
+    expect(productos.result.current.arrastrando).toBe(2);
+    act(() => chips.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(40));
+    expect(chips.result.current.arrastrando).toBeNull();
+    act(() => soltar());
+  });
+
+  it("sin el anti-rebote (las tarjetas, que miden todas lo mismo), cada movimiento vuelve a mirar, como siempre", () => {
+    const hook = renderHook(() => useArrastreGrilla({ ids: [1, 2, 3], onReordenar: vi.fn() }));
+    act(() => hook.result.current.props(1).onPointerDown(puntero("mouse")));
+    act(() => mover(20));
+    debajo(2);
+    act(() => mover(60));
+    expect(hook.result.current.orden).toEqual([2, 1, 3]);
+    act(() => mover(62));
+    expect(hook.result.current.orden).toEqual([1, 2, 3]);
+  });
+});
+
 it("Escape suelta la card sin guardar el orden", () => {
   const { hook, onReordenar } = montar();
   act(() => hook.result.current.props(4).onPointerDown(puntero("mouse")));

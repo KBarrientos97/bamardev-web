@@ -507,3 +507,51 @@ describe("menú: Configuración de tickets y despacho", () => {
     expect(puedeVer(c, "despacho")).toBe(true);
   });
 });
+
+/**
+ * «Mi punto de venta» (18-nov, CONTRATO-pos-por-cajero §3.2): cada cajero
+ * ajusta lo suyo. La ve quien ve el punto de venta, en el restaurante, salvo
+ * quien configura el negocio: lo suyo ES lo del negocio (R2) y ya tiene
+ * Configuración › Punto de venta.
+ */
+describe("menú: «Mi punto de venta», la del cajero", () => {
+  const PLAN = ["pos", "caja", "catalogo", "delivery", "recoger"];
+
+  it("la ve la caja y el encargado del restaurante", () => {
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", PLAN), "mi_pos")).toBe(true);
+    expect(puedeVer(ctxDe("SUPERVISOR", "RESTAURANTE", PLAN), "mi_pos")).toBe(true);
+    // Con la lista de features vacía, como el punto de venta (falla abierta).
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", []), "mi_pos")).toBe(true);
+  });
+
+  it("el dueño no: tiene la del negocio. Ni el encargado al que le dan `negocio.configurar`", () => {
+    const dueno = ctxDe("ADMIN", "RESTAURANTE", PLAN);
+    expect(puedeVer(dueno, "mi_pos")).toBe(false);
+    expect(puedeVer(dueno, "config_pos")).toBe(true);
+    const encargado = ctxDe("SUPERVISOR", "RESTAURANTE", PLAN, { extra: ["negocio.configurar"] });
+    expect(puedeVer(encargado, "mi_pos")).toBe(false);
+    expect(puedeVer(encargado, "config_pos")).toBe(true);
+  });
+
+  it("quien no vende no la ve: el mesero, el repartidor, o un plan sin punto de venta", () => {
+    expect(puedeVer(ctxDe("MESERO", "RESTAURANTE", [...PLAN, "salon"]), "mi_pos")).toBe(false);
+    expect(puedeVer(ctxDe("REPARTIDOR", "RESTAURANTE", PLAN), "mi_pos")).toBe(false);
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", ["caja", "catalogo"]), "mi_pos")).toBe(false);
+  });
+
+  it.each(["FARMACIA", "MINIMARKET", "BILLAR", "PELUQUERIA", "ACADEMIA"])(
+    "%s no la tiene: el punto de venta configurable es del restaurante",
+    (rubro) => {
+      expect(puedeVer(ctxDe("CAJERO", rubro, PLAN), "mi_pos")).toBe(false);
+      expect(puedeVer(ctxDe("CAJERO", rubro, []), "mi_pos")).toBe(false);
+    },
+  );
+
+  it("no es una entrada del árbol del menú: va en «Más opciones», con lo de la cuenta", () => {
+    const c = ctxDe("CAJERO", "RESTAURANTE", PLAN);
+    const rutas = aplanar(construirMenu((s) => puedeVer(c, s), "RESTAURANTE").flatMap((b) => b.nodos)).map((n) => n.item.a);
+    expect(rutas).not.toContain("/mi-punto-de-venta");
+    // Pero la cabecera del celular dice dónde se está.
+    expect(tituloDe([], "/mi-punto-de-venta")).toBe("Mi punto de venta");
+  });
+});
