@@ -155,6 +155,30 @@ describe("los pedidos de Yango y PedidosYa en el PDF (§11)", () => {
     expect(doc.notas?.[0]).toMatch(/los paga la app de delivery y no suman al total vendido/);
   });
 
+  it("con descuentos de la app (19-nov): el encabezado dice lo que paga la app y la tabla termina con «Descuentos»", () => {
+    const conDescuento: ReporteCierreProductos = {
+      ...CON_PLATAFORMAS,
+      plataformas: [{ ...CON_PLATAFORMAS.plataformas![0], descuentos: 6 }, CON_PLATAFORMAS.plataformas![1]],
+    };
+    const despues = documentoProductosVendidos(conDescuento, { subtitulo: "Turno #12" }).despuesDelTotal ?? [];
+    expect(despues.map((g) => g.titulo)).toEqual([
+      // 85 de renglones − 6 de descuentos.
+      "Yango · 3 pedidos · 5 unidades · Bs 79,00",
+      "POLLOS",
+      "Descuentos",
+      "PedidosYa · 1 pedido · 1 unidad · Bs 15,00",
+      "BEBIDAS",
+    ]);
+    // Los renglones siguen al precio de la app; el descuento cierra la cuenta (guion común: Helvetica no tiene «−»).
+    expect(despues[1].celdas.map((c) => c.texto)).toEqual(["5", "Bs 85,00"]);
+    expect(despues[2]).toEqual({ titulo: "Descuentos", celdas: [{ texto: "" }, { texto: "-Bs 6,00" }], filas: [] });
+    // Sin `descuentos` (o en 0): el mismo PDF de hoy.
+    const cero = { ...CON_PLATAFORMAS, plataformas: CON_PLATAFORMAS.plataformas!.map((p) => ({ ...p, descuentos: 0 })) };
+    expect(documentoProductosVendidos(cero, { subtitulo: "Turno #12" })).toEqual(
+      documentoProductosVendidos(CON_PLATAFORMAS, { subtitulo: "Turno #12" }),
+    );
+  });
+
   it("sin el campo, o vacío, el PDF de siempre", () => {
     const base = documentoProductosVendidos(TURNO, { subtitulo: "Turno #12" });
     const vacio = documentoProductosVendidos({ ...TURNO, plataformas: [] }, { subtitulo: "Turno #12" });
@@ -228,7 +252,8 @@ describe("el PDF por forma de pago se dibuja entero", () => {
       lineas: 1,
       categorias: [cat],
       porMedio: [{ medio: "QR", nombre: "QR", ventas: 1, unidades: 2, total: 40, categorias: [cat] }],
-      plataformas: [{ plataforma: "PEDIDOS_YA", pedidos: 1, unidades: 2, total: 40, categorias: [cat] }],
+      // Con descuentos: el renglón «Descuentos» es un grupo sin productos y también se dibuja (19-nov).
+      plataformas: [{ plataforma: "PEDIDOS_YA", pedidos: 1, unidades: 2, total: 40, descuentos: 3, categorias: [cat] }],
       todo: { unidades: 4, categorias: [{ nombre: "M", unidades: 4 }] },
     };
     const crear = vi.fn(() => "blob:x");

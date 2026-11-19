@@ -1,5 +1,11 @@
 import { fmtCantidad, fmtMoney } from "../../../lib/format";
-import type { PedidoPlataforma, PeriodoLiquidacion } from "../../../lib/pedidosPlataforma/tipos";
+import {
+  descuentoDelPedido,
+  observacionesDelPedido,
+  type PedidoPlataforma,
+  type PeriodoLiquidacion,
+  type ReportePedidosPlataforma,
+} from "../../../lib/pedidosPlataforma/tipos";
 import { aDia } from "../periodo";
 
 /**
@@ -49,4 +55,32 @@ export function textoAnulado(p: Pick<PedidoPlataforma, "motivoAnulacion">): stri
 export function textoAnulados(a: { cantidad: number; total: number }): string | null {
   if (a.cantidad <= 0) return null;
   return `${a.cantidad} ${a.cantidad === 1 ? "anulado" : "anulados"} · ${fmtMoney(a.total)} no ${a.cantidad === 1 ? "suma" : "suman"}`;
+}
+
+/**
+ * Lo que las apps descontaron en el período (CONTRATO-PRECIO-PLATAFORMA,
+ * 19-nov): el «Total» ya es neto y esto dice cuánto se restó. Un backend viejo
+ * no lo manda: 0, como si no hubiera habido.
+ */
+export function descuentosDelReporte(r: Pick<ReportePedidosPlataforma, "descuentos">): number {
+  const d = Number(r.descuentos ?? 0);
+  return Number.isFinite(d) && d > 0 ? Math.round(d * 100) / 100 : 0;
+}
+
+/** «Descuentos: Bs 3,00» debajo del Total (null si no hubo). */
+export function textoDescuentos(r: Pick<ReportePedidosPlataforma, "descuentos">): string | null {
+  const d = descuentosDelReporte(r);
+  return d > 0 ? `Descuentos: ${fmtMoney(d)}` : null;
+}
+
+/** «Descuento Bs 1,00» en la fila de un pedido (null si no tuvo). */
+export function textoDescuentoDelPedido(p: Pick<PedidoPlataforma, "descuento">): string | null {
+  const d = descuentoDelPedido(p);
+  return d > 0 ? `Descuento ${fmtMoney(d)}` : null;
+}
+
+/** «Obs.: sin ají» en la fila de un pedido (null si no tiene). */
+export function textoObservacionesDelPedido(p: Pick<PedidoPlataforma, "observaciones">): string | null {
+  const o = observacionesDelPedido(p);
+  return o ? `Obs.: ${o}` : null;
 }

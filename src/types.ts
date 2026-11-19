@@ -2673,7 +2673,14 @@ export interface PlataformaVendida {
   plataforma: Plataforma;
   pedidos: number;
   unidades: number;
+  /** La suma de sus renglones (bruto, al precio de la app), antes de los descuentos. */
   total: number;
+  /**
+   * Lo que la app descontó en esos pedidos (CONTRATO-PRECIO-PLATAFORMA, 19-nov).
+   * Ausente o 0 = sin descuentos (un backend viejo no lo manda). Lo que paga la
+   * app es `total − descuentos` (ver `totalDePlataforma`).
+   */
+  descuentos?: number;
   categorias: CategoriaVendida[];
 }
 

@@ -34,6 +34,7 @@ import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { claveCaja, claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia, leerCopia } from "../../lib/offline/copias";
 import { venderOEncolar } from "../../lib/offline/ventas";
 import { plataformasQueRegistra } from "../../lib/pedidosPlataforma/acceso";
+import { usePreciosPlataforma } from "../../lib/pedidosPlataforma/precios";
 import { registrarPedidoOEncolar } from "../../lib/pedidosPlataforma/registro";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useSedeDeCaja } from "../../lib/useSedeDeCaja";
@@ -55,7 +56,7 @@ import { SelectorSedeCaja } from "./SelectorSedeCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
-import DialogoPedidoPlataforma, { PedidoPlataformaRegistrado } from "./DialogoPedidoPlataforma";
+import DialogoPedidoPlataforma, { PedidoPlataformaRegistrado, type PedidoConfirmado } from "./DialogoPedidoPlataforma";
 import { pedidoParaImprimir, type PedidoParaImprimir } from "./ticketPlataforma";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
@@ -852,23 +853,30 @@ function PuntoDeVenta() {
         : plataformasQueRegistra(negocio?.features, usuario),
     [mesaCobrando, citaCobrando, vendePaquete, tipoPedido, negocio?.features, usuario],
   );
+  // El precio de cada producto EN la app (19-nov): se pide al entrar al POS si
+  // este usuario puede registrar en alguna plataforma, sin esperar a que arme
+  // un pedido de mostrador (con señal o sin ella, el diálogo lo tiene a mano).
+  const preciosApp = usePreciosPlataforma(negocio?.id, plataformasQueRegistra(negocio?.features, usuario).length > 0);
   const lineasDelPedido = useMemo(
     () =>
       carritoVenta.lineas.map((l) => ({
         clave: claveDeLinea(l),
+        productoId: l.producto.id,
         nombre: l.producto.nombre,
         cantidad: l.cantidad,
-        // Con los extras: el total del pedido tiene que ser el que cobra el backend.
-        precio: l.producto.precio + (l.vista?.extraPorUnidad ?? 0),
+        precioLocal: l.producto.precio,
+        // Los toppings se cotizan como en el local: el diálogo los suma al
+        // precio de la app para que el total sea el que cobra el backend.
+        extraPorUnidad: l.vista?.extraPorUnidad ?? 0,
+        precioRecordado: pedidoPlataforma ? preciosApp.de(pedidoPlataforma, l.producto.id) : undefined,
         agregados: textoDeAgregados(l.vista),
       })),
-    [carritoVenta.lineas],
+    [carritoVenta.lineas, pedidoPlataforma, preciosApp],
   );
-  // Sin descuentos ni promociones: el pedido va al precio del punto de venta.
-  const totalDelPedido = Math.round(lineasDelPedido.reduce((s, l) => s + l.precio * l.cantidad, 0) * 100) / 100;
 
   const registrarPedido = useCallback(
-    async (plataforma: Plataforma, codigoExterno: string | undefined) => {
+    async (plataforma: Plataforma, confirmado: PedidoConfirmado) => {
+      const { codigoExterno } = confirmado;
       // Las mismas líneas de la venta, con sus toppings: el backend los
       // descuenta del stock y los recalcula igual que en un cobro.
       const detalles = carritoVenta.lineas.map((l) => {
@@ -876,13 +884,23 @@ function PuntoDeVenta() {
         return { productoId: l.producto.id, cantidad: l.cantidad, ...(agregados ? { agregados } : {}) };
       });
       const precios = new Map(carritoVenta.lineas.map((l) => [l.producto.id, l.producto.precio]));
+      // El precio de la app de cada renglón, el que quedó en el diálogo. Va
+      // siempre (aunque sea el del local): es lo que el cajero confirmó.
+      const precioAppDe = new Map(confirmado.precios.map((p) => [p.clave, p.precioApp]));
+      const precioApp = (l: (typeof carritoVenta.lineas)[number]) => precioAppDe.get(claveDeLinea(l)) ?? l.producto.precio;
       let r: Awaited<ReturnType<typeof registrarPedidoOEncolar>>;
       try {
         r = await registrarPedidoOEncolar(
           {
+            // La huella es la de siempre, SIN el precio de la app ni el
+            // descuento: un reintento tras un 504 con el precio retocado es el
+            // mismo pedido (el servidor devuelve el que ya entró).
             clienteRequestId: intentoPedido.actual(huellaDeCobro(detalles, plataforma)),
             plataforma,
             ...(codigoExterno ? { codigoExterno } : {}),
+            ...(confirmado.descuento > 0 ? { descuento: confirmado.descuento } : {}),
+            ...(confirmado.observaciones ? { observaciones: confirmado.observaciones } : {}),
+            ...(confirmado.recordarPrecios ? { recordarPrecios: true } : {}),
             // Con varias cajas abiertas el pedido dice a cuál sucursal va, como
             // la venta: la cola lo sube tiempo después y la sede activa puede ser otra.
             ...(variasSedes && almacenCaja != null ? { almacenId: almacenCaja } : {}),
@@ -890,10 +908,13 @@ function PuntoDeVenta() {
             // «Ventas del turno». La cola la sube con la que estaba abierta al
             // tomarlo; el backend la descarta sin rechazar si ya no sirve.
             ...(idCaja != null ? { cajaId: idCaja } : {}),
-            detalles,
+            detalles: carritoVenta.lineas.map((l, i) => ({ ...detalles[i], precioApp: precioApp(l) })),
           },
           api.crearPedidoPlataforma,
           precios,
+          // Sin señal, la lista de lo que falta subir dice lo que vio el cajero:
+          // precios de la app, toppings y descuento.
+          confirmado.total,
         );
       } catch (e) {
         // El diálogo muestra el error (lo atrapa él). Los vasos se releen igual:
@@ -902,6 +923,10 @@ function PuntoDeVenta() {
         throw e;
       }
       intentoPedido.registrado();
+      // «Recordar»: la copia de este equipo cambia ya, así el próximo pedido de
+      // esta app sale con estos precios aunque no se vuelvan a pedir (y aunque
+      // éste haya quedado en la cola: el servidor los aprende al subirlo).
+      if (confirmado.recordarPrecios) preciosApp.recordar(plataforma, confirmado.precios);
       // Sin señal el stock de la copia baja igual que con una venta encolada.
       if (r.encolado) await descontarDeLaCopia(copiaCatalogo(almacenCaja), detalles);
       // «Imprimir el pedido al registrarlo» (delivery full, 18-nov): el ticket
@@ -912,12 +937,15 @@ function PuntoDeVenta() {
             plataforma,
             codigoExterno,
             pedido: r.pedido,
+            // Con el precio de la app: de la cola sale el papel con lo del diálogo.
             carrito: carritoVenta.lineas.map((l) => ({
               nombre: l.producto.nombre,
               cantidad: l.cantidad,
-              precio: l.producto.precio,
+              precio: precioApp(l),
               hijas: l.vista?.hijas,
             })),
+            descuento: confirmado.descuento,
+            observaciones: confirmado.observaciones,
             sede: caja.datos?.caja?.almacen ?? null,
             atendio: usuario?.nombre?.trim() || usuario?.username || null,
           })
@@ -952,6 +980,7 @@ function PuntoDeVenta() {
       caja.datos,
       recargarConteo,
       conteoTrasVender,
+      preciosApp,
     ],
   );
 
@@ -1709,6 +1738,10 @@ function PuntoDeVenta() {
               onElegir: (p, alVolver) => {
                 alVolverDelPedido.current = alVolver;
                 setPedidoPlataforma(p);
+                // Un POS abierto todo el día puede tener la copia de la mañana:
+                // se vuelven a pedir sin esperar. El diálogo se abre ya con la
+                // copia y se pone al día en los renglones que no se tocaron.
+                void preciosApp.refrescar();
               },
             }
           : undefined
@@ -1884,14 +1917,13 @@ function PuntoDeVenta() {
           <DialogoPedidoPlataforma
             plataforma={pedidoPlataforma}
             lineas={lineasDelPedido}
-            total={totalDelPedido}
             onClose={() => {
               setPedidoPlataforma(null);
               const volver = alVolverDelPedido.current;
               alVolverDelPedido.current = undefined;
               volver?.();
             }}
-            onRegistrar={(codigo) => registrarPedido(pedidoPlataforma, codigo)}
+            onRegistrar={(confirmado) => registrarPedido(pedidoPlataforma, confirmado)}
           />
         )}
         {pedidoImpreso && <PedidoPlataformaRegistrado pedido={pedidoImpreso} onListo={() => setPedidoImpreso(null)} />}

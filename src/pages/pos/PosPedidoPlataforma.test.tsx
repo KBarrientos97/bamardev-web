@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto } from "../../types";
@@ -65,6 +65,7 @@ vi.mock("../../lib/api", () => ({
     crearVenta: vi.fn(),
     crearPedidoPlataforma: vi.fn(),
     estadoConteo: vi.fn(),
+    preciosPlataforma: vi.fn(),
   },
 }));
 
@@ -148,8 +149,11 @@ beforeEach(() => {
   sesion.conteo = null;
   sessionStorage.clear();
   sessionStorage.setItem("bamar.carrito.LOCAL", JSON.stringify([{ id: 5, cantidad: 2, enMesa: 0, nota: "" }]));
+  // La copia de los precios de la app (19-nov) es por negocio y vive en localStorage.
+  localStorage.removeItem("bamardev.pedidosPlataforma.precios:1");
   vi.mocked(api.getProductos).mockResolvedValue([ARROZ]);
   vi.mocked(api.crearPedidoPlataforma).mockResolvedValue(PEDIDO as never);
+  vi.mocked(api.preciosPlataforma).mockResolvedValue({ precios: [] });
 });
 
 describe("los botones de Yango y PedidosYa en el POS", () => {
@@ -254,6 +258,101 @@ describe("registrar el pedido", () => {
   });
 });
 
+describe("el precio de la app, el descuento y las observaciones (19-nov)", () => {
+  const precioDelArroz = () => screen.getByLabelText("Precio de «Arroz con leche L» en Yango");
+  const registrar = async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+    });
+  };
+
+  it("sin plataformas no pide los precios; con alguna, los pide al entrar", async () => {
+    sesion.features = ["pos", "caja"];
+    await montar();
+    expect(api.preciosPlataforma).not.toHaveBeenCalled();
+  });
+
+  it("el diálogo sale con el precio recordado y el cuerpo lleva precioApp, descuento y nota (sin `precio`, que pone el servidor)", async () => {
+    vi.mocked(api.preciosPlataforma).mockResolvedValue({ precios: [{ productoId: 5, plataforma: "YANGO", precio: 40 }] });
+    await montar();
+    expect(api.preciosPlataforma).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    expect(precioDelArroz()).toHaveValue("40");
+    fireEvent.change(screen.getByLabelText("Descuento (Bs)"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Observaciones (opcional)"), { target: { value: "sin canela" } });
+    await registrar();
+    // Abrir el diálogo los volvió a pedir (un POS abierto todo el día no se queda con los de la mañana).
+    expect(api.preciosPlataforma).toHaveBeenCalledTimes(2);
+    const cuerpo = vi.mocked(api.crearPedidoPlataforma).mock.calls[0][0];
+    expect(cuerpo).toMatchObject({
+      plataforma: "YANGO",
+      descuento: 5,
+      observaciones: "sin canela",
+      detalles: [{ productoId: 5, cantidad: 2, precioApp: 40 }],
+    });
+    expect(cuerpo.detalles[0]).not.toHaveProperty("precio");
+    // No se cambió ningún precio: no hay nada que recordar.
+    expect(cuerpo).not.toHaveProperty("recordarPrecios");
+  });
+
+  it("si al abrir el diálogo llega un precio nuevo, el renglón sin tocar se pone al día", async () => {
+    await montar();
+    let responder!: (r: { precios: { productoId: number; plataforma: "YANGO"; precio: number }[] }) => void;
+    vi.mocked(api.preciosPlataforma).mockImplementation(
+      () =>
+        new Promise((ok) => {
+          responder = ok;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    // Se abre al instante con la copia (el precio del local).
+    expect(precioDelArroz()).toHaveValue("35");
+    await act(async () => {
+      // El pedido sale en la vuelta siguiente: recién ahí hay a quién responder.
+      await Promise.resolve();
+      responder({ precios: [{ productoId: 5, plataforma: "YANGO", precio: 38 }] });
+    });
+    expect(precioDelArroz()).toHaveValue("38");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    await registrar();
+    expect(vi.mocked(api.crearPedidoPlataforma).mock.calls[0][0]).toMatchObject({ detalles: [{ precioApp: 38 }] });
+  });
+
+  it("la huella del intento no cambia con el precio: el reintento tras un 4xx con otro precio es el mismo pedido", async () => {
+    vi.mocked(api.crearPedidoPlataforma).mockRejectedValueOnce(new ApiError("Error del servidor", 400));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    await registrar();
+    fireEvent.change(precioDelArroz(), { target: { value: "41" } });
+    fireEvent.change(screen.getByLabelText("Descuento (Bs)"), { target: { value: "2" } });
+    await registrar();
+    const [primero, segundo] = vi.mocked(api.crearPedidoPlataforma).mock.calls;
+    expect(segundo[0].clienteRequestId).toBe(primero[0].clienteRequestId);
+    expect(segundo[0]).toMatchObject({ descuento: 2, detalles: [{ precioApp: 41 }] });
+  });
+
+  it("con «Recordar» tildada, el próximo pedido ya sale con ese precio, sin volver a pedirlos", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    expect(precioDelArroz()).toHaveValue("35");
+    fireEvent.change(precioDelArroz(), { target: { value: "42" } });
+    expect(screen.getByRole("checkbox", { name: "Recordar estos precios para los próximos pedidos de Yango" })).toBeChecked();
+    await registrar();
+    expect(vi.mocked(api.crearPedidoPlataforma).mock.calls[0][0]).toMatchObject({
+      recordarPrecios: true,
+      detalles: [{ productoId: 5, precioApp: 42 }],
+    });
+    // Otro pedido del mismo producto, con el POS vuelto a abrir y sin poder
+    // pedir los precios (sin señal): sale de la copia, que ya dice 42.
+    cleanup();
+    sessionStorage.setItem("bamar.carrito.LOCAL", JSON.stringify([{ id: 5, cantidad: 1, enMesa: 0, nota: "" }]));
+    vi.mocked(api.preciosPlataforma).mockRejectedValue(new ApiError("Sin internet. Revisá la conexión del local.", 0));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    expect(precioDelArroz()).toHaveValue("42");
+  });
+});
+
 describe("sin señal (la app instalada de la compu o del iPhone)", () => {
   beforeEach(() => {
     usarAlmacenCola(almacenEnMemoria());
@@ -281,6 +380,42 @@ describe("sin señal (la app instalada de la compu o del iPhone)", () => {
     expect(hayPorSubir()).toBe(true);
     // Y el aviso de arriba lo cuenta como algo que falta subir.
     expect(screen.getByText(/1 pedido de plataforma.*sin internet/)).toBeInTheDocument();
+  });
+
+  it("la cola guarda el precio de la app, el descuento y la nota, y lo pendiente dice el total del diálogo (19-nov)", async () => {
+    sesion.pos = { imprimirPlataformas: true };
+    window.print = vi.fn();
+    vi.mocked(api.crearPedidoPlataforma).mockRejectedValue(new ApiError("Sin internet. Revisá la conexión del local.", 0));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    // 2 × Bs 40 en la app (en el local, 35) − Bs 3 de descuento = Bs 77.
+    fireEvent.change(screen.getByLabelText("Precio de «Arroz con leche L» en Yango"), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText("Descuento (Bs)"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Observaciones (opcional)"), { target: { value: "sin canela" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+    });
+    // El papel de la cola: con el precio de la app, el descuento y la nota.
+    const ventana = screen.getByRole("dialog", { name: "Pedido de Yango guardado: sube solo cuando vuelva la señal" });
+    const vista = within(ventana).getByLabelText("Vista del ticket").textContent!;
+    const fila = (izq: string, monto: string) => izq + " ".repeat(32 - izq.length - monto.length) + monto;
+    expect(vista).toContain(fila("2 x Arroz con leche L", "80.00"));
+    expect(vista).toContain(fila("Descuento", "-3.00"));
+    expect(vista).toContain(fila("TOTAL", "Bs 77.00"));
+    expect(vista).toContain("Obs: sin canela");
+    // Lo que falta subir: el total del diálogo, no el de los precios del local (70).
+    expect(screen.getByText(/1 pedido de plataforma.*sin internet/).parentElement!.textContent).toMatch(/Bs.77,00/);
+    const { usePedidosEncolados } = await import("../../lib/offline/cola");
+    const { renderHook } = await import("@testing-library/react");
+    const [p] = renderHook(() => usePedidosEncolados()).result.current;
+    expect(p.resumen.total).toBe(77);
+    expect(p.cuerpo).toMatchObject({
+      descuento: 3,
+      observaciones: "sin canela",
+      recordarPrecios: true,
+      encolado: true,
+      detalles: [{ productoId: 5, cantidad: 2, precio: 35, precioApp: 40 }],
+    });
   });
 
   it("con «Imprimir el pedido al registrarlo» prendido, el ticket sale igual, con lo que se cargó", async () => {

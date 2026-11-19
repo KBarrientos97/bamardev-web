@@ -5,6 +5,8 @@ import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney } from "../../lib/format";
 import type { MedioVendido, PlataformaVendida, ReporteCierreProductos } from "../../types";
 import {
+  descuentosDePlataforma,
+  ETIQUETA_DESCUENTOS_PLATAFORMA,
   LEYENDA_FIADO,
   mediosDelTurno,
   plataformasDelTurno,
@@ -25,6 +27,7 @@ import {
   textoUnidades,
   textoUnidadesPorCategoria,
   textoVentas,
+  totalDePlataforma,
   type RenglonVendido,
   type VistaProductos,
 } from "./productosVendidos";
@@ -228,6 +231,22 @@ function ResumenFinal({ d }: { d: ReporteCierreProductos }) {
  * el arqueo de Reportes con costos.
  */
 export function SeccionPlataforma({ p, limite }: { p: PlataformaVendida; limite?: number }) {
+  // Con descuentos de la app (19-nov) el encabezado dice lo que paga la app y
+  // la tabla termina con un renglón «Descuentos»: renglones − descuentos =
+  // encabezado. Sin descuentos, todo como siempre.
+  const descuentos = descuentosDePlataforma(p);
+  const tabla = p.categorias.length > 0 && (
+    <TablaDeProductos
+      limite={limite}
+      grupos={p.categorias.map((c) => ({
+        clave: c.nombre,
+        nombre: c.nombre,
+        unidades: c.unidades,
+        total: c.total,
+        renglones: c.items.map(renglonVendido),
+      }))}
+    />
+  );
   return (
     <section aria-label={textoEncabezadoPlataforma(p)} data-plataforma-seccion={p.plataforma} className="space-y-3 pt-1">
       <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
@@ -238,20 +257,25 @@ export function SeccionPlataforma({ p, limite }: { p: PlataformaVendida; limite?
               {textoPedidos(p.pedidos)} · {textoUnidades(p.unidades)}
             </span>
           </span>
-          <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(p.total)}</span>
+          <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(totalDePlataforma(p))}</span>
         </div>
       </div>
-      {p.categorias.length > 0 && (
-        <TablaDeProductos
-          limite={limite}
-          grupos={p.categorias.map((c) => ({
-            clave: c.nombre,
-            nombre: c.nombre,
-            unidades: c.unidades,
-            total: c.total,
-            renglones: c.items.map(renglonVendido),
-          }))}
-        />
+      {descuentos > 0 ? (
+        <div>
+          {tabla}
+          {/* Con ancho, la cifra cae en la columna «Total», como la de cada producto. */}
+          <div
+            data-descuentos-plataforma
+            className={`grid ${COLUMNAS} mt-1.5 items-baseline border-t border-borde-soft pt-1.5 text-[13px]`}
+          >
+            <span className="min-w-0 font-semibold text-texto-2">{ETIQUETA_DESCUENTOS_PLATAFORMA}</span>
+            <span aria-hidden className="hidden @md:block" />
+            <span aria-hidden className="hidden @md:block" />
+            <span className="text-right font-bold tabular-nums text-texto">−{fmtMoney(descuentos)}</span>
+          </div>
+        </div>
+      ) : (
+        tabla
       )}
     </section>
   );
