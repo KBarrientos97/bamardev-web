@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * Arrastrar para reordenar la grilla del POS, equivalente al ItemTouchHelper
  * de Android: se levanta una card y se la lleva a su lugar. La lista en
  * columnas (`VistaColumnas`) usa el mismo gesto con sus filas, cada una dentro
  * de su categoría (ver `aceptaDestino`).
+ *
+ * Desde el 18-nov también acomoda las categorías (los chips de arriba y los
+ * bloques de la lista en columnas): cada uso lleva su `atributo`, su `eje` y,
+ * como chips y bloques no son del mismo tamaño, el `antiRebote`. Sin esas
+ * opciones el gesto es exactamente el de los productos.
  *
  * Va con Pointer Events y no con HTML5 drag-and-drop porque éste no existe en
  * táctil, y la web se usa igual en la tablet del mostrador que en la PC del
@@ -42,8 +47,15 @@ const UMBRAL_PX = 8;
  */
 const MS_IGNORAR_CLIC = 400;
 
-/** Atributo con el id de cada card: así se sabe qué card está debajo del puntero. */
-const ATRIBUTO = "data-arrastre-id";
+/** Un atributo `data-…` con el id de cada elemento que se acomoda. */
+export type AtributoArrastre = `data-${string}`;
+
+/**
+ * Atributo con el id de cada card: así se sabe qué card está debajo del
+ * puntero. Es el de fábrica; quien acomoda otra cosa en la misma pantalla
+ * (las categorías) lleva el suyo (ver `atributo`).
+ */
+const ATRIBUTO: AtributoArrastre = "data-arrastre-id";
 
 /**
  * Con la card levantada cerca del borde de la grilla, la grilla se desplaza
@@ -77,12 +89,37 @@ interface Opciones {
    * de destino): las demás no se corren de donde estaban (ver `moverEnGrupo`).
    */
   aceptaDestino?: (levantada: number, destino: number) => boolean;
+  /**
+   * El atributo donde va el id de cada elemento (de fábrica, `data-arrastre-id`).
+   * Dos arrastres en la misma pantalla con ids que se pisan —las categorías y
+   * los productos: la categoría 3 y el producto 3— llevan uno cada uno; si no,
+   * el puntero encontraría debajo una tarjeta de producto y la tomaría por una
+   * categoría.
+   */
+  atributo?: AtributoArrastre;
+  /**
+   * Hacia dónde se desplaza solo el `contenedor` con el elemento en su borde:
+   * de arriba abajo (la grilla, de fábrica) o de costado (la fila de chips de
+   * categoría, que scrollea de lado).
+   */
+  eje?: "vertical" | "horizontal";
+  /**
+   * Para elementos de distinto tamaño (los chips, los bloques de la lista en
+   * columnas). Al cambiar de lugar A con B, B se corre lo que mide A, y si son
+   * de distinto tamaño el puntero suele quedar todavía sobre B: en el próximo
+   * movimiento los volvía a cambiar, y así en cada uno (parpadeo). Con esto,
+   * después de un reacomodo lo que quedó debajo del puntero queda «gastado» y
+   * no vuelve a mover nada hasta que el puntero pase por otro elemento (o por
+   * ninguno). Las tarjetas de producto miden todas lo mismo y no lo usan.
+   */
+  antiRebote?: boolean;
 }
 
 /**
  * Cuánto desplazar la grilla en este cuadro según dónde está el puntero: hacia
  * arriba (negativo) en el borde de arriba, hacia abajo en el de abajo, y más
- * rápido cuanto más adentro del borde. 0 lejos de los bordes.
+ * rápido cuanto más adentro del borde. 0 lejos de los bordes. Sirve igual de
+ * costado: con la x del puntero y los bordes izquierdo y derecho.
  */
 export function desplazamientoAutomatico(y: number, arriba: number, abajo: number): number {
   if (y < arriba + BORDE_PX) return -Math.min(MAX_PX_POR_CUADRO, Math.ceil((arriba + BORDE_PX - y) / 3));
@@ -90,16 +127,21 @@ export function desplazamientoAutomatico(y: number, arriba: number, abajo: numbe
   return 0;
 }
 
+/** Lo que va en cada elemento que se acomoda (ver `Arrastre.props`). */
+export interface PropsArrastre {
+  onPointerDown: (e: React.PointerEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onDragStart: (e: React.DragEvent) => void;
+  style: React.CSSProperties;
+  "data-arrastrando": boolean;
+  /** El id, en el atributo de este arrastre: `data-arrastre-id` de fábrica (ver `atributo`). */
+  "data-arrastre-id"?: number;
+  [atributo: AtributoArrastre]: number | boolean | undefined;
+}
+
 export interface Arrastre {
   /** Props que van en cada card, en el mismo orden que `ids`. */
-  props: (id: number) => {
-    onPointerDown: (e: React.PointerEvent) => void;
-    onContextMenu: (e: React.MouseEvent) => void;
-    onDragStart: (e: React.DragEvent) => void;
-    style: React.CSSProperties;
-    "data-arrastrando": boolean;
-    "data-arrastre-id": number;
-  };
+  props: (id: number) => PropsArrastre;
   /** Id de la card levantada, o null. Sirve para el estilo del hueco. */
   arrastrando: number | null;
   /** Orden en pantalla mientras dura el arrastre (los ids reacomodados). */
@@ -156,18 +198,36 @@ export function moverEnGrupo(
   return nuevo;
 }
 
-/** La card que está debajo del puntero, o null si no hay ninguna. */
-function cardBajo(x: number, y: number): number | null {
+/**
+ * Lo levantado ahora en toda la pantalla, de cualquier arrastre: uno por vez.
+ * El POS acomoda productos y categorías con arrastres distintos, y mientras se
+ * lleva una categoría no se levanta un producto, ni al revés (un segundo dedo,
+ * o un toque que quedó esperando el long-press). Con un solo arrastre en
+ * pantalla, como hasta el 18-nov, no cambia nada.
+ */
+let levantadoAhora: symbol | null = null;
+
+/** El elemento (con ese atributo) que está debajo del puntero, o null si no hay ninguno. */
+function elementoBajo(x: number, y: number, atributo: AtributoArrastre): number | null {
   // `elementFromPoint` y no `pointerenter`: con el dedo el navegador captura el
   // puntero en la card donde arrancó el toque, y las demás nunca se enteran de
   // que el dedo pasó por encima. Así la card no se movía en la tablet.
-  const el = document.elementFromPoint?.(x, y)?.closest(`[${ATRIBUTO}]`);
+  const el = document.elementFromPoint?.(x, y)?.closest(`[${atributo}]`);
   if (!el) return null;
-  const id = Number(el.getAttribute(ATRIBUTO));
+  const id = Number(el.getAttribute(atributo));
   return Number.isInteger(id) ? id : null;
 }
 
-export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor, aceptaDestino }: Opciones): Arrastre {
+export function useArrastreGrilla({
+  ids,
+  onReordenar,
+  activo = true,
+  contenedor,
+  aceptaDestino,
+  atributo = ATRIBUTO,
+  eje = "vertical",
+  antiRebote = false,
+}: Opciones): Arrastre {
   // Orden "en vuelo": sólo existe mientras se arrastra. Fuera de eso mandan los
   // ids que llegan por props, así que un cambio de filtro se refleja al toque.
   const [orden, setOrden] = useState<number[] | null>(null);
@@ -193,6 +253,22 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
   contenedorRef.current = contenedor;
   const aceptaDestinoRef = useRef(aceptaDestino);
   aceptaDestinoRef.current = aceptaDestino;
+  const atributoRef = useRef(atributo);
+  atributoRef.current = atributo;
+  const ejeRef = useRef(eje);
+  ejeRef.current = eje;
+  const antiReboteRef = useRef(antiRebote);
+  antiReboteRef.current = antiRebote;
+  /**
+   * Con `antiRebote`: lo que quedó debajo del puntero después del último
+   * reacomodo. No mueve nada hasta que el puntero pase por otro elemento o por
+   * ninguno (ver `antiRebote`).
+   */
+  const gastado = useRef<number | null>(null);
+  /** Hubo un reacomodo y falta ver qué quedó debajo del puntero con el orden nuevo ya dibujado. */
+  const porMirar = useRef(false);
+  /** Quién es este arrastre para `levantadoAhora`. */
+  const yo = useRef(Symbol("arrastre"));
 
   const limpiarTimer = () => {
     if (timer.current !== null) {
@@ -211,7 +287,13 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
   /** Mueve la card levantada al lugar de la que esté debajo del puntero. */
   const reacomodar = (x: number, y: number) => {
     const actual = arrastrandoRef.current;
-    const destino = cardBajo(x, y);
+    const destino = elementoBajo(x, y, atributoRef.current);
+    if (antiReboteRef.current) {
+      // Sigue sobre lo que quedó debajo después del último cambio: no lo vuelve a cambiar.
+      if (destino !== null && destino === gastado.current) return;
+      // Pasó por otro elemento, o por ninguno: lo gastado vuelve a valer.
+      gastado.current = null;
+    }
     if (actual === null || destino === null) return;
     const lista = ordenRef.current ?? idsRef.current;
     const acepta = aceptaDestinoRef.current;
@@ -223,8 +305,26 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
     if (nuevo) {
       ordenRef.current = nuevo;
       setOrden(nuevo);
+      if (antiReboteRef.current) {
+        // Hasta que se dibuje el orden nuevo, lo que está debajo es el destino;
+        // después se mira de nuevo (ver el efecto de abajo).
+        gastado.current = destino;
+        porMirar.current = true;
+      }
     }
   };
+
+  // Anti-rebote: con el orden nuevo ya dibujado (y antes de pintarlo), lo que
+  // quedó debajo del puntero —B corrido, la misma levantada, o un bloque que la
+  // lista en columnas pasó de columna— queda gastado. Se mira acá y no al
+  // cambiar de lugar porque recién ahora el navegador sabe qué hay ahí.
+  useLayoutEffect(() => {
+    if (!porMirar.current) return;
+    porMirar.current = false;
+    const p = puntero.current;
+    if (!p || arrastrandoRef.current === null) return;
+    gastado.current = elementoBajo(p.x, p.y, atributoRef.current);
+  }, [orden]);
 
   // Un cuadro del desplazamiento automático. Se vuelve a pedir mientras dure el
   // arrastre: con el dedo quieto en el borde, la grilla sigue bajando.
@@ -236,12 +336,15 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
     const p = puntero.current;
     if (el && p) {
       const r = el.getBoundingClientRect();
-      const dy = desplazamientoAutomatico(p.y, r.top, r.bottom);
-      if (dy !== 0) {
-        const antes = el.scrollTop;
-        el.scrollTop = antes + dy;
+      // De costado, la fila de chips; si no, de arriba abajo (la grilla).
+      const deCostado = ejeRef.current === "horizontal";
+      const d = deCostado ? desplazamientoAutomatico(p.x, r.left, r.right) : desplazamientoAutomatico(p.y, r.top, r.bottom);
+      if (d !== 0) {
+        const antes = deCostado ? el.scrollLeft : el.scrollTop;
+        if (deCostado) el.scrollLeft = antes + d;
+        else el.scrollTop = antes + d;
         // El dedo no se movió, pero lo que tiene debajo sí.
-        if (el.scrollTop !== antes) reacomodar(p.x, p.y);
+        if ((deCostado ? el.scrollLeft : el.scrollTop) !== antes) reacomodar(p.x, p.y);
       }
     }
     cuadro.current = requestAnimationFrame(() => desplazar.current());
@@ -249,8 +352,16 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
 
   const empezar = useCallback((id: number) => {
     limpiarTimer();
+    // Otro arrastre de la pantalla tiene algo levantado: éste no arranca.
+    if (levantadoAhora !== null && levantadoAhora !== yo.current) {
+      gesto.current = null;
+      return;
+    }
+    levantadoAhora = yo.current;
     arrastrandoRef.current = id;
     ordenRef.current = idsRef.current;
+    gastado.current = null;
+    porMirar.current = false;
     setArrastrando(id);
     setOrden(idsRef.current);
     if (contenedorRef.current?.current && typeof requestAnimationFrame === "function") {
@@ -263,10 +374,13 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
   const descartar = useCallback(() => {
     limpiarTimer();
     pararDesplazamiento();
+    if (levantadoAhora === yo.current) levantadoAhora = null;
     gesto.current = null;
     puntero.current = null;
     ordenRef.current = null;
     arrastrandoRef.current = null;
+    gastado.current = null;
+    porMirar.current = false;
     setArrastrando(null);
     setOrden(null);
   }, []);
@@ -297,6 +411,8 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
           return;
         }
         empezar(g.id);
+        // Otro arrastre tenía algo levantado (ver `levantadoAhora`).
+        if (arrastrandoRef.current === null) return;
       }
       puntero.current = { x: ev.clientX, y: ev.clientY };
       reacomodar(ev.clientX, ev.clientY);
@@ -311,21 +427,6 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
         gesto.current = null;
       }
     };
-    // Con la card levantada el dedo la lleva a su lugar y la grilla no se
-    // desplaza a mano (la desplaza el borde, ver `desplazar`). Tiene que ser un
-    // listener no pasivo: uno pasivo no puede frenar el scroll, y el navegador
-    // cortaba el arrastre para desplazar. Va en la grilla y no en window: uno no
-    // pasivo en window hace esperar a cada scroll con el dedo de toda la
-    // pantalla, y en una tablet barata eso se nota.
-    const alDeslizar = (ev: Event) => {
-      if (arrastrandoRef.current !== null && ev.cancelable) ev.preventDefault();
-    };
-    // Sin contenedor pasado, window (como antes). Con contenedor pasado pero
-    // sin montar (la farmacia dibuja su propio catálogo y no la grilla), nada:
-    // caer en window dejaba justo el listener no pasivo que el párrafo de
-    // arriba evita, en toda la pantalla de venta.
-    const c = contenedorRef.current;
-    const zonaTactil: HTMLElement | Window | null = c ? c.current : window;
     const alTeclear = (e: KeyboardEvent) => {
       // Escape descarta: se vuelve al orden que había sin guardar nada.
       if (e.key === "Escape" && arrastrandoRef.current !== null) descartar();
@@ -333,24 +434,59 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
     window.addEventListener("pointermove", alMover);
     window.addEventListener("pointerup", alSoltar);
     window.addEventListener("pointercancel", alSoltar);
-    zonaTactil?.addEventListener("touchmove", alDeslizar, { passive: false });
     window.addEventListener("keydown", alTeclear);
     return () => {
       window.removeEventListener("pointermove", alMover);
       window.removeEventListener("pointerup", alSoltar);
       window.removeEventListener("pointercancel", alSoltar);
-      zonaTactil?.removeEventListener("touchmove", alDeslizar);
       window.removeEventListener("keydown", alTeclear);
       limpiarTimer();
       pararDesplazamiento();
+      // Se fue de la pantalla con algo levantado: que no trabe a los demás.
+      if (levantadoAhora === yo.current) levantadoAhora = null;
     };
     // `reacomodar` sólo usa refs y el setter del estado: no hace falta volver
     // a registrar los listeners en cada render.
   }, [empezar, terminar, descartar]);
 
+  // Con la card levantada el dedo la lleva a su lugar y la grilla no se
+  // desplaza a mano (la desplaza el borde, ver `desplazar`). Tiene que ser un
+  // listener no pasivo: uno pasivo no puede frenar el scroll, y el navegador
+  // cortaba el arrastre para desplazar. Va en la grilla y no en window: uno no
+  // pasivo en window hace esperar a cada scroll con el dedo de toda la
+  // pantalla, y en una tablet barata eso se nota.
+  const alDeslizar = useRef((ev: Event) => {
+    if (arrastrandoRef.current !== null && ev.cancelable) ev.preventDefault();
+  }).current;
+  const zonaTactil = useRef<HTMLElement | Window | null>(null);
+  // Sin contenedor pasado, window (como antes). Con contenedor pasado pero sin
+  // montar (la farmacia dibuja su propio catálogo y no la grilla), nada: caer
+  // en window dejaba justo el listener no pasivo que el párrafo de arriba
+  // evita, en toda la pantalla de venta. Se mira después de cada dibujo y no
+  // sólo al montar: la fila de chips aparece y desaparece con el ajuste de los
+  // filtros, y sin el listener el navegador corta el arrastre con el dedo para
+  // desplazarla de costado. La grilla está siempre: se engancha una vez, como antes.
+  useLayoutEffect(() => {
+    const c = contenedorRef.current;
+    const zona: HTMLElement | Window | null = c ? c.current : window;
+    if (zona === zonaTactil.current) return;
+    zonaTactil.current?.removeEventListener("touchmove", alDeslizar);
+    zona?.addEventListener("touchmove", alDeslizar, { passive: false });
+    zonaTactil.current = zona;
+  });
+  useEffect(
+    () => () => {
+      zonaTactil.current?.removeEventListener("touchmove", alDeslizar);
+      zonaTactil.current = null;
+    },
+    [alDeslizar],
+  );
+
   const onPointerDown = useCallback(
     (id: number) => (e: React.PointerEvent) => {
       if (!activo) return;
+      // Ya hay otra cosa levantada en la pantalla (ver `levantadoAhora`).
+      if (levantadoAhora !== null && levantadoAhora !== yo.current) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       limpiarTimer();
       gesto.current = { x: e.clientX, y: e.clientY, id, tipo: e.pointerType };
@@ -371,31 +507,36 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor,
   const noArrastreNativo = useCallback((e: React.DragEvent) => e.preventDefault(), []);
 
   const props = useCallback(
-    (id: number) => ({
-      onPointerDown: onPointerDown(id),
-      onContextMenu: noMenu,
-      onDragStart: noArrastreNativo,
-      style: {
-        // La card levantada se agranda un poco, igual que en Android: sin eso
-        // no se ve que "agarró".
-        transform: arrastrando === id ? "scale(1.05)" : undefined,
-        opacity: arrastrando !== null && arrastrando !== id ? 0.75 : undefined,
-        zIndex: arrastrando === id ? 20 : undefined,
-        // Mientras se arrastra, el navegador no debe interpretar el gesto como
-        // scroll ni selección de texto.
-        touchAction: arrastrando !== null ? ("none" as const) : undefined,
-        cursor: arrastrando === id ? ("grabbing" as const) : undefined,
-        // Mantener presionado no selecciona el nombre del producto ni abre el
-        // globo de "copiar" de iOS.
-        userSelect: "none" as const,
-        WebkitUserSelect: "none" as const,
-        WebkitTouchCallout: "none" as const,
-        transition: "transform 120ms, opacity 120ms",
-      } satisfies React.CSSProperties,
-      "data-arrastrando": arrastrando === id,
-      [ATRIBUTO]: id,
-    }),
-    [arrastrando, onPointerDown, noMenu, noArrastreNativo],
+    (id: number): PropsArrastre => {
+      const p: PropsArrastre = {
+        onPointerDown: onPointerDown(id),
+        onContextMenu: noMenu,
+        onDragStart: noArrastreNativo,
+        style: {
+          // La card levantada se agranda un poco, igual que en Android: sin eso
+          // no se ve que "agarró".
+          transform: arrastrando === id ? "scale(1.05)" : undefined,
+          opacity: arrastrando !== null && arrastrando !== id ? 0.75 : undefined,
+          zIndex: arrastrando === id ? 20 : undefined,
+          // Mientras se arrastra, el navegador no debe interpretar el gesto como
+          // scroll ni selección de texto.
+          touchAction: arrastrando !== null ? ("none" as const) : undefined,
+          cursor: arrastrando === id ? ("grabbing" as const) : undefined,
+          // Mantener presionado no selecciona el nombre del producto ni abre el
+          // globo de "copiar" de iOS.
+          userSelect: "none" as const,
+          WebkitUserSelect: "none" as const,
+          WebkitTouchCallout: "none" as const,
+          transition: "transform 120ms, opacity 120ms",
+        } satisfies React.CSSProperties,
+        "data-arrastrando": arrastrando === id,
+      };
+      // Aparte y no en el literal: con la clave calculada TypeScript no sabe
+      // que es un `data-…` y la toma por cualquier texto.
+      p[atributo] = id;
+      return p;
+    },
+    [arrastrando, onPointerDown, noMenu, noArrastreNativo, atributo],
   );
 
   const ignorarClic = useCallback(

@@ -551,6 +551,15 @@ describe("«Más opciones» al pie de la barra (el dueño, 07-nov)", () => {
     expect(opciones(nav)).toEqual(["Notificaciones", "Tutoriales", "Cambiar mi contraseña"]);
   });
 
+  it("la cajera del restaurante tiene ahí «Mi punto de venta» (18-nov): lo suyo, de su cuenta", () => {
+    // El dueño no (el caso de arriba): lo cambia para todos en Configuración.
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = [];
+    const nav = abrirMas(abrir("/pos"));
+    expect(opciones(nav)).toEqual(["Mi punto de venta", "Notificaciones", "Tutoriales", "Cambiar mi contraseña"]);
+    expect(nav.getByRole("link", { name: "Mi punto de venta" })).toHaveAttribute("href", "/mi-punto-de-venta");
+  });
+
   it("elegir Tutoriales lleva a la pantalla y pliega el panel; el botón queda encendido", () => {
     const nav = abrirMas(abrir("/pos"));
     fireEvent.click(nav.getByRole("link", { name: "Tutoriales" }));

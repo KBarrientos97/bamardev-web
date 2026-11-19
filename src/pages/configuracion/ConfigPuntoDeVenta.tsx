@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, ErrorMsg, useAviso } from "../../components/ui";
+import { Boton, Cargando, Confirmar, ErrorMsg, useAviso } from "../../components/ui";
 import { api } from "../../lib/api";
 import { configuracionEnLista, VOLVER_A_CONFIGURACION } from "../../lib/configuracion";
 import {
+  CAMPOS_PROPIOS,
+  configuraElNegocio,
   normalizarConfigPos,
+  normalizarMiConfigPos,
   ordenarCategorias,
+  type CambiosMiConfigPos,
+  type CampoPropio,
   type CobroPos,
   type ConfigPos,
   type VistaPos,
@@ -38,6 +43,14 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
  * Mesa o para llevar no está acá a propósito: el dueño lo quiere como se
  * trabaja hoy (cada línea nace en mesa y el carrito lo cambia).
  *
+ * Desde el 18-nov la misma pantalla es también «Mi punto de venta», la del
+ * cajero (CONTRATO-pos-por-cajero §3.2). Qué modo se dibuja lo decide el
+ * permiso, con la misma regla que decide dónde se guarda (`configuraElNegocio`):
+ *  - el dueño (`negocio.configurar`) cambia lo del negocio, como siempre;
+ *  - el cajero cambia sólo lo suyo (`/pos/config/mia`) y lo que no toca sigue
+ *    como lo eligió el negocio. No ve «Delivery propio»: controlar la plata de
+ *    los repartidores es un control sobre la caja, no una comodidad suya.
+ *
  * Se guarda al tocar, como Tickets y despacho. Lo tocado se ve al instante y
  * viaja de a un pedido por vez: si se tocan dos cosas seguidas, la segunda sale
  * cuando vuelve la primera (dos PATCH a la vez podían llegar al revés y dejar
@@ -46,35 +59,96 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
  */
 
 /** Dónde se dice que algo no se guardó: al lado de lo que se tocó, no arriba de todo. */
-type Seccion = "vista" | "cobro" | "mostrar" | "orden" | "plataformas" | "repartidores";
+type Seccion = "vista" | "cobro" | "mostrar" | "orden" | "plataformas" | "repartidores" | "todo";
+
+/** Lo que muestra la pantalla: la configuración y, la del cajero, qué parte es suya. */
+interface Estado {
+  config: ConfigPos;
+  /** Lo que el cajero cambió para él. El dueño no tiene capa propia: siempre vacío. */
+  propios: CampoPropio[];
+}
+
+/** Un cambio por campo; `null` (sólo en lo del cajero) lo vuelve a lo del negocio. */
+type Cambios = { [K in keyof ConfigPos]?: ConfigPos[K] | null };
+
+/** De «Mi punto de venta» se vuelve al punto de venta: es de donde se llega (el botón de ajustes de su cabecera). */
+const VOLVER_AL_POS = { a: "/pos", etiqueta: "Volver al punto de venta" } as const;
+
+const esCampoPropio = (campo: string): campo is CampoPropio => (CAMPOS_PROPIOS as readonly string[]).includes(campo);
+
+/**
+ * Lo tocado, a la vista mientras viaja. Un `null` (volver a lo del negocio) no
+ * cambia lo que se ve hasta que contesta el servidor: acá no se sabe qué eligió
+ * el negocio. Lo que pasa a ser (o deja de ser) del cajero, sí se ve ya.
+ */
+function aplicar(e: Estado, cambios: Cambios, conPropios: boolean): Estado {
+  const config: ConfigPos = { ...e.config };
+  const propios = new Set(e.propios);
+  for (const campo of Object.keys(cambios) as (keyof ConfigPos)[]) {
+    const valor = cambios[campo];
+    if (valor === undefined) continue;
+    if (valor !== null) Object.assign(config, { [campo]: valor });
+    if (conPropios && esCampoPropio(campo)) {
+      if (valor === null) propios.delete(campo);
+      else propios.add(campo);
+    }
+  }
+  return { config, propios: CAMPOS_PROPIOS.filter((c) => propios.has(c)) };
+}
 
 export default function ConfigPuntoDeVenta() {
-  const { rubro, fijarConfigPos, negocio } = useAuth();
+  const { rubro, fijarConfigPos, negocio, usuario } = useAuth();
+  /** El dueño cambia lo de todos; los demás, lo suyo (R2). La misma regla que el arrastre del POS. */
+  const delNegocio = configuraElNegocio(usuario);
   // Delivery full (18-nov): cada sección, sólo a quien tiene con qué usarla.
   // Yango y PedidosYa son extras explícitos (no fallan abiertos, como sus botones del POS).
   const conPlataformas = plataformasPrendidas(negocio?.features).length > 0;
   const conDelivery = tieneFeature(negocio?.features, "delivery");
-  const estado = useApi(() => api.configPos().then(normalizarConfigPos), []);
+  const estado = useApi<Estado>(
+    () =>
+      delNegocio
+        ? api.configPos().then((c) => ({ config: normalizarConfigPos(c), propios: [] }))
+        : api.miConfigPos().then(normalizarMiConfigPos),
+    [delNegocio],
+  );
   const categorias = useApi(() => api.getCategorias(false), []);
 
   /** Lo tocado que todavía no confirmó el servidor (se ve mientras viaja). */
-  const [enPantalla, setEnPantalla] = useState<ConfigPos | null>(null);
+  const [enPantalla, setEnPantalla] = useState<Estado | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<{ en: Seccion; texto: string } | null>(null);
   const [guardado, setGuardado] = useAviso(4000);
+  /** «Volver a lo que eligió el negocio»: primero se pregunta. */
+  const [confirmandoBorrar, setConfirmandoBorrar] = useState(false);
+  const [borrando, setBorrando] = useState(false);
 
   /** Lo último que el servidor dijo que tiene: a esto se vuelve si un cambio falla. */
-  const confirmada = useRef<ConfigPos | null>(null);
+  const confirmada = useRef<Estado | null>(null);
   useEffect(() => {
     if (estado.datos) confirmada.current = estado.datos;
   }, [estado.datos]);
   /** Lo tocado mientras otro pedido viajaba: sale todo junto cuando vuelve. */
-  const pendiente = useRef<Partial<ConfigPos> | null>(null);
+  const pendiente = useRef<Cambios | null>(null);
   const enVuelo = useRef(false);
   /** Lo último que se tocó: ahí se dice si no se guardó. */
   const ultimoTocado = useRef<Seccion>("vista");
 
   const actual = enPantalla ?? estado.datos;
+
+  /** Lo manda a donde le toca a este usuario y devuelve lo que quedó guardado. */
+  const enviar = async (cambios: Cambios): Promise<Estado> => {
+    if (delNegocio) {
+      // El dueño nunca manda `null`: «volver al orden de siempre» es la lista vacía.
+      const delTodo = Object.fromEntries(Object.entries(cambios).filter(([, v]) => v !== null)) as Partial<ConfigPos>;
+      return { config: normalizarConfigPos(await api.guardarConfigPos(delTodo)), propios: [] };
+    }
+    // El cajero, sólo lo que puede ser suyo (R3): la plata de los repartidores
+    // y los billetes quedan del negocio, y esta pantalla no los muestra.
+    const suyos = Object.fromEntries(Object.entries(cambios).filter(([k]) => esCampoPropio(k))) as CambiosMiConfigPos;
+    return normalizarMiConfigPos(await api.guardarMiConfigPos(suyos));
+  };
+
+  const mensajeDe = (e: unknown) => (e instanceof Error && e.message ? e.message : "No se pudo guardar el cambio");
 
   const mandar = async () => {
     enVuelo.current = true;
@@ -83,10 +157,10 @@ export default function ConfigPuntoDeVenta() {
       while (pendiente.current) {
         const cambios = pendiente.current;
         pendiente.current = null;
-        const r = normalizarConfigPos(await api.guardarConfigPos(cambios));
+        const r = await enviar(cambios);
         confirmada.current = r;
         // La sesión se entera ahora: el POS de este equipo cambia sin volver a entrar.
-        fijarConfigPos?.(r);
+        fijarConfigPos?.(r.config);
         if (!pendiente.current) {
           setEnPantalla(null);
           estado.setDatos(r);
@@ -99,23 +173,46 @@ export default function ConfigPuntoDeVenta() {
       setEnPantalla(null);
       if (confirmada.current) estado.setDatos(confirmada.current);
       setGuardado("");
-      setError({
-        en: ultimoTocado.current,
-        texto: e instanceof Error && e.message ? e.message : "No se pudo guardar el cambio",
-      });
+      setError({ en: ultimoTocado.current, texto: mensajeDe(e) });
     } finally {
       enVuelo.current = false;
       setGuardando(false);
     }
   };
 
-  const guardar = (cambios: Partial<ConfigPos>, donde: Seccion) => {
+  const guardar = (cambios: Cambios, donde: Seccion) => {
     if (!actual) return;
-    setEnPantalla({ ...actual, ...cambios });
+    setEnPantalla(aplicar(actual, cambios, !delNegocio));
     setError(null);
     ultimoTocado.current = donde;
     pendiente.current = { ...pendiente.current, ...cambios };
     if (!enVuelo.current) void mandar();
+  };
+
+  /** El cajero borra todo lo suyo y vuelve a ver lo que eligió el negocio. */
+  const borrar = async () => {
+    // El botón no se ofrece mientras algo viaja; esto lo asegura.
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    setBorrando(true);
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = normalizarMiConfigPos(await api.borrarMiConfigPos());
+      confirmada.current = r;
+      fijarConfigPos?.(r.config);
+      setEnPantalla(null);
+      estado.setDatos(r);
+      setGuardado("Guardado");
+    } catch (e) {
+      setGuardado("");
+      setError({ en: "todo", texto: mensajeDe(e) });
+    } finally {
+      enVuelo.current = false;
+      setBorrando(false);
+      setGuardando(false);
+      setConfirmandoBorrar(false);
+    }
   };
 
   const errorDe = (donde: Seccion) => (error?.en === donde ? <ErrorMsg>{error.texto}</ErrorMsg> : null);
@@ -123,12 +220,29 @@ export default function ConfigPuntoDeVenta() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
-        titulo="Punto de venta"
-        subtitulo="Cómo se ven los productos y cómo se cobra."
-        // Se llega desde la lista de Configuración: la flecha vuelve ahí.
-        volver={configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined}
+        titulo={delNegocio ? "Punto de venta" : "Mi punto de venta"}
+        subtitulo={
+          delNegocio ? (
+            <>
+              Cómo se ven los productos y cómo se cobra.
+              <span className="mt-1 block">
+                Vale para todo el negocio. Cada cajero puede ajustar lo suyo en «Mi punto de venta».
+              </span>
+            </>
+          ) : (
+            "Cómo ves los productos y cómo cobrás vos."
+          )
+        }
+        // El dueño llega desde la lista de Configuración: la flecha vuelve ahí.
+        volver={delNegocio ? (configuracionEnLista(rubro) ? VOLVER_A_CONFIGURACION : undefined) : VOLVER_AL_POS}
         accion={<EstadoGuardado guardando={guardando} guardado={!!guardado} />}
       />
+      {!delNegocio && (
+        <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+          <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+          <span>Estos ajustes son sólo tuyos. Lo que no cambies sigue como lo eligió el negocio.</span>
+        </p>
+      )}
       {estado.error ? (
         <ErrorMsg onReintentar={estado.recargar}>{estado.error}</ErrorMsg>
       ) : !actual ? (
@@ -138,8 +252,8 @@ export default function ConfigPuntoDeVenta() {
           <Tarjeta titulo="Vista de productos">
             <Opciones<VistaPos>
               etiqueta="Vista de productos"
-              valor={actual.vista}
-              onElegir={(vista) => vista !== actual.vista && guardar({ vista }, "vista")}
+              valor={actual.config.vista}
+              onElegir={(vista) => vista !== actual.config.vista && guardar({ vista }, "vista")}
               opciones={[
                 {
                   valor: "TARJETAS",
@@ -161,8 +275,8 @@ export default function ConfigPuntoDeVenta() {
           <Tarjeta titulo="Cobro">
             <Opciones<CobroPos>
               etiqueta="Cobro"
-              valor={actual.cobro}
-              onElegir={(cobro) => cobro !== actual.cobro && guardar({ cobro }, "cobro")}
+              valor={actual.config.cobro}
+              onElegir={(cobro) => cobro !== actual.config.cobro && guardar({ cobro }, "cobro")}
               opciones={[
                 {
                   valor: "APARTE",
@@ -185,21 +299,21 @@ export default function ConfigPuntoDeVenta() {
           <Tarjeta titulo="Qué se muestra">
             <div className="divide-y divide-borde-soft">
               <SiNo
-                activo={actual.iconos}
+                activo={actual.config.iconos}
                 onCambiar={(iconos) => guardar({ iconos }, "mostrar")}
                 etiqueta="Mostrar íconos de los productos"
                 detalle={
-                  actual.iconos
+                  actual.config.iconos
                     ? "Cada producto lleva su ícono o su foto."
                     : "Sólo el nombre y el precio: entran más productos a la vista."
                 }
               />
               <SiNo
-                activo={actual.filtros}
+                activo={actual.config.filtros}
                 onCambiar={(filtros) => guardar({ filtros }, "mostrar")}
                 etiqueta="Mostrar filtros de categoría"
                 detalle={
-                  actual.filtros
+                  actual.config.filtros
                     ? "Los botones de cada categoría, arriba de los productos."
                     : "Sin los botones de categoría: se ven todos los productos y se busca con el buscador."
                 }
@@ -211,7 +325,7 @@ export default function ConfigPuntoDeVenta() {
           <Tarjeta titulo="Orden de las categorías">
             <p className="text-[13px] text-texto-2">
               El orden vale para los filtros y para las columnas del punto de venta. Las categorías nuevas aparecen al
-              final.
+              final. También podés acomodarlas desde el punto de venta: mantené apretada una categoría y arrastrala.
             </p>
             <div className="mt-3">
               {categorias.error ? (
@@ -224,9 +338,21 @@ export default function ConfigPuntoDeVenta() {
                 </p>
               ) : (
                 <OrdenCategorias
-                  categorias={ordenarCategorias(categorias.datos, actual.ordenCategorias)}
-                  personalizado={actual.ordenCategorias.length > 0}
+                  categorias={ordenarCategorias(categorias.datos, actual.config.ordenCategorias)}
                   onOrdenar={(ordenCategorias) => guardar({ ordenCategorias }, "orden")}
+                  // El dueño vuelve al orden en que llegan (la lista vacía); el
+                  // cajero, al que eligió el negocio (`null`), y sólo si tiene uno suyo.
+                  volver={
+                    delNegocio
+                      ? actual.config.ordenCategorias.length > 0 && {
+                          etiqueta: "Volver al orden de siempre",
+                          onVolver: () => guardar({ ordenCategorias: [] }, "orden"),
+                        }
+                      : actual.propios.includes("ordenCategorias") && {
+                          etiqueta: "Volver al orden del negocio",
+                          onVolver: () => guardar({ ordenCategorias: null }, "orden"),
+                        }
+                  }
                 />
               )}
             </div>
@@ -236,7 +362,7 @@ export default function ConfigPuntoDeVenta() {
           {conPlataformas && (
             <Tarjeta titulo="Pedidos de Yango y PedidosYa">
               <SiNo
-                activo={actual.imprimirPlataformas}
+                activo={actual.config.imprimirPlataformas}
                 onCambiar={(imprimirPlataformas) => guardar({ imprimirPlataformas }, "plataformas")}
                 etiqueta="Imprimir el pedido al registrarlo"
                 detalle="Al registrar un pedido de Yango o PedidosYa se abre su ticket para imprimirlo. Apagado, se registra y listo, como siempre."
@@ -245,10 +371,11 @@ export default function ConfigPuntoDeVenta() {
             </Tarjeta>
           )}
 
-          {conDelivery && (
+          {/* Sólo el dueño (R3): si cada cajero pudiera apagarlo, no controlaría nada. */}
+          {delNegocio && conDelivery && (
             <Tarjeta titulo="Delivery propio">
               <SiNo
-                activo={actual.rendirRepartidores}
+                activo={actual.config.rendirRepartidores}
                 onCambiar={(rendirRepartidores) => guardar({ rendirRepartidores }, "repartidores")}
                 etiqueta="Controlar la plata de los repartidores"
                 detalle="Lo que el repartidor cobra en efectivo figura como plata en su poder hasta que la caja la recibe. La caja no se cierra con plata sin recibir."
@@ -256,8 +383,27 @@ export default function ConfigPuntoDeVenta() {
               {errorDe("repartidores")}
             </Tarjeta>
           )}
+
+          {/* Al pie, sólo si el cajero cambió algo: si no, ya ve lo del negocio. */}
+          {!delNegocio && actual.propios.length > 0 && (
+            <div className="space-y-3">
+              <Boton variante="ghost" disabled={guardando} onClick={() => setConfirmandoBorrar(true)}>
+                Volver a lo que eligió el negocio
+              </Boton>
+              {errorDe("todo")}
+            </div>
+          )}
         </>
       )}
+      <Confirmar
+        abierto={confirmandoBorrar}
+        titulo="¿Volver a lo del negocio?"
+        texto="Se borran tus ajustes del punto de venta y lo ves como lo eligió el negocio."
+        etiquetaOk="Sí, volver"
+        procesando={borrando}
+        onCancel={() => setConfirmandoBorrar(false)}
+        onOk={() => void borrar()}
+      />
     </div>
   );
 }
@@ -345,12 +491,15 @@ function Opciones<T extends string>({
 /** Las categorías con ↑ ↓, como el orden de las categorías de Mi página. */
 function OrdenCategorias({
   categorias,
-  personalizado,
+  volver,
   onOrdenar,
 }: {
   categorias: { id: number; nombre: string }[];
-  /** Si el dueño ya eligió un orden: sólo entonces hay "orden de siempre" al que volver. */
-  personalizado: boolean;
+  /**
+   * El orden al que se puede volver, si hay uno: el de siempre (el dueño ya
+   * eligió uno) o el del negocio (el cajero tiene uno suyo). Sin esto, no hay botón.
+   */
+  volver?: { etiqueta: string; onVolver: () => void } | false;
   onOrdenar: (ids: number[]) => void;
 }) {
   const ids = categorias.map((c) => c.id);
@@ -391,9 +540,9 @@ function OrdenCategorias({
           </li>
         ))}
       </ol>
-      {personalizado && (
-        <Boton variante="ghost" className="mt-3" onClick={() => onOrdenar([])}>
-          Volver al orden de siempre
+      {volver && (
+        <Boton variante="ghost" className="mt-3" onClick={volver.onVolver}>
+          {volver.etiqueta}
         </Boton>
       )}
     </>

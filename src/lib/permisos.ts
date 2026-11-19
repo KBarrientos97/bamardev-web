@@ -116,6 +116,12 @@ export type Seccion =
    */
   | "config_pos"
   /**
+   * «Mi punto de venta» (18-nov): lo mismo que Configuración › Punto de venta,
+   * pero sólo para quien entró (vista, cobro, íconos, filtros, orden de las
+   * categorías). Del cajero: quien configura el negocio ya tiene la suya.
+   */
+  | "mi_pos"
+  /**
    * Inventario → «Agregados» (PLAN-AGREGADOS §7.6): los grupos de toppings y a
    * qué productos se asignan. Sólo se ve con el ajuste de Configuración
    * prendido (`negocio.usaAgregados`), que no es una feature del plan.
@@ -435,6 +441,12 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Cómo se ve y cómo cobra el punto de venta (16-nov): cómo trabaja el local,
   // no algo que se venda aparte. Lo mismo que pide el backend en `/pos/config`.
   config_pos: { permiso: "negocio.configurar", feature: null },
+  // Lo propio de cada cajero (18-nov): la ve quien ve el punto de venta (lo
+  // mismo que `pos`), salvo quien configura el negocio. Ése no tiene capa
+  // propia —lo que cambia es lo de todos (CONTRATO-pos-por-cajero R2)— y ya
+  // tiene Configuración › Punto de venta. Es el `sinGeneral` de siempre: la
+  // pantalla de lo suyo no se le muestra a quien administra lo de todos.
+  mi_pos: { permiso: "ventas.vender", sinGeneral: "negocio.configurar", feature: "pos" },
   // Los grupos de toppings son parte del catálogo: lo mismo que Artículos. Que
   // el negocio los use lo decide el ajuste de Configuración (ver `puedeVer`).
   agregados: { permiso: "catalogo.editar", feature: "catalogo" },
@@ -607,6 +619,8 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // Lo pidió el restaurante (16-nov) y su lista de Configuración es la única
   // que lo ofrece. La farmacia arma su catálogo aparte: no tiene qué elegir.
   config_pos: ["RESTAURANTE"],
+  // La misma pantalla, para el cajero: existe donde existe la del dueño.
+  mi_pos: ["RESTAURANTE"],
   // El ajuste vive en esa misma pantalla, así que el rubro es el mismo.
   agregados: ["RESTAURANTE"],
   config_tickets: ["RESTAURANTE"],
@@ -1020,6 +1034,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["config_recibo", "/configuracion/recibo"],
   ["config_inventario", "/configuracion/inventario"],
   ["config_pos", "/configuracion/punto-de-venta"],
+  ["mi_pos", "/mi-punto-de-venta"],
   ["config_tickets", "/configuracion/tickets"],
   ["config_negocio", "/configuracion/negocio"],
   ["config_sucursales", "/configuracion/sucursales"],

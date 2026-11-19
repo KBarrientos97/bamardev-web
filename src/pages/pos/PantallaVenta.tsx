@@ -9,7 +9,7 @@ import { CantidadVenta, LoteEnLaVenta, RecetaEnLaVenta } from "../farmacia/Rengl
 import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
-import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
+import { Badge, Boton, Confirmar, ErrorMsg, Input, Modal, Vacio } from "../../components/ui";
 import { aCentavos } from "../../lib/dinero";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
@@ -25,12 +25,13 @@ import { gruposDelProducto, textoIncluye } from "../../lib/agregados/calculo";
 import type { CatalogoAgregados } from "../../lib/agregados/tipos";
 import HojaAgregados from "./HojaAgregados";
 import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
-import { useArrastreGrilla } from "./useArrastreGrilla";
+import { useArrastreGrilla, type PropsArrastre } from "./useArrastreGrilla";
+import { useOrdenCategorias } from "./useOrdenCategorias";
 import { useAgotadosHoy } from "../../lib/menuDigital/useAgotadosHoy";
 import { tienePermiso } from "../../lib/permisos";
 import HojaPausa, { textoVenderPausado } from "./HojaPausa";
 import { usePausados } from "./usePausados";
-import { configPosDe, normalizarConfigPos, ordenarCategorias } from "../../lib/configPos";
+import { configPosDe, mismoOrden, ordenarCategorias, rubroConConfigPos } from "../../lib/configPos";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import VistaColumnas from "./VistaColumnas";
 import { claveDeBloque } from "./columnasPos";
@@ -54,6 +55,13 @@ const VENTANA_BAJA = "(max-height: 860px)";
 const SIN_CONTEO: ReadonlyMap<number, number> = new Map();
 
 const idDe = (p: Producto) => p.id;
+const idDeCategoria = (c: Categoria) => c.id;
+/**
+ * Donde las categorías no se arrastran (fuera del restaurante): un contenedor
+ * que nunca se monta, así esos arrastres no frenan con el dedo la fila de chips
+ * ni la grilla (sin contenedor el hook usaría `window`).
+ */
+const SIN_CONTENEDOR: RefObject<HTMLElement | null> = { current: null };
 
 export default function PantallaVenta({
   productos,
@@ -142,16 +150,17 @@ export default function PantallaVenta({
 }) {
   const { negocio, usuario, rubro } = useAuth();
   /**
-   * Cómo se ve el catálogo (Configuración › Punto de venta, 16-nov). Lo de
-   * fábrica es el POS de siempre. Modificar una venta ya cobrada no lo toma: es
-   * otra tarea, con su propio pie, y se hace como siempre. La farmacia tampoco
-   * (`configPosDe` ya le da lo de fábrica: arma su catálogo aparte).
+   * Cómo se ve el catálogo (Configuración › Punto de venta, 16-nov): la de
+   * quien entró, que la sesión ya trae con lo suyo encima de lo del negocio
+   * (18-nov). Lo de fábrica es el POS de siempre. Modificar una venta ya cobrada
+   * también la toma (vista, íconos, filtros y orden): con «Columnas por
+   * categoría», al modificar volvía a las tarjetas (Kevin, 18-nov). Lo que no
+   * toma es el cobro en la misma pantalla —su pie es el de la modificación— ni
+   * el conteo por categoría, que van aparte (`cobro`, `conteo` y `modificacion`,
+   * más abajo). La farmacia tampoco (`configPosDe` ya le da lo de fábrica: arma
+   * su catálogo aparte).
    */
-  const conAjustes = !modificacion;
-  const config = useMemo(
-    () => (conAjustes ? configPosDe(negocio) : normalizarConfigPos(null)),
-    [conAjustes, negocio],
-  );
+  const config = useMemo(() => configPosDe(negocio), [negocio]);
   // La lista en columnas es para pantalla grande: en el celular se trabaja con
   // las tarjetas de siempre (con su arrastre), diga lo que diga el ajuste.
   const pantallaParaColumnas = useCoincideMedia("(min-width: 768px)");
@@ -269,6 +278,77 @@ export default function PantallaVenta({
     // Las tarjetas, a cualquier lugar, como siempre.
     aceptaDestino: enColumnas ? (levantada, destino) => bloqueDe.get(levantada) === bloqueDe.get(destino) : undefined,
   });
+
+  /**
+   * Las categorías también se acomodan arrastrando (Kevin, 18-nov: «así como
+   * cambian los ítems de los productos», sin ir a Configuración): los chips de
+   * arriba y, en la lista en columnas, cada bloque agarrado de su cabecera.
+   * Sólo en el restaurante, donde el orden se elige (R8). «Todos», «Pausados» y
+   * «Otros» no se mueven ni son destino: no son categorías del orden.
+   *
+   * Dos arrastres, cada uno con su atributo (el id 3 es una categoría y también
+   * un producto) y con anti-rebote (chips y bloques no miden lo mismo): los
+   * chips en su fila, que se desplaza de costado, y los bloques en la grilla.
+   * Mientras se lleva uno, chips y columnas se dibujan en el orden en vuelo; al
+   * soltar se pinta y se guarda (`useOrdenCategorias`): el dueño cambia el del
+   * negocio, el cajero el suyo. Uno levantado por vez en toda la pantalla
+   * (`useArrastreGrilla`): con una categoría en la mano no se levanta un
+   * producto, ni al revés.
+   */
+  const ordenaCategorias = rubroConConfigPos(negocio?.tipoNegocio) && !esFarmacia(rubro);
+  const { guardar: guardarOrdenCategorias, aviso: avisoOrdenCategorias } = useOrdenCategorias();
+  /** La fila de chips: se desplaza de costado con un chip en su borde. */
+  const chipsRef = useRef<HTMLDivElement>(null);
+  const idsCategorias = useMemo(() => categoriasPos.map(idDeCategoria), [categoriasPos]);
+  /** Los bloques que se pueden llevar: las categorías del orden con algo a la vista. */
+  const idsBloques = useMemo(() => {
+    if (!enColumnas) return [];
+    const conProductos = new Set(filtrados.map((p) => p.categoria?.id));
+    return idsCategorias.filter((id) => conProductos.has(id));
+  }, [enColumnas, filtrados, idsCategorias]);
+  /**
+   * Al soltar. Con una búsqueda o un filtro puestos sólo se reasignan los
+   * lugares de lo que se ve, como con los productos (`reordenarVisibles`). Lo
+   * que se soltó donde estaba no se guarda: al cajero lo dejaría con un orden
+   * «suyo» igual al del negocio, que ya no seguiría los cambios del dueño.
+   */
+  const alSoltarCategoria = useCallback(
+    (idsVisibles: number[]) => {
+      const reordenadas = reordenarVisibles(categoriasPos, idsVisibles, idDeCategoria);
+      if (!reordenadas) return;
+      const nuevo = reordenadas.map(idDeCategoria);
+      if (!mismoOrden(nuevo, idsCategorias)) guardarOrdenCategorias(nuevo);
+    },
+    [categoriasPos, idsCategorias, guardarOrdenCategorias],
+  );
+  const activoCategorias = ordenaCategorias && !carritoAbierto && !quieto;
+  const arrastreChips = useArrastreGrilla({
+    ids: idsCategorias,
+    onReordenar: alSoltarCategoria,
+    activo: activoCategorias,
+    contenedor: ordenaCategorias ? chipsRef : SIN_CONTENEDOR,
+    atributo: "data-arrastre-chip",
+    eje: "horizontal",
+    antiRebote: true,
+  });
+  const arrastreBloques = useArrastreGrilla({
+    ids: idsBloques,
+    onReordenar: alSoltarCategoria,
+    activo: activoCategorias && enColumnas,
+    contenedor: ordenaCategorias ? grillaRef : SIN_CONTENEDOR,
+    atributo: "data-arrastre-bloque",
+    antiRebote: true,
+  });
+  /** Las categorías como se ven: mientras se lleva una, en el orden en vuelo (chips y columnas a la vez). */
+  const categoriasVista = useMemo(() => {
+    const enVuelo =
+      arrastreChips.arrastrando !== null
+        ? arrastreChips.orden
+        : arrastreBloques.arrastrando !== null
+          ? arrastreBloques.orden
+          : null;
+    return (enVuelo && reordenarVisibles(categoriasPos, enVuelo, idDeCategoria)) || categoriasPos;
+  }, [arrastreChips.arrastrando, arrastreChips.orden, arrastreBloques.arrastrando, arrastreBloques.orden, categoriasPos]);
 
   /** Lo que se pinta: durante el arrastre manda el orden en vuelo. */
   /** Cuánto hay de cada producto en el carrito: lo lee la grilla. */
@@ -519,25 +599,34 @@ export default function PantallaVenta({
           {/* Sin los filtros (Configuración › Punto de venta) no hay fila de
               chips: se ven todos y se busca con el buscador. */}
           {config.filtros && (
-          <div className="flex gap-2 overflow-x-auto pb-0.5">
-            <ChipCat activo={cat === TODAS} onClick={() => setCat(TODAS)}>
+          <div ref={chipsRef} className="flex gap-2 overflow-x-auto pb-0.5">
+            <ChipCat activo={cat === TODAS} onClick={() => setCat(TODAS)} ignorarClic={arrastreChips.ignorarClic}>
               Todos
             </ChipCat>
-            {categoriasPos.map((c) => (
+            {categoriasVista.map((c) => (
               <ChipCat
                 key={c.id}
                 activo={cat === String(c.id)}
                 onClick={() => setCat(String(c.id))}
+                // Se acomoda arrastrándolo (18-nov); soltarlo no elige la categoría.
+                arrastre={ordenaCategorias ? arrastreChips.props(c.id) : undefined}
+                ignorarClic={arrastreChips.ignorarClic}
               >
                 {c.nombre}
               </ChipCat>
             ))}
             {cantidadPausados > 0 && (
-              <ChipCat activo={cat === PAUSADOS} onClick={() => setCat(PAUSADOS)}>
+              <ChipCat activo={cat === PAUSADOS} onClick={() => setCat(PAUSADOS)} ignorarClic={arrastreChips.ignorarClic}>
                 Pausados ({cantidadPausados})
               </ChipCat>
             )}
           </div>
+          )}
+          {/* El orden de las categorías que no se guardó (18-nov): ya volvió al de antes. */}
+          {avisoOrdenCategorias && (
+            <div role="alert">
+              <ErrorMsg>{avisoOrdenCategorias}</ErrorMsg>
+            </div>
           )}
         </div>
 
@@ -554,7 +643,7 @@ export default function PantallaVenta({
             <VistaColumnas
               // Durante el arrastre, en el orden en vuelo (como las tarjetas).
               productos={visibles}
-              categorias={categoriasPos}
+              categorias={categoriasVista}
               enCarrito={enCarrito}
               conIcono={config.iconos}
               agotadosHoy={agotadosHoy}
@@ -565,6 +654,7 @@ export default function PantallaVenta({
               onQuitar={quitarUna}
               onMenu={puedePausar ? setHojaPausa : undefined}
               arrastre={arrastre}
+              arrastreCategorias={ordenaCategorias ? arrastreBloques : undefined}
             />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -787,22 +877,51 @@ function ChipCat({
   activo,
   onClick,
   children,
+  arrastre,
+  ignorarClic,
 }: {
   activo: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  /**
+   * El chip de una categoría se acomoda arrastrándolo (18-nov). Lo del arrastre
+   * va en un envoltorio y no en el botón: el botón conserva sus clases (y su
+   * transición de color) tal cual.
+   */
+  arrastre?: PropsArrastre;
+  /** El click que llega al soltar un arrastre no elige otra categoría. */
+  ignorarClic?: () => boolean;
 }) {
-  return (
+  const levantado = !!arrastre?.["data-arrastrando"];
+  const boton = (
     <button
-      onClick={onClick}
+      onClick={() => {
+        if (!ignorarClic?.()) onClick();
+      }}
       className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
         activo
           ? "bg-primary-boton text-white"
           : "border border-borde bg-white text-texto-2 hover:bg-muted"
-      }`}
+      }${levantado ? " outline-2 -outline-offset-2 outline-primary" : ""}`}
     >
       {children}
     </button>
+  );
+  if (!arrastre) return boton;
+  return (
+    <span
+      onPointerDown={arrastre.onPointerDown}
+      onContextMenu={arrastre.onContextMenu}
+      onDragStart={arrastre.onDragStart}
+      // Sin el agrandado de la tarjeta: la fila scrollea de costado, y lo que
+      // asomara por arriba o por abajo la haría scrollear también de alto. El
+      // levantado lo dice el contorno de adentro (como la fila de la lista).
+      style={{ ...arrastre.style, transform: undefined }}
+      data-arrastre-chip={arrastre["data-arrastre-chip"]}
+      className="flex shrink-0"
+    >
+      {boton}
+    </span>
   );
 }
 

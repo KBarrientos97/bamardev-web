@@ -33,8 +33,12 @@ import type { Arrastre } from "./useArrastreGrilla";
  * sólo dentro de la lista de su categoría: las alitas bajan al tercer lugar o
  * al último de los pollos, pero no se van a las bebidas. Se guarda en el mismo
  * orden del cajero que usan las tarjetas, así lo que acomoda acá se ve igual
- * allá y al revés. El orden de las columnas no se toca: lo elige el dueño en
- * Configuración.
+ * allá y al revés.
+ *
+ * El orden de las columnas es el de las categorías (el de los chips). Desde el
+ * 18-nov también se acomoda acá: cada bloque se lleva agarrado de su cabecera
+ * (`arrastreCategorias`); el bloque entero es el destino. «Otros» y las
+ * categorías que no están en el orden no se mueven.
  */
 
 /** El ancho mínimo de una columna: menos, y el nombre no entra en dos renglones al lado del precio. */
@@ -110,6 +114,7 @@ export default function VistaColumnas({
   onQuitar,
   onMenu,
   arrastre,
+  arrastreCategorias,
 }: {
   /** Lo que se ve (ya filtrado), en el orden del cajero (durante el arrastre, el orden en vuelo). */
   productos: Producto[];
@@ -135,8 +140,16 @@ export default function VistaColumnas({
    * acomoda.
    */
   arrastre?: Pick<Arrastre, "props" | "ignorarClic">;
+  /**
+   * El arrastre de las categorías (18-nov): cada bloque de una categoría del
+   * orden se lleva agarrándolo de su cabecera. Sin esto (fuera del
+   * restaurante), los bloques quedan quietos.
+   */
+  arrastreCategorias?: Pick<Arrastre, "props">;
 }) {
   const bloques = useMemo(() => agruparPorCategoria(productos, categorias), [productos, categorias]);
+  /** Las categorías del orden: sólo sus bloques se acomodan (no «Otros» ni las que no están en la lista). */
+  const delOrden = useMemo(() => new Set(categorias.map((c) => String(c.id))), [categorias]);
   const [medir, ancho] = useAncho();
   const columnas = columnasQueEntran(ancho, ANCHO_COLUMNA, SEPARACION);
   /**
@@ -186,14 +199,27 @@ export default function VistaColumnas({
                 {fmtNum(b.productos.length)}
               </span>
             );
+            // El bloque entero es el destino; se agarra sólo de la cabecera (18-nov).
+            const deArrastre = delOrden.has(b.clave) ? arrastreCategorias?.props(Number(b.clave)) : undefined;
             return (
             <section
               key={b.clave}
               aria-label={b.nombre}
-              className="overflow-hidden rounded-2xl border border-borde bg-white"
-              style={{ borderLeftWidth: 4, borderLeftColor: filete(b) }}
+              data-arrastre-bloque={deArrastre?.["data-arrastre-bloque"]}
+              className={`overflow-hidden rounded-2xl border border-borde bg-white${
+                deArrastre?.["data-arrastrando"] ? " outline-2 -outline-offset-2 outline-primary shadow-lg" : ""
+              }`}
+              // Sin el agrandado de la tarjeta: un bloque entero agrandado se
+              // saldría de su columna y haría scrollear la grilla de costado.
+              // El levantado lo dicen el contorno y la sombra.
+              style={{ ...deArrastre?.style, transform: undefined, borderLeftWidth: 4, borderLeftColor: filete(b) }}
             >
-              <header className="flex items-baseline justify-between gap-2 border-b border-borde-soft px-3 py-2">
+              <header
+                onPointerDown={deArrastre?.onPointerDown}
+                onContextMenu={deArrastre?.onContextMenu}
+                onDragStart={deArrastre?.onDragStart}
+                className="flex items-baseline justify-between gap-2 border-b border-borde-soft px-3 py-2"
+              >
                 <h3 className="min-w-0 break-words text-[12px] font-bold uppercase tracking-[0.08em] text-texto-2">
                   {b.nombre}
                 </h3>
