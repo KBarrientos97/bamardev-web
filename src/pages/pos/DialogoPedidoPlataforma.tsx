@@ -261,7 +261,7 @@ export default function DialogoPedidoPlataforma({
                       }}
                       autoComplete="off"
                       aria-label={`Precio de «${l.nombre}» en ${nombre}`}
-                      className="w-[5.5rem] px-2.5 py-2 text-right tabular-nums"
+                      className="!w-[5.5rem] !px-2.5 !py-2 text-right tabular-nums"
                     />
                     {l.cantidad !== 1 && <span className="text-texto-3">c/u</span>}
                   </div>
@@ -292,7 +292,7 @@ export default function DialogoPedidoPlataforma({
               }}
               placeholder="0"
               autoComplete="off"
-              className="w-28 px-2.5 py-2 text-right tabular-nums"
+              className="!w-28 !px-2.5 !py-2 text-right tabular-nums"
             />
           </label>
           <div className="flex items-baseline justify-between gap-3 text-base font-extrabold text-texto">

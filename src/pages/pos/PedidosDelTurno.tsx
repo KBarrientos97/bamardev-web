@@ -130,7 +130,7 @@ export function DetallePedidoDelTurno({
           {agruparHijas(p.detalles).map(({ linea: d, hijas }, k) => (
             <li key={`${d.productoId ?? "x"}-${k}`} className="px-3.5 py-2 text-[13px]">
               <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate text-texto-2">
+                <span className="min-w-0 break-words text-texto-2">
                   <b className="text-texto">{fmtCantidad(d.cantidad)}×</b> {d.nombre}
                 </span>
                 <span className="shrink-0 font-semibold tabular-nums text-texto">{fmtMoney(d.subtotal)}</span>
@@ -138,7 +138,7 @@ export function DetallePedidoDelTurno({
               {/* Los toppings del vaso (PLAN-AGREGADOS §7.3), con sangría. */}
               {hijas.map((h, j) => (
                 <div key={j} className="flex items-center justify-between gap-3 pl-4 text-xs text-texto-3">
-                  <span className="min-w-0 truncate">
+                  <span className="min-w-0 break-words">
                     + {h.cantidad !== 1 ? `${fmtCantidad(h.cantidad)} × ` : ""}
                     {h.nombre}
                   </span>

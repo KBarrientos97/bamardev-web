@@ -202,6 +202,7 @@ export default function PedidosPlataforma() {
                       titulo={p.nombre}
                       linea={`${fmtCantidad(p.cantidad)} ${p.cantidad === 1 ? "unidad" : "unidades"}`}
                       valor={fmtMoney(p.total)}
+                      ajustar
                     />
                   ))}
                 </Lista>
