@@ -258,12 +258,21 @@ export function topeDeLinea(
 }
 
 /**
+ * «Vasos L»: lo que se cuenta, tal cual lo escribió el admin, y la categoría.
+ * Va adelante, como rótulo, en el aviso y en la etiqueta: así nunca hay que
+ * poner en singular un nombre que es texto libre («Vasos», «Cajas»…).
+ */
+function rotuloDeConteo(nombre: string | null | undefined, categoria: string): string {
+  return `${nombreConteo(nombre)} ${categoria}`;
+}
+
+/**
  * Por qué no se puede cargar más (§1 del contrato, el mismo texto en la web,
  * la app y el backend). El nombre va adelante, como rótulo y tal cual lo
  * escribió el admin, para no tener que ponerlo en singular.
  */
 export function avisoDeConteo(nombre: string | null | undefined, categoria: string, quedan: number): string {
-  const rotulo = `${nombreConteo(nombre)} ${categoria}`;
+  const rotulo = rotuloDeConteo(nombre, categoria);
   const n = redondear(quedan);
   if (n <= 0) return `${rotulo}: no quedan. Avisale al encargado para que reponga.`;
   if (n === 1) return `${rotulo}: sólo queda 1.`;
@@ -282,7 +291,12 @@ export interface ConteoDeCategoria {
   lleno: boolean;
   /** Quedan `QUEDA_POCO` libres o menos: el rótulo sale en tono de aviso. */
   poco: boolean;
-  /** «Quedan 45 vasos C»: el `title` y lo que lee el lector de pantalla. */
+  /**
+   * «Vasos C: quedan 45» (con uno, «Vasos XL: queda 1»): el `title` y lo que
+   * lee el lector de pantalla. Con la forma de los avisos: antes decía
+   * «Quedan 1 vasos XL», y el nombre es texto libre, no se puede poner en
+   * singular (18-nov, tras la prueba en QA).
+   */
   etiqueta: string;
   /** Por qué no suma (agotado o lleno), con el texto de §1; ausente si suma. */
   aviso?: string;
@@ -312,7 +326,7 @@ export function conteoDeCategoria(
     agotado,
     lleno,
     poco: libre <= QUEDA_POCO,
-    etiqueta: `Quedan ${fmtCantidad(libre)} ${nombreEnFrase(nombre)} ${categoria.nombre}`,
+    etiqueta: `${rotuloDeConteo(nombre, categoria.nombre)}: ${libre === 1 ? "queda 1" : `quedan ${fmtCantidad(libre)}`}`,
     ...(agotado || lleno ? { aviso: avisoDeConteo(nombre, categoria.nombre, quedan) } : {}),
   };
 }

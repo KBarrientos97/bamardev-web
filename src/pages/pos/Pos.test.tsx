@@ -348,6 +348,64 @@ describe("conteo por categoría (vasos por tamaño, 18-nov): el saldo del local 
     expect(screen.getByText("error del cobro: Vasos L: sólo queda 1 y la venta lleva 2.")).toBeInTheDocument();
     expect(api.estadoConteo).toHaveBeenCalledTimes(1);
   });
+
+  // 18-nov, tras la prueba en QA: anular un pedido en «Ventas» devolvía el
+  // vaso en el servidor, pero la grilla seguía con el número viejo hasta el
+  // sondeo de 30 s (y «Agotado» si estaba en 0).
+  it("al volver de las ventas del turno a la venta se vuelve a pedir; al abrir, una sola vez", async () => {
+    await montar();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Ventas" }));
+    expect(screen.getByText("ventas del turno")).toBeInTheDocument();
+    // Allá se anuló el pedido: el servidor ya devolvió el vaso.
+    vi.mocked(api.estadoConteo).mockClear();
+    vi.mocked(api.estadoConteo).mockResolvedValue(estado(41) as never);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "volver a vender" }));
+    });
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("conteo: Vasos 30=41")).toBeInTheDocument();
+  });
+
+  it("lo mismo al volver de cualquier otra pantalla (el cierre, sin cerrar)", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    expect(screen.getByText("cierre de caja")).toBeInTheDocument();
+    vi.mocked(api.estadoConteo).mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "volver del cierre" }));
+    });
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+  });
+
+  it("y desde la caja del instituto, que vuelve navegando a /pos", async () => {
+    render(
+      <MemoryRouter initialEntries={["/pos/caja"]}>
+        <Routes>
+          <Route path="/pos" element={<Pos />} />
+          <Route path="/pos/caja" element={<Pos />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByText("ventas del turno")).toBeInTheDocument();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+    vi.mocked(api.estadoConteo).mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "volver a vender" }));
+    });
+    expect(screen.queryByText("ventas del turno")).not.toBeInTheDocument();
+    expect(api.estadoConteo).toHaveBeenCalledTimes(1);
+  });
+
+  it("quedarse en la venta no pide de más: ni el carrito ni los toques cambian de pantalla", async () => {
+    await montar();
+    vi.mocked(api.estadoConteo).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "quitar Nutella L" }));
+    await act(async () => {});
+    expect(api.estadoConteo).not.toHaveBeenCalled();
+  });
 });
 
 describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () => {

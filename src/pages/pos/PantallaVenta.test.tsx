@@ -334,7 +334,9 @@ describe("POS-2: el combo tiene su propio stock, como en la app", () => {
     const sinCombos = combo({ stockTotal: 0 });
     const carrito = await montarRestaurante([sinCombos]);
     const c = card("Combo familiar");
-    expect(c.getByText("Agotado")).toBeInTheDocument();
+    // En sus tres lugares (arriba, chica en la fila, debajo del nombre): cuál
+    // se ve lo decide el CSS por el ancho de la tarjeta (18-nov).
+    expect(c.getAllByText("Agotado").length).toBeGreaterThan(0);
     const cuerpo = c.getByText("Combo familiar").closest("button")!;
     expect(cuerpo).toBeDisabled();
     fireEvent.click(cuerpo);
