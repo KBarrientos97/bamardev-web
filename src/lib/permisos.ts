@@ -641,19 +641,20 @@ const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // atención): otra entrada "Sedes" sería la misma pantalla dos veces.
   config_sucursales: ["ACADEMIA"],
   // El salón entero es de restaurante: una farmacia no atiende mesas, y una
-  // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos.
-  mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
-  salon: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos. La
+  // licorería vende en el mostrador: ni mesas, ni insumos, ni billar.
+  mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  salon: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
   // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
   // no transforma nada, compra y vende lo mismo. El tinte de un salón se
   // gasta, pero no es una receta que se descuente al vender.
-  insumos: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  insumos: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
   // Una farmacia o un salón de belleza no tienen mesas de pool, aunque alguien
   // les prenda el extra en el panel por error.
-  billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
-  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
-  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
-  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
   // La Supervisión del local va en la lista NEGRA y no en la blanca: el
   // minimarket o la ferretería que cobran en caja la necesitan igual que el
   // restaurante. La farmacia y el billar ya tienen la suya (con sus libros y

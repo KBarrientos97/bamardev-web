@@ -39,7 +39,10 @@ export type Rubro =
   // todavía una maqueta (ver pages/billar).
   | "BILLAR"
   // Vertical Educación (PLAN-ACADEMIAS): institutos técnicos y academias.
-  | "ACADEMIA";
+  | "ACADEMIA"
+  // Licorería (20-nov-2026): su propia vertical con el núcleo de venta, caja y
+  // reportes; delivery, página y plataformas se prenden desde el panel.
+  | "LICORERIA";
 
 /**
  * Los de belleza: trabajan con turnos y profesionales, no con mesas ni con
@@ -56,6 +59,7 @@ export const RUBROS: Rubro[] = [
   ...RUBROS_BELLEZA,
   "BILLAR",
   "ACADEMIA",
+  "LICORERIA",
 ];
 
 export function esRubro(valor: string | null | undefined): valor is Rubro {

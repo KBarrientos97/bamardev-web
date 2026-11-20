@@ -74,6 +74,7 @@ export const CATEGORIA_DEL_RUBRO: Record<Rubro, ClaveCategoriaIcono> = {
   // (cervezas, energizantes, cigarros), no el juego: abre en esa sección.
   BILLAR: "licoreria",
   ACADEMIA: "educacion",
+  LICORERIA: "licoreria",
 };
 
 /** La sección con la que abre el selector; sin rubro conocido, la primera. */
