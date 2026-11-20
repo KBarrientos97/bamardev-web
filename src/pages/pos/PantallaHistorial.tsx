@@ -46,6 +46,10 @@ import { useAuth } from "../../store/AuthContext";
 import type { Caja, ModificacionVenta, Venta } from "../../types";
 import { cambioDeProductos, motivoNoModificable, plataDelCambio, rubroModificaVentas } from "./cambioDeVenta";
 import { direccionParaMostrar } from "../repartidor/direccionEntrega";
+import { enEspera, textoMotivo } from "../../lib/entregaFallida";
+import EnEsperaDeLaCaja from "../reparto/EnEsperaDeLaCaja";
+import CambiarUbicacion from "../reparto/CambiarUbicacion";
+import { pinDeEntrega } from "../../lib/ubicacionEntrega";
 
 export default function PantallaHistorial({
   caja,
@@ -283,6 +287,14 @@ export default function PantallaHistorial({
                         </Badge>
                       </div>
                     </div>
+                    {/* «No se pudo entregar» (20-nov): el repartidor vuelve con
+                        el pedido y la caja decide. Se marca en la fila para
+                        que no se pierda entre los demás pendientes. */}
+                    {enEspera(p) && (
+                      <p className="mt-2 rounded-lg bg-danger-suave px-2.5 py-1.5 text-xs font-semibold text-danger-text">
+                        En espera de la caja · {textoMotivo(p.entregaFallidaMotivo)}
+                      </p>
+                    )}
                     {/* Un RECOGER lo cierra quien está en la caja: el cliente
                         pasa por el mostrador y no hay nadie más que lo haga —
                         sin esto el pedido quedaba pendiente para siempre. Un
@@ -468,6 +480,12 @@ export default function PantallaHistorial({
         <DetalleVenta
           venta={detalle}
           onClose={() => setDetalle(null)}
+          onCambioPedido={() => {
+            setDetalle(null);
+            // Reintentado, reasignado o cancelado: la lista de pendientes cambió.
+            pendientes.recargar();
+            ventas.recargar();
+          }}
           onAnulada={() => {
             setDetalle(null);
             ventas.recargar();
@@ -549,10 +567,13 @@ function DetalleVenta({
   onVerComprobante,
   cajaId,
   onModificar,
+  onCambioPedido,
 }: {
   venta: Venta;
   onClose: () => void;
   onAnulada: () => void;
+  /** Se decidió un delivery en espera (reintentar, reasignar, cancelar). */
+  onCambioPedido?: () => void;
   /** Entregar (o cobrar y entregar) un pedido de recoger que sigue pendiente. */
   onEntregar?: (venta: Venta) => void;
   /** Reimprimir el comprobante de un pedido ya cobrado. */
@@ -637,6 +658,14 @@ function DetalleVenta({
   // Una venta de mostrador ya está cobrada: su recibo se puede volver a dar
   // (QA PER-08: una vez que se salía del recibo no había forma de reimprimirlo).
   const conComprobante = v.estado === "APROBADO" && (!esPedido || v.prepagado || entregado);
+  // La espera la trae la fila de pendientes aunque el detalle completo no la mande.
+  const enEsperaDe: Venta = {
+    ...v,
+    entregaFallidaEn: v.entregaFallidaEn ?? venta.entregaFallidaEn ?? null,
+    entregaFallidaMotivo: v.entregaFallidaMotivo ?? venta.entregaFallidaMotivo ?? null,
+    entregaFallidaNota: v.entregaFallidaNota ?? venta.entregaFallidaNota ?? null,
+    repartidor: v.repartidor ?? venta.repartidor ?? null,
+  };
 
   return (
     <>
@@ -713,6 +742,26 @@ function DetalleVenta({
             {/* La venta vale (ya se cobró); la marca dice qué mirar. Casi
                 siempre viene de un equipo que vendió sin señal con datos
                 viejos: precio, cupo, límite de fiado o stock. */}
+            {/* El repartidor avisó «No se pudo entregar»: lo que dijo y, para
+                quien maneja el reparto, qué hacer (20-nov). */}
+            {pendiente && v.tipoPedido === "DELIVERY" && enEspera(enEsperaDe) && (
+              <EnEsperaDeLaCaja
+                venta={enEsperaDe}
+                puedeDecidir={tienePermiso(usuario, "delivery.asignar")}
+                onCambio={() => onCambioPedido?.()}
+              />
+            )}
+
+            {/* El pin de un delivery propio pendiente (20-nov): la cajera lo
+                agrega cuando el cliente manda su ubicación por WhatsApp. */}
+            {pendiente && v.tipoPedido === "DELIVERY" && !pedidoDeEntrega.entregaExterna && tienePermiso(usuario, "delivery.asignar") && (
+              <CambiarUbicacion
+                ventaId={v.id}
+                actual={pinDeEntrega({ latitud: v.latitud ?? venta.latitud, longitud: v.longitud ?? venta.longitud, pedidoWeb: v.pedidoWeb ?? venta.pedidoWeb })}
+                onGuardado={() => onCambioPedido?.()}
+              />
+            )}
+
             {requiereRevision(v) && (
               <div className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
                 <p className="font-bold">A revisar</p>

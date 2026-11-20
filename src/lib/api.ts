@@ -113,6 +113,7 @@ import type {
   ReportePedidosPlataforma,
 } from "./pedidosPlataforma/tipos";
 import type { RecibidoDeRendicion } from "./repartoRendicion";
+import type { MotivoEntregaFallida } from "./entregaFallida";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -1178,6 +1179,30 @@ export const api = {
     }),
   cancelarPedido: (id: number) =>
     request<Venta>(`/ventas/${id}/cancelar`, { method: "POST" }),
+  /**
+   * «No se pudo entregar» (20-nov): el repartidor ya no cancela; avisa con un
+   * motivo y el pedido queda en espera de la caja. Devuelve el recibo.
+   */
+  noEntregado: (id: number, body: { motivo: MotivoEntregaFallida; nota?: string }) =>
+    request<Venta>(`/ventas/${id}/no-entregado`, { method: "POST", body: JSON.stringify(body) }),
+  /** La caja decide que el mismo repartidor lo vuelva a intentar (`delivery.asignar`). */
+  reintentarEntrega: (id: number) =>
+    request<Venta>(`/ventas/${id}/reintentar-entrega`, { method: "POST" }),
+  /**
+   * Agregar o cambiar el pin de un delivery pendiente (20-nov): la cajera lo
+   * marca después, cuando el cliente manda su ubicación por WhatsApp.
+   */
+  ubicacionDeVenta: (id: number, u: { latitud: number; longitud: number; precisionM?: number }) =>
+    request<Venta>(`/ventas/${id}/ubicacion`, { method: "PATCH", body: JSON.stringify(u) }),
+  /**
+   * Lo que llevó el repartidor por día (20-nov): «Mi día › Semana». Sin
+   * `repartidorId`, el backend le da a cada repartidor lo suyo.
+   */
+  historialReparto: (params: { desde: string; hasta: string; repartidorId?: number }) =>
+    request<unknown>(`/reparto/historial${qs(params)}`),
+  /** La caja se lo pasa a otro repartidor; también saca el pedido de la espera. */
+  reasignarPedido: (id: number, repartidorId: number) =>
+    request<Venta>(`/ventas/${id}/reasignar`, { method: "POST", body: JSON.stringify({ repartidorId }) }),
 
   // ── Créditos (fiado) ──────────────────────────────────────────────────────
   /** `sucursalId` acota a lo fiado por ese local. */

@@ -41,6 +41,12 @@ export async function registrarPedidoOEncolar(
    * muestra al decirle que quedó guardado.
    */
   precios: ReadonlyMap<number, number>,
+  /**
+   * El total que el cajero vio en el diálogo (precios de la app, toppings y
+   * descuento, 19-nov): es el que dice la lista de lo que falta subir. Sin él
+   * (quien no lo sabe), la suma de los precios del local, como antes.
+   */
+  totalMostrado?: number,
 ): Promise<PedidoRegistrado> {
   if (!ventaSinInternet()) {
     return { pedido: await enviar(cuerpo), encolado: false };
@@ -58,8 +64,11 @@ export async function registrarPedidoOEncolar(
       marcarSinSenal();
     }
   }
+  // El cuerpo sube con todo lo nuevo (precioApp donde se escribió, descuento,
+  // observaciones): el servidor lo trata igual que si hubiera llegado en el momento.
   const paraLaCola = cuerpoEncoladoDePedido(cuerpo, precios);
-  const total = paraLaCola.detalles.reduce((s, d) => s + (d.precio ?? 0) * d.cantidad, 0);
+  const total =
+    totalMostrado ?? paraLaCola.detalles.reduce((s, d) => s + (d.precio ?? 0) * d.cantidad, 0);
   await encolarPedidoPlataforma(paraLaCola, Math.round(total * 100) / 100);
   return { pedido: null, encolado: true };
 }

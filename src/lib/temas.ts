@@ -237,6 +237,11 @@ export const TEMAS: Record<string, Tema> = {
   },
 };
 
+// Licorería (20-nov-2026): la misma Ciruela que la peluquería, que es la que
+// siembra su perfil en la base (migración 20270102110000). Respaldo, como las
+// de arriba, para cuando el backend no manda `negocio.tema`.
+TEMAS.LICORERIA = TEMAS.PELUQUERIA;
+
 /** Los doce tonos sueltos de un tema; `marca` va aparte porque es un par. */
 const CLAVES_TONO = [
   'primary',

@@ -212,6 +212,8 @@ export const ESTILO_POR_RUBRO: Record<string, ClaveEstilo> = {
   UNAS: "DULCE",
   // Oscura, como su app en negro.
   BILLAR: "NOCHE",
+  // Botellas sobre fondo oscuro: la vidriera de una licorería de noche.
+  LICORERIA: "NOCHE",
 };
 
 /**

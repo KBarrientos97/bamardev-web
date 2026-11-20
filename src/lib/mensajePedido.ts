@@ -66,9 +66,33 @@ export function esMensajeClasico(rubro?: RubroMensaje | null): boolean {
   return !tipo || tipo === "RESTAURANTE";
 }
 
+/**
+ * El emoji de cada variante del rubro (`variantes-rubro.ts` del backend): la
+ * panadería firma con un croissant, la heladería con un helado. Una variante que
+ * no está acá, o un rubro sin variante, va con la bolsa de compras.
+ */
+const EMOJI_VARIANTE: Record<string, string> = {
+  POSTRES: "🍮",
+  PANADERIA: "🥐",
+  HELADERIA: "🍦",
+  JUGUERIA: "🥤",
+  CAFETERIA: "☕",
+  SALTENERIA: "🥟",
+  BAR: "🍻",
+  KARAOKE: "🎤",
+  DISCOTECA: "🪩",
+  LIBRERIA: "📚",
+  BAZAR: "🛍️",
+  REGALOS: "🎁",
+  COSMETICOS: "💄",
+  FLORERIA: "💐",
+  MATERIALES: "🧱",
+};
+
 /** El emoji de la cabecera y el del cierre, según el negocio (sólo fuera del texto clásico). */
 function adornosDe(rubro?: RubroMensaje | null): { cabecera: string; cierre: string } {
-  if (rubro?.variante === "POSTRES") return { cabecera: "🍮", cierre: "❤️🍮" };
+  const emoji = rubro?.variante ? EMOJI_VARIANTE[rubro.variante] : undefined;
+  if (emoji) return { cabecera: emoji, cierre: `❤️${emoji}` };
   return { cabecera: "🛍️", cierre: "❤️" };
 }
 

@@ -170,10 +170,33 @@ export function plataformasDelTurno(d: Pick<ReporteCierreProductos, "plataformas
   return (d.plataformas ?? []).filter((p) => p.pedidos > 0 || p.unidades > 0);
 }
 
-/** «Yango · 3 pedidos · 5 unidades · Bs 85,00»: el encabezado de la sección de una plataforma. */
+/**
+ * Lo que descontó la app en los pedidos de esa plataforma (19-nov); 0 si no
+ * hubo o si el backend es viejo y no lo manda.
+ */
+export function descuentosDePlataforma(p: Pick<PlataformaVendida, "descuentos">): number {
+  const d = Number(p.descuentos ?? 0);
+  return Number.isFinite(d) && d > 0 ? aCentavos(d) : 0;
+}
+
+/**
+ * Lo que paga la app: la suma de los renglones menos sus descuentos. Sin
+ * descuentos es el `total` de siempre.
+ */
+export function totalDePlataforma(p: Pick<PlataformaVendida, "total" | "descuentos">): number {
+  return aCentavos(p.total - descuentosDePlataforma(p));
+}
+
+/** «Descuentos»: el renglón al final de la tabla de una plataforma, para que renglones − descuentos = encabezado. */
+export const ETIQUETA_DESCUENTOS_PLATAFORMA = "Descuentos";
+
+/**
+ * «Yango · 3 pedidos · 5 unidades · Bs 85,00»: el encabezado de la sección de
+ * una plataforma, con lo que paga la app (ya sin sus descuentos).
+ */
 export function textoEncabezadoPlataforma(p: PlataformaVendida): string {
   const nombre = NOMBRE_PLATAFORMA[p.plataforma] ?? p.plataforma;
-  return `${nombre} · ${textoPedidos(p.pedidos)} · ${textoUnidades(p.unidades)} · ${fmtMoney(p.total)}`;
+  return `${nombre} · ${textoPedidos(p.pedidos)} · ${textoUnidades(p.unidades)} · ${fmtMoney(totalDePlataforma(p))}`;
 }
 
 /**
@@ -294,16 +317,25 @@ export function documentoProductosVendidos(
         };
       }),
     }));
-  const seccionesDePlataforma: GrupoPdf[] = plataformas.flatMap((p) => [
-    {
-      titulo: textoEncabezadoPlataforma(p),
-      color: colorDePlataforma(p.plataforma),
-      aclaracion: "",
-      celdas: [],
-      filas: [],
-    },
-    ...gruposDe(p.categorias),
-  ]);
+  const seccionesDePlataforma: GrupoPdf[] = plataformas.flatMap((p) => {
+    const descuentos = descuentosDePlataforma(p);
+    return [
+      {
+        titulo: textoEncabezadoPlataforma(p),
+        color: colorDePlataforma(p.plataforma),
+        aclaracion: "",
+        celdas: [],
+        filas: [],
+      },
+      ...gruposDe(p.categorias),
+      // Los renglones van al precio de la app; lo que descontó, al final, para
+      // que la tabla cierre con el encabezado (19-nov). El guion común y no el
+      // signo menos: la letra del PDF (Helvetica) no lo tiene.
+      ...(descuentos > 0
+        ? [{ titulo: ETIQUETA_DESCUENTOS_PLATAFORMA, celdas: [{ texto: "" }, { texto: `-${fmtMoney(descuentos)}` }], filas: [] }]
+        : []),
+    ];
+  });
   const notaPlataformas = plataformas.length > 0
     ? ["Los pedidos de Yango y PedidosYa van aparte: los paga la app de delivery y no suman al total vendido."]
     : [];

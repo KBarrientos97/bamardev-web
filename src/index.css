@@ -154,6 +154,13 @@ button {
     transform: translateX(24px);
   }
 }
+/* Volver a la vista anterior de la misma hoja: entra desde la izquierda. */
+@keyframes vista-vuelve {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
 @keyframes cajon-entra {
   from {
     transform: translateX(-100%);

@@ -99,6 +99,15 @@ export const TUTORIALES: Tutorial[] = [
     descripcion:
       "Cuánto tendría que haber en el cajón (lo del QR no va ahí), contar el efectivo billete por billete, anotar qué pasó si no cuadra y cerrar la caja.",
   },
+  {
+    id: "uDjDyzw4ba8",
+    orden: 1,
+    seccion: "Administración de la academia",
+    rubros: ["ACADEMIA"],
+    titulo: "Abrir un grupo nuevo desde el calendario",
+    descripcion:
+      "Tocar «Libre» en el horario y el mes que querés: la franja, los días y el inicio ya vienen puestos. Elegir el curso, el aula y el docente de cada módulo, y «Abrir grupo».",
+  },
 ];
 
 /** Los que le tocan a este negocio. Sin rubro (sesión vieja) sólo los generales. */

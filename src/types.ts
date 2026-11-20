@@ -1523,6 +1523,31 @@ export interface Venta {
   totalACobrar?: number;
   /** Lo que el repartidor entrega al negocio (sin su tarifa de envío). */
   montoRendicion?: number;
+  /**
+   * «No se pudo entregar» (20-nov): cuándo avisó el repartidor, por qué y su
+   * nota. Con `entregaFallidaEn` el pedido está «en espera» y decide la caja
+   * (ver `lib/entregaFallida`). null, o ausentes en un backend anterior: nada.
+   */
+  entregaFallidaEn?: string | null;
+  entregaFallidaMotivo?: string | null;
+  entregaFallidaNota?: string | null;
+  /**
+   * El pin de la entrega (20-nov, AUDITORIA-REPARTIDOR §2.2 D): el que marcó
+   * el cliente en la página o el que cargó la caja. Viene en «Mis entregas» y
+   * en los pendientes; null sin pin, ausente en un backend anterior (ver
+   * `lib/ubicacionEntrega`, que entonces usa el de `pedidoWeb`).
+   */
+  latitud?: number | null;
+  longitud?: number | null;
+  /** Lo que dijo el GPS del cliente, en metros. */
+  precisionM?: number | null;
+  /** Quién marcó el pin: el cliente en la página o la caja. null sin pin. */
+  ubicacionOrigen?: "PAGINA" | "CAJA" | null;
+  /**
+   * Lo cerró la caja con «Cobrar y entregar» (el repartidor volvió con la
+   * plata): su `montoRendicion` es 0 y no es plata del repartidor.
+   */
+  cobroLaCaja?: boolean;
   credito?: Credito | null;
   /** Mesa del salón de la que salió la venta; null en la de mostrador. */
   mesa?: string | null;
@@ -1886,6 +1911,9 @@ export interface VentaInput {
   prepagado?: boolean;
   minutosEstimados?: number;
   notaPedido?: string;
+  /** El pin del delivery, opcional (20-nov): el repartidor lo ve en su mapa. */
+  latitud?: number;
+  longitud?: number;
   credito?: CreditoInput;
   /** Agenda: la cita que cobra esta venta. La venta la completa (§10). */
   citaId?: number;
@@ -2673,7 +2701,14 @@ export interface PlataformaVendida {
   plataforma: Plataforma;
   pedidos: number;
   unidades: number;
+  /** La suma de sus renglones (bruto, al precio de la app), antes de los descuentos. */
   total: number;
+  /**
+   * Lo que la app descontó en esos pedidos (CONTRATO-PRECIO-PLATAFORMA, 19-nov).
+   * Ausente o 0 = sin descuentos (un backend viejo no lo manda). Lo que paga la
+   * app es `total − descuentos` (ver `totalDePlataforma`).
+   */
+  descuentos?: number;
   categorias: CategoriaVendida[];
 }
 

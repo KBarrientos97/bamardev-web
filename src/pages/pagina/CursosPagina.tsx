@@ -66,7 +66,9 @@ export default function CursosPagina({
     return (
       <section aria-label="Cursos" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {titulo}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "stretch" }}>
+        {/* `start` y no `stretch` (20-nov, página de Drick): estirada a la altura
+            del curso, la tarjeta de pagar quedaba con un hueco enorme arriba y abajo. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
           <TarjetaCurso c={visibles[0]} t={t} colorBoton={colorBoton} radio={radio} urlInscribirme={urlInscribirme} />
           <SeccionPagar url={urlMiCuenta} t={t} colorBoton={colorBoton} radio={radio} escritorio={escritorio} enColumna />
         </div>
@@ -125,9 +127,6 @@ function SeccionPagar({
       // estilo), sin franja de color: el dueño la quería igual a las demás.
       style={{
         marginTop: enColumna ? 0 : 8,
-        display: enColumna ? "flex" : undefined,
-        flexDirection: enColumna ? "column" : undefined,
-        justifyContent: enColumna ? "center" : undefined,
         background: t.tarjeta,
         border: t.borde ? `1px solid ${t.borde}` : undefined,
         boxShadow: t.sombra ?? undefined,

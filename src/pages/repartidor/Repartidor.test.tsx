@@ -22,6 +22,13 @@ vi.mock("../../store/AuthContext", () => ({
   }),
 }));
 
+// MapLibre no corre en jsdom: el mapa del detalle es un marcador con lo que recibe.
+vi.mock("../pagina/MapaSeguimiento", () => ({
+  default: ({ destino }: { destino: { latitud: number; longitud: number } | null }) => (
+    <div data-testid="mapa-entrega">{destino ? `${destino.latitud},${destino.longitud}` : "sin destino"}</div>
+  ),
+}));
+
 vi.mock("../../lib/api", () => ({
   api: {
     getMisEntregas: vi.fn(),
@@ -143,27 +150,27 @@ describe("DEL-2 y BUG-pedidos-3: la rendición pide sólo el efectivo, repartido
     // repartidor con Bs 40 en el bolsillo.
     await montar([ENTREGADO_MIXTO]);
     // El KPI de la lista sumaba lo mismo que el número grande.
-    expect(screen.getByText("A rendir").closest(".card")).toHaveTextContent(/A rendir\s*Bs.40,00\s*en efectivo/);
+    expect(screen.getByText("A rendir").closest(".card")).toHaveTextContent(/A rendir\s*Bs.40\s*en efectivo/);
 
     fireEvent.click(screen.getByRole("button", { name: "Rendición" }));
     const rendicion = screen.getByRole("dialog", { name: "Rendición del turno" });
     expect(within(rendicion).getByText("A entregar al negocio").parentElement).toHaveTextContent(
-      /A entregar al negocio\s*Bs.40,00\s*en efectivo/,
+      /A entregar al negocio\s*Bs.40\s*en efectivo/,
     );
-    expect(rendicion).toHaveTextContent(/Efectivo en mano\s*Bs.40,00/);
-    expect(rendicion).toHaveTextContent(/Ya cobrado por QR\s*Bs.60,00/);
+    expect(rendicion).toHaveTextContent(/Efectivo en mano\s*Bs.40/);
+    expect(rendicion).toHaveTextContent(/Ya cobrado por QR\s*Bs.60/);
     expect(rendicion).toHaveTextContent(/ya está en la cuenta del negocio: no lo entregás/);
     // El renglón del pedido dice cómo se cobró, con los montos de cada parte.
-    expect(rendicion).toHaveTextContent(/QR Bs.60,00 \+ efectivo Bs.40,00/);
+    expect(rendicion).toHaveTextContent(/QR Bs.60 \+ efectivo Bs.40/);
     // Las tarifas siguen siendo del repartidor.
-    expect(rendicion).toHaveTextContent(/Las tarifas de envío \(Bs.8,00\) son tuyas/);
+    expect(rendicion).toHaveTextContent(/Las tarifas de envío \(Bs.8\) son tuyas/);
   });
 
   it("sin los montos (un backend anterior) el renglón dice las formas y el mixto cuenta como efectivo, como la app", async () => {
     await montar([{ ...ENTREGADO_MIXTO, pagos: undefined }]);
     fireEvent.click(screen.getByRole("button", { name: "Rendición" }));
     const rendicion = screen.getByRole("dialog", { name: "Rendición del turno" });
-    expect(rendicion).toHaveTextContent(/A entregar al negocio\s*Bs.100,00/);
+    expect(rendicion).toHaveTextContent(/A entregar al negocio\s*Bs.100/);
     expect(rendicion).toHaveTextContent(/· QR \+ Efectivo/);
   });
 
@@ -173,7 +180,7 @@ describe("DEL-2 y BUG-pedidos-3: la rendición pide sólo el efectivo, repartido
     ]);
     fireEvent.click(screen.getByRole("button", { name: "Rendición" }));
     const rendicion = screen.getByRole("dialog", { name: "Rendición del turno" });
-    expect(rendicion).toHaveTextContent(/A entregar al negocio\s*Bs.100,00/);
+    expect(rendicion).toHaveTextContent(/A entregar al negocio\s*Bs.100/);
     expect(rendicion).not.toHaveTextContent(/Ya cobrado por QR/);
   });
 });

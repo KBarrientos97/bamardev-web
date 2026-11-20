@@ -82,10 +82,10 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     const t = tarjeta("Pedro Rojas");
     expect(t.getByText("3 entregados · 1 en camino")).toBeInTheDocument();
     expect(t.getByRole("button", { name: /Llevó: Pollos 5 · Bebidas 3 · Porciones 1/ })).toBeInTheDocument();
-    expect(t.getByText("Cobró en efectivo").nextElementSibling).toHaveTextContent("Bs 250,00");
-    expect(t.getByText("Cobró por QR").parentElement).toHaveTextContent(/ya está en la cuenta\s*Bs 80,00/);
-    expect(t.getByText("Envíos").parentElement).toHaveTextContent(/son del repartidor\s*Bs 21,00/);
-    expect(t.getByText("Ya entregó a la caja").nextElementSibling).toHaveTextContent("Bs 60,00");
+    expect(t.getByText("Cobró en efectivo").nextElementSibling).toHaveTextContent("Bs 250");
+    expect(t.getByText("Cobró por QR").parentElement).toHaveTextContent(/ya está en la cuenta\s*Bs 80/);
+    expect(t.getByText("Envíos").parentElement).toHaveTextContent(/son del repartidor\s*Bs 21/);
+    expect(t.getByText("Ya entregó a la caja").nextElementSibling).toHaveTextContent("Bs 60");
     expect(t.getByText("Le falta entregar").nextElementSibling).toHaveTextContent("Bs 190,10");
     // Sin la nota del control apagado.
     expect(modal).not.toHaveTextContent(/prendé «Controlar la plata/);
@@ -106,7 +106,7 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     const casillas = t.getAllByRole("checkbox");
     expect(casillas).toHaveLength(2);
     expect(casillas.every((c) => (c as HTMLInputElement).checked)).toBe(true);
-    const casilla = t.getByRole("checkbox", { name: /^V-000900 · Carla Mamani · .* Bs 130,00$/ });
+    const casilla = t.getByRole("checkbox", { name: /^V-000900 · Carla Mamani · .* Bs 130$/ });
     expect(casilla).toBeChecked();
     // La hora entera, con espacios duros: a 390 px no se parte «a.» / «m.» (QA 18-nov).
     expect(casilla.closest("label")!.textContent).toContain(horaSinCortes("2026-11-18T01:15:00.000Z"));
@@ -118,26 +118,28 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     await abrir();
     const t = tarjeta("Pedro Rojas");
     fireEvent.click(t.getByRole("checkbox", { name: /V-000901/ }));
-    expect(t.getByRole("button", { name: "Recibí Bs 130,00" })).toBeInTheDocument();
+    expect(t.getByRole("button", { name: "Recibí Bs 130" })).toBeInTheDocument();
     fireEvent.click(t.getByRole("button", { name: "ninguna" }));
     expect(t.getByRole("button", { name: "Elegí qué recibiste" })).toBeDisabled();
     fireEvent.click(t.getByRole("button", { name: "Marcar todas" }));
     expect(t.getByRole("button", { name: "Recibí Bs 190,10" })).toBeInTheDocument();
     // Luis no cambió, y con una sola entrega no hay «Marcar todas / ninguna».
     const l = tarjeta("Luis Vaca");
-    expect(l.getByRole("button", { name: "Recibí Bs 45,00" })).toBeInTheDocument();
+    expect(l.getByRole("button", { name: "Recibí Bs 45" })).toBeInTheDocument();
     expect(l.queryByRole("button", { name: "Marcar todas" })).not.toBeInTheDocument();
   });
 
   it("pide confirmación; «Volver» no recibe nada", async () => {
     await abrir();
     fireEvent.click(tarjeta("Pedro Rojas").getByRole("button", { name: "Recibí Bs 190,10" }));
-    const confirmacion = screen.getByRole("dialog", { name: "¿Recibiste Bs 190,10 de Pedro Rojas?" });
+    const confirmacion = screen.getByRole("group", { name: "¿Recibiste Bs 190,10 de Pedro Rojas?" });
+    // En la tarjeta, no en otra hoja encima de «Repartidores» (regla del dueño, 20-nov).
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(confirmacion).toHaveTextContent(
       "Las 2 entregas quedan como recibidas: esa plata pasa al cajón y deja de figurar en poder del repartidor.",
     );
     fireEvent.click(within(confirmacion).getByRole("button", { name: "Volver" }));
-    expect(screen.queryByRole("dialog", { name: /¿Recibiste/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /¿Recibiste/ })).not.toBeInTheDocument();
     expect(api.recibirRendicionReparto).not.toHaveBeenCalled();
   });
 
@@ -155,10 +157,10 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
       ],
     };
     vi.mocked(api.rendicionReparto).mockResolvedValue(despues);
-    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130,00" }));
-    const confirmacion = screen.getByRole("dialog", { name: "¿Recibiste Bs 130,00 de Pedro Rojas?" });
+    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130" }));
+    const confirmacion = screen.getByRole("group", { name: "¿Recibiste Bs 130 de Pedro Rojas?" });
     await act(async () => {
-      fireEvent.click(within(confirmacion).getByRole("button", { name: "Recibí" }));
+      fireEvent.click(within(confirmacion).getByRole("button", { name: "Sí, la recibí" }));
     });
     expect(api.recibirRendicionReparto).toHaveBeenCalledWith([55]);
     expect(api.rendicionReparto).toHaveBeenCalledTimes(2);
@@ -171,7 +173,7 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     expect(t2.getAllByRole("checkbox")).toHaveLength(1);
     expect(t2.getByRole("checkbox", { name: /V-000901/ })).toBeChecked();
     expect(t2.getByRole("button", { name: "Recibí Bs 60,10" })).toBeEnabled();
-    expect(screen.queryByRole("dialog", { name: /¿Recibiste/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /¿Recibiste/ })).not.toBeInTheDocument();
   });
 
   it("si el recibo falla, lo destildado sigue destildado (no se pierde lo que eligió)", async () => {
@@ -179,21 +181,21 @@ describe("con «Controlar la plata de los repartidores» prendido", () => {
     const t = tarjeta("Pedro Rojas");
     fireEvent.click(t.getByRole("checkbox", { name: /V-000901/ }));
     vi.mocked(api.recibirRendicionReparto).mockRejectedValue(new Error("Sin conexión"));
-    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130,00" }));
+    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130" }));
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("dialog", { name: /¿Recibiste/ })).getByRole("button", { name: "Recibí" }));
+      fireEvent.click(within(screen.getByRole("group", { name: /¿Recibiste/ })).getByRole("button", { name: "Sí, la recibí" }));
     });
     expect(tarjeta("Pedro Rojas").getByRole("checkbox", { name: /V-000901/ })).not.toBeChecked();
-    expect(tarjeta("Pedro Rojas").getByRole("button", { name: "Recibí Bs 130,00" })).toBeInTheDocument();
+    expect(tarjeta("Pedro Rojas").getByRole("button", { name: "Recibí Bs 130" })).toBeInTheDocument();
   });
 
   it("si el servidor rechaza (no podés recibir tu propia plata), lo dice en la tarjeta y no avisa al cierre", async () => {
     await abrir();
     vi.mocked(api.recibirRendicionReparto).mockRejectedValue(new Error("No podés recibir tu propia plata"));
-    fireEvent.click(tarjeta("Luis Vaca").getByRole("button", { name: "Recibí Bs 45,00" }));
-    expect(screen.getByRole("dialog", { name: /¿Recibiste/ })).toHaveTextContent("La entrega queda como recibida: esa plata");
+    fireEvent.click(tarjeta("Luis Vaca").getByRole("button", { name: "Recibí Bs 45" }));
+    expect(screen.getByRole("group", { name: /¿Recibiste/ })).toHaveTextContent("La entrega queda como recibida: esa plata");
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("dialog", { name: /¿Recibiste/ })).getByRole("button", { name: "Recibí" }));
+      fireEvent.click(within(screen.getByRole("group", { name: /¿Recibiste/ })).getByRole("button", { name: "Sí, la recibí" }));
     });
     expect(tarjeta("Luis Vaca").getByText("No podés recibir tu propia plata")).toBeInTheDocument();
     expect(onRecibido).not.toHaveBeenCalled();
@@ -223,11 +225,11 @@ describe("QA 18-nov, bug 1: «Tiene que entregar» / «Le falta entregar» es el
       ],
     });
     const t = tarjeta("Pedro Rojas");
-    expect(t.getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 76,00");
+    expect(t.getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 76");
     // El pedido de la caja se ve, con su aclaración y sin casilla.
     const deLaCaja = t.getByText(/V-000903 · Ana Torrez/).closest("li") as HTMLElement;
     expect(deLaCaja).toHaveTextContent("Cobró la caja");
-    expect(deLaCaja).toHaveTextContent("Bs 33,00");
+    expect(deLaCaja).toHaveTextContent("Bs 33");
     expect(t.queryAllByRole("checkbox")).toHaveLength(0);
   });
 
@@ -246,7 +248,7 @@ describe("QA 18-nov, bug 1: «Tiene que entregar» / «Le falta entregar» es el
 
   it("un backend anterior (sin `aEntregar`): apagado, lo cobrado en efectivo, como antes", async () => {
     await abrir({ ...ACTIVA, activa: false, repartidores: [{ ...PEDRO, pendiente: 0, recibido: 0 }] });
-    expect(tarjeta("Pedro Rojas").getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 250,00");
+    expect(tarjeta("Pedro Rojas").getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 250");
   });
 });
 
@@ -274,9 +276,9 @@ describe("la plata que recibe otra caja", () => {
     // Con una sola tildable no hay «Marcar todas / ninguna».
     expect(t.queryByRole("button", { name: "Marcar todas" })).not.toBeInTheDocument();
     vi.mocked(api.recibirRendicionReparto).mockResolvedValue({ recibidas: 1, monto: 130 });
-    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130,00" }));
+    fireEvent.click(t.getByRole("button", { name: "Recibí Bs 130" }));
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("dialog", { name: "¿Recibiste Bs 130,00 de Pedro Rojas?" })).getByRole("button", { name: "Recibí" }));
+      fireEvent.click(within(screen.getByRole("group", { name: "¿Recibiste Bs 130 de Pedro Rojas?" })).getByRole("button", { name: "Sí, la recibí" }));
     });
     expect(api.recibirRendicionReparto).toHaveBeenCalledWith([55]);
   });
@@ -300,7 +302,7 @@ describe("la plata que recibe otra caja", () => {
     );
     fireEvent.click(tarjeta("Pedro Rojas").getByRole("button", { name: "Recibí Bs 190,10" }));
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("dialog", { name: /¿Recibiste/ })).getByRole("button", { name: "Recibí" }));
+      fireEvent.click(within(screen.getByRole("group", { name: /¿Recibiste/ })).getByRole("button", { name: "Sí, la recibí" }));
     });
     expect(tarjeta("Pedro Rojas").getByText("Esa plata la recibe la caja de Ana Quispe.")).toBeInTheDocument();
     expect(onRecibido).not.toHaveBeenCalled();
@@ -317,7 +319,7 @@ describe("con el control apagado", () => {
       repartidores: [PEDRO, LUIS].map((r) => ({ ...r, pendiente: 0, recibido: 0, entregas: r.entregas.map((e) => ({ ...e, id: null, estado: null })) })),
     });
     const t = tarjeta("Pedro Rojas");
-    expect(t.getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 250,00");
+    expect(t.getByText("Tiene que entregar").nextElementSibling).toHaveTextContent("Bs 250");
     expect(t.queryByText("Le falta entregar")).not.toBeInTheDocument();
     expect(t.queryByText("Ya entregó a la caja")).not.toBeInTheDocument();
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
@@ -351,5 +353,51 @@ describe("vacío y errores", () => {
     expect(modal).toHaveTextContent("Sin conexión");
     expect(modal).not.toHaveTextContent("Hoy ningún repartidor");
     expect(within(modal).getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+  });
+});
+
+describe("lo que la cajera ve primero y de dónde sale cada monto (20-nov)", () => {
+  it("arriba, grande, lo que falta recibir de todos y lo ya recibido hoy", async () => {
+    const modal = await abrir();
+    const total = within(modal).getByText("Falta recibir de los repartidores").parentElement as HTMLElement;
+    // Pedro 190,10 + Luis 45: la suma de lo que dice cada tarjeta.
+    expect(total).toHaveTextContent(/Falta recibir de los repartidores\s*Bs 235,10\s*Ya recibiste Bs 60 hoy/);
+  });
+
+  it("apagado el control, el total dice lo que tienen que entregar, sin «ya recibiste»", async () => {
+    const modal = await abrir({ ...ACTIVA, activa: false, repartidores: [{ ...LUIS, pendiente: 0, recibido: 0 }] });
+    const total = within(modal).getByText("Tienen que entregar los repartidores").parentElement as HTMLElement;
+    expect(total).toHaveTextContent(/Bs 45$/);
+  });
+
+  it("lo ya recibido se lista con quién lo recibió y cuándo; lo en camino, no", async () => {
+    await abrir();
+    const t = tarjeta("Pedro Rojas");
+    const recibida = t.getByText(/V-000880 · Ana Vargas/).closest("li") as HTMLElement;
+    expect(recibida).toHaveTextContent(`Recibida por Caja Uno · ${horaSinCortes("2026-11-18T00:30:00.000Z")}`.replace(/\s/g, " "));
+    expect(recibida).toHaveTextContent("Bs 60");
+    expect(t.queryByRole("checkbox", { name: /V-000880/ })).not.toBeInTheDocument();
+    expect(t.queryByText(/V-000902/)).not.toBeInTheDocument();
+  });
+
+  it("un pedido cobrado por QR se ve con su monto y que ya está en la cuenta", async () => {
+    const porQr = { ...PEDRO.entregas[0], id: null, ventaId: 960, comprobante: "V-000960", cliente: "Rita Gil", efectivo: 0, qr: 80, estado: null };
+    await abrir({ ...ACTIVA, repartidores: [{ ...PEDRO, entregas: [...PEDRO.entregas, porQr] }] });
+    const fila = tarjeta("Pedro Rojas").getByText(/V-000960 · Rita Gil/).closest("li") as HTMLElement;
+    expect(fila).toHaveTextContent("Por QR: ya está en la cuenta");
+    expect(fila).toHaveTextContent("Bs 80");
+  });
+
+  it("los montos van sin ,00 de más, y con centavos cuando los hay", async () => {
+    await abrir();
+    const t = tarjeta("Pedro Rojas");
+    expect(t.getByText("Cobró en efectivo").nextElementSibling).toHaveTextContent(/^Bs 250$/);
+    expect(t.getByText("Le falta entregar").nextElementSibling).toHaveTextContent(/^Bs 190,10$/);
+  });
+
+  it("sin repartos, un vacío amable que explica qué va a aparecer", async () => {
+    const modal = await abrir({ activa: true, desde: null, pendiente: 0, recibido: 0, repartidores: [] });
+    expect(modal).toHaveTextContent("Cuando un repartidor entregue, acá vas a ver la plata que trae y de qué pedidos sale.");
+    expect(within(modal).queryByText("Falta recibir de los repartidores")).not.toBeInTheDocument();
   });
 });

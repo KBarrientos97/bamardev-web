@@ -116,7 +116,7 @@ describe.each([...RUBROS.filter((r) => r !== "ACADEMIA"), "RUBRO_NUEVO"])("menú
  */
 describe("menú: Supervisión del billar", () => {
   const vender = (m: BloqueMenu[]) => m.find((b) => b.bloque === "vender")?.nodos.map((n) => n.item.label) ?? [];
-  const SIN_BILLAR = ["FARMACIA", "PELUQUERIA", "BARBERIA", "SPA", "UNAS"];
+  const SIN_BILLAR = ["FARMACIA", "PELUQUERIA", "BARBERIA", "SPA", "UNAS", "LICORERIA"];
 
   it.each(RUBROS.filter((r) => r !== "ACADEMIA" && !SIN_BILLAR.includes(r)))("%s: el administrador la ve debajo de Billar", (rubro) => {
     const v = vender(menu("ADMIN", rubro));
@@ -134,8 +134,9 @@ describe("menú: Supervisión del billar", () => {
       expect(nodos.map((n) => n.item.a)).not.toContain("/supervision-billar");
       // La farmacia tiene la suya desde el 11-nov (otra ruta, abajo); en los
       // demás rubros sin billar (belleza) no hay ninguna "Supervisión": la del
-      // local (12-nov) tampoco existe ahí.
-      if (rubro !== "FARMACIA") expect(nodos.map((n) => n.item.label)).not.toContain("Supervisión");
+      // local (12-nov) tampoco existe ahí. La licorería sí tiene la del local,
+      // como un minimarket: lo que no tiene es la del billar (la ruta, arriba).
+      if (rubro !== "FARMACIA" && rubro !== "LICORERIA") expect(nodos.map((n) => n.item.label)).not.toContain("Supervisión");
     }
   });
 

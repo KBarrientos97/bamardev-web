@@ -190,6 +190,35 @@ describe("registrar un pedido: con señal, sin señal y en la web normal", () =>
     expect(await leerEncolados()).toHaveLength(1);
   });
 
+  it("sin red, la cola guarda el precio escrito para la app (sólo donde se escribió), el descuento y la nota, y lista el total del diálogo", async () => {
+    fijarVentaSinInternet(true);
+    const c = cuerpo({
+      plataforma: "PEDIDOS_YA",
+      descuento: 1,
+      observaciones: "sin ají",
+      // El cajero escribió el precio de la app sólo en el primero (20-nov).
+      detalles: [
+        { productoId: 5, cantidad: 2, precioApp: 40 },
+        { productoId: 6, cantidad: 1 },
+      ],
+    });
+    // (40 × 2 + 10) − 1: lo que el cajero vio en el diálogo, no los precios del local (80).
+    await registrarPedidoOEncolar(c, vi.fn().mockRejectedValue(sinRed()), precios, 89);
+    const [rec] = await leerEncolados();
+    expect(rec.resumen).toEqual({ plataforma: "PEDIDOS_YA", total: 89, lineas: 2 });
+    expect(rec.cuerpo).toMatchObject({
+      descuento: 1,
+      observaciones: "sin ají",
+      encolado: true,
+    });
+    // `precio` sigue siendo el del local, como siempre en la cola; el de la app
+    // va aparte y sólo donde se escribió (el otro sube al del local).
+    expect(rec.cuerpo.detalles).toEqual([
+      { productoId: 5, cantidad: 2, precio: 35, precioApp: 40 },
+      { productoId: 6, cantidad: 1, precio: 10 },
+    ]);
+  });
+
   it("un precio ya puesto en el cuerpo no se pisa con el del catálogo", () => {
     const c = cuerpoEncoladoDePedido(
       cuerpo({ detalles: [{ productoId: 5, cantidad: 1, precio: 30 }] }),

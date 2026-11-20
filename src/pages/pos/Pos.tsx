@@ -25,6 +25,7 @@ import { fmtMoney } from "../../lib/format";
 import { abiertaDesde } from "./turnoDeCaja";
 import { aCentavos } from "../../lib/dinero";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
+import { enEspera, textoMotivo } from "../../lib/entregaFallida";
 import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
@@ -55,7 +56,7 @@ import { SelectorSedeCaja } from "./SelectorSedeCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
-import DialogoPedidoPlataforma, { PedidoPlataformaRegistrado } from "./DialogoPedidoPlataforma";
+import DialogoPedidoPlataforma, { PedidoPlataformaRegistrado, type PedidoConfirmado } from "./DialogoPedidoPlataforma";
 import { pedidoParaImprimir, type PedidoParaImprimir } from "./ticketPlataforma";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
@@ -363,6 +364,19 @@ function PuntoDeVenta() {
     () => (veEntregas ? api.entregasMesero().catch(() => null) : Promise.resolve(null)),
     [veEntregas],
   );
+  /**
+   * Los delivery «en espera de la caja» (20-nov): el repartidor avisó «No se
+   * pudo entregar» y vuelve con el pedido. En la app llega una notificación;
+   * en la web, sin esto, la cajera recién se enteraba si abría el historial.
+   * Sólo para quien decide (`delivery.asignar`). Falla en silencio: es un aviso.
+   */
+  const veEnEspera = conReparto && tienePermiso(usuario, "delivery.asignar");
+  const pendientesReparto = useApi(
+    // Con `then`: una falla antes de la promesa también queda en silencio.
+    () => (veEnEspera ? Promise.resolve().then(() => api.getPedidosPendientes()).catch(() => null) : Promise.resolve(null)),
+    [veEnEspera],
+  );
+  const enEsperaDeCaja = (pendientesReparto.datos ?? []).filter((v) => v.tipoPedido === "DELIVERY" && enEspera(v));
   const mesasEsperando: MesaSalon[] = porCobrar.datos ?? [];
   const pendientesEntrega = (entregas.datos?.items ?? []).filter(
     (e) => e.estado === "PENDIENTE",
@@ -381,16 +395,24 @@ function PuntoDeVenta() {
    */
   const { recargar: recargarPorCobrar } = porCobrar;
   const { recargar: recargarEntregas } = entregas;
+  const { recargar: recargarReparto } = pendientesReparto;
+  // Al volver del historial, donde se decidió, el aviso no espera al sondeo.
+  const pantallaAntes = useRef(pantalla);
   useEffect(() => {
-    if (pantalla !== "venta" || (!veMesasPorCobrar && !veEntregas)) return;
+    if (pantalla === "venta" && pantallaAntes.current !== "venta" && veEnEspera) recargarReparto();
+    pantallaAntes.current = pantalla;
+  }, [pantalla, veEnEspera, recargarReparto]);
+  useEffect(() => {
+    if (pantalla !== "venta" || (!veMesasPorCobrar && !veEntregas && !veEnEspera)) return;
     const id = window.setInterval(() => {
       // Pestaña en segundo plano: nadie mira, no vale el pedido.
       if (document.hidden) return;
       if (veMesasPorCobrar) recargarPorCobrar();
       if (veEntregas) recargarEntregas();
+      if (veEnEspera) recargarReparto();
     }, SONDEO_SALON_MS);
     return () => window.clearInterval(id);
-  }, [pantalla, veMesasPorCobrar, veEntregas, recargarPorCobrar, recargarEntregas]);
+  }, [pantalla, veMesasPorCobrar, veEntregas, veEnEspera, recargarPorCobrar, recargarEntregas, recargarReparto]);
 
   /**
    * El latido del equipo (12-nov, como `LatidoCaja` de Android): mientras el
@@ -772,6 +794,9 @@ function PuntoDeVenta() {
             minutosEstimados: datosEntrega.minutosEstimados,
             notaPedido: datosEntrega.notaPedido,
             prepagado: datosEntrega.prepagado,
+            ...(datosEntrega.latitud != null && datosEntrega.longitud != null
+              ? { latitud: datosEntrega.latitud, longitud: datosEntrega.longitud }
+              : {}),
           }
         : {}),
     }),
@@ -856,19 +881,22 @@ function PuntoDeVenta() {
     () =>
       carritoVenta.lineas.map((l) => ({
         clave: claveDeLinea(l),
+        productoId: l.producto.id,
         nombre: l.producto.nombre,
         cantidad: l.cantidad,
-        // Con los extras: el total del pedido tiene que ser el que cobra el backend.
-        precio: l.producto.precio + (l.vista?.extraPorUnidad ?? 0),
+        // El del local: vale en la app mientras el cajero no escriba otro.
+        precioLocal: l.producto.precio,
+        // Los toppings se cotizan como en el local: el diálogo los suma al
+        // precio de la app para que el total sea el que cobra el backend.
+        extraPorUnidad: l.vista?.extraPorUnidad ?? 0,
         agregados: textoDeAgregados(l.vista),
       })),
     [carritoVenta.lineas],
   );
-  // Sin descuentos ni promociones: el pedido va al precio del punto de venta.
-  const totalDelPedido = Math.round(lineasDelPedido.reduce((s, l) => s + l.precio * l.cantidad, 0) * 100) / 100;
 
   const registrarPedido = useCallback(
-    async (plataforma: Plataforma, codigoExterno: string | undefined) => {
+    async (plataforma: Plataforma, confirmado: PedidoConfirmado) => {
+      const { codigoExterno } = confirmado;
       // Las mismas líneas de la venta, con sus toppings: el backend los
       // descuenta del stock y los recalcula igual que en un cobro.
       const detalles = carritoVenta.lineas.map((l) => {
@@ -876,13 +904,24 @@ function PuntoDeVenta() {
         return { productoId: l.producto.id, cantidad: l.cantidad, ...(agregados ? { agregados } : {}) };
       });
       const precios = new Map(carritoVenta.lineas.map((l) => [l.producto.id, l.producto.precio]));
+      // El precio de la app de los renglones donde el cajero escribió uno
+      // (20-nov). Los demás no lo llevan: el servidor pone el suyo y la cola,
+      // el del local, como antes del precio de la app.
+      const precioEscrito = new Map<number | string, number>();
+      for (const p of confirmado.precios) if (p.precioApp != null) precioEscrito.set(p.clave, p.precioApp);
+      const precioApp = (l: (typeof carritoVenta.lineas)[number]) => precioEscrito.get(claveDeLinea(l));
       let r: Awaited<ReturnType<typeof registrarPedidoOEncolar>>;
       try {
         r = await registrarPedidoOEncolar(
           {
+            // La huella es la de siempre, SIN el precio de la app ni el
+            // descuento: un reintento tras un 504 con el precio retocado es el
+            // mismo pedido (el servidor devuelve el que ya entró).
             clienteRequestId: intentoPedido.actual(huellaDeCobro(detalles, plataforma)),
             plataforma,
             ...(codigoExterno ? { codigoExterno } : {}),
+            ...(confirmado.descuento > 0 ? { descuento: confirmado.descuento } : {}),
+            ...(confirmado.observaciones ? { observaciones: confirmado.observaciones } : {}),
             // Con varias cajas abiertas el pedido dice a cuál sucursal va, como
             // la venta: la cola lo sube tiempo después y la sede activa puede ser otra.
             ...(variasSedes && almacenCaja != null ? { almacenId: almacenCaja } : {}),
@@ -890,10 +929,16 @@ function PuntoDeVenta() {
             // «Ventas del turno». La cola la sube con la que estaba abierta al
             // tomarlo; el backend la descarta sin rechazar si ya no sirve.
             ...(idCaja != null ? { cajaId: idCaja } : {}),
-            detalles,
+            detalles: carritoVenta.lineas.map((l, i) => {
+              const escrito = precioApp(l);
+              return escrito != null ? { ...detalles[i], precioApp: escrito } : detalles[i];
+            }),
           },
           api.crearPedidoPlataforma,
           precios,
+          // Sin señal, la lista de lo que falta subir dice lo que vio el cajero:
+          // precios de la app, toppings y descuento.
+          confirmado.total,
         );
       } catch (e) {
         // El diálogo muestra el error (lo atrapa él). Los vasos se releen igual:
@@ -912,12 +957,16 @@ function PuntoDeVenta() {
             plataforma,
             codigoExterno,
             pedido: r.pedido,
+            // De la cola sale el papel con lo del diálogo: el precio escrito
+            // para la app o, si no se escribió, el del local.
             carrito: carritoVenta.lineas.map((l) => ({
               nombre: l.producto.nombre,
               cantidad: l.cantidad,
-              precio: l.producto.precio,
+              precio: precioApp(l) ?? l.producto.precio,
               hijas: l.vista?.hijas,
             })),
+            descuento: confirmado.descuento,
+            observaciones: confirmado.observaciones,
             sede: caja.datos?.caja?.almacen ?? null,
             atendio: usuario?.nombre?.trim() || usuario?.username || null,
           })
@@ -1092,6 +1141,8 @@ function PuntoDeVenta() {
           minutosEstimados: datos.minutosEstimados,
           notaPedido: datos.notaPedido,
           prepagado: false,
+          // El pin, sólo si lo marcaron: un backend anterior ignora los campos.
+          ...(datos.latitud != null && datos.longitud != null ? { latitud: datos.latitud, longitud: datos.longitud } : {}),
           clienteRequestId: intento.actual(huellaDeCobro(detalles, tipoPedido)),
         });
         intento.registrado();
@@ -1884,14 +1935,13 @@ function PuntoDeVenta() {
           <DialogoPedidoPlataforma
             plataforma={pedidoPlataforma}
             lineas={lineasDelPedido}
-            total={totalDelPedido}
             onClose={() => {
               setPedidoPlataforma(null);
               const volver = alVolverDelPedido.current;
               alVolverDelPedido.current = undefined;
               volver?.();
             }}
-            onRegistrar={(codigo) => registrarPedido(pedidoPlataforma, codigo)}
+            onRegistrar={(confirmado) => registrarPedido(pedidoPlataforma, confirmado)}
           />
         )}
         {pedidoImpreso && <PedidoPlataformaRegistrado pedido={pedidoImpreso} onListo={() => setPedidoImpreso(null)} />}
@@ -1982,8 +2032,26 @@ function PuntoDeVenta() {
             />
           </div>
         )}
-        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0 || pedidosWeb.nuevos > 0) && (
+        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0 || pedidosWeb.nuevos > 0 || enEsperaDeCaja.length > 0) && (
           <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            {/* El repartidor no pudo entregar y espera qué hacer con el pedido. */}
+            {enEsperaDeCaja.length > 0 && (
+              <AvisoSalon
+                tono="rojo"
+                icono="truck"
+                titulo={
+                  enEsperaDeCaja.length === 1
+                    ? "1 delivery no se pudo entregar"
+                    : `${enEsperaDeCaja.length} delivery no se pudieron entregar`
+                }
+                detalle={
+                  enEsperaDeCaja.length === 1
+                    ? `${enEsperaDeCaja[0].clienteNombre ?? "Un pedido"} · ${textoMotivo(enEsperaDeCaja[0].entregaFallidaMotivo)} · tocá para decidir`
+                    : "Reintentar, pasárselo a otro o cancelar · tocá para decidir"
+                }
+                onClick={() => setPantalla("historial")}
+              />
+            )}
             {/* Lo primero: un cliente está esperando y a los 10 minutos el pedido vence. */}
             {pedidosWeb.nuevos > 0 && (
               <AvisoSalon
@@ -2139,8 +2207,8 @@ function AvisoSalon({
   detalle,
   onClick,
 }: {
-  tono: "verde" | "ambar";
-  icono: "grid" | "users" | "calendar" | "bolsa";
+  tono: "verde" | "ambar" | "rojo";
+  icono: "grid" | "users" | "calendar" | "bolsa" | "truck";
   titulo: string;
   detalle: string;
   onClick: () => void;
@@ -2148,7 +2216,9 @@ function AvisoSalon({
   const colores =
     tono === "verde"
       ? "border-primary/30 bg-primary-50 text-primary-700 hover:bg-primary-100"
-      : "border-warning-text/20 bg-warning-bg text-warning-text hover:brightness-95";
+      : tono === "rojo"
+        ? "border-danger-borde bg-danger-suave text-danger-text hover:brightness-95"
+        : "border-warning-text/20 bg-warning-bg text-warning-text hover:brightness-95";
   return (
     <button
       type="button"

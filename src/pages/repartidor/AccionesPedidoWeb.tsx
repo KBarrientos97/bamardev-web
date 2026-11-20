@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, ErrorMsg } from "../../components/ui";
-import { urlRuta } from "../../lib/mapa";
 import { frasesDeCobro } from "../../lib/pedidosWeb/cobro";
-import { urlWaze } from "../../lib/pedidosWeb/navegacion";
 import { apiPedidosWeb } from "../../lib/pedidosWeb/apiPrivada";
 import type { PedidoWebDeEntrega } from "../../lib/pedidosWeb/tipos";
 import { direccionEscrita } from "./direccionEntrega";
 
 /**
- * Lo que suma un pedido que vino de la página (13-nov): navegar hasta el pin
- * del cliente (Google Maps o Waze), copiar la dirección y «Ya salí del local»,
- * que le muestra al cliente la moto en su mapa.
+ * Lo que suma un pedido que vino de la página (13-nov): cómo se cobra, copiar
+ * la dirección y «Ya salí del local», que le muestra al cliente la moto en su
+ * mapa. Navegar hasta el pin (Google Maps o Waze) pasó a «Cómo llegar»
+ * (`ComoLlegar`, 20-nov), que lo tiene toda entrega y no sólo las de la página.
  */
 export default function AccionesPedidoWeb({
   ventaId,
@@ -39,13 +38,14 @@ export default function AccionesPedidoWeb({
   const [saliendo, setSaliendo] = useState(false);
   const [copiada, setCopiada] = useState(false);
   const [error, setError] = useState("");
-  const pin = web.latitud != null && web.longitud != null ? { lat: web.latitud, lng: web.longitud } : null;
   // Sin dirección escrita (18-nov: el cliente puede marcar sólo el pin), no hay
   // nada que copiar: «Ubicación marcada en el mapa» no le sirve a nadie pegada
   // en otra app. Para llegar están los botones del mapa.
   const paraCopiar = direccionEscrita(direccion);
   const boton =
-    "flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted";
+    // Con la respuesta al toque de `Boton` (se hunde un poco al apretar): sin
+    // ella, en el celular no se sabía si el toque había entrado.
+    "flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100";
 
   async function yaSali() {
     setError("");
@@ -84,21 +84,6 @@ export default function AccionesPedidoWeb({
         ))}
       </ul>
       {web.referencia && <p className="text-[13px] text-texto-2">Referencia: {web.referencia}</p>}
-      {/* «Ir con Google Maps» se partía en dos renglones a 390 px (QA 18-nov):
-          los dos botones se repartían el ancho por igual. Ahora ninguno parte
-          su texto (cada uno ocupa lo que necesita) y, si en una pantalla más
-          angosta no entran lado a lado, el segundo baja entero. Los textos son
-          los mismos que en la app. */}
-      {pin && (
-        <div className="flex flex-wrap gap-2">
-          <a href={urlRuta(pin)} target="_blank" rel="noreferrer" className={`${boton} whitespace-nowrap`}>
-            <Icon name="pin" size={15} /> Ir con Google Maps
-          </a>
-          <a href={urlWaze(pin.lat, pin.lng)} target="_blank" rel="noreferrer" className={`${boton} whitespace-nowrap`}>
-            <Icon name="pin" size={15} /> Abrir en Waze
-          </a>
-        </div>
-      )}
       {paraCopiar && (
         <button type="button" onClick={copiar} className={`${boton} w-full`}>
           <Icon name="copiar" size={15} /> {copiada ? "Dirección copiada" : "Copiar dirección"}

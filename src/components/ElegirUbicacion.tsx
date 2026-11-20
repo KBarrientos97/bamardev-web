@@ -13,9 +13,12 @@ import { cargarMaplibre, redondear, SANTA_CRUZ, TEXTOS_MAPA, type Ubicacion } fr
 export default function ElegirUbicacion({
   valor,
   onCambio,
+  ayuda = "Tocá el mapa donde está el local; el pin se puede arrastrar.",
 }: {
   valor: Ubicacion | null;
   onCambio: (u: Ubicacion) => void;
+  /** La línea de ayuda junto a «Usar mi ubicación»: el delivery de la caja marca la casa del cliente, no el local. */
+  ayuda?: string;
 }) {
   const caja = useRef<HTMLDivElement>(null);
   const mapa = useRef<MapaGL | null>(null);
@@ -111,7 +114,7 @@ export default function ElegirUbicacion({
         <Boton type="button" variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={usarMiUbicacion} disabled={buscando}>
           {buscando ? "Buscando…" : "Usar mi ubicación"}
         </Boton>
-        <span className="text-[12px] text-texto-3">Tocá el mapa donde está el local; el pin se puede arrastrar.</span>
+        <span className="text-[12px] text-texto-3">{ayuda}</span>
       </div>
       {falla && (
         <p role="alert" className="text-[13px] text-danger-text">

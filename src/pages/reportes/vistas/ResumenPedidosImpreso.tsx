@@ -4,7 +4,7 @@ import {
   type PedidoPlataforma,
   type ReportePedidosPlataforma,
 } from "../../../lib/pedidosPlataforma/tipos";
-import { diaCorto, textoAnulado } from "./PedidosPlataforma.datos";
+import { descuentosDelReporte, diaCorto, textoAnulado } from "./PedidosPlataforma.datos";
 
 /**
  * El resumen del período en papel, para cuadrar con lo que paga la app
@@ -78,6 +78,9 @@ export default function ResumenPedidosImpreso({
   const nombre = NOMBRE_PLATAFORMA[reporte.plataforma];
   // La columna de sucursal sólo si el período trae pedidos de más de una.
   const variasSucursales = reporte.porSucursal.length > 1;
+  // Lo que descontaron las apps (19-nov). Los días y el total ya son netos:
+  // el renglón dice cuánto se restó, para cuadrar con la liquidación.
+  const descuentos = descuentosDelReporte(reporte);
   return (
     <section className="resumen-plataforma hidden" aria-hidden="true">
       <style>{CSS_IMPRESION}</style>
@@ -118,6 +121,7 @@ export default function ResumenPedidosImpreso({
           </tr>
         </tfoot>
       </table>
+      {descuentos > 0 && <p className="nota">Descuentos: {fmtMoney(descuentos)} (el total ya los resta).</p>}
       {reporte.anulados.cantidad > 0 && (
         <p className="nota">
           No incluye {reporte.anulados.cantidad} {reporte.anulados.cantidad === 1 ? "pedido anulado" : "pedidos anulados"} (
