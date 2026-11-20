@@ -1201,6 +1201,12 @@ export const api = {
    */
   ubicacionDeVenta: (id: number, u: { latitud: number; longitud: number; precisionM?: number }) =>
     request<Venta>(`/ventas/${id}/ubicacion`, { method: "PATCH", body: JSON.stringify(u) }),
+  /**
+   * Lo que llevó el repartidor por día (20-nov): «Mi día › Semana». Sin
+   * `repartidorId`, el backend le da a cada repartidor lo suyo.
+   */
+  historialReparto: (params: { desde: string; hasta: string; repartidorId?: number }) =>
+    request<unknown>(`/reparto/historial${qs(params)}`),
   /** La caja se lo pasa a otro repartidor; también saca el pedido de la espera. */
   reasignarPedido: (id: number, repartidorId: number) =>
     request<Venta>(`/ventas/${id}/reasignar`, { method: "POST", body: JSON.stringify({ repartidorId }) }),

@@ -36,6 +36,7 @@ import type { FormaPago, Venta } from "../../types";
 import { rendicionDelTurno } from "./rendicion";
 import { reporteDelDia } from "./reporteDelDia";
 import MiDia from "./MiDia";
+import MapaDelDia from "./MapaDelDia";
 import RendicionDelTurno from "./RendicionDelTurno";
 import { EsqueletoFilas } from "../salon/Esqueletos";
 import { activarSonido, useSonidoListo } from "../../lib/pedidosWeb/contador";
@@ -134,6 +135,7 @@ export default function Repartidor() {
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [rendicionAbierta, setRendicionAbierta] = useState(false);
   const [miDiaAbierto, setMiDiaAbierto] = useState(false);
+  const [mapaAbierto, setMapaAbierto] = useState(false);
 
   // Lo que se le entrega al negocio es SÓLO el efectivo (`enEfectivo`): lo
   // cobrado por QR ya está en su cuenta. La cuenta vive en `rendicion.ts`.
@@ -268,7 +270,20 @@ export default function Repartidor() {
           />
         </div>
 
-        <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
+        {/* «Ver en el mapa»: todas las por entregar de un vistazo (20-nov).
+            Sólo si alguna tiene pin: sin ninguno, el mapa no tiene qué dibujar. */}
+        <div className="flex items-center justify-between gap-2">
+          <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
+          {vista === "pendientes" && pendientes.some((p) => pinDeEntrega(p)) && (
+            <button
+              type="button"
+              onClick={() => setMapaAbierto(true)}
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-borde bg-white px-3 text-[13px] font-semibold text-primary-700 hover:bg-primary-50 ${TOQUE}`}
+            >
+              <Icon name="pin" size={15} /> Ver en el mapa
+            </button>
+          )}
+        </div>
 
         <ErrorMsg onReintentar={actualizar}>{entregas.error}</ErrorMsg>
 
@@ -393,6 +408,19 @@ export default function Repartidor() {
         )}
 
         {miDiaAbierto && <MiDia reporte={reporte} onClose={() => setMiDiaAbierto(false)} />}
+
+        {mapaAbierto && (
+          <MapaDelDia
+            pendientes={pendientes}
+            onClose={() => setMapaAbierto(false)}
+            onElegir={(v) => {
+              // El detalle reemplaza al mapa: dos hojas apiladas tapan el pie.
+              setMapaAbierto(false);
+              setDetalle(v);
+              aviso.visto();
+            }}
+          />
+        )}
       </div>
     </TirarParaActualizar>
   );
@@ -468,6 +496,8 @@ function DetalleEntrega({
   const rotuloSede = useRotuloSucursal();
   const [cobrando, setCobrando] = useState(false);
   const [noEntrega, setNoEntrega] = useState(false);
+  // El rechazo al cobrar, para mostrarlo EN la hoja de cobro (que tapa el detalle).
+  const [rechazoCobro, setRechazoCobro] = useState<{ sinCaja: boolean; texto: string } | null>(null);
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
@@ -527,12 +557,22 @@ function DetalleEntrega({
 
   async function confirmarEntrega(pagos?: PagoEntrega[]) {
     setError("");
+    setRechazoCobro(null);
     setEnviando(true);
     try {
       await api.entregarPedido(p.id, pagos);
       onCambio();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo confirmar la entrega");
+      const texto = err instanceof Error ? err.message : "No se pudo confirmar la entrega";
+      // R4 (20-nov): cobró en efectivo y no hay caja abierta para recibir esa
+      // plata. No es una falla del repartidor ni de la señal: el pedido sigue
+      // pendiente y alguien tiene que abrir la caja. Se dice en la hoja de
+      // cobro, que es lo que tiene a la vista, y no como un error rojo más.
+      // Por la forma y no con `instanceof ApiError`: los tests mockean el módulo del API.
+      const f = err as { status?: number; codigo?: string } | null;
+      const sinCaja = f?.status === 409 && f?.codigo === "SIN_CAJA_ABIERTA";
+      if (pagos) setRechazoCobro({ sinCaja, texto });
+      else setError(texto);
     } finally {
       setEnviando(false);
     }
@@ -614,7 +654,11 @@ function DetalleEntrega({
             {/* El mapa y la navegación, para TODA entrega pendiente (20-nov):
                 antes sólo los pedidos de la página tenían Maps y Waze. */}
             {pendiente && !enEsperaAhora && (
-              <ComoLlegar pin={pin} direccion={direccionEscrita(p.clienteDireccion ?? pedido.clienteDireccion)} />
+              <ComoLlegar
+                pin={pin}
+                direccion={direccionEscrita(p.clienteDireccion ?? pedido.clienteDireccion)}
+                origen={p.ubicacionOrigen ?? pedido.ubicacionOrigen ?? null}
+              />
             )}
 
             {webBase && pendiente && !enEsperaAhora && (
@@ -697,7 +741,11 @@ function DetalleEntrega({
           pagaCon={webDelPedido?.formaPago === "EFECTIVO" ? webDelPedido.pagaCon : null}
           formasPago={formasPago}
           enviando={enviando}
-          onClose={() => setCobrando(false)}
+          rechazo={rechazoCobro}
+          onClose={() => {
+            setCobrando(false);
+            setRechazoCobro(null);
+          }}
           onConfirmar={(pagos) => confirmarEntrega(pagos)}
         />
       )}
@@ -723,9 +771,15 @@ function DialogoCobroEntrega({
   pagaCon,
   formasPago,
   enviando,
+  rechazo,
   onClose,
   onConfirmar,
 }: {
+  /**
+   * Lo que contestó el servidor al cobrar. `sinCaja` (409 SIN_CAJA_ABIERTA,
+   * R4): no hay caja abierta para recibir el efectivo; el pedido sigue pendiente.
+   */
+  rechazo?: { sinCaja: boolean; texto: string } | null;
   /** Lo que se registra como pago: sólo productos, sin el envío. */
   total: number;
   /** Lo que el repartidor cobra en mano, con la tarifa de envío incluida. */
@@ -955,6 +1009,14 @@ function DialogoCobroEntrega({
         )}
 
         <ErrorMsg>{error}</ErrorMsg>
+        {rechazo?.sinCaja ? (
+          <div role="alert" className="rounded-xl border border-warning-borde bg-warning-suave px-3.5 py-3 text-[13px] text-warning-text">
+            <p className="font-bold">No hay ninguna caja abierta</p>
+            <p className="mt-0.5">{rechazo.texto}</p>
+          </div>
+        ) : (
+          <ErrorMsg>{rechazo?.texto}</ErrorMsg>
+        )}
       </div>
     </Modal>
   );

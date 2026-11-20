@@ -1541,6 +1541,13 @@ export interface Venta {
   longitud?: number | null;
   /** Lo que dijo el GPS del cliente, en metros. */
   precisionM?: number | null;
+  /** Quién marcó el pin: el cliente en la página o la caja. null sin pin. */
+  ubicacionOrigen?: "PAGINA" | "CAJA" | null;
+  /**
+   * Lo cerró la caja con «Cobrar y entregar» (el repartidor volvió con la
+   * plata): su `montoRendicion` es 0 y no es plata del repartidor.
+   */
+  cobroLaCaja?: boolean;
   credito?: Credito | null;
   /** Mesa del salón de la que salió la venta; null en la de mostrador. */
   mesa?: string | null;

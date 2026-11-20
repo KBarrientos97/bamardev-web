@@ -109,7 +109,7 @@ export default function RendicionDelTurno({
                         <p className="truncate text-[13px] font-semibold text-texto">{p.clienteNombre ?? "Sin nombre"}</p>
                         <p className="text-xs text-texto-3">
                           {[p.comprobante ?? `#${p.id}`, horaSinCortes(p.entregadoEn ?? p.fecha)].join(" · ")}
-                          {p.prepagado ? " · ya estaba pagado" : comoSeCobro(p)}
+                          {p.prepagado ? " · ya estaba pagado" : p.cobroLaCaja ? " · la cobró la caja" : comoSeCobro(p)}
                         </p>
                         {esPositivo(p.tarifaEnvio ?? 0) && (
                           <p className="text-xs text-texto-3">+ {fmtPlata(p.tarifaEnvio)} de envío (tuyo)</p>

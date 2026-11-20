@@ -18,7 +18,16 @@ const MapaSeguimiento = lazy(() => import("../pagina/MapaSeguimiento"));
  * Sin pin no hay punto que dibujar: se busca la dirección escrita y se dice
  * claro que no hay ubicación marcada. Sin nada, queda pedirla por WhatsApp.
  */
-export default function ComoLlegar({ pin, direccion }: { pin: PinDeEntrega | null; direccion: string | null }) {
+export default function ComoLlegar({
+  pin,
+  direccion,
+  origen = null,
+}: {
+  pin: PinDeEntrega | null;
+  direccion: string | null;
+  /** Quién marcó el pin (`ubicacionOrigen`): se dice debajo del mapa. */
+  origen?: "PAGINA" | "CAJA" | null;
+}) {
   const boton =
     "flex min-h-12 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100";
 
@@ -47,6 +56,9 @@ export default function ComoLlegar({ pin, direccion }: { pin: PinDeEntrega | nul
   return (
     <section aria-label="Cómo llegar" className="space-y-2">
       <MapaDelDestino pin={pin} />
+      {origen && (
+        <p className="text-xs text-texto-3">{origen === "CAJA" ? "Ubicación marcada por la caja." : "Ubicación marcada por el cliente."}</p>
+      )}
       {pinImpreciso(pin) && (
         <p className="rounded-lg bg-warning-suave px-3 py-2 text-[13px] text-warning-text">
           El cliente marcó con poca precisión (unos {Math.round(pin.precisionM ?? 0)} m): confirmá por WhatsApp.
