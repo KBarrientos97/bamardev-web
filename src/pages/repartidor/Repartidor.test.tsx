@@ -22,6 +22,13 @@ vi.mock("../../store/AuthContext", () => ({
   }),
 }));
 
+// MapLibre no corre en jsdom: el mapa del detalle es un marcador con lo que recibe.
+vi.mock("../pagina/MapaSeguimiento", () => ({
+  default: ({ destino }: { destino: { latitud: number; longitud: number } | null }) => (
+    <div data-testid="mapa-entrega">{destino ? `${destino.latitud},${destino.longitud}` : "sin destino"}</div>
+  ),
+}));
+
 vi.mock("../../lib/api", () => ({
   api: {
     getMisEntregas: vi.fn(),

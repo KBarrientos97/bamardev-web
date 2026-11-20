@@ -40,6 +40,7 @@ vi.mock("../../lib/api", () => ({
     reintentarEntrega: vi.fn(),
     reasignarPedido: vi.fn(),
     cancelarPedido: vi.fn(),
+    ubicacionDeVenta: vi.fn(),
   },
 }));
 
@@ -177,5 +178,42 @@ describe("las tres salidas de la caja", () => {
     expect(within(d).getByLabelText("En espera de la caja")).toBeInTheDocument();
     expect(within(d).queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
     expect(within(d).queryByRole("button", { name: "Cancelar pedido" })).not.toBeInTheDocument();
+  });
+});
+
+describe("el pin de un delivery pendiente, desde la caja (20-nov)", () => {
+  const PENDIENTE = { ...EN_ESPERA, entregaFallidaEn: null, entregaFallidaMotivo: null, entregaFallidaNota: null } as unknown as Venta;
+
+  it("«Agregar ubicación» pega el enlace y guarda con el PATCH; la lista se recarga", async () => {
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([PENDIENTE]);
+    vi.mocked(api.getVenta).mockResolvedValue(PENDIENTE);
+    vi.mocked(api.ubicacionDeVenta).mockResolvedValue(PENDIENTE);
+    const d = await abrirDetalle();
+    expect(d).toHaveTextContent("Sin ubicación en el mapa");
+    fireEvent.click(within(d).getByRole("button", { name: "Agregar ubicación" }));
+    const hoja = screen.getByRole("dialog", { name: "Agregar ubicación" });
+    expect(within(hoja).getByRole("button", { name: "Guardar ubicación" })).toBeDisabled();
+    fireEvent.change(within(hoja).getByLabelText("Enlace de Google Maps"), { target: { value: "-17.7834, -63.1821" } });
+    await act(async () => {
+      fireEvent.click(within(hoja).getByRole("button", { name: "Guardar ubicación" }));
+    });
+    expect(api.ubicacionDeVenta).toHaveBeenCalledWith(900, { latitud: -17.7834, longitud: -63.1821 });
+    expect(api.getPedidosPendientes).toHaveBeenCalledTimes(2);
+  });
+
+  it("con pin ya marcado dice «Cambiar ubicación»", async () => {
+    const conPin = { ...PENDIENTE, latitud: -17.7, longitud: -63.1 } as unknown as Venta;
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([conPin]);
+    vi.mocked(api.getVenta).mockResolvedValue(conPin);
+    const d = await abrirDetalle();
+    expect(within(d).getByRole("button", { name: "Cambiar ubicación" })).toBeInTheDocument();
+  });
+
+  it("sin `delivery.asignar` no se ofrece", async () => {
+    sesion.permisos = ["ventas.vender", "ventas.historial", "caja.operar"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([PENDIENTE]);
+    vi.mocked(api.getVenta).mockResolvedValue(PENDIENTE);
+    const d = await abrirDetalle();
+    expect(within(d).queryByRole("button", { name: /ubicación/ })).not.toBeInTheDocument();
   });
 });

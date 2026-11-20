@@ -48,6 +48,8 @@ import { cambioDeProductos, motivoNoModificable, plataDelCambio, rubroModificaVe
 import { direccionParaMostrar } from "../repartidor/direccionEntrega";
 import { enEspera, textoMotivo } from "../../lib/entregaFallida";
 import EnEsperaDeLaCaja from "../reparto/EnEsperaDeLaCaja";
+import CambiarUbicacion from "../reparto/CambiarUbicacion";
+import { pinDeEntrega } from "../../lib/ubicacionEntrega";
 
 export default function PantallaHistorial({
   caja,
@@ -747,6 +749,16 @@ function DetalleVenta({
                 venta={enEsperaDe}
                 puedeDecidir={tienePermiso(usuario, "delivery.asignar")}
                 onCambio={() => onCambioPedido?.()}
+              />
+            )}
+
+            {/* El pin de un delivery propio pendiente (20-nov): la cajera lo
+                agrega cuando el cliente manda su ubicación por WhatsApp. */}
+            {pendiente && v.tipoPedido === "DELIVERY" && !pedidoDeEntrega.entregaExterna && tienePermiso(usuario, "delivery.asignar") && (
+              <CambiarUbicacion
+                ventaId={v.id}
+                actual={pinDeEntrega({ latitud: v.latitud ?? venta.latitud, longitud: v.longitud ?? venta.longitud, pedidoWeb: v.pedidoWeb ?? venta.pedidoWeb })}
+                onGuardado={() => onCambioPedido?.()}
               />
             )}
 

@@ -106,3 +106,45 @@ describe("BUG-pedidos-1: el rechazo del servidor al crear el pedido se ve", () =
     expect(container).not.toHaveTextContent(/Stock insuficiente/);
   });
 });
+
+describe("el pin del delivery, opcional (20-nov)", () => {
+  const llenar = () => {
+    fireEvent.change(screen.getByLabelText("Nombre del cliente"), { target: { value: "Lucía" } });
+    fireEvent.change(screen.getByLabelText("Dirección de entrega"), { target: { value: "Calle Jordán 123" } });
+    fireEvent.change(screen.getByLabelText("Repartidor"), { target: { value: "3" } });
+  };
+
+  it("pegar el enlace de Google Maps del cliente marca el punto y viaja con el pedido", () => {
+    const { onContinuar } = dibujar();
+    llenar();
+    fireEvent.change(screen.getByLabelText("Enlace de Google Maps"), {
+      target: { value: "https://www.google.com/maps/search/?api=1&query=-17.7834,-63.1821" },
+    });
+    expect(screen.getByText(/Ubicación marcada \(-17\.78340, -63\.18210\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Cobra el repartidor al entregar/ }));
+    expect(onContinuar).toHaveBeenCalledWith(expect.objectContaining({ latitud: -17.7834, longitud: -63.1821, prepagado: false }));
+  });
+
+  it("un enlace corto (sin el punto) lo dice y el pedido sale igual, sin pin", () => {
+    const { onContinuar } = dibujar();
+    llenar();
+    fireEvent.change(screen.getByLabelText("Enlace de Google Maps"), { target: { value: "https://maps.app.goo.gl/AbC123" } });
+    expect(screen.getByText(/De ese enlace no sale el punto/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Cobra el repartidor al entregar/ }));
+    const datos = onContinuar.mock.calls[0][0] as DatosEntrega;
+    expect(datos).not.toHaveProperty("latitud");
+    expect(datos).not.toHaveProperty("longitud");
+  });
+
+  it("«Quitar» saca el pin; un pedido para recoger no lo ofrece", () => {
+    const { onContinuar } = dibujar({ inicial: { ...CARGADO, latitud: -17.7, longitud: -63.1 } });
+    fireEvent.click(screen.getByRole("button", { name: "Quitar" }));
+    fireEvent.click(screen.getByRole("button", { name: /Cobrar ahora en caja/ }));
+    expect(onContinuar.mock.calls[0][0]).not.toHaveProperty("latitud");
+  });
+
+  it("para recoger no hay ubicación que marcar", () => {
+    dibujar({ tipo: "RECOGER" });
+    expect(screen.queryByLabelText("Enlace de Google Maps")).not.toBeInTheDocument();
+  });
+});

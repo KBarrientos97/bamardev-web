@@ -1195,6 +1195,18 @@ export const api = {
   /** La caja decide que el mismo repartidor lo vuelva a intentar (`delivery.asignar`). */
   reintentarEntrega: (id: number) =>
     request<Venta>(`/ventas/${id}/reintentar-entrega`, { method: "POST" }),
+  /**
+   * Agregar o cambiar el pin de un delivery pendiente (20-nov): la cajera lo
+   * marca después, cuando el cliente manda su ubicación por WhatsApp.
+   */
+  ubicacionDeVenta: (id: number, u: { latitud: number; longitud: number; precisionM?: number }) =>
+    request<Venta>(`/ventas/${id}/ubicacion`, { method: "PATCH", body: JSON.stringify(u) }),
+  /**
+   * Lo que llevó el repartidor por día (20-nov): «Mi día › Semana». Sin
+   * `repartidorId`, el backend le da a cada repartidor lo suyo.
+   */
+  historialReparto: (params: { desde: string; hasta: string; repartidorId?: number }) =>
+    request<unknown>(`/reparto/historial${qs(params)}`),
   /** La caja se lo pasa a otro repartidor; también saca el pedido de la espera. */
   reasignarPedido: (id: number, repartidorId: number) =>
     request<Venta>(`/ventas/${id}/reasignar`, { method: "POST", body: JSON.stringify({ repartidorId }) }),

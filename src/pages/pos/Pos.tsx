@@ -773,6 +773,9 @@ function PuntoDeVenta() {
             minutosEstimados: datosEntrega.minutosEstimados,
             notaPedido: datosEntrega.notaPedido,
             prepagado: datosEntrega.prepagado,
+            ...(datosEntrega.latitud != null && datosEntrega.longitud != null
+              ? { latitud: datosEntrega.latitud, longitud: datosEntrega.longitud }
+              : {}),
           }
         : {}),
     }),
@@ -1121,6 +1124,8 @@ function PuntoDeVenta() {
           minutosEstimados: datos.minutosEstimados,
           notaPedido: datos.notaPedido,
           prepagado: false,
+          // El pin, sólo si lo marcaron: un backend anterior ignora los campos.
+          ...(datos.latitud != null && datos.longitud != null ? { latitud: datos.latitud, longitud: datos.longitud } : {}),
           clienteRequestId: intento.actual(huellaDeCobro(detalles, tipoPedido)),
         });
         intento.registrado();

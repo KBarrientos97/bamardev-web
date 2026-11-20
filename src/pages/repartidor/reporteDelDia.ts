@@ -47,6 +47,8 @@ export interface ReporteDelDia {
  */
 export function comoPago(p: Venta): string {
   if (p.prepagado) return "Ya estaba pagado";
+  // «Cobrar y entregar» en la caja: el repartidor volvió con la plata y la cobró ella.
+  if (p.cobroLaCaja) return "La cobró la caja";
   const rinde = p.montoRendicion ?? 0;
   if (!esPositivo(rinde)) return "Sin cobro";
   if (!p.pagos) return p.formasPago?.length ? p.formasPago.join(" + ") : "Sin detalle";
