@@ -103,8 +103,6 @@ export interface PedidoPlataformaInput {
   descuento?: number;
   /** Hasta 200 letras; vacío no se manda. */
   observaciones?: string;
-  /** Guardar los `precioApp` de este pedido como el precio de cada producto en esa app. */
-  recordarPrecios?: boolean;
   detalles: DetallePedidoPlataformaInput[];
 }
 
@@ -117,23 +115,13 @@ export interface DetallePedidoPlataformaInput {
    */
   precio?: number;
   /**
-   * El precio de UNA unidad en la app de delivery, el que confirmó el cajero
-   * en el diálogo (sin los toppings, que se cotizan como siempre). Un backend
+   * El precio de UNA unidad en la app de delivery, el que escribió el cajero
+   * en el diálogo para este pedido (sin los toppings, que se cotizan como
+   * siempre). Va sólo si lo escribió: ausente, vale el del local. Un backend
    * viejo lo ignora y usa el del local.
    */
   precioApp?: number;
   agregados?: AgregadoInput[];
-}
-
-/**
- * El precio de un producto EN una app de delivery (`GET
- * /pedidos-plataforma/precios`). Se aprende al registrar con «Recordar»; sin
- * fila, el producto vale en la app lo mismo que en el local.
- */
-export interface PrecioDePlataforma {
-  productoId: number;
-  plataforma: Plataforma;
-  precio: number;
 }
 
 export interface PeriodoLiquidacion {

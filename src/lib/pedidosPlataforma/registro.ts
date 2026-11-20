@@ -64,8 +64,8 @@ export async function registrarPedidoOEncolar(
       marcarSinSenal();
     }
   }
-  // El cuerpo sube con todo lo nuevo (precioApp, descuento, observaciones,
-  // recordar): el servidor lo trata igual que si hubiera llegado en el momento.
+  // El cuerpo sube con todo lo nuevo (precioApp donde se escribió, descuento,
+  // observaciones): el servidor lo trata igual que si hubiera llegado en el momento.
   const paraLaCola = cuerpoEncoladoDePedido(cuerpo, precios);
   const total =
     totalMostrado ?? paraLaCola.detalles.reduce((s, d) => s + (d.precio ?? 0) * d.cantidad, 0);
