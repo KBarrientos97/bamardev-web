@@ -161,6 +161,17 @@ describe("el mensaje de otros rubros y variantes no habla de pollo (QA R1, N8)",
     expect(t).not.toMatch(/ya llegó/);
   });
 
+  it("cada variante firma con su emoji (20-nov); una desconocida, con la bolsa", () => {
+    const panaderia = mensajePedido(DE_PAGINA, "La Espiga", { tipoNegocio: "RESTAURANTE", variante: "PANADERIA" });
+    expect(panaderia).toContain("🥐 La Espiga 👋");
+    expect(panaderia).toContain("¡Gracias por elegir La Espiga! ❤️🥐");
+    const floreria = mensajePedido(DE_PAGINA, "Rosas", { tipoNegocio: "MINIMARKET", variante: "FLORERIA" });
+    expect(floreria).toContain("💐 Rosas 👋");
+    const otra = mensajePedido(DE_PAGINA, "X", { tipoNegocio: "RESTAURANTE", variante: "NO_EXISTE" });
+    expect(otra).toContain("🛍️ X 👋");
+    expect(otra).not.toMatch(/🐔|🍗/);
+  });
+
   it("pedido de la página antes de «Ya salí»: está por salir", () => {
     expect(mensajePedido(DE_PAGINA, "El Ganadero", POSTRES)).toContain("🛵 ¡Tu pedido ya está por salir hacia tu ubicación!");
   });
