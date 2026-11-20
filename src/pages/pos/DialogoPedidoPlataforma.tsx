@@ -187,7 +187,7 @@ export default function DialogoPedidoPlataforma({
     >
       <div className="space-y-3">
         <div>
-          <p className="mb-1.5 px-1 text-[13px] font-semibold text-texto-2">
+          <p className="mb-1.5 text-balance px-1 text-[13px] font-semibold text-texto-2">
             Precio en {nombre}: escribilo sólo si es distinto al del local.
           </p>
           <ul className="divide-y divide-borde-soft rounded-xl border border-borde-soft">
@@ -205,7 +205,7 @@ export default function DialogoPedidoPlataforma({
                     <span className="block text-xs text-texto-3">En el local: {fmtMoney(l.precioLocal)}</span>
                     {l.agregados && <span className="block break-words text-xs text-texto-3">{l.agregados}</span>}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex min-w-[8.25rem] shrink-0 items-center gap-1.5">
                     <span className="text-texto-3">Bs</span>
                     <Input
                       type="number"
