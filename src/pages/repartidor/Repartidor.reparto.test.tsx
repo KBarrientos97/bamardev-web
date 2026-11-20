@@ -312,6 +312,23 @@ describe("QA 18-nov, bug 2: «A rendir» y «A entregar al negocio» bajan cuand
     expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148/);
   });
 
+  it("con pedidos sin entregar, la rendición lo avisa igual que la app", async () => {
+    // 20-nov: la app ya lo decía y la web no; el número de arriba todavía no es el final.
+    vi.mocked(api.rendicionReparto).mockRejectedValue(new Error("Not Found"));
+    await montar([ENTREGADO, PEDIDO, OTRO]);
+    const r = await rendicion();
+    expect(within(r).getByText(/Tenés 2 pedidos por entregar/)).toHaveTextContent(
+      "Tenés 2 pedidos por entregar. Entregalos o avisá «No se pudo entregar».",
+    );
+  });
+
+  it("con todo entregado, la rendición no avisa nada", async () => {
+    vi.mocked(api.rendicionReparto).mockRejectedValue(new Error("Not Found"));
+    await montar([ENTREGADO]);
+    const r = await rendicion();
+    expect(within(r).queryByText(/por entregar\. Entregal/)).not.toBeInTheDocument();
+  });
+
   describe("con el refresco", () => {
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });

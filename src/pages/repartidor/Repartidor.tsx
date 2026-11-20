@@ -401,6 +401,7 @@ export default function Repartidor() {
             aRendir={aRendir}
             porQr={porQr}
             tarifas={tarifas}
+            pendientes={pendientes.length}
             cuadre={cuadre.datos}
             usuarioId={usuario?.id}
             onClose={() => setRendicionAbierta(false)}

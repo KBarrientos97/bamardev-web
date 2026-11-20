@@ -20,6 +20,7 @@ export default function RendicionDelTurno({
   aRendir,
   porQr,
   tarifas,
+  pendientes = 0,
   cuadre,
   usuarioId,
   onClose,
@@ -29,6 +30,8 @@ export default function RendicionDelTurno({
   aRendir: number;
   porQr: number;
   tarifas: number;
+  /** Los que todavía lleva sin entregar: su plata aún no está en la rendición. */
+  pendientes?: number;
   cuadre: RendicionReparto | null | undefined;
   usuarioId: number | null | undefined;
   onClose: () => void;
@@ -88,6 +91,16 @@ export default function RendicionDelTurno({
           Las tarifas de envío ({fmtPlata(tarifas)}) son tuyas: no entran en la rendición. Los pedidos que ya
           venían pagados tampoco.
         </p>
+
+        {/* Con pedidos sin entregar se avisa (20-nov, igual que la app): su
+            plata todavía no está acá y el número de arriba no es el final. */}
+        {pendientes > 0 && (
+          <p role="status" className="rounded-xl bg-warning-suave px-3.5 py-2.5 text-[13px] text-warning-text">
+            {pendientes === 1
+              ? "Tenés 1 pedido por entregar. Entregalo o avisá «No se pudo entregar»."
+              : `Tenés ${pendientes} pedidos por entregar. Entregalos o avisá «No se pudo entregar».`}
+          </p>
+        )}
 
         {entregadas.length === 0 ? (
           <Vacio
