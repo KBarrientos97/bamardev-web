@@ -307,6 +307,26 @@ export function textoEntrega(e: Pick<EntregaDeRendicion, "comprobante" | "ventaI
 }
 
 /**
+ * Dónde está la plata de un pedido con la caja, en palabras: «Recibida por
+ * Caja Uno · 20:30», «Falta entregarla a la caja», «La cobró la caja». Lo
+ * usan el repartidor (en cada renglón de su rendición) y la cajera (lo ya
+ * recibido), para que «quién la recibió y cuándo» se lea igual de los dos
+ * lados. null = ese pedido no tiene plata que pase por la caja (QR, prepagado,
+ * en camino o el control apagado): no se dice nada.
+ */
+export function estadoEnLaCaja(
+  e: Pick<EntregaDeRendicion, "estado" | "recibidaEn" | "recibidaPorNombre" | "cobroLaCaja">,
+): { texto: string; tono: "recibida" | "pendiente" | "caja" } | null {
+  if (e.cobroLaCaja) return { texto: "La cobró la caja", tono: "caja" };
+  if (e.estado === "RECIBIDA") {
+    const quien = e.recibidaPorNombre ?? "la caja";
+    return { texto: `Recibida por ${quien}${e.recibidaEn ? ` · ${horaSinCortes(e.recibidaEn)}` : ""}`, tono: "recibida" };
+  }
+  if (e.estado === "PENDIENTE") return { texto: "Falta entregarla a la caja", tono: "pendiente" };
+  return null;
+}
+
+/**
  * Lo que tiene que entregar el repartidor. Si el backend lo manda
  * (`aEntregar`), es ESE número, con el control prendido o apagado: sólo él
  * sabe qué cobró la caja y qué ya se recibió. Un backend anterior no lo manda:

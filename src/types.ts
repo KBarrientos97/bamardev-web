@@ -1523,6 +1523,14 @@ export interface Venta {
   totalACobrar?: number;
   /** Lo que el repartidor entrega al negocio (sin su tarifa de envío). */
   montoRendicion?: number;
+  /**
+   * «No se pudo entregar» (20-nov): cuándo avisó el repartidor, por qué y su
+   * nota. Con `entregaFallidaEn` el pedido está «en espera» y decide la caja
+   * (ver `lib/entregaFallida`). null, o ausentes en un backend anterior: nada.
+   */
+  entregaFallidaEn?: string | null;
+  entregaFallidaMotivo?: string | null;
+  entregaFallidaNota?: string | null;
   credito?: Credito | null;
   /** Mesa del salón de la que salió la venta; null en la de mostrador. */
   mesa?: string | null;

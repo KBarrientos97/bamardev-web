@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Boton, Cargando, ErrorMsg, Modal } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
 import { esPositivo } from "../../lib/dinero";
-import { fmtMoney } from "../../lib/format";
+import { fmtPlata } from "../../lib/format";
 import {
   aEntregar,
   cobradosPorLaCaja,
   entregasPorRecibir,
+  estadoEnLaCaja,
   idsTildados,
   marcarTodas,
   pendientesDeOtraCaja,
@@ -81,11 +82,16 @@ export default function RendicionRepartidores({
           <ErrorMsg onReintentar={rendicion.recargar}>{rendicion.error || "No se pudo cargar"}</ErrorMsg>
         )
       ) : d.repartidores.length === 0 ? (
-        <p className="py-6 text-center text-[13px] text-texto-3">Hoy ningún repartidor llevó pedidos.</p>
+        <Vacio
+          icono="truck"
+          titulo="Hoy ningún repartidor llevó pedidos."
+          texto="Cuando un repartidor entregue, acá vas a ver la plata que trae y de qué pedidos sale."
+        />
       ) : (
         <div className="space-y-3">
           {/* Se ve lo que trajo el cierre, pero sin poder ponerlo al día: que se sepa. */}
           {rendicion.error && <ErrorMsg onReintentar={rendicion.recargar}>{rendicion.error}</ErrorMsg>}
+          <TotalDeRepartidores d={d} />
           <ul className="space-y-3">
             {d.repartidores.map((rep) => (
               <TarjetaRepartidor key={rep.repartidorId} rep={rep} activa={d.activa} onRecibir={recibir} />
@@ -103,6 +109,10 @@ export default function RendicionRepartidores({
   );
 }
 
+/** «Marcar todas» / «ninguna»: chicos, pero con el blanco táctil de 44 px y la respuesta al toque de `Boton`. */
+const CHIP =
+  "min-h-11 rounded-xl border border-borde bg-white px-3.5 text-[13px] font-semibold text-primary-700 hover:bg-primary-50 transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100";
+
 /**
  * Un pedido que se ve pero no se tilda (lo recibe otra caja, o lo cobró la
  * caja): el mismo renglón que la casilla, punteado y con la aclaración debajo.
@@ -114,9 +124,43 @@ function FilaSinCasilla({ e, nota, monto }: { e: EntregaDeRendicion; nota: strin
         {textoEntrega(e)}
         <span className="block text-[12px] text-texto-4">{nota}</span>
       </span>{" "}
-      <span className="shrink-0 text-[13px] font-bold text-texto-3">{fmtMoney(monto)}</span>
+      <span className="shrink-0 text-[13px] font-bold text-texto-3">{fmtPlata(monto)}</span>
     </li>
   );
+}
+
+/**
+ * El número que la cajera viene a buscar, grande y arriba (20-nov): cuánta
+ * plata le falta recibir de todos los repartidores y cuánto ya recibió. Es la
+ * suma de lo que dice cada tarjeta (`aEntregar`), no otra cuenta.
+ */
+function TotalDeRepartidores({ d }: { d: RendicionReparto }) {
+  const total = d.repartidores.reduce((s, rep) => s + Math.round(aEntregar(rep, d.activa) * 100), 0) / 100;
+  return (
+    <div className="rounded-2xl bg-primary-boton p-4 text-center text-white">
+      <p className="text-xs font-semibold uppercase tracking-wide text-white/90">
+        {d.activa ? "Falta recibir de los repartidores" : "Tienen que entregar los repartidores"}
+      </p>
+      <p className="mt-1 text-3xl font-extrabold tracking-tight">{fmtPlata(total)}</p>
+      {d.activa && esPositivo(d.recibido) && <p className="mt-0.5 text-xs text-white/90">Ya recibiste {fmtPlata(d.recibido)} hoy</p>}
+    </div>
+  );
+}
+
+/**
+ * Lo que dice el renglón de un pedido que no se tilda y no es de otra caja ni
+ * de la caja: cómo se cobró (efectivo, QR o las dos) y, si la plata ya pasó
+ * por la caja, quién la recibió y cuándo. Así cada peso de la tarjeta tiene su
+ * pedido a la vista.
+ */
+function notaDeEntrega(e: EntregaDeRendicion): string {
+  const partes: string[] = [];
+  if (esPositivo(e.efectivo) && esPositivo(e.qr)) partes.push(`Efectivo ${fmtPlata(e.efectivo)} + QR ${fmtPlata(e.qr)}`);
+  else if (esPositivo(e.qr)) partes.push("Por QR: ya está en la cuenta");
+  else if (esPositivo(e.efectivo)) partes.push("En efectivo");
+  const estado = estadoEnLaCaja(e);
+  if (estado) partes.push(estado.texto);
+  return partes.join(" · ") || "Sin cobro";
 }
 
 /** Un renglón de plata: la etiqueta (con su aclaración chica debajo) y el monto. */
@@ -127,7 +171,7 @@ function FilaPlata({ etiqueta, nota, valor }: { etiqueta: string; nota?: string;
         {etiqueta}
         {nota && <span className="block text-[12px] text-texto-4">{nota}</span>}
       </dt>
-      <dd className="shrink-0 font-semibold text-texto">{fmtMoney(valor)}</dd>
+      <dd className="shrink-0 font-semibold text-texto">{fmtPlata(valor)}</dd>
     </div>
   );
 }
@@ -152,6 +196,11 @@ function TarjetaRepartidor({
   const deOtraCaja = activa ? pendientesDeOtraCaja(rep) : [];
   // Lo que cobró la cajera: no es plata del repartidor (prendido o apagado).
   const deLaCaja = cobradosPorLaCaja(rep);
+  // El resto de lo entregado hoy (lo ya recibido, lo cobrado por QR, o todo
+  // con el control apagado): se lista sin casilla para que se vea de qué
+  // pedido sale cada monto. Lo que sigue en camino todavía no tiene plata.
+  const yaListadas = new Set([...porRecibir, ...deOtraCaja, ...deLaCaja].map((e) => e.ventaId));
+  const informativas = rep.entregas.filter((e) => e.entregadoEn && !yaListadas.has(e.ventaId));
   const tildadas = idsTildados(rep, destildadas);
   const suma = sumaTildada(rep, destildadas);
   const falta = aEntregar(rep, activa);
@@ -208,34 +257,27 @@ function TarjetaRepartidor({
         }`}
       >
         <span>{activa ? "Le falta entregar" : "Tiene que entregar"}</span>
-        <span className="shrink-0 text-lg font-extrabold">{fmtMoney(falta)}</span>
+        <span className="shrink-0 text-lg font-extrabold">{fmtPlata(falta)}</span>
       </div>
 
-      {(porRecibir.length > 0 || deOtraCaja.length > 0 || deLaCaja.length > 0) && (
+      {(porRecibir.length > 0 || deOtraCaja.length > 0 || deLaCaja.length > 0 || informativas.length > 0) && (
         <div className="space-y-2">
+          {/* Dos blancos de 44 px y no dos palabras sueltas: en el celular
+              «ninguna» era difícil de acertar con el dedo. */}
           {porRecibir.length > 1 && (
-            <p className="text-[13px] text-texto-3">
-              <button
-                type="button"
-                onClick={() => setDestildadas(marcarTodas(rep, destildadas, true))}
-                className="font-semibold text-primary-700 hover:text-primary"
-              >
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setDestildadas(marcarTodas(rep, destildadas, true))} className={CHIP}>
                 Marcar todas
               </button>
-              {" / "}
-              <button
-                type="button"
-                onClick={() => setDestildadas(marcarTodas(rep, destildadas, false))}
-                className="font-semibold text-primary-700 hover:text-primary"
-              >
+              <button type="button" onClick={() => setDestildadas(marcarTodas(rep, destildadas, false))} className={CHIP}>
                 ninguna
               </button>
-            </p>
+            </div>
           )}
           <ul className="space-y-1.5">
             {porRecibir.map((e) => (
               <li key={e.id}>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-borde px-3 py-2.5 hover:bg-muted">
+                <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-borde px-3 py-2.5 hover:bg-muted">
                   <input
                     type="checkbox"
                     checked={!destildadas.has(e.id)}
@@ -243,7 +285,7 @@ function TarjetaRepartidor({
                     className="mt-0.5 h-5 w-5 shrink-0 rounded border-borde accent-primary"
                   />
                   <span className="min-w-0 flex-1 break-words text-[13px] text-texto-2">{textoEntrega(e)}</span>{" "}
-                  <span className="shrink-0 text-[13px] font-bold text-texto">{fmtMoney(e.efectivo)}</span>
+                  <span className="shrink-0 text-[13px] font-bold text-texto">{fmtPlata(e.efectivo)}</span>
                 </label>
               </li>
             ))}
@@ -255,11 +297,20 @@ function TarjetaRepartidor({
             {deLaCaja.map((e) => (
               <FilaSinCasilla key={`c${e.ventaId}`} e={e} nota="Cobró la caja" monto={e.total} />
             ))}
+            {/* Lo ya recibido (quién y cuándo), lo cobrado por QR y, con el control apagado, todo lo cobrado. */}
+            {informativas.map((e) => (
+              <FilaSinCasilla
+                key={`i${e.ventaId}`}
+                e={e}
+                nota={notaDeEntrega(e)}
+                monto={esPositivo(e.efectivo) ? e.efectivo : e.qr}
+              />
+            ))}
           </ul>
           {/* Sólo lo que esta caja puede recibir: si todo es de otra caja, no hay botón. */}
           {porRecibir.length > 0 && (
-            <Boton className="w-full" onClick={() => setConfirmando(true)} disabled={recibiendo || tildadas.length === 0}>
-              {tildadas.length === 0 ? "Elegí qué recibiste" : `Recibí ${fmtMoney(suma)}`}
+            <Boton className="min-h-11 w-full" onClick={() => setConfirmando(true)} disabled={recibiendo || tildadas.length === 0}>
+              {tildadas.length === 0 ? "Elegí qué recibiste" : `Recibí ${fmtPlata(suma)}`}
             </Boton>
           )}
         </div>
@@ -270,15 +321,15 @@ function TarjetaRepartidor({
       {confirmando && (
         <Modal
           abierto
-          titulo={`¿Recibiste ${fmtMoney(suma)} de ${rep.nombre}?`}
+          titulo={`¿Recibiste ${fmtPlata(suma)} de ${rep.nombre}?`}
           onClose={() => !recibiendo && setConfirmando(false)}
           ancho="max-w-sm"
           acciones={
             <>
-              <Boton variante="ghost" onClick={() => setConfirmando(false)} disabled={recibiendo}>
+              <Boton variante="ghost" className="min-h-11 flex-1 sm:flex-none" onClick={() => setConfirmando(false)} disabled={recibiendo}>
                 Volver
               </Boton>
-              <Boton onClick={confirmar} disabled={recibiendo}>
+              <Boton className="min-h-11 flex-1 sm:flex-none" onClick={confirmar} disabled={recibiendo}>
                 {recibiendo ? "Un momento…" : "Recibí"}
               </Boton>
             </>
