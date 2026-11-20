@@ -1,5 +1,5 @@
 import { esPositivo } from "../../lib/dinero";
-import { fmtMoney } from "../../lib/format";
+import { fmtPlata } from "../../lib/format";
 import { aEntregarDelRepartidor, delRepartidor, type RendicionReparto } from "../../lib/repartoRendicion";
 import LoQueLlevo from "../reparto/LoQueLlevo";
 
@@ -31,11 +31,11 @@ export default function CuadreConLaCaja({
         <dl className="grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-muted px-3 py-2.5">
             <dt className="text-xs text-texto-3">Ya entregaste a la caja</dt>
-            <dd className="text-[13px] font-bold text-texto">{fmtMoney(mio.recibido)}</dd>
+            <dd className="text-[13px] font-bold text-texto">{fmtPlata(mio.recibido)}</dd>
           </div>
           <div className={`rounded-xl px-3 py-2.5 ${esPositivo(falta) ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"}`}>
             <dt className="text-xs font-semibold">Te falta entregar</dt>
-            <dd className="text-base font-extrabold">{fmtMoney(falta)}</dd>
+            <dd className="text-base font-extrabold">{fmtPlata(falta)}</dd>
           </div>
         </dl>
       )}

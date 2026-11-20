@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fijarMoneda, fmtCantidad, fmtFecha, fmtMoney, fmtNum, isoDia, iniciales } from "./format";
+import { fijarMoneda, fmtCantidad, fmtFecha, fmtMoney, fmtNum, fmtPlata, isoDia, iniciales } from "./format";
 
 describe("fmtFecha", () => {
   it("no corre el día con una fecha suelta yyyy-MM-dd", () => {
@@ -118,5 +118,19 @@ describe("iniciales", () => {
     expect(iniciales("Administrador")).toBe("A");
     expect(iniciales("")).toBe("?");
     expect(iniciales(null)).toBe("?");
+  });
+});
+
+describe("fmtPlata", () => {
+  it("sin los ,00 de más, con miles y con los centavos cuando los hay", () => {
+    expect(fmtPlata(130)).toBe("Bs 130");
+    expect(fmtPlata(1500)).toBe("Bs 1.500");
+    expect(fmtPlata(60.1)).toBe("Bs 60,10");
+    expect(fmtPlata(0)).toBe("Bs 0");
+    expect(fmtPlata(null)).toBe("Bs 0");
+  });
+
+  it("redondea a centavos antes de decidir: un 39.999999 de una suma es Bs 40", () => {
+    expect(fmtPlata(39.999999)).toBe("Bs 40");
   });
 });

@@ -1,6 +1,7 @@
 import { agruparHijas } from "../../lib/agregados/hijas";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "../../components/Icon";
+import { Icon, type NombreIcono } from "../../components/Icon";
+import TirarParaActualizar from "../../components/TirarParaActualizar";
 import InputMonto from "../../components/InputMonto";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Chips } from "../../components/filtros";
@@ -9,15 +10,13 @@ import {
   Boton,
   Campo,
   Cargando,
-  Confirmar,
   ErrorMsg,
-  Kpi,
   Modal,
   Vacio,
 } from "../../components/ui";
 import { api, type PagoEntrega } from "../../lib/api";
 import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
-import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtHora, fmtMoney, fmtNum, fmtPlata } from "../../lib/format";
 import { atajosDeEfectivo } from "../../lib/billetes";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { tieneFeature } from "../../lib/permisos";
@@ -29,11 +28,16 @@ import { usePosicionRepartidor } from "../../lib/pedidosWeb/usePosicionRepartido
 import { useAuth } from "../../store/AuthContext";
 import { notaSinPago, recibidoSugerido } from "../../lib/pedidosWeb/cobro";
 import AccionesPedidoWeb from "./AccionesPedidoWeb";
+import NoSePudoEntregar from "./NoSePudoEntregar";
+import { enEspera, textoMotivo } from "../../lib/entregaFallida";
 import type { FormaPago, Venta } from "../../types";
-import { cobradoPorQr, rendicionDelTurno } from "./rendicion";
+import { rendicionDelTurno } from "./rendicion";
+import { reporteDelDia } from "./reporteDelDia";
+import MiDia from "./MiDia";
+import RendicionDelTurno from "./RendicionDelTurno";
+import { EsqueletoFilas } from "../salon/Esqueletos";
 import { activarSonido, useSonidoListo } from "../../lib/pedidosWeb/contador";
 import { REFRESCO_ENTREGAS_MS, useAvisoPedidoNuevo } from "./avisoPedidoNuevo";
-import CuadreConLaCaja from "./CuadreConLaCaja";
 import { aEntregarDelRepartidor } from "../../lib/repartoRendicion";
 import { pedirRendicionSiHay } from "../reparto/pedirRendicion";
 import { direccionParaMostrar, direccionSinReferencia } from "./direccionEntrega";
@@ -44,6 +48,23 @@ const VISTAS = [
   ["pendientes", "Por entregar"],
   ["entregadas", "Entregadas"],
 ] as const satisfies readonly (readonly [Vista, string])[];
+
+/**
+ * La respuesta al toque de los botones propios de esta pantalla, la misma que
+ * `Boton`: se hunde un poco al apretar, con una transición corta que mueve
+ * sólo `transform` y colores (nunca `transition-all`). El sombreado gris del
+ * toque, la demora del doble toque y la selección de texto ya los apaga
+ * `index.css` para toda la app.
+ */
+/**
+ * Los botones del pie de una hoja: en el celular se reparten el ancho (dos
+ * blancos grandes al alcance del pulgar, como el `PieHoja` del salón); en la
+ * compu vuelven a su tamaño, a la derecha del modal.
+ */
+const PIE = "min-h-11 flex-1 sm:flex-none";
+
+const TOQUE =
+  "transition-[transform,background-color,border-color,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100";
 
 /**
  * App del repartidor: ve los pedidos que le asignaron, los entrega, cobra
@@ -110,6 +131,7 @@ export default function Repartidor() {
   const [vista, setVista] = useState<Vista>("pendientes");
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [rendicionAbierta, setRendicionAbierta] = useState(false);
+  const [miDiaAbierto, setMiDiaAbierto] = useState(false);
 
   // Lo que se le entrega al negocio es SÓLO el efectivo (`enEfectivo`): lo
   // cobrado por QR ya está en su cuenta. La cuenta vive en `rendicion.ts`.
@@ -120,6 +142,7 @@ export default function Repartidor() {
   // El efectivo que le falta entregar: el del cuadre con la caja si cargó
   // (baja cuando la caja le recibe la plata); si no, lo de siempre.
   const aRendir = aEntregarDelRepartidor(cuadre.datos, usuario?.id) ?? enEfectivo;
+  const reporte = useMemo(() => reporteDelDia(entregas.datos ?? []), [entregas.datos]);
 
   const mostradas = vista === "pendientes" ? pendientes : entregadas;
 
@@ -136,285 +159,286 @@ export default function Repartidor() {
   }
   const posicion = usePosicionRepartidor(enCaminoWeb.current);
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-4 p-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-texto">Mis entregas</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">
-            {usuario?.nombre ?? usuario?.username}
-          </p>
-        </div>
-        <Boton
-          variante="ghost"
-          icono="dollar"
-          onClick={() => {
-            setRendicionAbierta(true);
-            // Al día al abrirla (y la primera vez que no cargó, se reintenta).
-            cuadre.recargar();
-          }}
-        >
-          Rendición
-        </Boton>
-      </header>
+  // El primer «Cargando»: después, el refresco (cada 20 s o al tirar para
+  // abajo) conserva la lista. Antes cada refresco la cambiaba por la ruedita
+  // y la pantalla parpadeaba con el pulgar encima.
+  const primeraCarga = entregas.cargando && !entregas.datos;
 
-      {aviso.nuevos > 0 && (
-        <div
-          role="alert"
-          className="flex items-center gap-3 rounded-xl border border-warning-text/20 bg-warning-bg px-3.5 py-2.5 text-warning-text"
-        >
-          <Icon name="bell" size={18} />
-          <p className="min-w-0 flex-1 text-[13px] font-bold">
-            {aviso.nuevos === 1
-              ? "Tenés un pedido nuevo para entregar"
-              : `Tenés ${aviso.nuevos} pedidos nuevos para entregar`}
-          </p>
+  /**
+   * Tirar para actualizar (20-nov, como el salón de los meseros): vuelve a
+   * pedir exactamente lo del refresco automático, la lista y el cuadre si
+   * alguna vez cargó. Si ya había un pedido en vuelo, `useApi` se queda con
+   * la respuesta del último: no se pisan.
+   */
+  const actualizar = () => {
+    entregas.recargar();
+    refrescarCuadre();
+  };
+
+  const abrirRendicion = () => {
+    setRendicionAbierta(true);
+    // Al día al abrirla (y la primera vez que no cargó, se reintenta).
+    cuadre.recargar();
+  };
+
+  return (
+    <TirarParaActualizar onActualizar={actualizar} cargando={entregas.cargando} className="h-full">
+      <div className="mx-auto max-w-3xl space-y-4 p-4 pb-8 sm:p-5">
+        <header className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-texto">Mis entregas</h1>
+            <p className="mt-0.5 truncate text-[13px] text-texto-3">{usuario?.nombre ?? usuario?.username}</p>
+          </div>
+          <Boton variante="ghost" icono="dollar" className="min-h-11 shrink-0" onClick={abrirRendicion}>
+            Rendición
+          </Boton>
+        </header>
+
+        {aviso.nuevos > 0 && (
+          <div
+            role="alert"
+            className="flex items-center gap-3 rounded-xl border border-warning-text/20 bg-warning-bg px-3.5 py-2 text-warning-text"
+          >
+            <Icon name="bell" size={18} />
+            <p className="min-w-0 flex-1 text-[13px] font-bold">
+              {aviso.nuevos === 1
+                ? "Tenés un pedido nuevo para entregar"
+                : `Tenés ${aviso.nuevos} pedidos nuevos para entregar`}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setVista("pendientes");
+                aviso.visto();
+              }}
+              className={`min-h-11 shrink-0 rounded-lg border border-warning-text/30 px-4 text-xs font-semibold hover:bg-warning-text/10 ${TOQUE}`}
+            >
+              Ver
+            </button>
+          </div>
+        )}
+        {/* El navegador sólo deja sonar después de un toque: cualquiera lo
+            habilita, y mientras tanto se ofrece a propósito. */}
+        {!sonidoListo && (
           <button
             type="button"
-            onClick={() => {
-              setVista("pendientes");
-              aviso.visto();
-            }}
-            className="shrink-0 rounded-lg border border-warning-text/30 px-3 py-1.5 text-xs font-semibold hover:bg-warning-text/10"
+            onClick={activarSonido}
+            className={`flex min-h-11 w-full items-center gap-2 rounded-xl border border-borde bg-white px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted ${TOQUE}`}
           >
-            Ver
+            <Icon name="volumen" size={16} />
+            <span className="min-w-0 flex-1">Activar el sonido de los pedidos nuevos</span>
           </button>
-        </div>
-      )}
-      {/* El navegador sólo deja sonar después de un toque: cualquiera lo
-          habilita, y mientras tanto se ofrece a propósito. */}
-      {!sonidoListo && (
-        <button
-          type="button"
-          onClick={activarSonido}
-          className="flex w-full items-center gap-2 rounded-xl border border-borde bg-white px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
-        >
-          <Icon name="volumen" size={16} />
-          <span className="min-w-0 flex-1">Activar el sonido de los pedidos nuevos</span>
-        </button>
-      )}
+        )}
 
-      {posicion.compartiendo && (
-        <p role="status" className="flex items-center gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-semibold text-primary-700">
-          <Icon name="pin" size={16} /> Compartiendo tu ubicación con el cliente
-        </p>
-      )}
-      <ErrorMsg>{posicion.falla}</ErrorMsg>
+        {posicion.compartiendo && (
+          <p role="status" className="flex items-center gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-semibold text-primary-700">
+            <Icon name="pin" size={16} /> Compartiendo tu ubicación con el cliente
+          </p>
+        )}
+        <ErrorMsg>{posicion.falla}</ErrorMsg>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Kpi etiqueta="Por entregar" valor={String(pendientes.length)} icono="truck" tono="amarillo" />
-        <Kpi etiqueta="Entregadas" valor={String(entregadas.length)} icono="check" />
-        {/* El efectivo, como "A entregar al negocio" de la rendición: con el QR
-            adentro le pedía plata que ya estaba en el banco (BUG-pedidos-3). */}
-        <Kpi
-          etiqueta="A rendir"
-          valor={fmtMoney(aRendir)}
-          pie="en efectivo"
-          icono="dollar"
-          tono="marca"
-        />
-      </div>
-
-      <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
-
-      <ErrorMsg>{entregas.error}</ErrorMsg>
-
-      {entregas.cargando ? (
-        <Cargando />
-      ) : mostradas.length === 0 ? (
-        <div className="card">
-          <Vacio
+        {/* Dos tarjetas y no tres (20-nov, pedido del dueño): «Entregadas»
+            era un número suelto que ocupaba su propia tarjeta, y en el
+            celular «A rendir» quedaba sola en un segundo renglón (UX-DELIVERY
+            P10). Ahora va debajo de «Por entregar», que es lo que se mira, y
+            las dos entran en un renglón: la lista sube. Tocar cada una abre
+            su detalle: los pedidos, «Mi día»; la plata, la rendición. */}
+        <div className="grid grid-cols-2 gap-3">
+          <TarjetaResumen
+            etiqueta="Por entregar"
+            valor={primeraCarga ? "—" : String(pendientes.length)}
+            pie={primeraCarga ? "" : entregadas.length === 1 ? "1 entregada hoy" : `${entregadas.length} entregadas hoy`}
             icono="truck"
-            titulo={vista === "pendientes" ? "Sin pedidos pendientes" : "Sin entregas todavía"}
-            texto={
-              vista === "pendientes"
-                ? "Cuando te asignen un pedido lo vas a ver acá."
-                : "Las entregas del turno aparecerán acá."
-            }
+            tonoIcono="bg-warning-bg text-warning-text"
+            onClick={() => setMiDiaAbierto(true)}
+            ayuda="Ver mi día"
+          />
+          {/* El efectivo, como "A entregar al negocio" de la rendición: con el QR
+              adentro le pedía plata que ya estaba en el banco (BUG-pedidos-3). */}
+          <TarjetaResumen
+            etiqueta="A rendir"
+            valor={primeraCarga ? "—" : fmtPlata(aRendir)}
+            pie="en efectivo"
+            icono="dollar"
+            tonoIcono="bg-primary-100 text-primary-700"
+            onClick={abrirRendicion}
+            ayuda="Ver la rendición"
           />
         </div>
-      ) : (
-        <ul className="space-y-2.5">
-          {mostradas.map((p) => (
-            <li key={p.id}>
-              <button
-                onClick={() => {
-                  setDetalle(p);
-                  aviso.visto();
-                }}
-                className="card flex w-full flex-col gap-2 p-4 text-left transition-shadow hover:shadow-md"
-              >
-                {/* Arriba el cliente y lo que se cobra; la insignia va en su propio renglón:
-                    en 360 px «COBRA AL ENTREGAR» (sin partirse) se metía debajo del monto. */}
-                <div className="flex w-full items-center gap-3">
-                  <span
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                      p.estadoEntrega === "ENTREGADO"
-                        ? "bg-primary-50 text-primary-700"
-                        : "bg-warning-bg text-warning-text"
-                    }`}
-                  >
-                    <Icon name={p.estadoEntrega === "ENTREGADO" ? "check" : "truck"} size={20} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-texto">
-                      {p.clienteNombre ?? "Sin nombre"}
-                    </p>
-                    <p className="truncate text-xs text-texto-3">{direccionParaMostrar(p)}</p>
-                  </div>
-                  {/* `totalACobrar` YA trae el envío (y en un prepagado es sólo
-                      el envío): debajo decía "+Bs 8,00 envío" y un pedido de Bs 58
-                      se leía como 58 + 8, y uno pagado en caja como 8 + 8
-                      (BUG-pedidos-10). Ahora dice qué es el número. */}
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs text-texto-3">
-                      {p.estadoEntrega === "ENTREGADO" ? "Cobrado" : "A cobrar"}
-                    </p>
-                    <p className="text-sm font-bold text-texto">
-                      {fmtMoney(p.totalACobrar ?? 0)}
-                    </p>
-                    {esPositivo(p.tarifaEnvio ?? 0) && (
-                      <p className="text-xs text-texto-3">
-                        {p.prepagado ? "es tu envío" : `incluye ${fmtMoney(p.tarifaEnvio)} de envío`}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 pl-14">
-                  {/* Entregado ya no debe nada: seguía en ámbar "Cobra al
-                      entregar" al lado de "Cobrado Bs 35,00" (QA 29-oct). */}
-                  <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"} className="whitespace-nowrap">
-                    {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
-                  </Badge>
-                  {/* Se distingue de un delivery cargado en la caja: trae el pin y «Ya salí» (QA R1, N14). */}
-                  {p.pedidoWeb && (
-                    <Badge tono="azul" className="whitespace-nowrap">
-                      Pedido de la página
-                    </Badge>
-                  )}
-                  <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
 
-      {detalle && (
-        <DetalleEntrega
-          pedido={detalle}
-          formasPago={formasPago.datos ?? []}
-          onClose={() => setDetalle(null)}
-          onCambio={() => {
-            setDetalle(null);
-            entregas.recargar();
-            // Entregó (o canceló): cambia lo que tiene que entregar.
-            refrescarCuadre();
-          }}
-          onSalio={entregas.recargar}
-          sinUbicacion={!!posicion.falla}
-        />
-      )}
+        <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
 
-      {rendicionAbierta && (
-        <Modal
-          abierto
-          titulo="Rendición del turno"
-          subtitulo={`${entregadas.length} ${entregadas.length === 1 ? "entrega" : "entregas"}`}
-          onClose={() => setRendicionAbierta(false)}
-          acciones={
-            <Boton onClick={() => setRendicionAbierta(false)}>Entendido</Boton>
-          }
-        >
-          <div className="space-y-4">
-            {/* Sólo el efectivo: lo cobrado por QR ya entró a la cuenta del
-                negocio y el repartidor no lo tiene en la mano. El número
-                grande sumaba el QR (BUG-pedidos-3), aunque el comentario de
-                abajo ya decía que se entrega sólo el efectivo. */}
-            <div className="rounded-2xl bg-marca p-5 text-center text-white">
-              <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
-                A entregar al negocio
-              </p>
-              {/* Con el cuadre de la caja, lo que todavía no le entregó: el
-                  mismo número que «Te falta entregar» (QA 18-nov: seguía en
-                  Bs 148 con la plata ya recibida). */}
-              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(aRendir)}</p>
-              <p className="mt-0.5 text-xs opacity-90">en efectivo</p>
-            </div>
+        <ErrorMsg onReintentar={actualizar}>{entregas.error}</ErrorMsg>
 
-            {/* 18-nov: cuánto ya recibió la caja, cuánto falta y qué llevó. */}
-            <CuadreConLaCaja rendicion={cuadre.datos} usuarioId={usuario?.id} />
-
-            {/* Con QR, a dónde fue cada parte: sin esto lo cobrado no cierra
-                con lo que se entrega y parece que falta plata. */}
-            {esPositivo(porQr) && (
-              <>
-                <dl className="grid grid-cols-2 gap-2">
-                  <div className="rounded-xl bg-muted px-3 py-2.5">
-                    <dt className="text-xs text-texto-3">Efectivo en mano</dt>
-                    <dd className="text-[13px] font-bold text-texto">{fmtMoney(aRendir)}</dd>
-                  </div>
-                  <div className="rounded-xl bg-muted px-3 py-2.5">
-                    <dt className="text-xs text-texto-3">Ya cobrado por QR</dt>
-                    <dd className="text-[13px] font-bold text-texto">{fmtMoney(porQr)}</dd>
-                  </div>
-                </dl>
-                <p className="text-[13px] text-texto-3">
-                  Lo cobrado por QR ({fmtMoney(porQr)}) ya está en la cuenta del negocio: no lo
-                  entregás.
-                </p>
-              </>
-            )}
-
-            <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
-              Las tarifas de envío ({fmtMoney(tarifas)}) son tuyas: no entran en la
-              rendición. Los pedidos que ya venían pagados tampoco.
-            </p>
-
-            {entregadas.length === 0 ? (
-              <p className="text-[13px] text-texto-3">Todavía no entregaste ningún pedido.</p>
-            ) : (
-              <ul className="divide-y divide-borde-soft">
-                {entregadas.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-texto">
-                        {p.clienteNombre}
-                      </p>
-                      <p className="text-xs text-texto-3">
-                        {fmtHora(p.entregadoEn ?? p.fecha)}
-                        {p.prepagado ? " · ya estaba pagado" : comoSeCobro(p)}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-[13px] font-bold text-texto">
-                      {fmtMoney(p.montoRendicion ?? 0)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+        {primeraCarga ? (
+          <EsqueletoFilas filas={3} etiqueta="Cargando tus entregas" />
+        ) : mostradas.length === 0 ? (
+          <div className="card">
+            <Vacio
+              icono="truck"
+              titulo={vista === "pendientes" ? "Sin pedidos pendientes" : "Sin entregas todavía"}
+              texto={
+                vista === "pendientes"
+                  ? "Cuando te asignen un pedido lo vas a ver acá. Tirá para abajo para actualizar."
+                  : "Las entregas del turno aparecerán acá."
+              }
+            />
           </div>
-        </Modal>
-      )}
-    </div>
+        ) : (
+          <ul className="space-y-2.5">
+            {mostradas.map((p) => (
+              <li key={p.id}>
+                <button
+                  onClick={() => {
+                    setDetalle(p);
+                    aviso.visto();
+                  }}
+                  // 0.98 y no 0.97: la tarjeta ocupa todo el ancho y el mismo
+                  // porcentaje se ve como un salto.
+                  className="card flex w-full flex-col gap-2 p-4 text-left transition-[transform,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:shadow-md active:scale-[0.98] motion-reduce:active:scale-100"
+                >
+                  {/* Arriba el cliente y lo que se cobra; la insignia va en su propio renglón:
+                      en 360 px «COBRA AL ENTREGAR» (sin partirse) se metía debajo del monto. */}
+                  <div className="flex w-full items-center gap-3">
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                        p.estadoEntrega === "ENTREGADO"
+                          ? "bg-primary-50 text-primary-700"
+                          : "bg-warning-bg text-warning-text"
+                      }`}
+                    >
+                      <Icon name={p.estadoEntrega === "ENTREGADO" ? "check" : "truck"} size={20} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-texto">
+                        {p.clienteNombre ?? "Sin nombre"}
+                      </p>
+                      <p className="truncate text-xs text-texto-3">{direccionParaMostrar(p)}</p>
+                    </div>
+                    {/* `totalACobrar` YA trae el envío (y en un prepagado es sólo
+                        el envío): debajo decía "+Bs 8,00 envío" y un pedido de Bs 58
+                        se leía como 58 + 8, y uno pagado en caja como 8 + 8
+                        (BUG-pedidos-10). Ahora dice qué es el número. */}
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs text-texto-3">
+                        {p.estadoEntrega === "ENTREGADO" ? "Cobrado" : "A cobrar"}
+                      </p>
+                      <p className="text-sm font-bold text-texto">
+                        {fmtMoney(p.totalACobrar ?? 0)}
+                      </p>
+                      {esPositivo(p.tarifaEnvio ?? 0) && (
+                        <p className="text-xs text-texto-3">
+                          {p.prepagado ? "es tu envío" : `incluye ${fmtMoney(p.tarifaEnvio)} de envío`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 pl-14">
+                    {/* Entregado ya no debe nada: seguía en ámbar "Cobra al
+                        entregar" al lado de "Cobrado Bs 35,00" (QA 29-oct). */}
+                    {/* En espera (avisó «No se pudo entregar»): lo primero que se
+                        lee, para que no salga otra vez a entregarlo. */}
+                    {enEspera(p) ? (
+                      <Badge tono="rojo" className="whitespace-nowrap">
+                        En espera de la caja
+                      </Badge>
+                    ) : (
+                      <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"} className="whitespace-nowrap">
+                        {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
+                      </Badge>
+                    )}
+                    {enEspera(p) && <span className="text-xs font-semibold text-danger-text">{textoMotivo(p.entregaFallidaMotivo)}</span>}
+                    {/* Se distingue de un delivery cargado en la caja: trae el pin y «Ya salí» (QA R1, N14). */}
+                    {p.pedidoWeb && (
+                      <Badge tono="azul" className="whitespace-nowrap">
+                        Pedido de la página
+                      </Badge>
+                    )}
+                    <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {detalle && (
+          <DetalleEntrega
+            pedido={detalle}
+            formasPago={formasPago.datos ?? []}
+            onClose={() => setDetalle(null)}
+            onCambio={() => {
+              setDetalle(null);
+              entregas.recargar();
+              // Entregó (o avisó que no pudo): cambia lo que tiene que entregar.
+              refrescarCuadre();
+            }}
+            onSalio={entregas.recargar}
+            sinUbicacion={!!posicion.falla}
+          />
+        )}
+
+        {rendicionAbierta && (
+          <RendicionDelTurno
+            entregadas={entregadas}
+            aRendir={aRendir}
+            porQr={porQr}
+            tarifas={tarifas}
+            cuadre={cuadre.datos}
+            usuarioId={usuario?.id}
+            onClose={() => setRendicionAbierta(false)}
+          />
+        )}
+
+        {miDiaAbierto && <MiDia reporte={reporte} onClose={() => setMiDiaAbierto(false)} />}
+      </div>
+    </TirarParaActualizar>
   );
 }
 
 /**
- * Con qué se cobró lo que rinde un pedido, para el renglón de la rendición:
- * " · Efectivo", " · QR" o, en un mixto, con los montos reales de cada forma
- * (DEL-2). Así el repartidor ve qué pedido explica cada parte del desglose.
+ * Una de las dos tarjetas de arriba: el número grande y, al tocarla, su
+ * detalle. Es un botón con el aspecto del `Kpi` de los reportes (mismas
+ * letras y radios), más el chevron que dice que se puede tocar.
  */
-function comoSeCobro(p: Venta): string {
-  const rinde = p.montoRendicion ?? 0;
-  if (!esPositivo(rinde)) return "";
-  // Sin los montos (un backend anterior) quedan los nombres, que no mienten.
-  if (!p.pagos) return p.formasPago?.length ? ` · ${p.formasPago.join(" + ")}` : "";
-  const qr = cobradoPorQr(p);
-  if (!esPositivo(qr)) return " · Efectivo";
-  const efectivo = aCentavos(rinde - qr);
-  if (!esPositivo(efectivo)) return " · QR";
-  return ` · QR ${fmtMoney(qr)} + efectivo ${fmtMoney(efectivo)}`;
+function TarjetaResumen({
+  etiqueta,
+  valor,
+  pie,
+  icono,
+  tonoIcono,
+  onClick,
+  ayuda,
+}: {
+  etiqueta: string;
+  valor: string;
+  pie: string;
+  icono: NombreIcono;
+  tonoIcono: string;
+  onClick: () => void;
+  /** Lo que abre, para el lector de pantalla (el chevron no se lee). */
+  ayuda: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={ayuda}
+      className={`card flex min-w-0 flex-col p-3.5 text-left hover:shadow-md ${TOQUE}`}
+    >
+      <span className="flex w-full items-center justify-between gap-2">
+        <span className="truncate text-[12px] font-semibold uppercase tracking-wide text-texto-4">{etiqueta}</span>
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tonoIcono}`}>
+          <Icon name={icono} size={16} />
+        </span>
+      </span>
+      <span className="mt-1.5 block w-full truncate text-2xl font-bold tracking-tight text-texto">{valor}</span>
+      <span className="mt-0.5 flex w-full items-center justify-between gap-1 text-xs text-texto-3">
+        <span className="truncate">{pie}</span>
+        <Icon name="chevronRight" size={14} className="shrink-0 text-texto-4" />
+      </span>
+    </button>
+  );
 }
 
 function DetalleEntrega({
@@ -441,7 +465,7 @@ function DetalleEntrega({
   const hayVariasSucursales = useHayVariasSucursales();
   const rotuloSede = useRotuloSucursal();
   const [cobrando, setCobrando] = useState(false);
-  const [cancelando, setCancelando] = useState(false);
+  const [noEntrega, setNoEntrega] = useState(false);
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
@@ -461,6 +485,15 @@ function DetalleEntrega({
   const webDelPedido = webBase ? { ...webBase, salioEn: webBase.salioEn ?? salioAca } : null;
   // Un pedido prepagado sólo se confirma: la plata ya entró a la caja.
   const soloConfirmar = pendiente && (p.prepagado || aCobrar <= 0);
+  // «No se pudo entregar» ya avisado: la lista lo sabe aunque el detalle
+  // completo (`GET /ventas/:id`) no lo traiga. En espera no se entrega ni se
+  // cobra: el backend lo rechaza («la caja tiene que decidir»).
+  const espera = {
+    entregaFallidaEn: p.entregaFallidaEn ?? pedido.entregaFallidaEn ?? null,
+    motivo: p.entregaFallidaMotivo ?? pedido.entregaFallidaMotivo ?? null,
+    nota: p.entregaFallidaNota ?? pedido.entregaFallidaNota ?? null,
+  };
+  const enEsperaAhora = enEspera({ estadoEntrega: p.estadoEntrega, entregaFallidaEn: espera.entregaFallidaEn });
 
   // Con el helper de toda la web (`lib/telefono`, calcado de `Telefono.kt`),
   // como la caja. Armado a mano, "Llamar" marcaba los dígitos tal cual: un
@@ -495,21 +528,6 @@ function DetalleEntrega({
     }
   }
 
-  async function cancelar() {
-    if (enviando) return;
-    setError("");
-    setEnviando(true);
-    try {
-      await api.cancelarPedido(p.id);
-      onCambio();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cancelar");
-      setCancelando(false);
-    } finally {
-      setEnviando(false);
-    }
-  }
-
   return (
     <>
       <Modal
@@ -518,17 +536,21 @@ function DetalleEntrega({
         subtitulo={p.comprobante ?? `#${p.id}`}
         onClose={onClose}
         acciones={
-          pendiente && (
+          pendiente &&
+          !enEsperaAhora && (
             <>
-              <Boton variante="ghost" onClick={() => setCancelando(true)}>
-                Cancelar pedido
+              {/* El repartidor ya no cancela (20-nov, regla del dueño):
+                  cancelar anula la venta y devuelve el stock, y eso lo
+                  decide la caja. Él avisa por qué no pudo. */}
+              <Boton variante="ghost" className={PIE} onClick={() => setNoEntrega(true)}>
+                No se pudo entregar
               </Boton>
               {soloConfirmar ? (
-                <Boton icono="check" onClick={() => confirmarEntrega()} disabled={enviando}>
+                <Boton icono="check" className={PIE} onClick={() => confirmarEntrega()} disabled={enviando}>
                   {enviando ? "Confirmando…" : "Marcar entregado"}
                 </Boton>
               ) : (
-                <Boton icono="dollar" onClick={() => setCobrando(true)}>
+                <Boton icono="dollar" className={PIE} onClick={() => setCobrando(true)}>
                   Cobrar {fmtMoney(aCobrar)}
                 </Boton>
               )}
@@ -540,6 +562,13 @@ function DetalleEntrega({
           <Cargando />
         ) : (
           <div className="space-y-4">
+            {enEsperaAhora && (
+              <div role="status" className="rounded-xl border border-danger-borde bg-danger-suave px-3.5 py-3 text-[13px] text-danger-text">
+                <p className="font-bold">En espera de la caja · {textoMotivo(espera.motivo)}</p>
+                {espera.nota && <p className="mt-0.5 italic">«{espera.nota}»</p>}
+                <p className="mt-1">Volvé al local con el pedido; la caja decide si lo reintentás, lo lleva otro o se cancela.</p>
+              </div>
+            )}
             <div className="rounded-xl bg-muted p-3.5">
               <p className="text-[13px] text-texto">
                 {/* Con el bloque de la página a la vista, la referencia va ahí
@@ -556,7 +585,7 @@ function DetalleEntrega({
                 <div className="mt-2.5 flex gap-2">
                   <a
                     href={`tel:${paraLlamar}`}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                    className={`flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted ${TOQUE}`}
                   >
                     <Icon name="phone" size={15} /> Llamar
                   </a>
@@ -564,7 +593,7 @@ function DetalleEntrega({
                     href={hrefWhatsApp}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                    className={`flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted ${TOQUE}`}
                   >
                     <Icon name="phone" size={15} /> WhatsApp
                   </a>
@@ -572,7 +601,7 @@ function DetalleEntrega({
               )}
             </div>
 
-            {webBase && pendiente && (
+            {webBase && pendiente && !enEsperaAhora && (
               <AccionesPedidoWeb
                 ventaId={p.id}
                 direccion={p.clienteDireccion}
@@ -657,16 +686,17 @@ function DetalleEntrega({
         />
       )}
 
-      <Confirmar
-        abierto={cancelando}
-        titulo="Cancelar pedido"
-        texto="El pedido queda cancelado y el stock vuelve al inventario."
-        etiquetaOk="Cancelar pedido"
-        peligroso
-        procesando={enviando}
-        onCancel={() => setCancelando(false)}
-        onOk={cancelar}
-      />
+      {noEntrega && (
+        <NoSePudoEntregar
+          ventaId={p.id}
+          cliente={p.clienteNombre ?? "Pedido"}
+          onClose={() => setNoEntrega(false)}
+          onAvisado={() => {
+            setNoEntrega(false);
+            onCambio();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -798,10 +828,10 @@ function DialogoCobroEntrega({
       ancho="max-w-sm"
       acciones={
         <>
-          <Boton variante="ghost" onClick={onClose}>
+          <Boton variante="ghost" className={PIE} onClick={onClose}>
             Cancelar
           </Boton>
-          <Boton onClick={confirmar} disabled={enviando}>
+          <Boton className={PIE} onClick={confirmar} disabled={enviando}>
             {enviando ? "Confirmando…" : "Cobrar y entregar"}
           </Boton>
         </>
@@ -830,7 +860,7 @@ function DialogoCobroEntrega({
               key={m}
               onClick={() => elegirMetodo(m)}
               disabled={m !== "EFECTIVO" && !permiteQr}
-              className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40 ${
+              className={`min-h-11 rounded-xl border px-3 py-2.5 text-[13px] font-semibold disabled:opacity-40 disabled:active:scale-100 ${TOQUE} ${
                 metodo === m
                   ? "border-primary bg-primary-50 text-primary-700"
                   : "border-borde bg-white text-texto-2"
@@ -894,7 +924,7 @@ function DialogoCobroEntrega({
                   key={s}
                   type="button"
                   onClick={() => setRecibido(montoParaEditar(s))}
-                  className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
+                  className={`min-h-11 rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 hover:border-primary hover:bg-primary-50 hover:text-primary-700 ${TOQUE}`}
                 >
                   {fmtMoney(s)}
                 </button>

@@ -18,6 +18,23 @@ export function fmtMoney(n: number | null | undefined): string {
 }
 
 /**
+ * Plata sin los ",00" de más: "Bs 40", "Bs 1.500", y con centavos "Bs 60,10".
+ * Para la rendición del reparto (20-nov, pedido del dueño): el repartidor y la
+ * cajera cuentan billetes, y "Bs 130,00" en cada renglón es ruido que no
+ * cambia nada. Con centavos se muestran los dos, para que "60,1" no se lea
+ * como sesenta con uno. Se redondea a centavos antes de decidir: un 39.999999
+ * de una suma sale "Bs 40". El resto de las pantallas siguen con `fmtMoney`.
+ */
+export function fmtPlata(n: number | null | undefined): string {
+  const centavos = Math.round(Number(n ?? 0) * 100);
+  const decimales = centavos % 100 === 0 ? 0 : 2;
+  return `${simboloMoneda} ${(centavos / 100).toLocaleString("es-BO", {
+    minimumFractionDigits: decimales,
+    maximumFractionDigits: decimales,
+  })}`;
+}
+
+/**
  * Una cantidad (unidades, stock, kg de un insumo, lo de un movimiento o un combo) sin
  * ceros de más: "9", "0,5", "2,25", "0,125", "1.500". Kevin, 25-oct: "3,00 en unidad
  * no da: tiene que decir 3, 2, 5". La plata sí lleva sus dos decimales (`fmtMoney`).
