@@ -25,6 +25,7 @@ import { fmtMoney } from "../../lib/format";
 import { abiertaDesde } from "./turnoDeCaja";
 import { aCentavos } from "../../lib/dinero";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
+import { enEspera, textoMotivo } from "../../lib/entregaFallida";
 import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
@@ -364,6 +365,19 @@ function PuntoDeVenta() {
     () => (veEntregas ? api.entregasMesero().catch(() => null) : Promise.resolve(null)),
     [veEntregas],
   );
+  /**
+   * Los delivery «en espera de la caja» (20-nov): el repartidor avisó «No se
+   * pudo entregar» y vuelve con el pedido. En la app llega una notificación;
+   * en la web, sin esto, la cajera recién se enteraba si abría el historial.
+   * Sólo para quien decide (`delivery.asignar`). Falla en silencio: es un aviso.
+   */
+  const veEnEspera = conReparto && tienePermiso(usuario, "delivery.asignar");
+  const pendientesReparto = useApi(
+    // Con `then`: una falla antes de la promesa también queda en silencio.
+    () => (veEnEspera ? Promise.resolve().then(() => api.getPedidosPendientes()).catch(() => null) : Promise.resolve(null)),
+    [veEnEspera],
+  );
+  const enEsperaDeCaja = (pendientesReparto.datos ?? []).filter((v) => v.tipoPedido === "DELIVERY" && enEspera(v));
   const mesasEsperando: MesaSalon[] = porCobrar.datos ?? [];
   const pendientesEntrega = (entregas.datos?.items ?? []).filter(
     (e) => e.estado === "PENDIENTE",
@@ -382,16 +396,24 @@ function PuntoDeVenta() {
    */
   const { recargar: recargarPorCobrar } = porCobrar;
   const { recargar: recargarEntregas } = entregas;
+  const { recargar: recargarReparto } = pendientesReparto;
+  // Al volver del historial, donde se decidió, el aviso no espera al sondeo.
+  const pantallaAntes = useRef(pantalla);
   useEffect(() => {
-    if (pantalla !== "venta" || (!veMesasPorCobrar && !veEntregas)) return;
+    if (pantalla === "venta" && pantallaAntes.current !== "venta" && veEnEspera) recargarReparto();
+    pantallaAntes.current = pantalla;
+  }, [pantalla, veEnEspera, recargarReparto]);
+  useEffect(() => {
+    if (pantalla !== "venta" || (!veMesasPorCobrar && !veEntregas && !veEnEspera)) return;
     const id = window.setInterval(() => {
       // Pestaña en segundo plano: nadie mira, no vale el pedido.
       if (document.hidden) return;
       if (veMesasPorCobrar) recargarPorCobrar();
       if (veEntregas) recargarEntregas();
+      if (veEnEspera) recargarReparto();
     }, SONDEO_SALON_MS);
     return () => window.clearInterval(id);
-  }, [pantalla, veMesasPorCobrar, veEntregas, recargarPorCobrar, recargarEntregas]);
+  }, [pantalla, veMesasPorCobrar, veEntregas, veEnEspera, recargarPorCobrar, recargarEntregas, recargarReparto]);
 
   /**
    * El latido del equipo (12-nov, como `LatidoCaja` de Android): mientras el
@@ -2019,8 +2041,26 @@ function PuntoDeVenta() {
             />
           </div>
         )}
-        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0 || pedidosWeb.nuevos > 0) && (
+        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0 || pedidosWeb.nuevos > 0 || enEsperaDeCaja.length > 0) && (
           <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            {/* El repartidor no pudo entregar y espera qué hacer con el pedido. */}
+            {enEsperaDeCaja.length > 0 && (
+              <AvisoSalon
+                tono="rojo"
+                icono="truck"
+                titulo={
+                  enEsperaDeCaja.length === 1
+                    ? "1 delivery no se pudo entregar"
+                    : `${enEsperaDeCaja.length} delivery no se pudieron entregar`
+                }
+                detalle={
+                  enEsperaDeCaja.length === 1
+                    ? `${enEsperaDeCaja[0].clienteNombre ?? "Un pedido"} · ${textoMotivo(enEsperaDeCaja[0].entregaFallidaMotivo)} · tocá para decidir`
+                    : "Reintentar, pasárselo a otro o cancelar · tocá para decidir"
+                }
+                onClick={() => setPantalla("historial")}
+              />
+            )}
             {/* Lo primero: un cliente está esperando y a los 10 minutos el pedido vence. */}
             {pedidosWeb.nuevos > 0 && (
               <AvisoSalon
@@ -2176,8 +2216,8 @@ function AvisoSalon({
   detalle,
   onClick,
 }: {
-  tono: "verde" | "ambar";
-  icono: "grid" | "users" | "calendar" | "bolsa";
+  tono: "verde" | "ambar" | "rojo";
+  icono: "grid" | "users" | "calendar" | "bolsa" | "truck";
   titulo: string;
   detalle: string;
   onClick: () => void;
@@ -2185,7 +2225,9 @@ function AvisoSalon({
   const colores =
     tono === "verde"
       ? "border-primary/30 bg-primary-50 text-primary-700 hover:bg-primary-100"
-      : "border-warning-text/20 bg-warning-bg text-warning-text hover:brightness-95";
+      : tono === "rojo"
+        ? "border-danger-borde bg-danger-suave text-danger-text hover:brightness-95"
+        : "border-warning-text/20 bg-warning-bg text-warning-text hover:brightness-95";
   return (
     <button
       type="button"

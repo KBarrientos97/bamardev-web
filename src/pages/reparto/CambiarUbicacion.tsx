@@ -1,6 +1,6 @@
 import { useState } from "react";
 import UbicacionDeEntrega from "../../components/UbicacionDeEntrega";
-import { Boton, ErrorMsg, Modal } from "../../components/ui";
+import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { Ubicacion } from "../../lib/mapa";
 
@@ -40,6 +40,30 @@ export default function CambiarUbicacion({
     }
   }
 
+  // Se marca acá mismo, dentro del detalle de la venta, y no en otra hoja
+  // encima (regla del dueño, 20-nov: nunca dos hojas apiladas).
+  if (abierto) {
+    return (
+      <div
+        role="group"
+        aria-label={actual ? "Cambiar ubicación" : "Agregar ubicación"}
+        className="space-y-3 rounded-xl border-[1.5px] border-primary bg-white px-3.5 py-3 motion-safe:animate-[vista-entra_.22s_cubic-bezier(0.32,0.72,0,1)]"
+      >
+        <p className="text-sm font-bold text-texto">{actual ? "Cambiar ubicación" : "Agregar ubicación"}</p>
+        <UbicacionDeEntrega valor={pin} onCambio={setPin} />
+        <ErrorMsg>{error}</ErrorMsg>
+        <div className="flex gap-2">
+          <Boton variante="ghost" className="min-h-11 flex-1" onClick={() => setAbierto(false)} disabled={guardando}>
+            Volver
+          </Boton>
+          <Boton className="min-h-11 flex-1" onClick={guardar} disabled={guardando || !pin}>
+            {guardando ? "Guardando…" : "Guardar ubicación"}
+          </Boton>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted px-3.5 py-2.5">
       <span className="text-[13px] text-texto-2">{actual ? "Con ubicación en el mapa" : "Sin ubicación en el mapa"}</span>
@@ -55,29 +79,6 @@ export default function CambiarUbicacion({
       >
         {actual ? "Cambiar ubicación" : "Agregar ubicación"}
       </Boton>
-      {abierto && (
-        <Modal
-          abierto
-          titulo={actual ? "Cambiar ubicación" : "Agregar ubicación"}
-          onClose={() => !guardando && setAbierto(false)}
-          cerrarAlClicAfuera={false}
-          acciones={
-            <>
-              <Boton variante="ghost" className="min-h-11 flex-1 sm:flex-none" onClick={() => setAbierto(false)} disabled={guardando}>
-                Volver
-              </Boton>
-              <Boton className="min-h-11 flex-1 sm:flex-none" onClick={guardar} disabled={guardando || !pin}>
-                {guardando ? "Guardando…" : "Guardar ubicación"}
-              </Boton>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <UbicacionDeEntrega valor={pin} onCambio={setPin} />
-            <ErrorMsg>{error}</ErrorMsg>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

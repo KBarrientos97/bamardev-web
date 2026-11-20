@@ -207,6 +207,7 @@ function TarjetaRepartidor({
 
   function alternar(id: number) {
     setError("");
+    setConfirmando(false);
     setDestildadas((antes) => {
       const copia = new Set(antes);
       if (copia.has(id)) copia.delete(id);
@@ -308,39 +309,40 @@ function TarjetaRepartidor({
             ))}
           </ul>
           {/* Sólo lo que esta caja puede recibir: si todo es de otra caja, no hay botón. */}
-          {porRecibir.length > 0 && (
+          {/* La confirmación va acá mismo, en la tarjeta, y no en otra hoja
+              encima de «Repartidores» (regla del dueño, 20-nov: nunca dos
+              hojas apiladas). Destildar algo la cierra: cambió la suma. */}
+          {porRecibir.length > 0 && !confirmando && (
             <Boton className="min-h-11 w-full" onClick={() => setConfirmando(true)} disabled={recibiendo || tildadas.length === 0}>
               {tildadas.length === 0 ? "Elegí qué recibiste" : `Recibí ${fmtPlata(suma)}`}
             </Boton>
+          )}
+          {porRecibir.length > 0 && confirmando && (
+            <div
+              role="group"
+              aria-label={`¿Recibiste ${fmtPlata(suma)} de ${rep.nombre}?`}
+              className="space-y-2.5 rounded-xl border-[1.5px] border-primary bg-primary-50 px-3.5 py-3 motion-safe:animate-[vista-entra_.22s_cubic-bezier(0.32,0.72,0,1)]"
+            >
+              <p className="text-sm font-bold text-texto">¿Recibiste {fmtPlata(suma)} de {rep.nombre}?</p>
+              <p className="text-[13px] text-texto-2">
+                {tildadas.length === 1 ? "La entrega queda como recibida" : `Las ${tildadas.length} entregas quedan como recibidas`}:
+                esa plata pasa al cajón y deja de figurar en poder del repartidor.
+              </p>
+              <div className="flex gap-2">
+                <Boton variante="ghost" className="min-h-11 flex-1" onClick={() => setConfirmando(false)} disabled={recibiendo}>
+                  Volver
+                </Boton>
+                <Boton className="min-h-11 flex-1" onClick={confirmar} disabled={recibiendo}>
+                  {recibiendo ? "Un momento…" : "Sí, la recibí"}
+                </Boton>
+              </div>
+            </div>
           )}
         </div>
       )}
 
       <ErrorMsg>{error}</ErrorMsg>
 
-      {confirmando && (
-        <Modal
-          abierto
-          titulo={`¿Recibiste ${fmtPlata(suma)} de ${rep.nombre}?`}
-          onClose={() => !recibiendo && setConfirmando(false)}
-          ancho="max-w-sm"
-          acciones={
-            <>
-              <Boton variante="ghost" className="min-h-11 flex-1 sm:flex-none" onClick={() => setConfirmando(false)} disabled={recibiendo}>
-                Volver
-              </Boton>
-              <Boton className="min-h-11 flex-1 sm:flex-none" onClick={confirmar} disabled={recibiendo}>
-                {recibiendo ? "Un momento…" : "Recibí"}
-              </Boton>
-            </>
-          }
-        >
-          <p className="text-sm text-texto-2">
-            {tildadas.length === 1 ? "La entrega queda como recibida" : `Las ${tildadas.length} entregas quedan como recibidas`}:
-            esa plata pasa al cajón y deja de figurar en poder del repartidor.
-          </p>
-        </Modal>
-      )}
     </li>
   );
 }

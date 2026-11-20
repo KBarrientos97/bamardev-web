@@ -90,6 +90,7 @@ vi.mock("../../lib/api", () => ({
     getRepartidores: vi.fn(async () => []),
     mesasPorCobrar: vi.fn(async () => []),
     entregasMesero: vi.fn(async () => null),
+    getPedidosPendientes: vi.fn(async () => []),
     crearVenta: vi.fn(),
     catalogoAgregados: vi.fn(async () => ({ activo: true, grupos: [], productos: [] })),
     estadoConteo: vi.fn(),
@@ -1525,5 +1526,44 @@ describe("pedidos web: el aviso del POS (13-nov)", () => {
     await montar();
     expect(apiPedidosWeb.contador).not.toHaveBeenCalled();
     expect(screen.queryByText(/pedidos? web nuevos?/)).not.toBeInTheDocument();
+  });
+});
+
+describe("delivery en espera de la caja: el aviso del POS (20-nov)", () => {
+  const enEspera = (id: number, cliente: string) => ({
+    id,
+    tipoPedido: "DELIVERY",
+    estadoEntrega: "PENDIENTE",
+    clienteNombre: cliente,
+    entregaFallidaEn: "2026-11-20T18:40:00.000Z",
+    entregaFallidaMotivo: "NO_CONTESTA",
+  });
+
+  it("el repartidor avisó «No se pudo entregar»: la franja lo dice y lleva al historial", async () => {
+    sesion.features = ["pos", "caja", "delivery"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([
+      enEspera(900, "Carla Mamani"),
+      { ...enEspera(901, "Otro"), entregaFallidaEn: null },
+    ] as never);
+    await montar();
+    const aviso = await screen.findByRole("button", { name: /1 delivery no se pudo entregar/ });
+    expect(aviso).toHaveTextContent("Carla Mamani · No contesta · tocá para decidir");
+    fireEvent.click(aviso);
+    expect(screen.getByText("ventas del turno")).toBeInTheDocument();
+  });
+
+  it("sin la feature de delivery ni se pide", async () => {
+    sesion.features = ["pos", "caja"];
+    await montar();
+    expect(api.getPedidosPendientes).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /no se pud/ })).not.toBeInTheDocument();
+  });
+
+  it("sin `delivery.asignar` no lo ve: no decide", async () => {
+    sesion.features = ["pos", "caja", "delivery"];
+    sesion.sinPermisos = ["delivery.asignar"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([enEspera(900, "Carla Mamani")] as never);
+    await montar();
+    expect(api.getPedidosPendientes).not.toHaveBeenCalled();
   });
 });

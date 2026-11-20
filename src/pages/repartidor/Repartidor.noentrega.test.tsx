@@ -99,6 +99,23 @@ describe("el repartidor ya no cancela", () => {
     expect(within(d).getByRole("button", { name: /^Cobrar Bs/ })).toBeInTheDocument();
   });
 
+  it("reemplaza al detalle en la misma hoja (nunca dos apiladas) y «Volver» lo trae de nuevo", async () => {
+    const d = await abrirDetalle(PEDIDO);
+    fireEvent.click(within(d).getByRole("button", { name: "No se pudo entregar" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "No se pudo entregar" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "Carla Mamani" })).toBeInTheDocument();
+    // «Cobrar» también: la hoja de cobro reemplaza al detalle y vuelve con «Volver».
+    fireEvent.click(screen.getByRole("button", { name: /^Cobrar Bs/ }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "Cobrar la entrega" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(screen.getByRole("dialog", { name: "Carla Mamani" })).toBeInTheDocument();
+    expect(api.getVenta).toHaveBeenCalledTimes(1);
+  });
+
   it("elige el motivo en la hoja y manda el body del contrato; la lista se recarga", async () => {
     const d = await abrirDetalle(PEDIDO);
     fireEvent.click(within(d).getByRole("button", { name: "No se pudo entregar" }));

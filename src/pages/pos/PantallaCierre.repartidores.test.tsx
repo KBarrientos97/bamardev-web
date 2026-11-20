@@ -250,9 +250,9 @@ describe("el botón «Repartidores»", () => {
       repartidores: [{ ...RENDICION.repartidores[0], pendiente: 0, recibido: 130, entregas: RENDICION.repartidores[0].entregas.map((e) => ({ ...e, estado: "RECIBIDA" })) }],
     });
     fireEvent.click(within(modal).getByRole("button", { name: "Recibí Bs 130" }));
-    const confirmacion = screen.getByRole("dialog", { name: "¿Recibiste Bs 130 de Pedro Rojas?" });
+    const confirmacion = screen.getByRole("group", { name: "¿Recibiste Bs 130 de Pedro Rojas?" });
     await act(async () => {
-      fireEvent.click(within(confirmacion).getByRole("button", { name: "Recibí" }));
+      fireEvent.click(within(confirmacion).getByRole("button", { name: "Sí, la recibí" }));
     });
 
     expect(api.recibirRendicionReparto).toHaveBeenCalledWith([55, 56]);

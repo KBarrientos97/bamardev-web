@@ -187,6 +187,13 @@ export function useHojaArrastrable(opciones: {
 
     const alTocar = (e: globalThis.TouchEvent) => {
       if (e.touches.length !== 1 || cerrando.current) return;
+      // Sobre un mapa el dedo mueve el mapa: arrastrarlo hacia abajo bajaba
+      // la hoja entera (el pedido del repartidor, el mapa del día, marcar la
+      // ubicación). `data-sin-arrastre` sirve para cualquier otra cosa así.
+      if (e.target instanceof Element && e.target.closest(".maplibregl-map, [data-sin-arrastre]")) {
+        inicio = null;
+        return;
+      }
       const t = e.touches[0];
       inicio = { x: t.clientX, y: t.clientY };
       eje = null;

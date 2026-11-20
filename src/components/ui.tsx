@@ -330,6 +330,7 @@ export function Modal({
   ancho = "max-w-lg",
   encabezado,
   cerrarAlClicAfuera = true,
+  continua,
 }: {
   abierto: boolean;
   titulo: string;
@@ -354,6 +355,16 @@ export function Modal({
    * limpio. Se cierra con la X o con Cancelar, que es deliberado.
    */
   cerrarAlClicAfuera?: boolean;
+  /**
+   * Esta hoja es el paso siguiente (o el anterior) de otra que estaba abierta:
+   * el pedido del repartidor → «Cobrar» o «No se pudo entregar», y vuelta.
+   * Nunca se apilan dos hojas (regla del dueño, 20-nov: la de abajo asomaba y
+   * el pie quedaba tapado). Quien la usa cierra la anterior en el mismo render
+   * y abre ésta con `continua`: no vuelve a subir desde abajo ni a oscurecer
+   * la pantalla, sólo cambia lo de adentro, como la cuenta de la mesa en
+   * meseros. «adelante» entra desde la derecha; «atras», desde la izquierda.
+   */
+  continua?: "adelante" | "atras";
 }) {
   // Escape cierra, como cualquier diálogo. No lo hacía: el `role="dialog"` es
   // un div, no un `<dialog>` nativo, así que el navegador no lo maneja solo.
@@ -405,7 +416,7 @@ export function Modal({
       <div
         ref={velo}
         aria-hidden="true"
-        className="absolute inset-0 animate-[velo-aparece_.2s_ease-out] bg-slate-900/40 motion-reduce:animate-none"
+        className={`absolute inset-0 bg-slate-900/40 ${continua ? "" : "animate-[velo-aparece_.2s_ease-out] motion-reduce:animate-none"}`}
       />
       <div
         ref={hoja}
@@ -413,7 +424,13 @@ export function Modal({
         aria-modal="true"
         aria-label={titulo}
         style={teclado ? { maxHeight: `calc(100dvh - ${teclado}px - 12px)` } : undefined}
-        className={`relative flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl will-change-transform max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none sm:rounded-2xl`}
+        className={`relative flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl will-change-transform ${
+          continua === "adelante"
+            ? "animate-[vista-entra_.22s_cubic-bezier(0.32,0.72,0,1)]"
+            : continua === "atras"
+              ? "animate-[vista-vuelve_.22s_cubic-bezier(0.32,0.72,0,1)]"
+              : "max-sm:animate-[hoja-sube_.32s_cubic-bezier(0.32,0.72,0,1)]"
+        } motion-reduce:animate-none sm:rounded-2xl`}
       >
         {/* La manija: sólo en el celular, donde la hoja se baja con el dedo.
             Sobre una cabecera propia va encima de su color, sin franja blanca. */}

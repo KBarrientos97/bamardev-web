@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Boton, Confirmar, ErrorMsg, Select } from "../../components/ui";
+import { Boton, ErrorMsg, Select } from "../../components/ui";
 import { api } from "../../lib/api";
 import { textoMotivo } from "../../lib/entregaFallida";
 import { fmtHora, tiempoRelativo } from "../../lib/format";
@@ -19,6 +19,9 @@ import type { Venta } from "../../types";
  *
  * Quien no tiene `delivery.asignar` ve el aviso sin los botones: el backend
  * le rechazaría cualquiera de los tres.
+ *
+ * Reasignar y la confirmación de cancelar se abren acá mismo, en el detalle de
+ * la venta, y no en otra hoja encima (regla del dueño, 20-nov).
  */
 export default function EnEsperaDeLaCaja({
   venta,
@@ -88,7 +91,13 @@ export default function EnEsperaDeLaCaja({
             >
               Reasignar
             </Boton>
-            <Boton variante="danger" className="min-h-11 px-2" disabled={enviando} onClick={() => setAccion("cancelar")}>
+            <Boton
+              variante="danger"
+              className="min-h-11 px-2"
+              disabled={enviando}
+              aria-pressed={accion === "cancelar"}
+              onClick={() => setAccion(accion === "cancelar" ? null : "cancelar")}
+            >
               Cancelar pedido
             </Boton>
           </div>
@@ -115,21 +124,36 @@ export default function EnEsperaDeLaCaja({
               </Boton>
             </div>
           )}
+          {accion === "cancelar" && (
+            <div
+              role="group"
+              aria-label="¿Cancelar el pedido?"
+              className="space-y-2.5 rounded-xl border-[1.5px] border-danger-borde bg-white px-3.5 py-3 motion-safe:animate-[vista-entra_.22s_cubic-bezier(0.32,0.72,0,1)]"
+            >
+              <p className="text-sm font-bold text-texto">¿Cancelar el pedido?</p>
+              <p className="text-[13px] text-texto-2">
+                Se anula la venta y el stock vuelve al inventario. Si el repartidor tiene el pedido, que lo devuelva al local.
+              </p>
+              <div className="flex gap-2">
+                <Boton variante="ghost" className="min-h-11 flex-1" disabled={enviando} onClick={() => setAccion(null)}>
+                  Volver
+                </Boton>
+                <Boton
+                  variante="danger"
+                  className="min-h-11 flex-1"
+                  disabled={enviando}
+                  onClick={() => hacer(() => api.cancelarPedido(venta.id), "No se pudo cancelar")}
+                >
+                  {enviando ? "Cancelando…" : "Sí, cancelar"}
+                </Boton>
+              </div>
+            </div>
+          )}
         </>
       )}
 
       <ErrorMsg>{error}</ErrorMsg>
 
-      <Confirmar
-        abierto={accion === "cancelar"}
-        titulo="¿Cancelar el pedido?"
-        texto="Se anula la venta y el stock vuelve al inventario. Si el repartidor tiene el pedido, que lo devuelva al local."
-        etiquetaOk="Sí, cancelar"
-        peligroso
-        procesando={enviando}
-        onCancel={() => setAccion(null)}
-        onOk={() => hacer(() => api.cancelarPedido(venta.id), "No se pudo cancelar")}
-      />
     </div>
   );
 }

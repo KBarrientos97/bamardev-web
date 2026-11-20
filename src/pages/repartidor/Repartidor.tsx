@@ -496,6 +496,9 @@ function DetalleEntrega({
   const rotuloSede = useRotuloSucursal();
   const [cobrando, setCobrando] = useState(false);
   const [noEntrega, setNoEntrega] = useState(false);
+  // Volvió de «Cobrar» o de «No se pudo entregar»: el detalle reaparece en la
+  // misma hoja, sin volver a subir desde abajo.
+  const [volvio, setVolvio] = useState(false);
   // El rechazo al cobrar, para mostrarlo EN la hoja de cobro (que tapa el detalle).
   const [rechazoCobro, setRechazoCobro] = useState<{ sinCaja: boolean; texto: string } | null>(null);
   const [error, setError] = useState("");
@@ -578,13 +581,25 @@ function DetalleEntrega({
     }
   }
 
+  // Una hoja a la vez (regla del dueño, 20-nov): «Cobrar» y «No se pudo
+  // entregar» reemplazan al detalle en vez de abrirse encima, y «Volver» lo
+  // trae de nuevo. Apiladas, la de abajo asomaba y había dos cruces de cerrar.
+  const volverAlDetalle = () => {
+    setVolvio(true);
+    setCobrando(false);
+    setNoEntrega(false);
+    setRechazoCobro(null);
+  };
+
   return (
     <>
+      {!cobrando && !noEntrega && (
       <Modal
         abierto
         titulo={p.clienteNombre ?? "Pedido"}
         subtitulo={p.comprobante ?? `#${p.id}`}
         onClose={onClose}
+        continua={volvio ? "atras" : undefined}
         acciones={
           pendiente &&
           !enEsperaAhora && (
@@ -733,6 +748,7 @@ function DetalleEntrega({
           </div>
         )}
       </Modal>
+      )}
 
       {cobrando && (
         <DialogoCobroEntrega
@@ -742,10 +758,7 @@ function DetalleEntrega({
           formasPago={formasPago}
           enviando={enviando}
           rechazo={rechazoCobro}
-          onClose={() => {
-            setCobrando(false);
-            setRechazoCobro(null);
-          }}
+          onClose={volverAlDetalle}
           onConfirmar={(pagos) => confirmarEntrega(pagos)}
         />
       )}
@@ -754,7 +767,7 @@ function DetalleEntrega({
         <NoSePudoEntregar
           ventaId={p.id}
           cliente={p.clienteNombre ?? "Pedido"}
-          onClose={() => setNoEntrega(false)}
+          onClose={volverAlDetalle}
           onAvisado={() => {
             setNoEntrega(false);
             onCambio();
@@ -896,10 +909,15 @@ function DialogoCobroEntrega({
       subtitulo={fmtMoney(aPedirEnMano)}
       onClose={onClose}
       ancho="max-w-sm"
+      continua="adelante"
+      // Con el efectivo recibido a medio escribir, un roce afuera lo borraba.
+      cerrarAlClicAfuera={false}
       acciones={
         <>
+          {/* «Volver» y no «Cancelar»: en un pedido, «Cancelar» se leía como
+              cancelar el pedido. Vuelve al detalle. */}
           <Boton variante="ghost" className={PIE} onClick={onClose}>
-            Cancelar
+            Volver
           </Boton>
           <Boton className={PIE} onClick={confirmar} disabled={enviando}>
             {enviando ? "Confirmando…" : "Cobrar y entregar"}

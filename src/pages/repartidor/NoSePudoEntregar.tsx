@@ -15,8 +15,8 @@ import {
  * un pedido —cancelar anula la venta y devuelve el stock, y eso lo decide la
  * caja—. Avisa por qué no pudo y el pedido queda en espera.
  *
- * Es la hoja de siempre (`Modal`: desde abajo en el celular, se baja con el
- * dedo). Los motivos van como opciones grandes y no como un desplegable: se
+ * Reemplaza al detalle del pedido en la misma hoja (`continua`), no se abre
+ * encima: «Volver» lo trae de nuevo. Los motivos van como opciones grandes y no como un desplegable: se
  * elige con el pulgar, parado en la vereda. No se cierra con un toque afuera:
  * con la nota a medio escribir, un roce la borraba.
  */
@@ -60,6 +60,7 @@ export default function NoSePudoEntregar({
       subtitulo={cliente}
       onClose={onClose}
       ancho="max-w-sm"
+      continua="adelante"
       cerrarAlClicAfuera={false}
       acciones={
         <>

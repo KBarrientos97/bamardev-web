@@ -155,7 +155,10 @@ describe("las tres salidas de la caja", () => {
   it("Cancelar pedido pide confirmación y recién ahí cancela", async () => {
     const d = await abrirDetalle();
     fireEvent.click(within(d).getByRole("button", { name: "Cancelar pedido" }));
-    const confirmar = screen.getByRole("dialog", { name: "¿Cancelar el pedido?" });
+    const confirmar = screen.getByRole("group", { name: "¿Cancelar el pedido?" });
+    // Adentro del detalle, no en otra hoja encima (regla del dueño, 20-nov).
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(d).toContainElement(confirmar);
     expect(api.cancelarPedido).not.toHaveBeenCalled();
     await act(async () => {
       fireEvent.click(within(confirmar).getByRole("button", { name: "Sí, cancelar" }));
@@ -191,7 +194,7 @@ describe("el pin de un delivery pendiente, desde la caja (20-nov)", () => {
     const d = await abrirDetalle();
     expect(d).toHaveTextContent("Sin ubicación en el mapa");
     fireEvent.click(within(d).getByRole("button", { name: "Agregar ubicación" }));
-    const hoja = screen.getByRole("dialog", { name: "Agregar ubicación" });
+    const hoja = screen.getByRole("group", { name: "Agregar ubicación" });
     expect(within(hoja).getByRole("button", { name: "Guardar ubicación" })).toBeDisabled();
     fireEvent.change(within(hoja).getByLabelText("Enlace de Google Maps"), { target: { value: "-17.7834, -63.1821" } });
     await act(async () => {
