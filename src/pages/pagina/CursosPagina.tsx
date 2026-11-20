@@ -128,7 +128,7 @@ function SeccionPagar({
       style={{
         marginTop: enColumna ? 0 : 8,
         background: t.tarjeta,
-        border: t.borde ? `1px solid ${t.borde}` : undefined,
+        border: t.borde ? `${t.anchoBorde ?? 1}px solid ${t.borde}` : undefined,
         boxShadow: t.sombra ?? undefined,
         borderRadius: radio,
         overflow: "hidden",
@@ -304,7 +304,7 @@ function TarjetaCurso({
     <article
       style={{
         background: t.tarjeta,
-        border: t.borde ? `1px solid ${t.borde}` : undefined,
+        border: t.borde ? `${t.anchoBorde ?? 1}px solid ${t.borde}` : undefined,
         boxShadow: t.sombra ?? undefined,
         borderRadius: radio,
         overflow: "hidden",

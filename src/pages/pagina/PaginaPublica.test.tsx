@@ -387,3 +387,36 @@ describe("página pública", () => {
     expect(screen.getByRole("heading", { name: /No se pudo cargar la página/ })).toBeInTheDocument();
   });
 });
+
+describe("los estilos del 20-nov", () => {
+  const NUEVOS = ["REVISTA", "AFICHE", "NEON", "ALBUM", "SELLO", "ONDAS", "CRISTAL", "BRUTAL"];
+  const conPortada = { ...PAGINA, portadaUrl: "/publico/pagina/buensabor/imagen/portada?v=1" };
+
+  for (const estilo of NUEVOS) {
+    for (const [modo, ancho] of [["movil", 0], ["escritorio", 1280]] as const) {
+      for (const [foto, pagina] of [["sin portada", PAGINA], ["con portada", conPortada]] as const) {
+        it(`${estilo} en ${modo}, ${foto}: un solo nombre, un solo principal y todos los botones`, async () => {
+          if (ancho) Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => ancho });
+          try {
+            vi.stubGlobal("fetch", responder(200, { ...pagina, estilo }));
+            await montar();
+            const raiz = screen.getByTestId("vista-pagina");
+            expect(raiz).toHaveAttribute("data-estilo", estilo);
+            expect(raiz).toHaveAttribute("data-modo", modo);
+            expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+            expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Pollería El Buen Sabor/i);
+            expect(screen.getAllByRole("main")).toHaveLength(1);
+            expect(screen.getByText("Martes 2x1")).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: /Hacé tu pedido por WhatsApp/ })).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: "Ver el menú" })).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: "Facebook" })).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: "Cómo llegar" })).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: /Powered by BamarDev/ })).toBeInTheDocument();
+          } finally {
+            if (ancho) delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+          }
+        });
+      }
+    }
+  }
+});

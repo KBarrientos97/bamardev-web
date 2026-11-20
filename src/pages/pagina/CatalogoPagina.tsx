@@ -76,6 +76,8 @@ export interface AspectoCatalogo {
   familia: string;
   /** Carrusel (el de siempre) o lista de menú (Carta). Los bloques de Mosaico los arma su armado. */
   presentacion?: "carrusel" | "menu" | "bloques";
+  /** El grosor del borde de la tarjeta (Brutal: 3); sin dato, 1 px. */
+  anchoBorde?: number;
   /** La línea punteada entre los platos de la lista de menú. */
   linea?: string;
   /** La letra del precio en la lista de menú (Carta lo escribe con la del nombre). */
@@ -585,7 +587,7 @@ function Carrusel({
                     margin: 0,
                     textAlign: "left",
                     background: a.sinCaja ? "transparent" : a.tarjeta,
-                    border: a.sinCaja || !a.borde ? "none" : `1px solid ${a.borde}`,
+                    border: a.sinCaja || !a.borde ? "none" : `${a.anchoBorde ?? 1}px solid ${a.borde}`,
                     boxShadow: a.sombra ?? undefined,
                     borderRadius: a.sinCaja ? 0 : radio,
                     overflow: "hidden",

@@ -400,13 +400,16 @@ export default function VistaPagina({
       setEleccion(contactos.map((x) => ({ ...x, url: conMensajeDe(e.url, x.url) })));
     }
   };
-  // Los que van en mayúsculas espaciadas: el botón grande de Noche y de Boutique.
+  // Los que van en mayúsculas espaciadas: el botón grande de Noche y de Boutique
+  // (y, sin espaciar, los de Afiche y Brutal).
   const mayusculas: CSSProperties =
     estilo.clave === "NOCHE"
       ? { textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 15 }
       : estilo.clave === "BOUTIQUE"
         ? { textTransform: "uppercase", letterSpacing: "0.18em", fontSize: 13, fontWeight: 600 }
-        : {};
+        : estilo.clave === "AFICHE" || estilo.clave === "BRUTAL"
+          ? { textTransform: "uppercase", letterSpacing: "0.02em" }
+          : {};
 
   const tamanoPrincipal: CSSProperties = {
     minHeight: 56,
@@ -601,6 +604,7 @@ export default function VistaPagina({
         ...estilo.catalogo,
         tarjeta: t.tarjeta,
         borde: t.borde,
+        anchoBorde: t.anchoBorde,
         sombra: t.sombra,
         texto: menu ? t.texto : t.textoTarjeta,
         texto3: menu ? t.texto3 : t.texto3Tarjeta,

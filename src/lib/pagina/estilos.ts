@@ -401,7 +401,7 @@ const DISPLAY = "Impact, sans-serif";
 const MANO = "cursive";
 
 /**
- * Las 30 letras, todas de Google Fonts. MODERNA, ELEGANTE y FUERTE son las de
+ * Las 33 letras (30 y las 3 de los estilos del 20-nov), todas de Google Fonts. MODERNA, ELEGANTE y FUERTE son las de
  * siempre (Roboto, Playfair Display y Oswald) con su clave de siempre. Los
  * pesos se verificaron contra la API css2: si uno no existe, Google rechaza
  * el pedido entero.
@@ -412,12 +412,15 @@ export const LETRAS: Letra[] = [
   { clave: "POPPINS", nombre: "Poppins", grupo: "Modernas", familia: `Poppins, ${SANS}`, google: "Poppins:wght@700", peso: 700 },
   { clave: "RALEWAY", nombre: "Raleway", grupo: "Modernas", familia: `Raleway, ${SANS}`, google: "Raleway:wght@700", peso: 700 },
   { clave: "JOSEFIN", nombre: "Josefin Sans", grupo: "Modernas", familia: `"Josefin Sans", ${SANS}`, google: "Josefin+Sans:wght@700", peso: 700, ajuste: 1 },
+  { clave: "SPACE_GROTESK", nombre: "Space Grotesk", grupo: "Modernas", familia: `"Space Grotesk", ${SANS}`, google: "Space+Grotesk:wght@700", peso: 700 },
+  { clave: "OUTFIT", nombre: "Outfit", grupo: "Modernas", familia: `Outfit, ${SANS}`, google: "Outfit:wght@600", peso: 600 },
 
   { clave: "NUNITO", nombre: "Nunito", grupo: "Redondeadas", familia: `Nunito, ${SANS}`, google: "Nunito:wght@800", peso: 800 },
   { clave: "QUICKSAND", nombre: "Quicksand", grupo: "Redondeadas", familia: `Quicksand, ${SANS}`, google: "Quicksand:wght@700", peso: 700 },
   { clave: "COMFORTAA", nombre: "Comfortaa", grupo: "Redondeadas", familia: `Comfortaa, ${SANS}`, google: "Comfortaa:wght@700", peso: 700, ajuste: -1 },
   { clave: "VARELA", nombre: "Varela Round", grupo: "Redondeadas", familia: `"Varela Round", ${SANS}`, google: "Varela+Round", peso: 400 },
   { clave: "FREDOKA", nombre: "Fredoka", grupo: "Redondeadas", familia: `Fredoka, ${SANS}`, google: "Fredoka:wght@600", peso: 600, ajuste: 1 },
+  { clave: "TILT_NEON", nombre: "Neón", grupo: "Redondeadas", familia: `"Tilt Neon", ${SANS}`, google: "Tilt+Neon", peso: 400, ajuste: 1 },
 
   { clave: "ELEGANTE", nombre: "Elegante", grupo: "Elegantes", familia: `"Playfair Display", ${SERIF}`, google: "Playfair+Display:wght@700", peso: 700 },
   { clave: "LORA", nombre: "Lora", grupo: "Elegantes", familia: `Lora, ${SERIF}`, google: "Lora:wght@700", peso: 700 },
@@ -492,6 +495,15 @@ export const LETRA_TEXTO: Record<string, { familia: string; google: string }> = 
   CARTA: { familia: `Montserrat, ${SANS}`, google: "Montserrat:wght@400;500;700" },
   DULCE: { familia: `Nunito, ${SANS}`, google: "Nunito:wght@400;600;700" },
   MOSAICO: { familia: `Montserrat, ${SANS}`, google: "Montserrat:wght@500;700;800" },
+  // Los del 20-nov: la letra del texto de la maqueta aprobada.
+  REVISTA: { familia: `Lora, ${SERIF}`, google: "Lora:ital,wght@0,400;0,600;1,400" },
+  AFICHE: { familia: `"Work Sans", ${SANS}`, google: "Work+Sans:wght@400;600;700" },
+  NEON: { familia: `Outfit, ${SANS}`, google: "Outfit:wght@400;600" },
+  ALBUM: { familia: `Outfit, ${SANS}`, google: "Outfit:wght@400;600" },
+  SELLO: { familia: `Lora, ${SERIF}`, google: "Lora:ital,wght@0,400;0,600;1,400" },
+  ONDAS: { familia: `Outfit, ${SANS}`, google: "Outfit:wght@400;600" },
+  CRISTAL: { familia: `Outfit, ${SANS}`, google: "Outfit:wght@400;600;700" },
+  BRUTAL: { familia: `"Space Grotesk", ${SANS}`, google: "Space+Grotesk:wght@500;700" },
 };
 
 /** El `font-family` del texto de la página con ese estilo. */

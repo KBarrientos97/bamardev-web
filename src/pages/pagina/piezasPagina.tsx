@@ -220,7 +220,8 @@ export function RedesPagina({
  * en mayúsculas espaciadas (Vivo), en versalitas entre dos líneas finas
  * (Boutique), con la letra del texto (Postal) o sólo para el lector de
  * pantalla (Mosaico: los bloques se explican solos y un título partiría la
- * grilla).
+ * grilla). Los del 20-nov: Revista con versalitas y una línea, Brutal en una
+ * etiqueta con sombra dura, Neón encendido y el resto con la letra del nombre.
  */
 export function TituloSeccion({
   id,
@@ -254,6 +255,65 @@ export function TituloSeccion({
     case "DULCE":
       s = { ...estiloLetra(letra, 21), margin: "10px 0 0", lineHeight: 1.2 };
       break;
+    // ── Los del 20-nov ──
+    case "AFICHE":
+      s = { ...estiloLetra(letra, escritorio ? 30 : 26), textTransform: "uppercase", letterSpacing: "-0.01em", margin: "16px 0 0", lineHeight: 1 };
+      break;
+    case "NEON":
+      // El título "encendido": su mismo color, difuminado alrededor.
+      s = { ...estiloLetra(letra, escritorio ? 28 : 24), textAlign: "center", margin: "14px 0 0", lineHeight: 1.15, textShadow: `0 0 12px ${t.titulo}` };
+      break;
+    case "ALBUM":
+      s = { ...estiloLetra(letra, escritorio ? 34 : 30), textAlign: "center", margin: "14px 0 0", lineHeight: 1.05 };
+      break;
+    case "SELLO":
+    case "ONDAS":
+      s = { ...estiloLetra(letra, escritorio ? 26 : 23), textAlign: "center", margin: "14px 0 0", lineHeight: 1.15 };
+      break;
+    case "CRISTAL":
+      s = { fontSize: 20, fontWeight: 600, margin: "12px 0 0", lineHeight: 1.25 };
+      break;
+    case "REVISTA":
+      // Como la sección de una revista: versalitas chicas del color y una línea fina hasta el borde.
+      return (
+        <h2
+          id={id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            margin: "18px 0 0",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: t.titulo,
+          }}
+        >
+          {children}
+          <span aria-hidden="true" style={{ flex: 1, height: 1, background: t.texto }} />
+        </h2>
+      );
+    case "BRUTAL":
+      // Una etiqueta blanca con borde y sombra dura, como las tarjetas.
+      return (
+        <h2 id={id} style={{ margin: "18px 0 0", lineHeight: 1.1 }}>
+          <span
+            style={{
+              display: "inline-block",
+              background: "#ffffff",
+              border: `3px solid ${t.titulo}`,
+              boxShadow: `3px 3px 0 ${t.titulo}`,
+              padding: "2px 10px",
+              color: t.titulo,
+              ...estiloLetra(letra, escritorio ? 26 : 22),
+              textTransform: "uppercase",
+            }}
+          >
+            {children}
+          </span>
+        </h2>
+      );
     case "MOSAICO":
       return (
         <h2 id={id} style={soloLector}>
@@ -428,7 +488,7 @@ export function TarjetaSucursal({
     <article
       style={{
         background: t.tarjeta,
-        border: t.borde ? `1px solid ${t.borde}` : "none",
+        border: t.borde ? `${t.anchoBorde ?? 1}px solid ${t.borde}` : "none",
         boxShadow: t.sombra ?? undefined,
         borderRadius: radio,
         padding: 16,
