@@ -1,10 +1,18 @@
 import type { CSSProperties } from "react";
 import { NOCHE } from "../../lib/pagina/estilos";
 import { BRILLO_NOCHE, rgbaCapa } from "../../lib/pagina/estilosPagina";
+import ArmadoAfiche from "./ArmadoAfiche";
+import ArmadoAlbum from "./ArmadoAlbum";
+import ArmadoBrutal from "./ArmadoBrutal";
 import ArmadoCarta from "./ArmadoCarta";
+import ArmadoCristal from "./ArmadoCristal";
 import ArmadoDulce from "./ArmadoDulce";
 import ArmadoMosaico from "./ArmadoMosaico";
+import ArmadoNeon from "./ArmadoNeon";
+import ArmadoOndas from "./ArmadoOndas";
 import ArmadoPostal from "./ArmadoPostal";
+import ArmadoRevista from "./ArmadoRevista";
+import ArmadoSello from "./ArmadoSello";
 import {
   BotonesEnGrilla,
   columna,
@@ -473,6 +481,23 @@ export default function ArmadoEstilo(x: PiezasArmado) {
       return <ArmadoDulce {...x} />;
     case "MOSAICO":
       return <ArmadoMosaico {...x} />;
+    // Los del 20-nov, cada uno en su archivo.
+    case "REVISTA":
+      return <ArmadoRevista {...x} />;
+    case "AFICHE":
+      return <ArmadoAfiche {...x} />;
+    case "NEON":
+      return <ArmadoNeon {...x} />;
+    case "ALBUM":
+      return <ArmadoAlbum {...x} />;
+    case "SELLO":
+      return <ArmadoSello {...x} />;
+    case "ONDAS":
+      return <ArmadoOndas {...x} />;
+    case "CRISTAL":
+      return <ArmadoCristal {...x} />;
+    case "BRUTAL":
+      return <ArmadoBrutal {...x} />;
     default:
       return <Boutique {...x} />;
   }

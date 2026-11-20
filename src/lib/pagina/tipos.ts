@@ -53,7 +53,11 @@ export type Tipografia =
   | "GREAT_VIBES"
   | "CAVEAT"
   | "KAUSHAN"
-  | "MARKER";
+  | "MARKER"
+  // Las de los estilos del 20-nov (Neón, Brutal y Cristal).
+  | "TILT_NEON"
+  | "SPACE_GROTESK"
+  | "OUTFIT";
 
 /**
  * Los estilos de página (09-oct): el armado entero de la página (encabezado,
@@ -69,7 +73,16 @@ export type ClaveEstilo =
   | "POSTAL"
   | "CARTA"
   | "DULCE"
-  | "MOSAICO";
+  | "MOSAICO"
+  // Los del 20-nov (maqueta aprobada; Ticket y Pizarra quedaron afuera).
+  | "REVISTA"
+  | "AFICHE"
+  | "NEON"
+  | "ALBUM"
+  | "SELLO"
+  | "ONDAS"
+  | "CRISTAL"
+  | "BRUTAL";
 
 export type EstiloAnuncio =
   | "SUAVE"
