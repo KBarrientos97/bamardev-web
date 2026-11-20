@@ -501,6 +501,24 @@ describe("belleza: lo de gastronomía no existe", () => {
   });
 });
 
+describe("licorería: el mostrador, sin salón ni billar (20-nov-2026)", () => {
+  it("no tiene mesas, salón, insumos ni billar, aunque alguien se los prenda en el panel", () => {
+    for (const features of [[...PLAN_FULL, "billar"] as Feature[], []]) {
+      const admin = ctxDe("ADMIN", "LICORERIA", features);
+      for (const s of ["mesas", "salon", "insumos", "billar", "mesas_billar"] as Seccion[]) {
+        expect(puedeVer(admin, s), s).toBe(false);
+      }
+    }
+  });
+
+  it("vende, abre la caja, ve los reportes y la Supervisión del local, como un minimarket", () => {
+    const admin = ctxDe("ADMIN", "LICORERIA", PLAN_FULL);
+    for (const s of ["pos", "caja", "reportes", "supervision_restaurante"] as Seccion[]) {
+      expect(puedeVer(admin, s), s).toBe(true);
+    }
+  });
+});
+
 describe("etiquetaRol (vocabulario del rubro)", () => {
   const PERFIL_BARBERIA = { etiquetasRol: { CAJERO: "Recepción", PROFESIONAL: "Barbero" } };
 
