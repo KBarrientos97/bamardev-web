@@ -17,8 +17,14 @@ import { textoTicketPlataforma, type PedidoParaImprimir } from "./ticketPlatafor
  * (CONTRATO-PRECIO-PLATAFORMA, 19-nov), para comparar pantalla con pantalla:
  * cada producto con su precio EN LA APP (suele ser más caro que en el local),
  * el descuento que la app le hizo al cliente por cuenta del local, el total,
- * el N° y una nota. El precio de la app se aprende: si el cajero lo corrige y
- * deja tildado «Recordar», el próximo pedido de esa app ya sale con ése.
+ * el N° y una nota.
+ *
+ * El precio de la app se escribe a mano en cada pedido y no se guarda para el
+ * próximo (20-nov): un precio que salía precargado de pedidos anteriores
+ * confundía, porque el producto parecía haber cambiado de precio en el local.
+ * Por eso el campo abre vacío y, mientras siga vacío, el renglón vale lo del
+ * local (lo mismo que dice el carrito); el precio del local queda siempre a la
+ * vista para comparar.
  *
  * El camino rápido no cambia: el foco arranca en el N° y Enter registra.
  *
@@ -32,15 +38,13 @@ export interface LineaDelPedido {
   productoId: number;
   nombre: string;
   cantidad: number;
-  /** El precio de UNA unidad en el local, sin los toppings. */
+  /** El precio de UNA unidad en el local, sin los toppings: el que vale si no se escribe otro. */
   precioLocal: number;
   /**
    * Los toppings extra de UNA unidad. En la app valen lo mismo que en el local
    * (el backend los cotiza como siempre): se suman al precio de la app.
    */
   extraPorUnidad?: number;
-  /** El precio de la app que ya está recordado para esta plataforma; sin él, el del local. */
-  precioRecordado?: number;
   /** Los toppings del vaso en una línea («+ Oreo, Chubi»), si los lleva. */
   agregados?: string;
 }
@@ -48,14 +52,16 @@ export interface LineaDelPedido {
 /** Lo que el cajero confirmó, listo para armar el pedido. */
 export interface PedidoConfirmado {
   codigoExterno?: string;
-  /** El precio de UNA unidad en la app, renglón por renglón, en el orden de `lineas`. */
-  precios: { clave: number | string; productoId: number; precioApp: number; precioLocal: number }[];
+  /**
+   * Renglón por renglón, en el orden de `lineas`. `precioApp` es el precio de
+   * UNA unidad que el cajero escribió para la app; ausente = no escribió nada
+   * y vale el del local (el servidor pone el suyo, como siempre).
+   */
+  precios: { clave: number | string; productoId: number; precioApp?: number; precioLocal: number }[];
   /** Bs del pedido entero; 0 = sin descuento. */
   descuento: number;
   observaciones?: string;
-  /** La casilla estaba a la vista (se cambió algún precio) y tildada. */
-  recordarPrecios: boolean;
-  /** La suma de los renglones (precio de la app + toppings) × cantidad. */
+  /** La suma de los renglones (precio de la app, o el del local, + toppings) × cantidad. */
   subtotal: number;
   /** Subtotal − descuento: lo que cobra la app. */
   total: number;
@@ -76,18 +82,6 @@ const PRECIO_MAXIMO = 9_999_999;
 const PLATA_TECLEABLE = /^\d{0,7}(\.\d{0,2})?$/;
 
 const centavos = (n: number) => Math.round(n * 100) / 100;
-/** Medio centavo: por debajo de eso dos precios son el mismo. */
-const mismoPrecio = (a: number, b: number) => Math.abs(a - b) < 0.005;
-
-/** «21» o «12.50»: el precio como arranca en el campo. */
-const textoDePrecio = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-
-/** Un precio de la app válido (>= 0, hasta 2 decimales, hasta el máximo), o null. */
-function precioDelTexto(texto: string): number | null {
-  const n = parsearMonto(texto);
-  if (n == null || n < 0 || n > PRECIO_MAXIMO) return null;
-  return mismoPrecio(centavos(n), n) ? centavos(n) : null;
-}
 
 export default function DialogoPedidoPlataforma({
   plataforma,
@@ -104,59 +98,27 @@ export default function DialogoPedidoPlataforma({
   const nombre = NOMBRE_PLATAFORMA[plataforma];
   const idAyuda = useId();
   const [codigo, setCodigo] = useState("");
-  // Cada renglón arranca con el precio recordado de esta app o, si no hay, con
-  // el del local: el «precio de arranque», contra el que se decide si se
-  // cambió algo (y aparece «Recordar»).
-  const [arranque, setArranque] = useState(() => new Map(lineas.map((l) => [l.clave, l.precioRecordado ?? l.precioLocal])));
-  const [textos, setTextos] = useState<Record<string, string>>(() =>
-    Object.fromEntries(lineas.map((l) => [String(l.clave), textoDePrecio(l.precioRecordado ?? l.precioLocal)])),
-  );
-  /** Los renglones cuyo precio tocó el cajero: ésos no se ponen al día nunca. */
-  const [tocados, setTocados] = useState<ReadonlySet<string>>(() => new Set());
+  // El precio de la app de cada renglón, tal como lo escribió el cajero. Todos
+  // arrancan vacíos: nada viene precargado (20-nov).
+  const [textos, setTextos] = useState<Record<string, string>>({});
   const [textoDescuento, setTextoDescuento] = useState("");
   const [observaciones, setObservaciones] = useState("");
-  // Tildada de entrada: quien corrige el precio casi siempre quiere que quede.
-  const [recordar, setRecordar] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
-  // Ponerse al día (19-nov): el diálogo se abre con la copia de este equipo y
-  // el POS vuelve a pedir los precios por detrás. Si llega otro precio de
-  // arranque para un renglón que el cajero no tocó (su texto sigue siendo el
-  // de arranque), ese renglón pasa al nuevo. Lo que el cajero escribió no se
-  // pisa nunca, y nada cambia mientras se está enviando. Se ajusta durante el
-  // dibujo (no en un efecto) para que no se vea un instante el precio viejo.
-  if (!enviando) {
-    let nuevoArranque: Map<number | string, number> | null = null;
-    let nuevosTextos: Record<string, string> | null = null;
-    for (const l of lineas) {
-      const k = String(l.clave);
-      const antes = arranque.get(l.clave);
-      const ahora = l.precioRecordado ?? l.precioLocal;
-      if (antes === undefined || mismoPrecio(antes, ahora) || tocados.has(k)) continue;
-      if ((textos[k] ?? "") !== textoDePrecio(antes)) continue;
-      nuevoArranque ??= new Map(arranque);
-      nuevosTextos ??= { ...textos };
-      nuevoArranque.set(l.clave, ahora);
-      nuevosTextos[k] = textoDePrecio(ahora);
-    }
-    if (nuevoArranque && nuevosTextos) {
-      setArranque(nuevoArranque);
-      setTextos(nuevosTextos);
-    }
-  }
-
   const renglones = lineas.map((l) => {
     const texto = textos[String(l.clave)] ?? "";
-    const precio = precioDelTexto(texto);
-    const inicial = arranque.get(l.clave) ?? l.precioLocal;
+    // Vacío (o sólo un punto a medio escribir) = no se escribió precio. El
+    // campo no deja teclear nada fuera de rango, así que lo que se lee vale.
+    const escrito = parsearMonto(texto);
+    const precio = escrito == null ? null : centavos(escrito);
     return {
       l,
       texto,
       precio,
-      // Lo que cobra la app por este renglón: su precio más los toppings, por la cantidad.
-      monto: centavos(((precio ?? 0) + (l.extraPorUnidad ?? 0)) * l.cantidad),
-      cambiado: precio != null && !mismoPrecio(precio, inicial),
+      // Lo que cobra la app por este renglón: su precio (o, sin escribir, el
+      // del local) más los toppings, por la cantidad.
+      monto: centavos(((precio ?? l.precioLocal) + (l.extraPorUnidad ?? 0)) * l.cantidad),
     };
   });
   const subtotal = centavos(renglones.reduce((s, r) => s + r.monto, 0));
@@ -165,17 +127,11 @@ export default function DialogoPedidoPlataforma({
   // Nunca en negativo: un descuento mayor que el pedido deja Bs 0 a la vista y
   // el error sale al tocar Registrar (que no registra).
   const total = Math.max(0, centavos(subtotal - descuento));
-  // La casilla sólo tiene sentido si hay algo nuevo que recordar.
-  const algunoCambiado = renglones.some((r) => r.cambiado);
 
   async function registrar() {
     if (enviando) return;
     setError("");
-    const sinPrecio = renglones.find((r) => r.precio == null);
-    if (sinPrecio) {
-      setError(`Poné el precio de «${sinPrecio.l.nombre}» en ${nombre}.`);
-      return;
-    }
+    // Un precio vacío no es un error: vale el del local.
     if (descuento > subtotal + 0.005) {
       setError("El descuento no puede ser mayor que el pedido.");
       return;
@@ -184,15 +140,16 @@ export default function DialogoPedidoPlataforma({
     try {
       await onRegistrar({
         codigoExterno: codigo.trim() || undefined,
+        // `precioApp` sólo donde el cajero escribió uno: lo demás lo pone el
+        // servidor con el del local, como antes del precio de la app.
         precios: renglones.map((r) => ({
           clave: r.l.clave,
           productoId: r.l.productoId,
-          precioApp: r.precio ?? r.l.precioLocal,
           precioLocal: r.l.precioLocal,
+          ...(r.precio != null ? { precioApp: r.precio } : {}),
         })),
         descuento,
         observaciones: observaciones.trim() || undefined,
-        recordarPrecios: algunoCambiado && recordar,
         subtotal,
         total,
       });
@@ -230,9 +187,11 @@ export default function DialogoPedidoPlataforma({
     >
       <div className="space-y-3">
         <div>
-          <p className="mb-1.5 px-1 text-[13px] font-semibold text-texto-2">Precios como figuran en {nombre}</p>
+          <p className="mb-1.5 text-balance px-1 text-[13px] font-semibold text-texto-2">
+            Precio en {nombre}: escribilo sólo si es distinto al del local.
+          </p>
           <ul className="divide-y divide-borde-soft rounded-xl border border-borde-soft">
-            {renglones.map(({ l, texto, precio, monto }) => (
+            {renglones.map(({ l, texto, monto }) => (
               <li key={l.clave} className="px-3.5 py-2.5 text-[13px]">
                 {/* En la compu, todo en una fila. En el celular no entra: el nombre
                     ocupa su renglón entero (y baja si es largo) y el precio con el
@@ -242,12 +201,11 @@ export default function DialogoPedidoPlataforma({
                     <span className="block break-words">
                       <b className="text-texto">{fmtCantidad(l.cantidad)}×</b> {l.nombre}
                     </span>
-                    {(precio == null || !mismoPrecio(precio, l.precioLocal)) && (
-                      <span className="block text-xs text-texto-3">En el local: {fmtMoney(l.precioLocal)}</span>
-                    )}
+                    {/* Siempre a la vista: es el que vale si el campo queda vacío. */}
+                    <span className="block text-xs text-texto-3">En el local: {fmtMoney(l.precioLocal)}</span>
                     {l.agregados && <span className="block break-words text-xs text-texto-3">{l.agregados}</span>}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex min-w-[8.25rem] shrink-0 items-center gap-1.5">
                     <span className="text-texto-3">Bs</span>
                     <Input
                       type="number"
@@ -255,9 +213,10 @@ export default function DialogoPedidoPlataforma({
                       onChange={(e) => {
                         const v = e.target.value.trim();
                         if (!PLATA_TECLEABLE.test(v)) return;
-                        const k = String(l.clave);
-                        setTextos((t) => ({ ...t, [k]: v }));
-                        setTocados((s) => (s.has(k) ? s : new Set(s).add(k)));
+                        // Más que el máximo del backend no se deja escribir: así
+                        // todo lo que queda en el campo es un precio que vale.
+                        if ((parsearMonto(v) ?? 0) > PRECIO_MAXIMO) return;
+                        setTextos((t) => ({ ...t, [String(l.clave)]: v }));
                       }}
                       autoComplete="off"
                       aria-label={`Precio de «${l.nombre}» en ${nombre}`}
@@ -331,18 +290,6 @@ export default function DialogoPedidoPlataforma({
             onKeyDown={alEnter}
           />
         </Campo>
-
-        {algunoCambiado && (
-          <label className="flex items-start gap-2.5 px-1 text-[13px] text-texto-2">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-[18px] w-[18px] shrink-0"
-              checked={recordar}
-              onChange={(e) => setRecordar(e.target.checked)}
-            />
-            <span>Recordar estos precios para los próximos pedidos de {nombre}</span>
-          </label>
-        )}
 
         <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
           Queda en el reporte de {nombre}.
