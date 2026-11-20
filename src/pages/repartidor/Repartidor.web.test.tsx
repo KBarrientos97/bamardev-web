@@ -15,6 +15,13 @@ vi.mock("../../store/AuthContext", () => ({
   }),
 }));
 
+// MapLibre no corre en jsdom: el mapa del detalle es un marcador con lo que recibe.
+vi.mock("../pagina/MapaSeguimiento", () => ({
+  default: ({ destino }: { destino: { latitud: number; longitud: number } | null }) => (
+    <div data-testid="mapa-entrega">{destino ? `${destino.latitud},${destino.longitud}` : "sin destino"}</div>
+  ),
+}));
+
 vi.mock("../../lib/api", () => ({
   api: {
     getMisEntregas: vi.fn(),
@@ -138,7 +145,9 @@ describe("los botones del repartidor en un pedido de la página", () => {
   it("una entrega que no vino de la página no suma nada de esto", async () => {
     const detalle = await abrir(SIN_WEB);
     expect(within(detalle).queryByRole("button", { name: "Ya salí del local" })).not.toBeInTheDocument();
-    expect(within(detalle).queryByRole("link", { name: /Waze/ })).not.toBeInTheDocument();
+    // Sin pin no se navega a un punto: se busca la dirección escrita («Cómo llegar», 20-nov).
+    expect(within(detalle).queryByRole("link", { name: /Abrir en Waze/ })).not.toBeInTheDocument();
+    expect(within(detalle).getByRole("link", { name: /Buscar en Maps/ })).toBeInTheDocument();
   });
 });
 

@@ -4,6 +4,8 @@ import InputMonto from "../../components/InputMonto";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
+import UbicacionDeEntrega from "../../components/UbicacionDeEntrega";
+import type { Ubicacion } from "../../lib/mapa";
 import type { Repartidor, TipoPedido } from "../../types";
 
 /** Tiempos típicos de preparación para un pedido que pasan a recoger. */
@@ -23,6 +25,12 @@ export interface DatosEntrega {
    * para que los arqueos cuadren, por eso se decide acá y no después.
    */
   prepagado: boolean;
+  /**
+   * El pin de la entrega, opcional (20-nov): pegado del enlace de Google Maps
+   * que mandó el cliente o marcado en el mapa. Sin él el pedido sale igual.
+   */
+  latitud?: number;
+  longitud?: number;
 }
 
 export default function PantallaEntrega({
@@ -80,6 +88,9 @@ export default function PantallaEntrega({
   );
   const [minutos, setMinutos] = useState(inicial?.minutosEstimados ?? 20);
   const [nota, setNota] = useState(inicial?.notaPedido ?? "");
+  const [pin, setPin] = useState<Ubicacion | null>(
+    inicial?.latitud != null && inicial?.longitud != null ? { lat: inicial.latitud, lng: inicial.longitud } : null,
+  );
   const [error, setError] = useState("");
 
   const tarifaNum = leerMonto(tarifa) ?? 0;
@@ -107,6 +118,7 @@ export default function PantallaEntrega({
       tarifaEnvio: esDelivery ? tarifaNum : 0,
       ...(esDelivery ? {} : { minutosEstimados: minutos }),
       ...(nota.trim() ? { notaPedido: nota.trim() } : {}),
+      ...(esDelivery && pin ? { latitud: pin.lat, longitud: pin.lng } : {}),
       prepagado: false,
     };
   }
@@ -167,6 +179,9 @@ export default function PantallaEntrega({
             />
           </Campo>
         )}
+
+        {/* Opcional: con el pin el repartidor ve el destino en su mapa. */}
+        {esDelivery && <UbicacionDeEntrega valor={pin} onCambio={setPin} />}
 
         <Campo label="Teléfono">
           <Input

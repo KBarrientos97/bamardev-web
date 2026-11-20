@@ -1531,6 +1531,16 @@ export interface Venta {
   entregaFallidaEn?: string | null;
   entregaFallidaMotivo?: string | null;
   entregaFallidaNota?: string | null;
+  /**
+   * El pin de la entrega (20-nov, AUDITORIA-REPARTIDOR §2.2 D): el que marcó
+   * el cliente en la página o el que cargó la caja. Viene en «Mis entregas» y
+   * en los pendientes; null sin pin, ausente en un backend anterior (ver
+   * `lib/ubicacionEntrega`, que entonces usa el de `pedidoWeb`).
+   */
+  latitud?: number | null;
+  longitud?: number | null;
+  /** Lo que dijo el GPS del cliente, en metros. */
+  precisionM?: number | null;
   credito?: Credito | null;
   /** Mesa del salón de la que salió la venta; null en la de mostrador. */
   mesa?: string | null;
@@ -1894,6 +1904,9 @@ export interface VentaInput {
   prepagado?: boolean;
   minutosEstimados?: number;
   notaPedido?: string;
+  /** El pin del delivery, opcional (20-nov): el repartidor lo ve en su mapa. */
+  latitud?: number;
+  longitud?: number;
   credito?: CreditoInput;
   /** Agenda: la cita que cobra esta venta. La venta la completa (§10). */
   citaId?: number;

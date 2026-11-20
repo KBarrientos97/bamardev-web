@@ -28,6 +28,8 @@ import { usePosicionRepartidor } from "../../lib/pedidosWeb/usePosicionRepartido
 import { useAuth } from "../../store/AuthContext";
 import { notaSinPago, recibidoSugerido } from "../../lib/pedidosWeb/cobro";
 import AccionesPedidoWeb from "./AccionesPedidoWeb";
+import ComoLlegar from "./ComoLlegar";
+import { pinDeEntrega } from "../../lib/ubicacionEntrega";
 import NoSePudoEntregar from "./NoSePudoEntregar";
 import { enEspera, textoMotivo } from "../../lib/entregaFallida";
 import type { FormaPago, Venta } from "../../types";
@@ -40,7 +42,7 @@ import { activarSonido, useSonidoListo } from "../../lib/pedidosWeb/contador";
 import { REFRESCO_ENTREGAS_MS, useAvisoPedidoNuevo } from "./avisoPedidoNuevo";
 import { aEntregarDelRepartidor } from "../../lib/repartoRendicion";
 import { pedirRendicionSiHay } from "../reparto/pedirRendicion";
-import { direccionParaMostrar, direccionSinReferencia } from "./direccionEntrega";
+import { direccionEscrita, direccionParaMostrar, direccionSinReferencia } from "./direccionEntrega";
 
 type Vista = "pendientes" | "entregadas";
 
@@ -494,6 +496,14 @@ function DetalleEntrega({
     nota: p.entregaFallidaNota ?? pedido.entregaFallidaNota ?? null,
   };
   const enEsperaAhora = enEspera({ estadoEntrega: p.estadoEntrega, entregaFallidaEn: espera.entregaFallidaEn });
+  // El pin: el de la venta o el del pedido de la página. El detalle completo
+  // puede no traerlo (lo trae la lista): se usa el que haya.
+  const pin = pinDeEntrega({
+    latitud: p.latitud ?? pedido.latitud,
+    longitud: p.longitud ?? pedido.longitud,
+    precisionM: p.precisionM ?? pedido.precisionM,
+    pedidoWeb: webBase,
+  });
 
   // Con el helper de toda la web (`lib/telefono`, calcado de `Telefono.kt`),
   // como la caja. Armado a mano, "Llamar" marcaba los dígitos tal cual: un
@@ -600,6 +610,12 @@ function DetalleEntrega({
                 </div>
               )}
             </div>
+
+            {/* El mapa y la navegación, para TODA entrega pendiente (20-nov):
+                antes sólo los pedidos de la página tenían Maps y Waze. */}
+            {pendiente && !enEsperaAhora && (
+              <ComoLlegar pin={pin} direccion={direccionEscrita(p.clienteDireccion ?? pedido.clienteDireccion)} />
+            )}
 
             {webBase && pendiente && !enEsperaAhora && (
               <AccionesPedidoWeb
