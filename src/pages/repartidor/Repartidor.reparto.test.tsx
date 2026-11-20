@@ -211,8 +211,8 @@ describe("la rendición con el cuadre de la caja", () => {
 
   it("con el control prendido: lo ya entregado, lo que falta y lo que llevó", async () => {
     const r = await abrirRendicion();
-    expect(within(r).getByText("Ya entregaste a la caja").nextElementSibling).toHaveTextContent("Bs 120,00");
-    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 130,00");
+    expect(within(r).getByText("Ya entregaste a la caja").nextElementSibling).toHaveTextContent("Bs 120");
+    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 130");
     const llevo = within(r).getByRole("button", { name: /Lo que llevaste: Pollos 5 · Bebidas 3/ });
     fireEvent.click(llevo);
     expect(within(r).getByText("Brasa entero")).toBeInTheDocument();
@@ -272,37 +272,37 @@ describe("QA 18-nov, bug 2: «A rendir» y «A entregar al negocio» bajan cuand
     return screen.getByRole("dialog", { name: "Rendición del turno" });
   }
 
-  it("la caja ya le recibió todo: «A rendir», el cartel y «Te falta entregar» dicen Bs 0,00", async () => {
+  it("la caja ya le recibió todo: «A rendir», el cartel y «Te falta entregar» dicen Bs 0", async () => {
     vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 0, recibido: 148, aEntregar: 0 }));
     await montar([ENTREGADO]);
-    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 0,00/);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 0/);
     const r = await rendicion();
-    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/A entregar al negocio\s*Bs 0,00/);
-    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 0,00");
-    expect(within(r).getByText("Ya entregaste a la caja").nextElementSibling).toHaveTextContent("Bs 148,00");
+    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/A entregar al negocio\s*Bs 0/);
+    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 0");
+    expect(within(r).getByText("Ya entregaste a la caja").nextElementSibling).toHaveTextContent("Bs 148");
   });
 
   it("con el control apagado también es el `aEntregar` del backend", async () => {
     vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(false, { pendiente: 0, recibido: 0, aEntregar: 76 }));
     await montar([ENTREGADO]);
-    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 76,00/);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 76/);
     const r = await rendicion();
-    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/Bs 76,00/);
+    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/Bs 76/);
   });
 
   it("un backend sin `aEntregar` con el control prendido: el cartel dice lo mismo que «Te falta entregar»", async () => {
     vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 80, recibido: 68 }));
     await montar([ENTREGADO]);
-    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 80,00/);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 80/);
     const r = await rendicion();
-    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/Bs 80,00/);
-    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 80,00");
+    expect(within(r).getByText("A entregar al negocio").parentElement).toHaveTextContent(/Bs 80/);
+    expect(within(r).getByText("Te falta entregar").nextElementSibling).toHaveTextContent("Bs 80");
   });
 
   it("si la rendición no carga (backend viejo, sin señal), la cuenta de siempre", async () => {
     vi.mocked(api.rendicionReparto).mockRejectedValue(new Error("Not Found"));
     await montar([ENTREGADO]);
-    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148,00/);
+    expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148/);
   });
 
   describe("con el refresco", () => {
@@ -316,10 +316,10 @@ describe("QA 18-nov, bug 2: «A rendir» y «A entregar al negocio» bajan cuand
     it("la caja recibe mientras mira: «A rendir» baja en el siguiente refresco", async () => {
       vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 148, recibido: 0, aEntregar: 148 }));
       await montar([ENTREGADO]);
-      expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148,00/);
+      expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 148/);
       vi.mocked(api.rendicionReparto).mockResolvedValue(cuadre(true, { pendiente: 0, recibido: 148, aEntregar: 0 }));
       await refrescar([ENTREGADO]);
-      expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 0,00/);
+      expect(aRendir()).toHaveTextContent(/A rendir\s*Bs 0/);
     });
 
     it("a un backend que no tiene la rendición no se le vuelve a preguntar cada 20 s", async () => {

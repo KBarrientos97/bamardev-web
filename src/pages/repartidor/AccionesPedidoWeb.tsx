@@ -45,7 +45,9 @@ export default function AccionesPedidoWeb({
   // en otra app. Para llegar están los botones del mapa.
   const paraCopiar = direccionEscrita(direccion);
   const boton =
-    "flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted";
+    // Con la respuesta al toque de `Boton` (se hunde un poco al apretar): sin
+    // ella, en el celular no se sabía si el toque había entrado.
+    "flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] motion-reduce:active:scale-100";
 
   async function yaSali() {
     setError("");
