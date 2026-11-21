@@ -134,6 +134,12 @@ export default function PanelSistema({
   const [direccion, setDireccion] = useState(inicial.direccion);
   const [referencia, setReferencia] = useState(inicial.referencia);
   const [nota, setNota] = useState("");
+  /**
+   * Dirección, referencia y nota van plegadas (modo pedir, 20-nov): a la vista
+   * queda sólo lo que hace falta para pedir. Se abren solas si el cliente ya
+   * había dejado su dirección: así ve lo que se va a mandar.
+   */
+  const [detalles, setDetalles] = useState(() => !!(inicial.direccion.trim() || inicial.referencia.trim()));
   const [pin, setPin] = useState<Ubicacion | null>(null);
   /** El pin salió de un GPS poco preciso y el cliente todavía no lo movió. */
   const [pinSinAjustar, setPinSinAjustar] = useState(false);
@@ -733,18 +739,12 @@ export default function PanelSistema({
                       </p>
                     )}
                   </div>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={etiqueta}>Dirección (opcional)</span>
-                    <input ref={guardar("direccion")} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={campo} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={etiqueta}>Referencia (opcional)</span>
-                    <input aria-label="Referencia" value={referencia} maxLength={200} placeholder="Portón negro, frente a la farmacia…" onChange={(e) => setReferencia(e.target.value)} style={campo} />
-                  </label>
                 </>
               )}
 
-              {sucursales.length > 1 && (
+              {/* Con delivery, la lista sale recién con el pin: antes todas dicen «Marcá tu
+                  ubicación» y sólo alargan la hoja (modo pedir, 20-nov). */}
+              {sucursales.length > 1 && (tipoReal !== "DELIVERY" || !!pin) && (
                 <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
                   <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>{tipoReal === "DELIVERY" ? "Sale desde" : "¿Dónde lo retirás?"}</legend>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -847,10 +847,36 @@ export default function PanelSistema({
                 </p>
               )}
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={etiqueta}>Nota (opcional)</span>
-                <input aria-label="Nota para el negocio" value={nota} maxLength={200} placeholder="Sin cebolla, extra crema…" onChange={(e) => setNota(e.target.value)} style={campo} />
-              </label>
+              {detalles ? (
+                <>
+                  {tipoReal === "DELIVERY" && (
+                    <>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={etiqueta}>Dirección (opcional)</span>
+                        <input ref={guardar("direccion")} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={campo} />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={etiqueta}>Referencia (opcional)</span>
+                        <input aria-label="Referencia" value={referencia} maxLength={200} placeholder="Portón negro, frente a la farmacia…" onChange={(e) => setReferencia(e.target.value)} style={campo} />
+                      </label>
+                    </>
+                  )}
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={etiqueta}>Nota (opcional)</span>
+                    <input aria-label="Nota para el negocio" value={nota} maxLength={200} placeholder="Sin cebolla, extra crema…" onChange={(e) => setNota(e.target.value)} style={campo} />
+                  </label>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  aria-expanded={false}
+                  onClick={() => setDetalles(true)}
+                  style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: fuerte, fontWeight: 700, fontSize: 15, cursor: "pointer", padding: "4px 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
+                >
+                  <Trazo d="M12 5v14M5 12h14" color={fuerte} size={16} grosor={2.6} />
+                  {tipoReal === "DELIVERY" ? "Agregar dirección, referencia o nota" : "Agregar una nota"}
+                </button>
+              )}
               {/* Campo trampa: invisible y fuera del Tab. Una persona no lo ve; un bot que llena todo, sí. */}
               <div aria-hidden="true" style={{ position: "absolute", left: -9999, width: 1, height: 1, overflow: "hidden" }}>
                 <label>

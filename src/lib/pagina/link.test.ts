@@ -45,6 +45,9 @@ describe("dirección corta → la de siempre", () => {
     expect(rutaLargaDeLink("/horizonte/mi-cuenta")).toBe("/p/horizonte/mi-cuenta");
     expect(rutaLargaDeLink("/saborcriollo/tienda")).toBe("/p/saborcriollo/tienda");
     expect(rutaLargaDeLink("/saborcriollo/tienda/x")).toBeNull();
+    // El modo pedir (20-nov): directo a la carta, sin más tramos.
+    expect(rutaLargaDeLink("/elganadero/pedir")).toBe("/p/elganadero/pedir");
+    expect(rutaLargaDeLink("/elganadero/pedir/x")).toBeNull();
     expect(rutaLargaDeLink("/horizonte/mi-cuenta/x")).toBeNull();
     // El seguimiento de un pedido web (13-nov): con su token, sin más tramos.
     expect(rutaLargaDeLink("/elganadero/pedido/Ab3_x-9QkLm2Ab3_x-9QkLm2Ab3_x-9QkLm2")).toBe(

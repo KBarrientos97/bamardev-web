@@ -104,7 +104,14 @@ async function abrirPedido() {
   await screen.findByRole("dialog", { name: "Tu pedido" });
 }
 
-const escribir = (etiqueta: string, valor: string) => fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+/** Dirección, referencia y nota van plegadas (modo pedir, 20-nov): se abren antes de escribirlas. */
+const PLEGADOS = new Set(["Dirección", "Referencia", "Nota para el negocio"]);
+const escribir = (etiqueta: string, valor: string) => {
+  if (PLEGADOS.has(etiqueta) && !screen.queryByLabelText(etiqueta)) {
+    fireEvent.click(screen.getByRole("button", { name: /^Agregar (dirección, referencia o nota|una nota)$/ }));
+  }
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+};
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -228,7 +235,39 @@ describe("el carrito con pedidos en el sistema", () => {
       await montar();
       await abrirPedido();
       await screen.findByRole("button", { name: "Marcar mi casa" });
+      fireEvent.click(screen.getByRole("button", { name: "Agregar dirección, referencia o nota" }));
       expect(screen.getByText("Dirección (opcional)")).toBeInTheDocument();
+    });
+
+    it("con delivery, «Sale desde» aparece recién con el pin (modo pedir, 20-nov)", async () => {
+      servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      expect(await screen.findByText("Sale desde")).toBeInTheDocument();
+    });
+
+    it("con delivery y sin pin no lista las sucursales", async () => {
+      servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
+      await montar();
+      await abrirPedido();
+      await screen.findByRole("button", { name: "Marcar mi casa" });
+      expect(screen.queryByText("Sale desde")).not.toBeInTheDocument();
+    });
+
+    // Modo pedir (20-nov): a la vista sólo lo obligatorio; lo opcional, plegado.
+    it("dirección, referencia y nota empiezan plegadas", async () => {
+      servidor();
+      await montar();
+      await abrirPedido();
+      await screen.findByRole("button", { name: "Marcar mi casa" });
+      expect(screen.queryByLabelText("Dirección")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Referencia")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Nota para el negocio")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Agregar dirección, referencia o nota" }));
+      expect(screen.getByLabelText("Dirección")).toBeInTheDocument();
+      expect(screen.getByLabelText("Referencia")).toBeInTheDocument();
+      expect(screen.getByLabelText("Nota para el negocio")).toBeInTheDocument();
     });
 
     it.each([
