@@ -64,7 +64,16 @@ export interface SucursalPedido {
    * (PLAN-AGREGADOS §8.3). Un backend anterior no lo manda: se lee como «ninguna».
    */
   agotadosAgregados?: number[];
+  /**
+   * Cómo se paga ANTES por QR en esta sucursal (PLAN-PEDIDOS-QR): AUTOMATICO
+   * (el banco confirma solo), FIJO (el QR del local, confirma la cajera) o null
+   * (sólo efectivo). Un backend viejo no lo manda: no se ofrece pagar antes.
+   */
+  pagoAntes?: ModoPagoAntes | null;
 }
+
+/** Cómo se confirma un pago por QR hecho antes (PLAN-PEDIDOS-QR). */
+export type ModoPagoAntes = "AUTOMATICO" | "FIJO";
 
 /** `GET /publico/pedidos/:subdominio`. */
 export interface InfoPedidos {
@@ -103,6 +112,8 @@ export interface CuerpoPedido {
   longitud?: number;
   precisionM?: number;
   formaPago: FormaPagoWeb;
+  /** Con QR: se pagan los productos ANTES y el pedido llega al local ya pagado (PLAN-PEDIDOS-QR). */
+  pagarAntes?: boolean;
   pagaCon?: number;
   nota?: string;
   lineas: LineaPedidoEnvio[];
@@ -118,6 +129,8 @@ export interface RespuestaCrear {
 
 /** El estado que ve el cliente (no es el del backend: ver §4). */
 export type EstadoSeguimiento =
+  /** Se paga por QR antes y el pago todavía no se confirmó (PLAN-PEDIDOS-QR). */
+  | "ESPERANDO_PAGO"
   | "RECIBIDO"
   | "ACEPTADO"
   | "EN_CAMINO"
@@ -183,11 +196,18 @@ export interface Seguimiento {
    * que hay que pagar y el QR del local (§2.5). Si no, no viene.
    */
   pago?: { pendiente: true; monto: number; qrUrl: string } | null;
+  /**
+   * Pagar antes por QR (PLAN-PEDIDOS-QR): cuánto (sólo los productos; el envío
+   * se paga al recibir), cómo se confirma, si ya entró y hasta cuándo se espera.
+   */
+  prepago?: { modo: ModoPagoAntes; monto: number; pagado: boolean; venceEn: string } | null;
+  /** Cuándo se confirmó el pago por QR (externo o pagado antes). */
+  pagoConfirmadoEn?: string | null;
 }
 
 // ── Privado (bandeja) ───────────────────────────────────────────────────
 
-export type EstadoPedidoWeb = "NUEVO" | "ACEPTADO" | "RECHAZADO" | "CANCELADO" | "VENCIDO";
+export type EstadoPedidoWeb = "ESPERANDO_PAGO" | "NUEVO" | "ACEPTADO" | "RECHAZADO" | "CANCELADO" | "VENCIDO";
 
 export type CodigoRechazo = "AGOTADO" | "FUERA_DE_ZONA" | "CERRADO" | "PEDIDO_FALSO" | "OTRO";
 
@@ -258,6 +278,15 @@ export interface PedidoWeb {
    * un RECOGER así se entrega sin cobrar. Un backend anterior no lo manda: se cobra al entregar.
    */
   pagado?: boolean;
+  /** Pagar antes por QR (PLAN-PEDIDOS-QR). Un backend viejo no lo manda. */
+  pagoAntes?: boolean;
+  modoPago?: ModoPagoAntes | null;
+  /** Lo que el cliente paga antes: sólo los productos. */
+  montoPrepago?: number | null;
+  /** Ya pagado por QR antes de aceptarlo. */
+  pagadoAntes?: boolean;
+  /** Rechazado ya pagado: cuánto hay que devolverle al cliente. */
+  devolver?: number | null;
   /** Cuándo se entregó (el detalle de uno de «Hoy»): ya no hay nada que avanzar. */
   entregadoEn?: string | null;
 }
@@ -271,12 +300,16 @@ export interface Bandeja {
   enCamino: PedidoWeb[];
   entregadosHoy: PedidoWeb[];
   noTomadosHoy: PedidoWeb[];
+  /** Pagar antes con el QR fijo: esperan que la cajera vea el pago (PLAN-PEDIDOS-QR). Un backend viejo no lo manda. */
+  porCobrar?: PedidoWeb[];
 }
 
 /** `GET /pedidos-web/contador`. */
 export interface ContadorPedidos {
   nuevos: number;
   masViejoEn: string | null;
+  /** Los que esperan que la cajera confirme el pago por QR fijo. Un backend viejo no lo manda. */
+  porCobrar?: number;
 }
 
 export interface CuerpoAceptar {

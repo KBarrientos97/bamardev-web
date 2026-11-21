@@ -21,6 +21,17 @@ const MapaSeguimiento = lazy(pedazoMapa);
 
 /** Cada cuánto se vuelve a preguntar cómo va el pedido (la moto se mueve). */
 export const REFRESCO_SEGUIMIENTO_MS = 10_000;
+/** Mientras espera el pago por QR (PLAN-PEDIDOS-QR): el banco confirma en segundos. */
+export const REFRESCO_ESPERANDO_PAGO_MS = 4_000;
+
+/** «14:59»: lo que falta hasta `hasta`, o null si ya pasó. */
+export function restante(hasta: string | undefined, ahora: number): string | null {
+  if (!hasta) return null;
+  const ms = new Date(hasta).getTime() - ahora;
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const seg = Math.ceil(ms / 1000);
+  return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, "0")}`;
+}
 
 const ROJO = "#B91C1C";
 
@@ -106,6 +117,21 @@ export default function SeguimientoPedido() {
     };
   }, [cargar]);
 
+  // Esperando el pago: se pregunta cada 4 s y el reloj de la cuenta regresiva avanza solo.
+  const esperandoPago = seg?.estado === "ESPERANDO_PAGO";
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    if (!esperandoPago) return;
+    const consulta = window.setInterval(() => {
+      if (!document.hidden) void cargar();
+    }, REFRESCO_ESPERANDO_PAGO_MS);
+    const reloj = window.setInterval(() => setAhora(Date.now()), 1000);
+    return () => {
+      window.clearInterval(consulta);
+      window.clearInterval(reloj);
+    };
+  }, [esperandoPago, cargar]);
+
   // El pedido es de una persona: ni el buscador ni el chat de nadie lo indexa.
   useEffect(() => {
     const anterior = document.title;
@@ -188,18 +214,23 @@ export default function SeguimientoPedido() {
   }
 
   const numero = String(seg.numero).padStart(2, "0");
-  const pasos = pasosDe(seg.tipo);
+  const pasos = pasosDe(seg.tipo, !!seg.prepago);
   const actual = pasoActual(seg);
   const fin = esFinal(seg.estado);
   // Un pedido que no se tomó no cobra nada: ni «a pagar» ni «entrega en».
   const sinCobro = seg.estado === "RECHAZADO" || seg.estado === "VENCIDO" || seg.estado === "CANCELADO";
   const malo = seg.estado === "RECHAZADO" || seg.estado === "VENCIDO" || seg.estado === "CANCELADO";
   const whatsapp = seg.whatsappLocal;
-  const puedeCancelar = seg.estado === "RECIBIDO";
+  // Pagado antes, ya no se cancela por acá (la devolución la hace el local).
+  const prepago = seg.prepago ?? null;
+  const puedeCancelar = seg.estado === "ESPERANDO_PAGO" || (seg.estado === "RECIBIDO" && !prepago?.pagado);
   const enCamino = seg.estado === "EN_CAMINO";
   // Delivery por un servicio externo: al cliente no se le nombra el servicio (16-nov), sólo delivery. Se paga por QR antes de que salga y no hay moto (§2.5).
   const externo = seg.tipo === "DELIVERY" && esExterno(seg.entrega?.modo);
-  const pagoPendiente = externo && seg.estado === "ACEPTADO" && seg.pago?.pendiente ? seg.pago : null;
+  // El QR para pagar: el de pagar antes (mientras espera el pago) o el del externo ya aceptado.
+  const pagoPendiente =
+    seg.pago?.pendiente && (seg.estado === "ESPERANDO_PAGO" || (externo && seg.estado === "ACEPTADO")) ? seg.pago : null;
+  const falta = seg.estado === "ESPERANDO_PAGO" ? restante(prepago?.venceEn, ahora) : null;
   // Hasta que la caja acepta, el envío es «a confirmar»: el total todavía no lo lleva.
   const envioAConfirmar = externo && seg.estado === "RECIBIDO";
 
@@ -235,7 +266,9 @@ export default function SeguimientoPedido() {
               {seg.estado === "RECHAZADO"
                 ? "Pedido rechazado"
                 : seg.estado === "VENCIDO"
-                  ? "El local no respondió"
+                  ? prepago && !prepago.pagado
+                    ? "No se completó el pago"
+                    : "El local no respondió"
                   : seg.canceladoPor === "LOCAL"
                     ? "El local canceló tu pedido"
                     : "Pedido cancelado"}
@@ -248,7 +281,17 @@ export default function SeguimientoPedido() {
             )}
             {seg.estado === "RECHAZADO" && seg.motivoRechazo && <p style={{ margin: "8px 0 0", fontSize: 15 }}>{seg.motivoRechazo}</p>}
             {seg.estado === "VENCIDO" && (
-              <p style={{ margin: "8px 0 0", fontSize: 15 }}>Pasaron unos minutos y nadie del local pudo tomarlo. No se cobró nada.</p>
+              <p style={{ margin: "8px 0 0", fontSize: 15 }}>
+                {prepago && !prepago.pagado
+                  ? "Se terminó el tiempo para pagar y no se cobró nada. Si querés, volvé a pedir."
+                  : "Pasaron unos minutos y nadie del local pudo tomarlo. No se cobró nada."}
+              </p>
+            )}
+            {/* Rechazado o cancelado por el local con el pago hecho: se lo devuelven (PLAN-PEDIDOS-QR §2). */}
+            {prepago?.pagado && (seg.estado === "RECHAZADO" || seg.estado === "CANCELADO") && (
+              <p style={{ margin: "8px 0 0", fontSize: 15, fontWeight: 700 }}>
+                Ya habías pagado {formatoPrecio(prepago.monto)}: el local te lo devuelve. Escribile por WhatsApp para coordinar.
+              </p>
             )}
             <p style={{ margin: "8px 0 0", fontSize: 14, color: "#4B5563" }}>
               {whatsapp ? "Podés escribirle al local por WhatsApp o volver a pedir." : "Podés volver a pedir desde la página."}
@@ -297,9 +340,32 @@ export default function SeguimientoPedido() {
                 style={{ width: "100%", maxWidth: 280, height: "auto", borderRadius: 12, border: "1px solid #E5E7EB", background: "#ffffff" }}
               />
             )}
+            {!qrFalla && (
+              <a
+                href={urlDeQr(pagoPendiente.qrUrl)}
+                download={`QR-pedido-${numero}.png`}
+                style={{ borderRadius: 12, border: `1.5px solid ${fuerte}`, color: fuerte, fontWeight: 800, fontSize: 15, minHeight: 44, padding: "0 16px", display: "inline-flex", alignItems: "center", textDecoration: "none" }}
+              >
+                Descargar QR
+              </a>
+            )}
             <p style={{ margin: 0, fontSize: 13, color: "#4B5563" }}>
-              Escaneá el QR con la app de tu banco y pagá el monto exacto. Cuando el local vea tu pago, tu pedido sale.
+              {seg.estado === "ESPERANDO_PAGO"
+                ? `Pagá el monto exacto con la app de tu banco: escaneá el QR o descargalo y subilo desde tu galería. ${
+                    prepago?.modo === "AUTOMATICO"
+                      ? "Apenas pagues, tu pedido llega al local."
+                      : "Cuando el local vea tu pago, recibe tu pedido."
+                  }`
+                : "Escaneá el QR con la app de tu banco y pagá el monto exacto. Cuando el local vea tu pago, tu pedido sale."}
             </p>
+            {seg.estado === "ESPERANDO_PAGO" && seg.tipo === "DELIVERY" && (
+              <p style={{ margin: 0, fontSize: 13, color: "#4B5563" }}>El envío lo pagás al recibir.</p>
+            )}
+            {falta && (
+              <p role="timer" aria-live="off" style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#92400E" }}>
+                Tenés {falta} para pagar
+              </p>
+            )}
           </section>
         )}
 
@@ -391,7 +457,11 @@ export default function SeguimientoPedido() {
           {!sinCobro && (
             <>
               <p style={{ margin: 0, fontSize: 14, color: "#4B5563" }}>
-                {seg.estado === "ENTREGADO" || (externo && (enCamino || (seg.estado === "ACEPTADO" && !pagoPendiente)))
+                {prepago
+                  ? prepago.pagado
+                    ? `Pagaste ${formatoPrecio(prepago.monto)} con QR.${seg.tipo === "DELIVERY" && seg.envio > 0 ? ` El envío (${formatoPrecio(seg.envio)}) lo pagás al recibir.` : ""}`
+                    : `Se paga ${formatoPrecio(prepago.monto)} por QR antes${seg.tipo === "DELIVERY" ? "; el envío, al recibir" : ""}.`
+                  : seg.estado === "ENTREGADO" || (externo && (enCamino || (seg.estado === "ACEPTADO" && !pagoPendiente)))
                   ? seg.formaPago === "QR"
                     ? "Pagaste con QR."
                     : "Pagaste en efectivo."

@@ -12,7 +12,7 @@ import { useSucursales } from "../../lib/useSucursales";
 import DetallePedidoWeb from "./DetallePedidoWeb";
 import { haceCuanto, minutosEsperando, totalDe } from "./logica";
 
-type Vista = "nuevos" | "aceptados" | "camino" | "hoy";
+type Vista = "cobrar" | "nuevos" | "aceptados" | "camino" | "hoy";
 
 /** Cada cuánto se refresca la bandeja: lo mismo que el contador del menú. */
 export const REFRESCO_BANDEJA_MS = 10_000;
@@ -125,14 +125,19 @@ export default function PedidosWeb() {
   const enCamino = datos?.enCamino ?? [];
   const entregados = datos?.entregadosHoy ?? [];
   const noTomados = datos?.noTomadosHoy ?? [];
+  // Pagar antes con el QR fijo (PLAN-PEDIDOS-QR): esperan que veas el pago en tu banco.
+  const porCobrar = datos?.porCobrar ?? [];
   // Con el número en la etiqueta sólo cuando ya se sabe: nada de «0» mientras carga.
   const n = (k: number) => (datos ? ` (${k})` : "");
-  const opciones = [
+  // «Por cobrar» sólo aparece cuando hay algo (o si ya estás en ella): un negocio
+  // con el QR del banco o sin QR fijo nunca la ve.
+  const opciones: (readonly [Vista, string])[] = [
+    ...(porCobrar.length || vista === "cobrar" ? [["cobrar", `Por cobrar${n(porCobrar.length)}`] as const] : []),
     ["nuevos", `Nuevos${n(nuevos.length)}`],
     ["aceptados", `Aceptados${n(aceptados.length)}`],
     ["camino", `En camino${n(enCamino.length)}`],
     ["hoy", "Hoy"],
-  ] as const satisfies readonly (readonly [Vista, string])[];
+  ];
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-5">
@@ -166,7 +171,17 @@ export default function PedidosWeb() {
 
       {cargando && !datos ? (
         <Cargando />
-      ) : !datos ? null : vista === "nuevos" ? (
+      ) : !datos ? null : vista === "cobrar" ? (
+        <Lista
+          pedidos={porCobrar}
+          vacio={{ icono: "check", titulo: "Nada por cobrar", texto: "Cuando un cliente pague con el QR de tu local, lo vas a ver acá hasta que confirmes que el pago llegó." }}
+          onAbrir={(p) => {
+            setDesde("cobrar");
+            setAbierto(p);
+          }}
+          ahora={ahora}
+        />
+      ) : vista === "nuevos" ? (
         <Lista
           pedidos={nuevos}
           vacio={{ icono: "bolsa", titulo: "No hay pedidos nuevos", texto: "Cuando un cliente pida desde tu página, lo vas a ver acá y te avisamos con un sonido." }}
@@ -285,7 +300,11 @@ function Lista({
                       {p.estado === "ACEPTADO" && !p.salioEn && <Badge tono={p.pagoConfirmadoEn ? "verde" : "amarillo"}>{p.pagoConfirmadoEn ? "Pagado" : "Falta el pago"}</Badge>}
                     </>
                   )}
-                  {p.estado !== "NUEVO" && p.estado !== "ACEPTADO" && <Badge tono="rojo">{etiquetaNoTomado(p)}</Badge>}
+                  {/* Pagar antes por QR (PLAN-PEDIDOS-QR). */}
+                  {p.estado === "ESPERANDO_PAGO" && <Badge tono="amarillo">Esperando el pago</Badge>}
+                  {p.pagadoAntes && p.estado !== "RECHAZADO" && <Badge tono="verde">Pagado por QR</Badge>}
+                  {p.devolver != null && p.devolver > 0 && <Badge tono="rojo">Devolver {fmtMoney(p.devolver)}</Badge>}
+                  {p.estado !== "NUEVO" && p.estado !== "ACEPTADO" && p.estado !== "ESPERANDO_PAGO" && <Badge tono="rojo">{etiquetaNoTomado(p)}</Badge>}
                 </div>
               </div>
               <div className="shrink-0 text-right">

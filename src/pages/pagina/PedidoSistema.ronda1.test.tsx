@@ -278,11 +278,11 @@ describe("N2: un local sin caja abierta no «está cerrado»", () => {
     await screen.findByRole("button", { name: "Marcar mi casa" });
     // Cada forma de pago dice cuándo se paga (20-nov: tarjetas como en las apps de delivery).
     expect(screen.getByText("Pagás al recibir el pedido")).toBeInTheDocument();
-    expect(screen.getByText("Pagás con el QR del local al recibir el pedido")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
     expect(screen.getByText("Pagás al retirarlo en el local")).toBeInTheDocument();
-    expect(screen.getByText("Pagás con el QR del local al retirarlo en el local")).toBeInTheDocument();
     expect(screen.queryByText(/al recibir/)).not.toBeInTheDocument();
+    // Sin QR para pagar antes en el local (PLAN-PEDIDOS-QR), sólo efectivo.
+    expect(screen.queryByRole("radio", { name: "QR" })).not.toBeInTheDocument();
   });
 });
 
