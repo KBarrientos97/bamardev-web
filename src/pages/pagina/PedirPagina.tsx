@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { paleta } from "../../lib/pagina/aspecto";
@@ -11,6 +11,7 @@ import type { ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos"
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import CartaSitio, { type PedidoCarta } from "./CartaSitio";
 import type { AccionCatalogo } from "./CatalogoPagina";
+import PedirMovil from "./PedirMovil";
 import { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 
 /** Los rubros de comida van con las filas de la carta; los demás, con las tarjetas de tienda. */
@@ -33,8 +34,12 @@ export function plantillaPedir(p: Pick<PaginaPublica, "sitio" | "rubroClave">): 
  * qué sucursal ver los precios: con delivery la elige el pin y al retirar la
  * elige el cliente en el pedido, que ajusta los precios si cambian.
  *
- * El carrito, los toppings y las franjas («pedido en curso», «no estamos
- * recibiendo pedidos») los pone `PaginaPublica`, igual que en la página.
+ * En el celular va el armado de app (`PedirMovil`); en la computadora, la
+ * carta de la tienda con las categorías al costado.
+ *
+ * El carrito y los toppings los pone `PaginaPublica`, igual que en la página.
+ * Las franjas («pedido en curso», «no estamos recibiendo pedidos») vienen
+ * armadas y van arriba de todo (en el celular, dentro de la barra fija).
  */
 export default function PedirPagina({
   pagina: p,
@@ -44,8 +49,10 @@ export default function PedirPagina({
   lineasPedido,
   alCambiarPedido,
   agotados,
+  franjas,
 }: {
   pagina: PaginaPublica;
+  franjas?: ReactNode;
   /** La sucursal de la que son los precios de la carta (la del pedido). */
   sucursal: number;
   urlPagina: string;
@@ -81,10 +88,31 @@ export default function PedirPagina({
     agotado: (it) => agotados?.has(it.id) ?? false,
     incluye: (it) => textoIncluyeDeItem(p.agregados, it.id),
   };
+  const estiloBotonVisor: CSSProperties = { minHeight: 50, padding: "0 22px", fontSize: 16, fontWeight: 800, ...bVisor.principal.estilo };
+
+  if (!escritorio) {
+    return (
+      <PedirMovil
+        nombre={p.nombre}
+        logo={logo}
+        items={items}
+        c={c}
+        t={t}
+        pedido={pedido}
+        accionVisor={accionVisor}
+        estiloBotonVisor={estiloBotonVisor}
+        colorIconoVisor={bVisor.principal.icono}
+        urlPagina={urlPagina}
+        franjas={franjas}
+      />
+    );
+  }
+
   const ancho: CSSProperties = { maxWidth: escritorio ? 1120 : 640, margin: "0 auto", padding: escritorio ? "0 32px" : "0 16px", boxSizing: "border-box" };
 
   return (
-    <div data-testid="modo-pedir" style={{ minHeight: "100dvh", background: t.fondo, color: t.texto, fontFamily: t.familia }}>
+    <div data-testid="modo-pedir" data-armado="escritorio" style={{ minHeight: "100dvh", background: t.fondo, color: t.texto, fontFamily: t.familia }}>
+      {franjas}
       <header style={{ background: t.tarjeta, borderBottom: `1px solid ${t.borde ?? t.linea}` }}>
         <div style={{ ...ancho, display: "flex", alignItems: "center", gap: 12, minHeight: 64, paddingTop: 10, paddingBottom: 10 }}>
           {logo && (
@@ -121,7 +149,7 @@ export default function PedirPagina({
             colorIconoLleno={b.principal.icono}
             urlReservar={null}
             accionVisor={accionVisor}
-            estiloBoton={{ minHeight: 50, padding: "0 22px", fontSize: 16, fontWeight: 800, ...bVisor.principal.estilo }}
+            estiloBoton={estiloBotonVisor}
             colorIconoBoton={bVisor.principal.icono}
             colorVacio={t.texto3}
           />

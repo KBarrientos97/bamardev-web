@@ -1,15 +1,17 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InfoPedidos } from "../../lib/pedidosWeb/tipos";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import { esRutaDePaginaPublica } from "../../lib/pagina/rutas";
 import PaginaPublica from "./PaginaPublica";
+import { agruparCarta } from "./PedirMovil";
 
 /**
  * El modo pedir (`/<negocio>/pedir`, 20-nov): el enlace para vender abre
  * directo en la carta, sin la presentación del negocio ni el selector de
- * sucursal, y el carrito es el de siempre.
+ * sucursal, y el carrito es el de siempre. En el celular, como una app
+ * (barra fija, secciones por categoría); en la computadora, la tienda.
  */
 
 vi.mock("./ElegirPin", () => ({ default: () => <button type="button">Marcar mi casa</button> }));
@@ -89,36 +91,70 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("modo pedir", () => {
-  it("abre directo en la carta, con buscador y categorías, sin elegir sucursal", async () => {
+/** La computadora: `useCoincideMedia` lee `matchMedia` (sin él, jsdom es un celular). */
+function enComputadora() {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("min-width"), media: q, addEventListener: () => {}, removeEventListener: () => {} }));
+}
+
+describe("modo pedir en el celular", () => {
+  it("abre como app: barra fija del negocio, buscador, categorías y la carta en secciones", async () => {
     servidor({ ...PAGINA, pedidosSistema: true });
     await montar();
-    expect(await screen.findByTestId("modo-pedir")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "El Ganadero" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Hacé tu pedido" })).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "Buscar en la tienda" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Bebidas" })).toBeInTheDocument();
+    const raiz = await screen.findByTestId("modo-pedir");
+    expect(raiz).toHaveAttribute("data-armado", "movil");
+    expect(screen.getByRole("heading", { level: 1, name: "El Ganadero" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Buscar en la carta" })).toBeInTheDocument();
+    const categorias = screen.getByRole("group", { name: "Categorías" });
+    expect(within(categorias).getAllByRole("button").map((b) => b.textContent)).toEqual(["Arroz", "Bebidas"]);
+    expect(screen.getByRole("region", { name: "Arroz" })).toHaveTextContent("Arroz con leche grande");
+    expect(screen.getByRole("region", { name: "Bebidas" })).toHaveTextContent("Jugo de naranja");
     // Ni «Precios de:» ni la presentación del negocio.
     expect(screen.queryByRole("radio", { name: "Centro" })).not.toBeInTheDocument();
     expect(screen.queryByText("Arroz con leche cremoso.")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Ver la página" })).toHaveAttribute("href", "/p/elganadero");
+    expect(screen.getByRole("link", { name: "Ver la página de El Ganadero" })).toHaveAttribute("href", "/p/elganadero");
   });
 
-  it("el buscador filtra la carta", async () => {
+  // Cuál se marca al deslizar depende de dónde está cada sección en pantalla: jsdom no
+  // dibuja (todo queda en 0), así que eso se probó en el navegador. Acá, el toque.
+  it("tocar una categoría la marca", async () => {
     servidor({ ...PAGINA, pedidosSistema: true });
     await montar();
-    fireEvent.change(await screen.findByRole("searchbox", { name: "Buscar en la tienda" }), { target: { value: "jugo" } });
-    expect(screen.getByText("Jugo de naranja")).toBeInTheDocument();
-    expect(screen.queryByText("Arroz con leche grande")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Arroz" }));
+    expect(screen.getByRole("button", { name: "Arroz" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Bebidas" }));
+    expect(screen.getByRole("button", { name: "Bebidas" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Arroz" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("suma al pedido y abre el mismo carrito de la página", async () => {
+  it("el buscador filtra la carta y se borra con la X", async () => {
+    servidor({ ...PAGINA, pedidosSistema: true });
+    await montar();
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Buscar en la carta" }), { target: { value: "jugo" } });
+    expect(screen.getByText("Jugo de naranja")).toBeInTheDocument();
+    expect(screen.queryByText("Arroz con leche grande")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar en la carta" }), { target: { value: "pizza" } });
+    expect(screen.getByText("No encontramos «pizza».")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Borrar la búsqueda" }));
+    expect(screen.getByText("Arroz con leche grande")).toBeInTheDocument();
+  });
+
+  it("«+» suma, pasa a «− n +» y abre el mismo carrito de la página", async () => {
     servidor({ ...PAGINA, pedidosSistema: true });
     await montar();
     fireEvent.click(await screen.findByRole("button", { name: "Agregar Arroz con leche grande al pedido" }));
+    expect(screen.getByRole("group", { name: "Arroz con leche grande: 1 en el pedido" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sumar uno de Arroz con leche grande" }));
+    expect(screen.getByRole("group", { name: "Arroz con leche grande: 2 en el pedido" })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido/ }));
     expect(await screen.findByRole("dialog", { name: "Tu pedido" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hacer pedido" })).toBeInTheDocument();
+  });
+
+  it("tocar el nombre abre el detalle con «Agregar al pedido»", async () => {
+    servidor({ ...PAGINA, pedidosSistema: true });
+    await montar();
+    fireEvent.click(await screen.findByRole("button", { name: /^Jugo de naranja, Bs 12: ver detalle/ }));
+    expect(await screen.findByRole("button", { name: "Agregar al pedido" })).toBeInTheDocument();
   });
 
   it("sin pedidos (ni WhatsApp ni al sistema) vuelve a la página de siempre", async () => {
@@ -129,5 +165,35 @@ describe("modo pedir", () => {
 
   it("es una ruta pública (se atiende sin sesión)", () => {
     expect(esRutaDePaginaPublica("/p/elganadero/pedir")).toBe(true);
+  });
+});
+
+describe("modo pedir en la computadora", () => {
+  it("la carta de la tienda, con buscador y las categorías al costado", async () => {
+    enComputadora();
+    servidor({ ...PAGINA, pedidosSistema: true });
+    await montar();
+    expect(await screen.findByTestId("modo-pedir")).toHaveAttribute("data-armado", "escritorio");
+    expect(screen.getByRole("heading", { name: "Hacé tu pedido" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Buscar en la tienda" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ver la página" })).toHaveAttribute("href", "/p/elganadero");
+    expect(screen.queryByRole("radio", { name: "Centro" })).not.toBeInTheDocument();
+  });
+});
+
+describe("agruparCarta", () => {
+  const item = (id: number, categoria: string | null) => ({ ...PAGINA.catalogo!.items[0], id, categoria });
+
+  it("una sección por categoría, en el orden de la carta; lo sin categoría, al final en «Otros»", () => {
+    const g = agruparCarta([item(1, "Bebidas"), item(2, null), item(3, "Arroz"), item(4, "Bebidas")]);
+    expect(g.map((x) => [x.titulo, x.items.map((i) => i.id)])).toEqual([
+      ["Bebidas", [1, 4]],
+      ["Arroz", [3]],
+      ["Otros", [2]],
+    ]);
+  });
+
+  it("sin categorías, una sola sección sin título", () => {
+    expect(agruparCarta([item(1, null), item(2, "  ")])).toEqual([{ titulo: null, items: [item(1, null), item(2, "  ")] }]);
   });
 });
