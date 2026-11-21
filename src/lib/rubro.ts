@@ -42,7 +42,10 @@ export type Rubro =
   | "ACADEMIA"
   // Licorería (20-nov-2026): su propia vertical con el núcleo de venta, caja y
   // reportes; delivery, página y plataformas se prenden desde el panel.
-  | "LICORERIA";
+  | "LICORERIA"
+  // Nutrición (21-nov-2026): vertical Salud y bienestar con las funciones
+  // básicas (venta, caja, inventario y reportes); la agenda llega después.
+  | "NUTRICION";
 
 /**
  * Los de belleza: trabajan con turnos y profesionales, no con mesas ni con
@@ -60,6 +63,7 @@ export const RUBROS: Rubro[] = [
   "BILLAR",
   "ACADEMIA",
   "LICORERIA",
+  "NUTRICION",
 ];
 
 export function esRubro(valor: string | null | undefined): valor is Rubro {
@@ -266,6 +270,8 @@ const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
   // Las plantillas del rubro (PLAN-ACADEMIAS-TECNICO §5.3; la ronda 2, D8,
   // llama "Recepción" a la del mostrador).
   ACADEMIA: { SUPERVISOR: "Coordinación", CAJERO: "Recepción", PROFESIONAL: "Docente" },
+  // La de su perfil (migración 20270104110000): quien cobra es la recepción.
+  NUTRICION: { CAJERO: "Recepción" },
 };
 
 /**
