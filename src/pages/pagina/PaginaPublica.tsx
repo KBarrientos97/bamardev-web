@@ -34,7 +34,7 @@ import ChatPagina from "./ChatPagina";
  * el HTML con Open Graph, y la página las Pages Functions, también en
  * `link.bamardev.com`): sirve para la pestaña del navegador y para quien sí lo lee.
  */
-function useMetadatosPagina(p: Pagina | null) {
+function useMetadatosPagina(p: Pagina | null, pedir = false) {
   useEffect(() => {
     if (!p) return;
     const anterior = document.title;
@@ -52,12 +52,13 @@ function useMetadatosPagina(p: Pagina | null) {
     poner("property", "og:description", p.og.descripcion);
     // La barra del navegador del color del estilo (Noche, oscura; Boutique, marfil).
     const c = paleta(p.color.hex);
-    poner("name", "theme-color", (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra);
+    // En el modo pedir, del color de su barra fija: parece una app.
+    poner("name", "theme-color", pedir ? c.oscuro : (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra);
     return () => {
       document.title = anterior;
       metas.forEach((m) => m.remove());
     };
-  }, [p]);
+  }, [p, pedir]);
 }
 
 export function NoDisponible({ mensaje = "Esta página no está disponible" }: { mensaje?: string }) {
@@ -178,7 +179,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   // de la plantilla con que se dibuja su carta.
   const estilo = pagina && pedir ? estiloTextoSitio(plantillaPedir(pagina)) : pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
   useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
-  useMetadatosPagina(pagina);
+  useMetadatosPagina(pagina, pedir);
   const pedido = usePedido(subdominio ?? "");
   const [regalando, setRegalando] = useState(false);
   // La sucursal elegida en el catálogo («Mis productos» con más de una): de
@@ -265,7 +266,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   if (pedir && (!carrito || !pagina.catalogo?.items.length)) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
   return (
     <>
-      {conSistema && (
+      {conSistema && !pedir && (
         <FranjasPedido subdominio={pagina.subdominio} fuerte={paleta(pagina.color.hex).oscuro} aviso={sinPedidos} />
       )}
       {pedir ? (
@@ -277,6 +278,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
           lineasPedido={pedido.lineas}
           alCambiarPedido={pedido.cambiar}
           agotados={agotadosCarta}
+          franjas={conSistema ? <FranjasPedido subdominio={pagina.subdominio} fuerte={paleta(pagina.color.hex).oscuro} aviso={sinPedidos} /> : null}
         />
       ) : (
       <VistaPagina
