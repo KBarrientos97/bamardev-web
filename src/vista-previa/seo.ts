@@ -259,6 +259,7 @@ const TIPO_SCHEMA: Record<string, string> = {
   BILLAR: "EntertainmentBusiness",
   ACADEMIA: "EducationalOrganization",
   LICORERIA: "LiquorStore",
+  NUTRICION: "MedicalBusiness",
 };
 
 export function tipoSchema(rubroClave: string): string {
