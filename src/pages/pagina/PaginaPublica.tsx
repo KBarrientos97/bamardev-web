@@ -53,10 +53,18 @@ function useMetadatosPagina(p: Pagina | null, pedir = false) {
     // La barra del navegador del color del estilo (Noche, oscura; Boutique, marfil).
     const c = paleta(p.color.hex);
     // En el modo pedir, del color de su barra fija: parece una app.
-    poner("name", "theme-color", pedir ? c.oscuro : (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra);
+    const barra = pedir ? c.oscuro : (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra;
+    // El navegador usa el PRIMER theme-color del documento, y el index.html ya trae
+    // el de la app (verde): uno agregado al final no se veía nunca (20-nov). Se
+    // cambia el que hay y se devuelve al salir.
+    const existentes = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+    const previos = existentes.map((m) => m.content);
+    if (existentes.length) existentes.forEach((m) => (m.content = barra));
+    else poner("name", "theme-color", barra);
     return () => {
       document.title = anterior;
       metas.forEach((m) => m.remove());
+      existentes.forEach((m, i) => (m.content = previos[i]));
     };
   }, [p, pedir]);
 }

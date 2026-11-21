@@ -149,6 +149,11 @@ export default function PanelSistema({
   const [formaPago, setFormaPago] = useState<FormaPagoWeb>("EFECTIVO");
   const [pagaCon, setPagaCon] = useState<number | null>(null);
   const [otroMonto, setOtroMonto] = useState("");
+  /**
+   * «¿Con cuánto pagás?» va plegado (20-nov, el dueño: «podría ser por demás»):
+   * casi todos pagan justo. Quien necesita cambio lo abre y elige el billete.
+   */
+  const [conCambio, setConCambio] = useState(false);
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
   const [estadoCaptcha, setEstadoCaptcha] = useState<EstadoCaptcha>("verificando");
@@ -802,7 +807,18 @@ export default function PanelSistema({
                   </div>
                 )}
               </fieldset>
-              {formaPagoReal === "EFECTIVO" && (
+              {formaPagoReal === "EFECTIVO" && !conCambio && (
+                <button
+                  type="button"
+                  aria-expanded={false}
+                  onClick={() => setConCambio(true)}
+                  style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: fuerte, fontWeight: 700, fontSize: 15, cursor: "pointer", padding: "4px 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
+                >
+                  <Trazo d="M12 5v14M5 12h14" color={fuerte} size={16} grosor={2.6} />
+                  ¿Necesitás cambio?
+                </button>
+              )}
+              {formaPagoReal === "EFECTIVO" && conCambio && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <span style={etiqueta}>¿Con cuánto pagás?</span>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
