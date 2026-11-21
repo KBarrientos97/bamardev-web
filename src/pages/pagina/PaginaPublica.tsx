@@ -17,6 +17,7 @@ import { useInfoPedidos } from "../../lib/pedidosWeb/useInfoPedidos";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
 import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
+import PedirPagina, { plantillaPedir } from "./PedirPagina";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { tonosPagina } from "../../lib/pagina/estilosPagina";
@@ -165,7 +166,7 @@ const BOTON_REGALO: EnlacePublico = {
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
  * al login. También en `link.bamardev.com/<subdominio>` (RutasLink.tsx).
  */
-export default function PaginaPublica({ tienda = false }: { tienda?: boolean } = {}) {
+export default function PaginaPublica({ tienda = false, pedir = false }: { tienda?: boolean; pedir?: boolean } = {}) {
   const { subdominio } = useParams();
   // `/tienda?categoria=Bebidas`: llega desde una categoría de la portada.
   const [busqueda] = useSearchParams();
@@ -173,8 +174,9 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   // La letra del texto del estilo y sólo la que eligió el negocio para su
   // nombre, no las 30.
   const tipografia = pagina?.tipografia;
-  // Con sitio, la letra del texto es la de su plantilla.
-  const estilo = pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
+  // Con sitio, la letra del texto es la de su plantilla. En el modo pedir, la
+  // de la plantilla con que se dibuja su carta.
+  const estilo = pagina && pedir ? estiloTextoSitio(plantillaPedir(pagina)) : pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
   useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
   useMetadatosPagina(pagina);
   const pedido = usePedido(subdominio ?? "");
@@ -259,11 +261,24 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   if (!pagina || !vista) return <Cargando />;
   // La tienda es del sitio del Profesional: sin sitio, la página de siempre.
   if (tienda && !pagina.sitio) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
+  // El modo pedir es para pedir: sin carrito (ni WhatsApp ni pedidos al sistema) o sin carta, la página de siempre.
+  if (pedir && (!carrito || !pagina.catalogo?.items.length)) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
   return (
     <>
       {conSistema && (
         <FranjasPedido subdominio={pagina.subdominio} fuerte={paleta(pagina.color.hex).oscuro} aviso={sinPedidos} />
       )}
+      {pedir ? (
+        <PedirPagina
+          pagina={pagina}
+          sucursal={sucursal}
+          urlPagina={urlPaginaDe(pagina.subdominio)}
+          alAgregarAlPedido={agregarAlPedido}
+          lineasPedido={pedido.lineas}
+          alCambiarPedido={pedido.cambiar}
+          agotados={agotadosCarta}
+        />
+      ) : (
       <VistaPagina
         pagina={vista}
         urlReservar={urlReservaDe(pagina.subdominio)}
@@ -280,6 +295,7 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
       />
+      )}
       {carrito && (
         <PedidoPagina
           negocio={pagina.nombre}

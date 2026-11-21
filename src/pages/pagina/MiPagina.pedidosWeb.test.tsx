@@ -127,6 +127,27 @@ describe("Mi página y la entrada «Pedidos web»", () => {
     await vi.waitFor(() => expect(fijarPedidosWeb).toHaveBeenCalledWith(false));
   });
 
+  it("con pedidos prendidos muestra el enlace para pedir (modo pedir, 20-nov)", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(estado({ pedidosSistema: true }));
+    render(
+      <MemoryRouter>
+        <MiPagina />
+      </MemoryRouter>,
+    );
+    const fila = await screen.findByTestId("enlace-pedir");
+    expect(fila).toHaveTextContent("app-qa.bamardev.com/p/donpepe/pedir");
+  });
+
+  it("sin pedidos no hay enlace para pedir", async () => {
+    render(
+      <MemoryRouter>
+        <MiPagina />
+      </MemoryRouter>,
+    );
+    await screen.findByText("app-qa.bamardev.com/p/donpepe");
+    expect(screen.queryByTestId("enlace-pedir")).not.toBeInTheDocument();
+  });
+
   it("sin la feature delivery en el plan no se toca la sesión", async () => {
     features = ["pos", "pagina_publica"];
     vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ pedidosSistema: true }));
