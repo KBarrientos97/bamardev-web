@@ -275,6 +275,23 @@ describe("el carrito con pedidos en el sistema", () => {
       expect(JSON.parse(String(srv.posteos()[0].init?.body))).not.toHaveProperty("pagaCon");
     });
 
+    it("con QR para pagar antes en el local, ofrece QR y manda pagarAntes (PLAN-PEDIDOS-QR)", async () => {
+      const srv = servidor({ info: { ...INFO, sucursales: [{ ...BRISAS, pagoAntes: "AUTOMATICO" }] } });
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      fireEvent.click(screen.getByRole("radio", { name: "QR" }));
+      expect(screen.getByText("Pagás los productos ahora con QR; el envío, al recibir")).toBeInTheDocument();
+      expect(screen.getByText(/te mostramos el QR para pagar/)).toBeInTheDocument();
+      // Con QR no se pregunta por el cambio.
+      expect(screen.queryByRole("button", { name: "¿Necesitás cambio?" })).not.toBeInTheDocument();
+      escribir("Tu nombre", "Lucía");
+      escribir("Tu WhatsApp", "71234567");
+      fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+      await screen.findByText("Seguimiento del pedido");
+      expect(JSON.parse(String(srv.posteos()[0].init?.body))).toMatchObject({ formaPago: "QR", pagarAntes: true });
+    });
+
     // Modo pedir (20-nov): a la vista sólo lo obligatorio; lo opcional, plegado.
     it("dirección, referencia y nota empiezan plegadas", async () => {
       servidor();

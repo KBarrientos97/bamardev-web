@@ -265,7 +265,6 @@ export default function PanelSistema({
   const centroMapa = conMapa.length ? { lat: conMapa[0].latitud!, lng: conMapa[0].longitud! } : null;
   const externoEntrega = esExterno(entrega.modo) && tipoReal === "DELIVERY";
   // Con envío por servicio externo el pago es siempre QR y antes de que salga: no se elige.
-  const formaPagoReal: FormaPagoWeb = externoEntrega ? "QR" : formaPago;
 
   // ── Qué sucursal lo atiende ──
   const punto = useMemo(() => (pin ? { latitud: pin.lat, longitud: pin.lng } : null), [pin]);
@@ -301,6 +300,11 @@ export default function PanelSistema({
   const ev = filas.find((f) => f.e.indice === elegida)?.e ?? null;
   const sucursal = ev?.sucursal ?? null;
   const sucursalId = sucursal?.id ?? null;
+  // QR = pagar los productos ANTES (PLAN-PEDIDOS-QR). Sin QR en la sucursal
+  // que atiende, sólo efectivo; con un servicio externo, sólo QR.
+  const pagoAntes = sucursal ? (sucursal.pagoAntes ?? null) : (sucursales.find((s) => s.pagoAntes)?.pagoAntes ?? null);
+  const formaPagoReal: FormaPagoWeb = externoEntrega ? "QR" : formaPago === "QR" && pagoAntes ? "QR" : "EFECTIVO";
+  const pagarAntes = formaPagoReal === "QR" && !!pagoAntes;
   // El error del envío era de ESE pedido en ESE local: al cambiar de local o de
   // productos ya no corresponde, y dejaba el «está agotado» pegado en el pie de
   // la hoja aunque ya se hubiera arreglado (QA R2, M2).
@@ -429,6 +433,7 @@ export default function PanelSistema({
       nombre: nombre.trim(),
       telefono: tel,
       formaPago: formaPagoReal,
+      ...(pagarAntes ? { pagarAntes: true } : {}),
       ...(tipoReal === "DELIVERY" && pin
         ? {
             // Vacía no se manda: el backend la guarda en null y las pantallas dicen «Ubicación marcada en el mapa».
@@ -832,12 +837,15 @@ export default function PanelSistema({
                 {externoEntrega ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#F3F4F6", borderRadius: 14, padding: "12px 14px" }}>
                     <span style={{ fontWeight: 800, color: fuerte, fontSize: 15 }}>QR</span>
-                    <span style={{ fontSize: 14, color: "#374151" }}>Se paga por QR antes de que salga</span>
+                    <span style={{ fontSize: 14, color: "#374151" }}>
+                      {pagoAntes ? "Pagás los productos ahora con QR; el envío, al recibir" : "Se paga por QR antes de que salga"}
+                    </span>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {(["EFECTIVO", "QR"] as const).map((f) => {
-                      const activo = formaPago === f;
+                    {/* QR sólo donde el local cobra por QR antes; si no, efectivo y nada más. */}
+                    {(["EFECTIVO", "QR"] as const).filter((f) => f === "EFECTIVO" || !!pagoAntes).map((f) => {
+                      const activo = formaPagoReal === f;
                       const cuando = tipoReal === "DELIVERY" ? "al recibir el pedido" : "al retirarlo en el local";
                       return (
                         <label
@@ -851,7 +859,13 @@ export default function PanelSistema({
                           </span>
                           <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                             <span style={{ fontWeight: 700, fontSize: 15 }}>{f === "EFECTIVO" ? "Efectivo" : "QR"}</span>
-                            <span style={{ fontSize: 13, color: "#6B7280" }}>{f === "EFECTIVO" ? `Pagás ${cuando}` : `Pagás con el QR del local ${cuando}`}</span>
+                            <span style={{ fontSize: 13, color: "#6B7280" }}>
+                              {f === "EFECTIVO"
+                                ? `Pagás ${cuando}`
+                                : tipoReal === "DELIVERY"
+                                  ? "Pagás los productos ahora con QR; el envío, al recibir"
+                                  : "Pagás ahora con QR y pasás a retirarlo"}
+                            </span>
                           </span>
                         </label>
                       );
@@ -947,7 +961,13 @@ export default function PanelSistema({
           </button>
           <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
             El local acepta tu pedido y lo seguís desde tu celular.{" "}
-            {externoEntrega ? "Pagás por QR antes de que salga." : tipoReal === "DELIVERY" ? "Pagás al recibir." : "Pagás al retirar."}
+            {pagarAntes
+              ? "Al tocar «Hacer pedido» te mostramos el QR para pagar."
+              : externoEntrega
+                ? "Pagás por QR antes de que salga."
+                : tipoReal === "DELIVERY"
+                  ? "Pagás al recibir."
+                  : "Pagás al retirar."}
           </p>
         </div>
 

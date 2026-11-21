@@ -94,7 +94,9 @@ export default function DetallePedidoWeb({
     return () => window.clearInterval(id);
   }, [siguiendo, recargar]);
   // Vencido: el servidor ya lo dijo, o la hora de vencer (la del servidor, que corrige el reloj de la PC) ya pasó.
-  const vencidoYa = siguiendo && Date.parse(p.venceEn ?? new Date(Date.parse(p.creadoEn) + VENCE_A_LOS_MS).toISOString()) <= ahora();
+  // Uno pagado antes no vence (PLAN-PEDIDOS-QR): la plata entró, sigue esperando que lo atiendan.
+  const vencidoYa =
+    siguiendo && !p.pagadoAntes && Date.parse(p.venceEn ?? new Date(Date.parse(p.creadoEn) + VENCE_A_LOS_MS).toISOString()) <= ahora();
   const esNuevo = p.estado === "NUEVO" && !vencidoYa;
   const delivery = p.tipo === "DELIVERY";
   // Delivery por un servicio externo (Yango…): sin repartidor, se paga por QR antes de que salga.
@@ -151,7 +153,20 @@ export default function DetallePedidoWeb({
           {p.estado === "RECHAZADO" && `Rechazado${p.motivoRechazo ? `: ${p.motivoRechazo}` : ""}.`}
           {p.estado === "VENCIDO" && "Venció: nadie lo respondió a tiempo."}
           {p.estado === "CANCELADO" && "Lo canceló el cliente."}
+          {p.devolver != null && p.devolver > 0 && ` Ya estaba pagado por QR: devolvele ${fmtMoney(p.devolver)} al cliente.`}
+          {p.estado === "ESPERANDO_PAGO" && `Esperando el pago por QR (${fmtMoney(p.montoPrepago ?? 0)}).`}
         </div>
+      )}
+
+      {/* Pagar antes con el QR fijo: la cajera mira su banco y confirma (PLAN-PEDIDOS-QR D3). */}
+      {p.estado === "ESPERANDO_PAGO" && (
+        <ConfirmarPagoAntes
+          pedido={p}
+          onConfirmado={() => {
+            avisarCambio();
+            onHecho(`Confirmaste el pago del pedido N° ${String(p.numero).padStart(2, "0")}: ya está en Nuevos.`);
+          }}
+        />
       )}
 
       <section className="card space-y-3 p-4" aria-label="Cliente">
@@ -240,8 +255,16 @@ export default function DetallePedidoWeb({
           </div>
         </dl>
         <p className="mt-2 text-[13px] text-texto-2">
-          Paga con <strong>{p.formaPago === "QR" ? "QR" : "efectivo"}</strong>
-          {externo && ", antes de que salga"}
+          {p.pagadoAntes ? (
+            <>
+              <strong>Pagado por QR</strong> ({fmtMoney(p.montoPrepago ?? 0)}){delivery ? "; el envío lo paga al recibir" : ""}
+            </>
+          ) : (
+            <>
+              Paga con <strong>{p.formaPago === "QR" ? "QR" : "efectivo"}</strong>
+              {p.pagoAntes ? ", antes" : externo && ", antes de que salga"}
+            </>
+          )}
           {p.formaPago === "EFECTIVO" && p.pagaCon != null && (
             <>
               : trae {fmtMoney(p.pagaCon)}, cambio {fmtMoney(Math.max(0, Math.round((p.pagaCon - totalDe(p)) * 100) / 100))}
@@ -587,6 +610,41 @@ function FormAceptar({
  * Los errores del backend (como «Primero confirmá el pago») se muestran acá, sin
  * sacar a la caja del pedido: son del paso, no del pedido.
  */
+/**
+ * Pagar antes con el QR fijo (PLAN-PEDIDOS-QR D3): el cliente pagó con el QR del
+ * local y la cajera confirma cuando lo ve en su banco. Recién ahí el pedido pasa
+ * a «Nuevos» para aceptarlo; si nadie confirma, vence a los 30 minutos.
+ */
+function ConfirmarPagoAntes({ pedido, onConfirmado }: { pedido: PedidoWeb; onConfirmado: () => void }) {
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  async function confirmar() {
+    if (enviando) return;
+    setError("");
+    setEnviando(true);
+    try {
+      await apiPedidosWeb.pagoRecibido(pedido.id);
+      onConfirmado();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo confirmar. Probá de nuevo.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+  return (
+    <section className="card space-y-3 p-4" aria-label="Pago por QR">
+      <h2 className="text-sm font-bold text-texto">Esperando el pago</h2>
+      <p className="text-[13px] text-texto-2">
+        El cliente paga <strong>{fmtMoney(pedido.montoPrepago ?? 0)}</strong> con el QR de tu local (sólo los productos; el envío lo paga al recibir). Cuando lo veas en tu banco, confirmalo y el pedido pasa a Nuevos.
+      </p>
+      <ErrorMsg>{error}</ErrorMsg>
+      <Boton className="min-h-12 w-full" icono="check" disabled={enviando} onClick={() => void confirmar()}>
+        {enviando ? "Confirmando…" : "Pago recibido"}
+      </Boton>
+    </section>
+  );
+}
+
 function AvanceExterno({
   pedido,
   servicio,
@@ -729,6 +787,12 @@ function FormRechazar({
   return (
     <section ref={caja} className="card space-y-3 p-4" aria-label="Rechazar el pedido">
       <h2 className="text-sm font-bold text-texto">¿Por qué lo rechazás?</h2>
+      {/* Ya pagado por QR (PLAN-PEDIDOS-QR §2): rechazarlo es devolverle la plata. */}
+      {pedido.pagadoAntes && (
+        <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+          Este pedido ya está pagado por QR ({fmtMoney(pedido.montoPrepago ?? 0)}): si lo rechazás, tenés que devolverle ese dinero al cliente.
+        </p>
+      )}
       <p className="text-[13px] text-texto-3">El cliente ve el motivo en su pantalla.</p>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Atajos de motivo">
         {/* «No llegamos a esa zona» no aplica a quien pasa a retirar (QA R2, S1). */}
