@@ -276,12 +276,13 @@ describe("N2: un local sin caja abierta no «está cerrado»", () => {
     await montar();
     await abrirPedido();
     await screen.findByRole("button", { name: "Marcar mi casa" });
-    expect(screen.getByText("¿Cómo pagás? Al recibir")).toBeInTheDocument();
+    // Cada forma de pago dice cuándo se paga (20-nov: tarjetas como en las apps de delivery).
+    expect(screen.getByText("Pagás al recibir el pedido")).toBeInTheDocument();
+    expect(screen.getByText("Pagás con el QR del local al recibir el pedido")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
-    expect(screen.getByText("¿Cómo pagás? Al retirar")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("radio", { name: "QR" }));
-    expect(screen.getByText(/cuando lo retires/)).toBeInTheDocument();
-    expect(screen.queryByText(/cuando recibas/)).not.toBeInTheDocument();
+    expect(screen.getByText("Pagás al retirarlo en el local")).toBeInTheDocument();
+    expect(screen.getByText("Pagás con el QR del local al retirarlo en el local")).toBeInTheDocument();
+    expect(screen.queryByText(/al recibir/)).not.toBeInTheDocument();
   });
 });
 
