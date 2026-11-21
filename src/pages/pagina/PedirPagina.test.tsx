@@ -6,6 +6,7 @@ import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import { esRutaDePaginaPublica } from "../../lib/pagina/rutas";
 import PaginaPublica from "./PaginaPublica";
 import { agruparCarta } from "./PedirMovil";
+import { paleta } from "../../lib/pagina/aspecto";
 
 /**
  * El modo pedir (`/<negocio>/pedir`, 20-nov): el enlace para vender abre
@@ -161,6 +162,23 @@ describe("modo pedir en el celular", () => {
     servidor({ ...PAGINA, pedidosSistema: false, destacado: null });
     await montar();
     expect(await screen.findByText("La página de siempre")).toBeInTheDocument();
+  });
+
+  it("la barra del navegador toma el color de la barra fija (cambia el theme-color que ya había)", async () => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = "#10B981";
+    document.head.appendChild(meta);
+    try {
+      servidor({ ...PAGINA, pedidosSistema: true });
+      await montar();
+      await screen.findByTestId("modo-pedir");
+      const metas = document.querySelectorAll('meta[name="theme-color"]');
+      expect(metas).toHaveLength(1);
+      expect(meta.content).toBe(paleta(PAGINA.color.hex).oscuro);
+    } finally {
+      meta.remove();
+    }
   });
 
   it("es una ruta pública (se atiende sin sesión)", () => {

@@ -179,6 +179,7 @@ describe("el carrito con pedidos en el sistema", () => {
     escribir("Dirección", "Calle Los Tajibos 23");
     escribir("Referencia", "Portón negro");
     escribir("Nota para el negocio", "Sin cebolla");
+    fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
     fireEvent.click(screen.getByRole("button", { name: "Bs 100" }));
     // El envío estimado ya está a la vista: ~2,9 km por calles de Las Brisas = Bs 9.
     expect(screen.getByText("≈ Bs 9")).toBeInTheDocument();
@@ -253,6 +254,25 @@ describe("el carrito con pedidos en el sistema", () => {
       await abrirPedido();
       await screen.findByRole("button", { name: "Marcar mi casa" });
       expect(screen.queryByText("Sale desde")).not.toBeInTheDocument();
+    });
+
+    it("«¿Con cuánto pagás?» empieza plegado: en efectivo va justo salvo que pida cambio (20-nov)", async () => {
+      const srv = servidor();
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      expect(screen.queryByText("¿Con cuánto pagás?")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Justo" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
+      expect(screen.getByText("¿Con cuánto pagás?")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Justo" })).toHaveAttribute("aria-pressed", "true");
+      // Con «Justo», el pedido sale sin pagaCon.
+      fireEvent.click(screen.getByRole("button", { name: "Justo" }));
+      escribir("Tu nombre", "Lucía");
+      escribir("Tu WhatsApp", "71234567");
+      fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+      await screen.findByText("Seguimiento del pedido");
+      expect(JSON.parse(String(srv.posteos()[0].init?.body))).not.toHaveProperty("pagaCon");
     });
 
     // Modo pedir (20-nov): a la vista sólo lo obligatorio; lo opcional, plegado.
@@ -496,6 +516,7 @@ describe("el carrito con pedidos en el sistema", () => {
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
     // Total 59 (50 + 9 de envío): el atajo de Bs 100 alcanza.
+    fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
     fireEvent.click(screen.getByRole("button", { name: "Bs 100" }));
     expect(screen.getByRole("button", { name: "Bs 100" })).toHaveAttribute("aria-pressed", "true");
     // Dos más: 150 + 9 = 159. El atajo de 100 ya no se ofrece.
