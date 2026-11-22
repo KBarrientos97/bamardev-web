@@ -271,7 +271,8 @@ const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
   // llama "Recepción" a la del mostrador).
   ACADEMIA: { SUPERVISOR: "Coordinación", CAJERO: "Recepción", PROFESIONAL: "Docente" },
   // La de su perfil (migración 20270104110000): quien cobra es la recepción.
-  NUTRICION: { CAJERO: "Recepción" },
+  // Quien atiende a los pacientes, la nutricionista (22-nov, evaluación).
+  NUTRICION: { CAJERO: "Recepción", PROFESIONAL: "Nutricionista" },
 };
 
 /**
