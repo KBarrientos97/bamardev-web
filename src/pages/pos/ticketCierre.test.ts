@@ -169,6 +169,37 @@ describe("ticket de cierre: el formato del plan", () => {
     );
   });
 
+  it("con descuentos de la app (22-nov): «Descuentos -X» al final del bloque de esa app, nada en la otra", () => {
+    const conDescuento: ReporteCierreProductos = {
+      ...VENDIDO,
+      plataformas: [
+        { ...VENDIDO.plataformas![0], descuentos: 7 },
+        { ...VENDIDO.plataformas![1], descuentos: 0 },
+      ],
+    };
+    const lineas = lineasTicketCierre(conDescuento, DATOS);
+    const desde = lineas.indexOf("YANGO 2 ped");
+    expect(lineas.slice(desde, desde + 5)).toEqual([
+      "YANGO 2 ped",
+      " 3 Nutella L               75.00",
+      "Descuentos                 -7.00",
+      "PEDIDOSYA 1 ped",
+      " 1 Leche condensada XL     35.00",
+    ]);
+    expect(lineas.filter((l) => l.startsWith("Descuentos"))).toHaveLength(1);
+    for (const l of lineas) expect(l.length).toBeLessThanOrEqual(COLUMNAS_TICKET);
+  });
+
+  it("sin descuentos (0, ausentes o basura de un backend viejo) el ticket sale igual, letra por letra", () => {
+    for (const d of [0, undefined, Number.NaN, -3]) {
+      const v: ReporteCierreProductos = {
+        ...VENDIDO,
+        plataformas: VENDIDO.plataformas!.map((p) => ({ ...p, descuentos: d })),
+      };
+      expect(lineasTicketCierre(v, DATOS)).toEqual(DEL_PLAN);
+    }
+  });
+
   it("sin ventas dice que no hubo y no se rompe", () => {
     const vacio: ReporteCierreProductos = { categorias: [], unidades: 0, total: 0, lineas: 0 };
     const lineas = lineasTicketCierre(vacio, DATOS);

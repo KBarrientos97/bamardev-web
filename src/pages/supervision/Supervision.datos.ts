@@ -5,6 +5,7 @@ import type {
   CajaSupervision,
   CobradoPorMedio,
   EquipoSupervision,
+  PedidoPlataformaSupervision,
   PlataformasSupervision,
   SupervisionRestaurante,
   TurnoSupervision,
@@ -417,6 +418,34 @@ export function conteoDeBloques(api: Pick<SupervisionRestaurante, "ventas" | "pe
 export function bloquePlataformas(api: Pick<SupervisionRestaurante, "plataformas">): PlataformasSupervision | null {
   const p = api.plataformas;
   return p && Array.isArray(p.resumen) && Array.isArray(p.pedidos) && p.resumen.length > 0 ? p : null;
+}
+
+/** Bs positivos y redondeados al centavo; lo que no es un número (o no vino) cuenta como 0. */
+const plataPositiva = (n: unknown): number => {
+  const v = Number(n ?? 0);
+  return Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : 0;
+};
+
+/**
+ * «Descuentos: Bs 7,00» bajo el total de una plataforma en la tarjeta del turno
+ * (22-nov): el total ya es neto y esto dice cuánto se restó. null si no hubo o
+ * si el backend es viejo y no lo manda.
+ */
+export function textoDescuentosDePlataforma(r: Pick<PlataformasSupervision["resumen"][number], "descuentos">): string | null {
+  const d = plataPositiva(r.descuentos);
+  return d > 0 ? `Descuentos: ${fmtMoney(d)}` : null;
+}
+
+/** «Descuento Bs 7,00» en la fila de un pedido de plataforma; null si no tuvo. */
+export function textoDescuentoDePedido(p: Pick<PedidoPlataformaSupervision, "descuento">): string | null {
+  const d = plataPositiva(p.descuento);
+  return d > 0 ? `Descuento ${fmtMoney(d)}` : null;
+}
+
+/** «Obs.: sin ají» en la fila de un pedido de plataforma; null si no tiene nota. */
+export function textoObservacionesDePedido(p: Pick<PedidoPlataformaSupervision, "observaciones">): string | null {
+  const o = p.observaciones?.trim();
+  return o ? `Obs.: ${o}` : null;
 }
 
 // ── Las ventas ──────────────────────────────────────────────────────────────

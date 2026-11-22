@@ -22,6 +22,8 @@ import {
   marcaDePedido,
   mediosDeVenta,
   plural,
+  textoDescuentoDePedido,
+  textoObservacionesDePedido,
   unidades,
   unidadesDeVenta,
   ventasOrdenadas,
@@ -314,6 +316,10 @@ function FilaPedido({ p, ahora }: { p: PedidoSupervision; ahora: number }) {
 function FilaPedidoPlataforma({ p, ahora }: { p: PedidoPlataformaSupervision; ahora: number }) {
   const anulado = p.anulado != null;
   const cual = p.codigoExterno ? `N° ${p.codigoExterno}` : `Pedido #${p.id}`;
+  // Lo del precio de la app (22-nov), cada cosa en su renglón y sólo si existe.
+  // El monto de la fila sigue siendo el neto, lo que paga la app.
+  const descuento = textoDescuentoDePedido(p);
+  const obs = textoObservacionesDePedido(p);
   return (
     <li id={`pedido-plataforma-${p.id}`} className="px-4 py-3 sm:px-5">
       <div className="flex items-start gap-3">
@@ -328,6 +334,11 @@ function FilaPedidoPlataforma({ p, ahora }: { p: PedidoPlataformaSupervision; ah
           <p className="mt-0.5 text-[12px] text-texto-3">
             {p.items.map((i) => `${fmtCantidad(i.cantidad)}× ${i.nombre}`).join(" · ") || `Pedido de ${NOMBRE_PLATAFORMA[p.plataforma]}`}
           </p>
+          {/* La nota baja de renglón: nunca se corta con «…». En un anulado, tachado como el N° y el monto. */}
+          {descuento && (
+            <p className={`mt-0.5 text-[12px] tabular-nums text-texto-3 ${anulado ? "line-through" : ""}`}>{descuento}</p>
+          )}
+          {obs && <p className={`mt-0.5 break-words text-[12px] text-texto-3 ${anulado ? "line-through" : ""}`}>{obs}</p>}
           {p.anulado && (
             <p className="mt-1.5 text-[12px] leading-snug text-rose-700">
               Autorizó la anulación <b className="font-semibold">{p.anulado.por}</b> · {cuando(p.anulado.en, ahora)}

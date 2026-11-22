@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PedidoPlataforma } from "../../lib/pedidosPlataforma/tipos";
 import type { Caja, Credito, CupoEstado, Venta } from "../../types";
 import { cupoEmprendedor } from "../../test/cupoFixtures";
 
@@ -50,6 +51,7 @@ vi.mock("../../lib/api", () => ({
     getFormasPago: vi.fn(),
     entregarPedido: vi.fn(),
     anularVenta: vi.fn(),
+    pedidosPlataformaDeLaCaja: vi.fn(),
   },
 }));
 
@@ -124,6 +126,7 @@ beforeEach(() => {
     { id: 10, nombre: "Efectivo" },
     { id: 11, nombre: "QR" },
   ]);
+  vi.mocked(api.pedidosPlataformaDeLaCaja).mockResolvedValue({ pedidos: [] });
 });
 
 /** "Ventas del turno" de la caja 1, sin abrir nada. */
@@ -555,19 +558,19 @@ describe("ventas a revisar (C1)", () => {
     montar();
     const fila = await screen.findByRole("button", { name: /T-0007/ });
     expect(fila).not.toHaveTextContent("A revisar");
-    expect(screen.queryByRole("button", { name: /Sólo a revisar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^A revisar \(/ })).not.toBeInTheDocument();
   });
 
   it("el filtro deja sólo las marcadas y el total del turno no cambia", async () => {
     vi.mocked(api.getVentas).mockResolvedValue([marcada, limpia]);
     montar();
     await screen.findByRole("button", { name: /T-0008/ });
-    fireEvent.click(screen.getByRole("button", { name: "Sólo a revisar (1)" }));
+    fireEvent.click(screen.getByRole("button", { name: "A revisar (1)" }));
     expect(screen.getByRole("button", { name: /T-0007/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /T-0008/ })).not.toBeInTheDocument();
     // El resumen de arriba es del turno entero, no de lo filtrado.
     expect(screen.getByText(/2 ventas/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Todas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Todo (2)" }));
     expect(screen.getByRole("button", { name: /T-0008/ })).toBeInTheDocument();
   });
 
@@ -578,6 +581,172 @@ describe("ventas a revisar (C1)", () => {
     expect(await screen.findByRole("button", { name: /T-0007/ })).toHaveTextContent(
       "OTRO_MOTIVO_NUEVO",
     );
+  });
+});
+
+describe("los filtros rápidos del turno (22-nov)", () => {
+  /** Una venta del turno: de mostrador y cobrada, salvo lo que se le cambie. */
+  const deTurno = (id: number, hora: string, total: number, extra: Record<string, unknown> = {}) =>
+    ({
+      ...venta,
+      id,
+      comprobante: `T-000${id}`,
+      fecha: `2026-11-22T${hora}:00.000Z`,
+      total,
+      pagos: [{ formaPago: "Efectivo", monto: total }],
+      ...extra,
+    }) as unknown as Venta;
+  const dePlataforma = (id: number, hora: string, extra: Partial<PedidoPlataforma> = {}): PedidoPlataforma => ({
+    id,
+    clienteRequestId: `req-${id}`,
+    plataforma: "YANGO",
+    codigoExterno: `A-${id}`,
+    fecha: `2026-11-22T${hora}:00.000Z`,
+    almacen: { id: 3, nombre: "Central" },
+    usuario: { id: 7, nombre: "Cajera" },
+    cajaId: 1,
+    total: 70,
+    sinStock: false,
+    anuladoEn: null,
+    motivoAnulacion: null,
+    detalles: [{ productoId: 5, nombre: "Combo", cantidad: 1, precio: 70, subtotal: 70 }],
+    ...extra,
+  });
+
+  /** Las filas que se ven, en orden: «T-000N» las ventas y el N° de la app los pedidos. */
+  const filasVisibles = () =>
+    screen
+      .getAllByRole("button", { name: /^T-000\d|^Ver el pedido/ })
+      .map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").match(/T-000\d|[A-Z]-\d+/)?.[0]);
+  const pastilla = (nombre: string) => screen.getByRole("button", { name: nombre });
+  const filtros = () => screen.queryByRole("group", { name: "Filtrar las ventas del turno" });
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja", "delivery", "recoger", "pedidos_yango", "pedidos_pedidosya"];
+    sesion.permisos = ["ventas.anular", "autorizar.pin", "plataformas.registrar"];
+  });
+
+  it("con de todo en el turno: una pastilla por cosa, cada una deja lo suyo y los totales no cambian", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([
+      deTurno(1, "19:00", 80),
+      deTurno(2, "18:00", 50, { vecesModificada: 1 }),
+      deTurno(3, "17:00", 30, { tipoPedido: "DELIVERY", prepagado: true, estadoEntrega: "ENTREGADO" }),
+      deTurno(4, "16:00", 40, { tipoPedido: "RECOGER", prepagado: true, estadoEntrega: "ENTREGADO" }),
+      deTurno(5, "15:00", 99, { estado: "ANULADO" }),
+    ]);
+    vi.mocked(api.pedidosPlataformaDeLaCaja).mockResolvedValue({
+      pedidos: [
+        dePlataforma(31, "18:30"),
+        dePlataforma(32, "16:30", {
+          plataforma: "PEDIDOS_YA",
+          codigoExterno: "B-32",
+          total: 40,
+          subtotal: 45,
+          descuento: 5,
+          observaciones: "sin ají",
+        }),
+      ],
+    });
+    montarHistorial();
+    await screen.findByRole("button", { name: /Ver el pedido de PedidosYa/ });
+
+    const nombres = within(filtros()!)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(nombres).toEqual([
+      "Todo (7)",
+      "Ventas (3)",
+      "Delivery (1)",
+      "Recojo (1)",
+      "Yango (1)",
+      "PedidosYa (1)",
+      "Modificadas (1)",
+      "Anuladas (1)",
+    ]);
+    expect(pastilla("Todo (7)")).toHaveAttribute("aria-pressed", "true");
+    expect(filasVisibles()).toEqual(["T-0001", "A-31", "T-0002", "T-0003", "B-32", "T-0004", "T-0005"]);
+
+    const totales = () => {
+      // Las cuatro vivas (80 + 50 + 30 + 40); ni la anulada ni los pedidos suman.
+      expect(screen.getByText(/4 ventas/)).toHaveTextContent(/4 ventas · Bs\s?200[.,]00/);
+      expect(screen.getByText(/Yango: 1 pedido/)).toHaveTextContent(
+        /Yango: 1 pedido · Bs\s?70[.,]00 · PedidosYa: 1 pedido · Bs\s?40[.,]00/,
+      );
+    };
+    totales();
+
+    const casos: [string, string[]][] = [
+      // La anulada es de mostrador: sale en «Ventas», tachada como siempre.
+      ["Ventas (3)", ["T-0001", "T-0002", "T-0005"]],
+      ["Delivery (1)", ["T-0003"]],
+      ["Recojo (1)", ["T-0004"]],
+      ["Yango (1)", ["A-31"]],
+      ["PedidosYa (1)", ["B-32"]],
+      ["Modificadas (1)", ["T-0002"]],
+      ["Anuladas (1)", ["T-0005"]],
+    ];
+    for (const [nombre, filas] of casos) {
+      fireEvent.click(pastilla(nombre));
+      expect(pastilla(nombre)).toHaveAttribute("aria-pressed", "true");
+      expect(filasVisibles()).toEqual(filas);
+      totales();
+    }
+
+    fireEvent.click(pastilla("Todo (7)"));
+    expect(filasVisibles()).toHaveLength(7);
+  });
+
+  it("un pedido de plataforma anulado sale en «Anuladas» y también en su plataforma", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([deTurno(1, "19:00", 80), deTurno(5, "15:00", 99, { estado: "ANULADO" })]);
+    vi.mocked(api.pedidosPlataformaDeLaCaja).mockResolvedValue({
+      pedidos: [dePlataforma(31, "18:30"), dePlataforma(33, "14:00", { anuladoEn: "2026-11-22T14:10:00.000Z" })],
+    });
+    montarHistorial();
+    await screen.findByRole("button", { name: /Ver el pedido de Yango N° A-33/ });
+    fireEvent.click(pastilla("Anuladas (2)"));
+    expect(filasVisibles()).toEqual(["T-0005", "A-33"]);
+    fireEvent.click(pastilla("Yango (2)"));
+    expect(filasVisibles()).toEqual(["A-31", "A-33"]);
+  });
+
+  it("sólo ventas de mostrador: no hay pastillas, se ve como siempre", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([deTurno(1, "19:00", 80), deTurno(2, "18:00", 50), deTurno(3, "17:00", 30)]);
+    montarHistorial();
+    await screen.findByRole("button", { name: /T-0003/ });
+    expect(filtros()).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Todo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Ventas \(/ })).not.toBeInTheDocument();
+    expect(filasVisibles()).toEqual(["T-0001", "T-0002", "T-0003"]);
+  });
+
+  it("si la pastilla elegida deja de existir al recargar, vuelve a «Todo» con la lista entera", async () => {
+    const modificada = deTurno(2, "18:00", 50, { vecesModificada: 1 });
+    vi.mocked(api.getVentas).mockResolvedValue([deTurno(1, "19:00", 80), modificada]);
+    vi.mocked(api.getVenta).mockResolvedValue(modificada);
+    montarHistorial();
+    await screen.findByRole("button", { name: /T-0002/ });
+    fireEvent.click(pastilla("Modificadas (1)"));
+    expect(filasVisibles()).toEqual(["T-0002"]);
+
+    // Se anula la modificada: al recargar ya no hay ninguna «Modificada».
+    const anulada = { ...modificada, estado: "ANULADO" } as Venta;
+    vi.mocked(api.anularVenta).mockResolvedValue(anulada);
+    vi.mocked(api.getVentas).mockResolvedValue([deTurno(1, "19:00", 80), anulada]);
+    fireEvent.click(screen.getByRole("button", { name: /T-0002/ }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Anular venta" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Anular venta" });
+    fireEvent.change(within(dialogo).getByLabelText("PIN de autorización"), { target: { value: "1234" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Devolución del cliente" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Anular" }));
+    });
+
+    expect(await screen.findByRole("button", { name: "Anuladas (1)" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Modificadas/ })).not.toBeInTheDocument();
+    expect(pastilla("Todo (2)")).toHaveAttribute("aria-pressed", "true");
+    expect(filasVisibles()).toEqual(["T-0001", "T-0002"]);
   });
 });
 

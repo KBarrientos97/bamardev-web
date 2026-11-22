@@ -222,7 +222,16 @@ export interface PedidoPlataformaSupervision {
   plataforma: Plataforma;
   /** El N° de la app; null si no lo cargaron. */
   codigoExterno: string | null;
+  /** Lo que paga la app: los renglones menos el descuento (el neto). */
   total: number;
+  /**
+   * Lo del precio de la app (CONTRATO-plataformas-supervision-reportes, 22-nov):
+   * la suma de los renglones, lo que la app descontó por cuenta del local y la
+   * nota del cajero. Un backend viejo no los manda: sin descuento y sin nota.
+   */
+  subtotal?: number;
+  descuento?: number;
+  observaciones?: string | null;
   hora: number;
   quien: string;
   /** La caja donde se tomó; null en los de antes de que el pedido la guardara. */
@@ -236,7 +245,15 @@ export interface PedidoPlataformaSupervision {
  * anulados (que van en `anulados`). Sólo vienen las plataformas prendidas.
  */
 export interface PlataformasSupervision {
-  resumen: { plataforma: Plataforma; cantidad: number; total: number; anulados: number }[];
+  resumen: {
+    plataforma: Plataforma;
+    cantidad: number;
+    /** Neto: ya sin los descuentos. */
+    total: number;
+    anulados: number;
+    /** Lo que las apps descontaron en los pedidos vivos; ausente (backend viejo) = 0. */
+    descuentos?: number;
+  }[];
   /** Del más nuevo al más viejo. */
   pedidos: PedidoPlataformaSupervision[];
 }

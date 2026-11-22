@@ -4,7 +4,13 @@ import {
   type PedidoPlataforma,
   type ReportePedidosPlataforma,
 } from "../../../lib/pedidosPlataforma/tipos";
-import { descuentosDelReporte, diaCorto, textoAnulado } from "./PedidosPlataforma.datos";
+import {
+  descuentosDelReporte,
+  diaCorto,
+  textoAnulado,
+  textoDescuentoDelPedido,
+  textoObservacionesDelPedido,
+} from "./PedidosPlataforma.datos";
 
 /**
  * El resumen del período en papel, para cuadrar con lo que paga la app
@@ -54,6 +60,8 @@ const CSS_IMPRESION = `
   .resumen-plataforma .anulado td { color: #444; }
   .resumen-plataforma .tachado { text-decoration: line-through; }
   .resumen-plataforma .marca { display: block; font-weight: 700; font-size: 8pt; color: #000; }
+  /* El descuento y la nota del pedido, cada uno en su renglón debajo del N°: la nota entera, sin cortar. */
+  .resumen-plataforma .extra { display: block; font-size: 8pt; overflow-wrap: anywhere; }
   .resumen-plataforma tfoot th { border-top: 1pt solid #000; }
   .resumen-plataforma .nota { margin-top: 3mm; font-size: 8.5pt; font-style: italic; }
 }
@@ -153,11 +161,17 @@ export default function ResumenPedidosImpreso({
 function FilaPedido({ p, conSucursal }: { p: PedidoPlataforma; conSucursal: boolean }) {
   // Un anulado va tachado, menos su marca «Anulado: motivo».
   const t = (x: string) => (p.anuladoEn ? <span className="tachado">{x}</span> : x);
+  // Debajo del N° (22-nov), cada cosa en su renglón y sólo si existe: lo que
+  // descontó la app y la nota del cajero. El total de la fila ya es el neto.
+  const descuento = textoDescuentoDelPedido(p);
+  const obs = textoObservacionesDelPedido(p);
   return (
     <tr className={p.anuladoEn ? "anulado" : undefined}>
       <td>{t(fmtFechaHora(p.fecha))}</td>
       <td>
         {t(p.codigoExterno ?? "—")}
+        {descuento && <span className="extra">{t(descuento)}</span>}
+        {obs && <span className="extra">{t(obs)}</span>}
         {p.anuladoEn && <span className="marca">{textoAnulado(p)}</span>}
       </td>
       {conSucursal && <td>{t(p.almacen.nombre)}</td>}
