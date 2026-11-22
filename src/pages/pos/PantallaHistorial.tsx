@@ -39,6 +39,7 @@ import type { PedidoPlataforma } from "../../lib/pedidosPlataforma/tipos";
 import DialogoAnularPedido from "../reportes/vistas/DialogoAnularPedido";
 import { DetallePedidoDelTurno, FilaPedidoDelTurno, PedidosSinSubir } from "./PedidosDelTurno";
 import { mezclarPorHora, pendientesDelTurno, resumenDePedidos, textoResumenPedidos } from "./mezclaDelTurno";
+import { filtroVigente, opcionesDeFiltro, pasaElFiltro, type FiltroDelTurno } from "./filtrosDelTurno";
 import { motivosRevision, requiereRevision } from "../../lib/revisionVenta";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import VentasSinSubir from "../../components/offline/VentasSinSubir";
@@ -122,17 +123,21 @@ export default function PantallaHistorial({
 
   const todas = ventas.datos ?? [];
   /**
-   * Las marcadas "a revisar" (C1). El filtro es local, sobre la misma lista del
-   * turno: así funciona también con la copia offline. Sólo se ofrece si hay
-   * alguna, y si deja de haberlas el filtro se apaga solo: si no, quedaría
+   * Los filtros rápidos (22-nov; antes había sólo «a revisar», C1): Todo,
+   * Ventas, Delivery, Recojo, cada plataforma, Modificadas, Anuladas y A
+   * revisar, de una sola elección. Es local, sobre la misma lista del turno:
+   * así funciona también con la copia offline. La lista se arma con TODO y
+   * después se filtra; los totales de arriba no miran el filtro. Una pastilla
+   * sólo sale si filtra algo, y si la elegida deja de estar (se recargó y ya no
+   * hay anuladas) se vuelve a «Todo» y ahí queda: si no, el filtro quedaría
    * prendido y oculto, con la lista vacía.
    */
-  const aRevisar = todas.filter(requiereRevision).length;
-  const [soloRevisar, setSoloRevisar] = useState(false);
-  const filtrando = soloRevisar && aRevisar > 0;
-  const lista = filtrando ? todas.filter(requiereRevision) : todas;
-  // Con el filtro de «a revisar» los pedidos no se mezclan: ninguno es una venta a revisar.
-  const filas = mezclarPorHora(lista, filtrando ? [] : pedidosDelTurno);
+  const delTurno = mezclarPorHora(todas, pedidosDelTurno);
+  const opcionesFiltro = opcionesDeFiltro(delTurno);
+  const [elegido, setElegido] = useState<FiltroDelTurno>("todo");
+  const filtro = filtroVigente(elegido, opcionesFiltro);
+  if (filtro !== elegido) setElegido(filtro);
+  const filas = filtro === "todo" ? delTurno : delTurno.filter((f) => pasaElFiltro(f, filtro));
   // Las cobradas sin internet también son del turno: cuentan en el resumen,
   // como en Android (las rechazadas no, porque no van a llegar).
   const sinSubir = porSubir(useColaOffline()).map((v) => v.recibo);
@@ -209,7 +214,9 @@ export default function PantallaHistorial({
         </Boton>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 px-[max(1rem,calc(50%-24rem+1rem))] lg:px-[max(1.5rem,calc(50%-36rem+1.5rem))] lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:content-start lg:items-start lg:gap-6 lg:space-y-0 lg:py-6">
+      {/* El lugar de la barra de scroll, siempre reservado: con un filtro la
+          lista se achica, la barra se iba y las dos columnas saltaban de costado. */}
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto [scrollbar-gutter:stable] py-4 px-[max(1rem,calc(50%-24rem+1rem))] lg:px-[max(1.5rem,calc(50%-36rem+1.5rem))] lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:content-start lg:items-start lg:gap-6 lg:space-y-0 lg:py-6">
         {/* En el celular va arriba de las ventas; en la PC, a la derecha. */}
         <aside className="space-y-5 lg:sticky lg:top-0 lg:col-start-2 lg:row-start-1">
           <ResumenTurno caja={caja} ventas={aprobadas.length} total={totalVendido} fiado={fiado} />
@@ -323,16 +330,10 @@ export default function PantallaHistorial({
           <h2 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-texto-4">
             Ventas
           </h2>
-          {aRevisar > 0 && (
-            <div className="mb-2">
-              <Chips
-                valor={filtrando ? "revisar" : "todas"}
-                opciones={[
-                  ["todas", "Todas"],
-                  ["revisar", `Sólo a revisar (${aRevisar})`],
-                ]}
-                onChange={(k) => setSoloRevisar(k === "revisar")}
-              />
+          {/* En el celular la fila se desliza; en la compu baja de renglón. */}
+          {opcionesFiltro.length > 0 && (
+            <div className="mb-2" role="group" aria-label="Filtrar las ventas del turno">
+              <Chips valor={filtro} opciones={opcionesFiltro} onChange={setElegido} />
             </div>
           )}
           <ErrorMsg>{ventas.error}</ErrorMsg>
