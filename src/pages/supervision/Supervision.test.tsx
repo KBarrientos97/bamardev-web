@@ -526,6 +526,60 @@ describe("Supervisión del local: Yango y PedidosYa del turno (PLAN-PEDIDOS-PLAT
     expect(filas[1]).toHaveTextContent(/Autorizó la anulación Marta Admin.*Error al cargar/);
   });
 
+  /** Lo del precio de la app (22-nov): el Yango vivo con descuento y nota; el PedidosYa anulado también. */
+  const conPrecioDeLaApp = (r: SupervisionRestaurante): SupervisionRestaurante => {
+    const c = conActividad(r);
+    const [yango, pedidosYa] = c.plataformas!.pedidos;
+    return {
+      ...c,
+      plataformas: {
+        resumen: [
+          { ...c.plataformas!.resumen[0], descuentos: 7 },
+          { ...c.plataformas!.resumen[1], descuentos: 0 },
+        ],
+        pedidos: [
+          { ...yango, subtotal: 72, descuento: 7, observaciones: "sin canela, el cliente llamó dos veces para pedir que el vaso vaya bien cerrado" },
+          { ...pedidosYa, subtotal: 45, descuento: 5, observaciones: "sin ají" },
+        ],
+      },
+    };
+  };
+
+  it("la tarjeta dice «Descuentos: Bs X» bajo el total de la plataforma que tuvo, y nada en la que no", async () => {
+    ver.mockImplementation(async () => conPrecioDeLaApp(respuesta()));
+    await montar();
+    const t = seccion("Yango / PedidosYa del turno");
+    expect(t).toHaveTextContent(/Descuentos: Bs\s7,00/);
+    expect(within(t).getAllByText(/^Descuentos:/)).toHaveLength(1);
+    // El total sigue siendo el neto que manda el backend.
+    expect(t).toHaveTextContent(/Bs\s120,00/);
+  });
+
+  it("la fila del pedido: «Descuento Bs X» y «Obs.: …» en su renglón, la nota entera; en un anulado, tachados", async () => {
+    ver.mockImplementation(async () => conPrecioDeLaApp(respuesta()));
+    await montar();
+    fireEvent.click(within(bloques()).getByRole("button", { name: /Yango \/ PedidosYa/ }));
+    const [vivo, anulado] = within(bloques()).getAllByRole("listitem");
+    const desc = within(vivo).getByText(/^Descuento Bs\s7,00$/);
+    const obs = within(vivo).getByText("Obs.: sin canela, el cliente llamó dos veces para pedir que el vaso vaya bien cerrado");
+    expect(desc).not.toHaveClass("line-through");
+    expect(obs).not.toHaveClass("truncate");
+    expect(obs).toHaveClass("break-words");
+    // El monto de la fila es el neto (65), no la suma de los renglones (72).
+    expect(vivo).toHaveTextContent(/Bs\s65,00/);
+    expect(vivo).not.toHaveTextContent(/Bs\s72,00/);
+    expect(within(anulado).getByText(/^Descuento Bs\s5,00$/)).toHaveClass("line-through");
+    expect(within(anulado).getByText("Obs.: sin ají")).toHaveClass("line-through");
+  });
+
+  it("un backend viejo (sin descuento, subtotal ni nota) se ve como siempre", async () => {
+    ver.mockImplementation(async () => conActividad(respuesta()));
+    await montar();
+    expect(seccion("Yango / PedidosYa del turno")).not.toHaveTextContent(/Descuentos/);
+    fireEvent.click(within(bloques()).getByRole("button", { name: /Yango \/ PedidosYa/ }));
+    expect(bloques()).not.toHaveTextContent(/Descuento|Obs\./);
+  });
+
   it("la actividad suma el renglón PEDIDO_PLATAFORMA, con un ícono de moto", async () => {
     ver.mockImplementation(async () => conActividad(respuesta()));
     await montar();

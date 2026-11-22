@@ -23,7 +23,10 @@ import {
   ordenarActividad,
   resumenCajeros,
   situacionDelTurno,
+  textoDescuentoDePedido,
+  textoDescuentosDePlataforma,
   textoDiferencia,
+  textoObservacionesDePedido,
   textoPorCobrar,
   tonoDeActividad,
 } from "./Supervision.datos";
@@ -354,6 +357,20 @@ describe("Supervisión del local: pedidos y bloques", () => {
     expect(bloquePlataformas({ plataformas: null })).toBeNull();
     expect(bloquePlataformas({})).toBeNull();
     expect(bloquePlataformas({ plataformas: { resumen: [], pedidos: [] } })).toBeNull();
+  });
+
+  it("los descuentos de la app (22-nov): el texto sólo si hubo; sin el campo (backend viejo) o en 0, nada", () => {
+    expect(textoDescuentosDePlataforma({ descuentos: 7 })).toMatch(/^Descuentos: Bs\s7,00$/);
+    expect(textoDescuentosDePlataforma({ descuentos: 0 })).toBeNull();
+    expect(textoDescuentosDePlataforma({})).toBeNull();
+    expect(textoDescuentosDePlataforma({ descuentos: Number.NaN })).toBeNull();
+    expect(textoDescuentoDePedido({ descuento: 2.5 })).toMatch(/^Descuento Bs\s2,50$/);
+    expect(textoDescuentoDePedido({ descuento: 0 })).toBeNull();
+    expect(textoDescuentoDePedido({})).toBeNull();
+    expect(textoObservacionesDePedido({ observaciones: "  sin ají " })).toBe("Obs.: sin ají");
+    expect(textoObservacionesDePedido({ observaciones: "   " })).toBeNull();
+    expect(textoObservacionesDePedido({ observaciones: null })).toBeNull();
+    expect(textoObservacionesDePedido({})).toBeNull();
   });
 });
 
