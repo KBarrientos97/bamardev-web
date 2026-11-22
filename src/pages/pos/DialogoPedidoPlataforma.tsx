@@ -26,6 +26,12 @@ import { textoTicketPlataforma, type PedidoParaImprimir } from "./ticketPlatafor
  * local (lo mismo que dice el carrito); el precio del local queda siempre a la
  * vista para comparar.
  *
+ * Hay negocios con los mismos precios en la app que en el local, donde lo único
+ * que cambia es el descuento (22-nov): para no tipear uno por uno, «Mismo
+ * precio» llena todos los campos con el del local, y después se corrige a mano
+ * el que haga falta. Cada renglón ya no muestra su monto: confundía con el
+ * precio, y con el Total alcanza.
+ *
  * El camino rápido no cambia: el foco arranca en el N° y Enter registra.
  *
  * Se abre con el carrito armado. «Registrar» no cierra el diálogo por su
@@ -83,6 +89,17 @@ const PLATA_TECLEABLE = /^\d{0,7}(\.\d{0,2})?$/;
 
 const centavos = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Un precio escrito como lo tipearía el cajero: «35» y no «35.00», pero
+ * «12.50» con sus dos decimales. Lo que no entraría en el campo (más que el
+ * máximo del backend) queda vacío, que igual vale el del local.
+ */
+function comoLoEscribiria(precio: number): string {
+  const p = centavos(precio);
+  if (!(p >= 0) || p > PRECIO_MAXIMO) return "";
+  return Number.isInteger(p) ? String(p) : p.toFixed(2);
+}
+
 export default function DialogoPedidoPlataforma({
   plataforma,
   lineas,
@@ -122,6 +139,16 @@ export default function DialogoPedidoPlataforma({
     };
   });
   const subtotal = centavos(renglones.reduce((s, r) => s + r.monto, 0));
+  // Si algún renglón lleva «c/u», todos le guardan el lugar: así los campos de
+  // precio quedan en una misma columna, uno debajo del otro.
+  const hayCadaUno = lineas.some((l) => l.cantidad !== 1);
+
+  // «Mismo precio»: todos los campos con el precio del local de su producto,
+  // pisando lo que hubiera. Quedan como escritos (viajan con `precioApp`, igual
+  // que si el cajero los tipeara) y cada uno se puede corregir después.
+  function ponerMismoPrecio() {
+    setTextos(Object.fromEntries(lineas.map((l) => [String(l.clave), comoLoEscribiria(l.precioLocal)])));
+  }
   // Vacío (o sólo un punto a medio escribir) = sin descuento.
   const descuento = centavos(Math.max(0, parsearMonto(textoDescuento) ?? 0));
   // Nunca en negativo: un descuento mayor que el pedido deja Bs 0 a la vista y
@@ -187,15 +214,28 @@ export default function DialogoPedidoPlataforma({
     >
       <div className="space-y-3">
         <div>
-          <p className="mb-1.5 text-balance px-1 text-[13px] font-semibold text-texto-2">
-            Precio en {nombre}: escribilo sólo si es distinto al del local.
-          </p>
+          {/* El texto puede bajar de renglón en el celular; el botón no se achica. */}
+          <div className="mb-1.5 flex items-center justify-between gap-3 px-1">
+            <p className="min-w-0 flex-1 text-balance text-[13px] font-semibold text-texto-2">
+              Precio en {nombre}: escribilo sólo si es distinto al del local.
+            </p>
+            <Boton
+              type="button"
+              variante="ghost"
+              onClick={ponerMismoPrecio}
+              disabled={enviando}
+              title="Poner en todos el precio del local"
+              className="shrink-0 whitespace-nowrap !px-3 !py-1.5 text-[13px]"
+            >
+              Mismo precio
+            </Boton>
+          </div>
           <ul className="divide-y divide-borde-soft rounded-xl border border-borde-soft">
-            {renglones.map(({ l, texto, monto }) => (
+            {renglones.map(({ l, texto }) => (
               <li key={l.clave} className="px-3.5 py-2.5 text-[13px]">
-                {/* En la compu, todo en una fila. En el celular no entra: el nombre
-                    ocupa su renglón entero (y baja si es largo) y el precio con el
-                    monto pasan abajo, pegados a la derecha. */}
+                {/* El nombre a la izquierda (baja de renglón si es largo) y el
+                    precio de la app a la derecha. Si no entra (un nombre muy largo
+                    en un celular angosto), el precio pasa abajo, pegado a la derecha. */}
                 <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
                   <div className="min-w-[9rem] flex-1 text-texto-2">
                     <span className="block break-words">
@@ -205,7 +245,7 @@ export default function DialogoPedidoPlataforma({
                     <span className="block text-xs text-texto-3">En el local: {fmtMoney(l.precioLocal)}</span>
                     {l.agregados && <span className="block break-words text-xs text-texto-3">{l.agregados}</span>}
                   </div>
-                  <div className="flex min-w-[8.25rem] shrink-0 items-center gap-1.5">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     <span className="text-texto-3">Bs</span>
                     <Input
                       type="number"
@@ -222,11 +262,12 @@ export default function DialogoPedidoPlataforma({
                       aria-label={`Precio de «${l.nombre}» en ${nombre}`}
                       className="!w-[5.5rem] !px-2.5 !py-2 text-right tabular-nums"
                     />
-                    {l.cantidad !== 1 && <span className="text-texto-3">c/u</span>}
+                    {hayCadaUno && (
+                      <span className="w-7 text-texto-3" aria-hidden={l.cantidad === 1 || undefined}>
+                        {l.cantidad !== 1 ? "c/u" : ""}
+                      </span>
+                    )}
                   </div>
-                  <span className="min-w-[4.75rem] shrink-0 text-right font-semibold tabular-nums text-texto">
-                    {fmtMoney(monto)}
-                  </span>
                 </div>
               </li>
             ))}
