@@ -642,6 +642,14 @@ const paths: Record<string, ReactNode> = {
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </>
   ),
+  /** Evaluación de pacientes (nutrición): la ficha en su tablilla, con el pulso. */
+  evaluacion: (
+    <>
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M7.5 14h2.2l1.4-3 2 6 1.4-3h2" />
+    </>
+  ),
 };
 
 export type NombreIcono = keyof typeof paths | (string & {});

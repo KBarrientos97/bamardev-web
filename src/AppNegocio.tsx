@@ -124,6 +124,8 @@ const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
 const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
 const ConfiguracionRapida = lazy(() => import("./pages/academia/PrimerosPasos"));
 const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m) => ({ default: m.SedesConfig })));
+// Nutrición (22-nov): la evaluación de pacientes, sólo se baja en un consultorio.
+const RutasNutricion = lazy(() => import("./pages/nutricion/RutasNutricion"));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
 function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
@@ -1151,6 +1153,20 @@ function Rutas() {
         <Route path="/configuracion/aulas" element={<RedirigeConBusqueda a={RUTA_SEDES} />} />
         {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}
         <Route path="/academia/configuracion" element={<InicioConfig />} />
+
+        {/* Nutrición (CONTRATO-nutricion-evaluacion-22nov): la lista, la
+            evaluación en 4 etapas y la planilla de cada paciente. Sólo con la
+            feature `nutricion` y en el rubro (ver permisos.ts). */}
+        <Route
+          path="/evaluacion/*"
+          element={
+            <Protegida seccion="nutricion">
+              <Suspense fallback={null}>
+                <RutasNutricion />
+              </Suspense>
+            </Protegida>
+          }
+        />
 
         {/* Cualquier ruta desconocida vuelve al inicio del rol. */}
         <Route path="*" element={<Inicio />} />

@@ -117,6 +117,9 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "notas.reabrir": "notas",
   "planilla.ver": "planilla_docente",
   "planilla.liquidar": "planilla_docente",
+  // Nutrición (CONTRATO-nutricion-evaluacion-22nov §1): la evaluación de pacientes.
+  "nutricion.ver": "nutricion",
+  "nutricion.editar": "nutricion",
 };
 
 /**
@@ -222,6 +225,8 @@ export const PLANTILLAS = {
     "notas.reabrir",
     "planilla.ver",
     "planilla.liquidar",
+    "nutricion.ver",
+    "nutricion.editar",
   ],
   SUPERVISOR: [
     "ventas.vender",
@@ -372,4 +377,12 @@ export const PLANTILLAS = {
     "asistencia.llegadas:PROPIO",
     "notas.registrar:PROPIO",
   ],
+  /**
+   * No es una plantilla global: es la de RUBRO «Nutricionista» de NUTRICION
+   * (código legado PROFESIONAL; CONTRATO-nutricion-evaluacion-22nov §1 y §3.4).
+   * Trae SÓLO ver y registrar las evaluaciones, con alcance general; la
+   * global PROFESIONAL no cambia. El Encargado y la Recepción no los traen (el
+   * dueño se los da en Roles).
+   */
+  NUTRICIONISTA: ["nutricion.ver", "nutricion.editar"],
 } as const;
