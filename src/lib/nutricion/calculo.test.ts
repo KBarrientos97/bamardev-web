@@ -2,27 +2,34 @@ import { describe, expect, it } from "vitest";
 import { CATALOGO, control } from "../../test/nutricionFixtures";
 import {
   MENOS,
+  avisoImc,
   calcularImc,
   cambio,
   conUnidad,
   edadEn,
   edadEnFecha,
+  empiezaConDigito,
   errorDeTope,
-  esSoloDigitos,
+  evolucion,
   fmtCambio,
   fmtNumero,
   grado,
   gradoDeTabla,
+  gradoDelResumen,
+  imcDeLoEscrito,
   leerNumero,
   posicionEnMedidor,
   rangoDe,
   redondear,
   resumenDe,
+  sufijoDelDia,
   tablaQueToca,
+  textoAlSalir,
   textoEdadCorporal,
   textoFaltaTabla,
   ultimoValor,
   valorDe,
+  vecesDelDia,
 } from "./calculo";
 
 /**
@@ -82,11 +89,36 @@ describe("los números aceptan coma o punto y se muestran con coma", () => {
     expect(valorDe("grasaPct", "32,65")).toBe(32.7);
   });
 
-  it("el buscador distingue un carnet de un nombre", () => {
-    expect(esSoloDigitos("1234567")).toBe(true);
-    expect(esSoloDigitos(" 1234567 ")).toBe(true);
-    expect(esSoloDigitos("Lucía")).toBe(false);
-    expect(esSoloDigitos("1234567 SC")).toBe(false);
+  it("lo buscado que empieza con un número va al carnet («1112223 LP» también)", () => {
+    expect(empiezaConDigito("1234567")).toBe(true);
+    expect(empiezaConDigito(" 1234567 ")).toBe(true);
+    expect(empiezaConDigito("1112223 LP")).toBe(true);
+    expect(empiezaConDigito("Lucía")).toBe(false);
+    expect(empiezaConDigito("Ana 123")).toBe(false);
+    expect(empiezaConDigito("")).toBe(false);
+  });
+
+  it("la unidad del campo pegada al número se acepta; otra letra, no", () => {
+    expect(valorDe("tallaCm", "180cm")).toBe(180);
+    expect(valorDe("tallaCm", "180 CM")).toBe(180);
+    expect(valorDe("pesoKg", "82,4 kg")).toBe(82.4);
+    expect(valorDe("pesoKg", "82,4Kg")).toBe(82.4);
+    expect(valorDe("grasaPct", "75 %")).toBe(75);
+    expect(valorDe("musculoPct", "30,5%")).toBe(30.5);
+    expect(valorDe("cinturaCm", "92 cm")).toBe(92);
+    expect(errorDeTope("tallaCm", "180cm")).toBeNull();
+    expect(errorDeTope("pesoKg", "82,4 kg")).toBeNull();
+    expect(errorDeTope("grasaPct", "75 %")).toBeNull();
+    expect(textoAlSalir("pesoKg", "82,4 kg")).toBe("82,4");
+    expect(textoAlSalir("tallaCm", "1,80 cm")).toBe("180");
+    // La unidad de OTRO campo, otra letra o la unidad sola siguen siendo error.
+    expect(errorDeTope("tallaCm", "180 kg")).toBe("Escribí sólo el número");
+    expect(errorDeTope("pesoKg", "82,4 kgs")).toBe("Escribí sólo el número");
+    expect(errorDeTope("tallaCm", "1,80 m")).toBe("Escribí sólo el número");
+    expect(errorDeTope("pesoKg", "kg")).toBe("Escribí sólo el número");
+    expect(errorDeTope("pesoKg", "Peso: 82,4 kg")).toBe("Escribí sólo el número");
+    expect(errorDeTope("edadCorporal", "44 años")).toBe("Escribí sólo el número");
+    expect(errorDeTope("hijos", "2%")).toBe("Escribí sólo el número");
   });
 });
 
@@ -121,6 +153,20 @@ describe("cambios entre controles", () => {
     expect(ultimoValor(controles, "pesoKg", 2)).toEqual({ valor: 86.1, fecha: "2026-09-22" });
     expect(ultimoValor(controles, "pesoKg", 0)).toBeNull();
     expect(ultimoValor(controles, "pesoKg")).toEqual({ valor: 82.4, fecha: "2026-11-22" });
+  });
+
+  it("el grado de la tarjeta es el del mismo control que el valor (no «35 %» con «Ideal»)", () => {
+    const controles = [
+      control({ id: 1, fecha: "2026-09-24", inicial: true, grasaPct: 35, grasaGrado: "SOBRE_PROMEDIO" }),
+      control({ id: 2, fecha: "2026-10-24", pesoKg: 78 }),
+      // Elegido a mano sin escribir el valor, en un control más nuevo.
+      control({ id: 3, fecha: "2026-11-13", grasaGrado: "IDEAL" }),
+    ];
+    expect(resumenDe(controles, "grasaPct")?.actual).toBe(35);
+    expect(gradoDelResumen(controles, "grasaPct", "grasaGrado")).toBe("SOBRE_PROMEDIO");
+    // Sin ningún valor escrito, el último grado elegido.
+    expect(gradoDelResumen(controles.slice(1), "grasaPct", "grasaGrado")).toBe("IDEAL");
+    expect(gradoDelResumen(controles, "musculoPct", "musculoGrado")).toBeNull();
   });
 });
 
@@ -161,6 +207,31 @@ describe("edad", () => {
     expect(edadEnFecha({ fechaNacimiento: null, edad: 41 }, "2025-06-01", "2026-11-22")).toBe(40);
     expect(edadEnFecha({ fechaNacimiento: null, edad: 41 }, "2026-11-22", "2026-11-22")).toBe(41);
     expect(edadEnFecha({ fechaNacimiento: null, edad: null }, "2026-11-22", "2026-11-22")).toBeNull();
+  });
+
+  it("con la edad anotada y el día en que se anotó, la misma cuenta del servidor", () => {
+    const anotada = (fecha: string, hoy = "2026-11-23") =>
+      edadEnFecha({ fechaNacimiento: null, edad: 21, edadDeclarada: 21, edadDeclaradaEn: "2026-11-23" }, fecha, hoy);
+    // 21 anotado hoy: ese día 21; ayer, 21; un año justo antes, 20; un día menos que un año antes, 21.
+    expect(anotada("2026-11-23")).toBe(21);
+    expect(anotada("2026-11-22")).toBe(21);
+    expect(anotada("2025-11-23")).toBe(20);
+    expect(anotada("2025-11-24")).toBe(21);
+    expect(anotada("2024-11-23")).toBe(19);
+    // Después del día anotado suma los años cumplidos desde entonces.
+    expect(anotada("2027-11-22", "2028-01-01")).toBe(21);
+    expect(anotada("2027-11-23", "2028-01-01")).toBe(22);
+    // Lo que cambia contra la cuenta vieja (la edad de hoy menos los años desde
+    // el control): 21 anotado el 1-mar-2026; hoy, 5-mar-2027, tiene 22.
+    const conDia = { fechaNacimiento: null, edad: 22, edadDeclarada: 21, edadDeclaradaEn: "2026-03-01" };
+    expect(edadEnFecha(conDia, "2026-03-10", "2027-03-05")).toBe(21);
+    expect(edadEnFecha({ fechaNacimiento: null, edad: 22 }, "2026-03-10", "2027-03-05")).toBe(22);
+    // Sin el día (una respuesta vieja), la cuenta de antes.
+    expect(edadEnFecha({ fechaNacimiento: null, edad: 22, edadDeclarada: 21, edadDeclaradaEn: null }, "2026-03-10", "2027-03-05")).toBe(22);
+    // La fecha de nacimiento manda sobre lo anotado.
+    expect(edadEnFecha({ fechaNacimiento: "2000-06-01", edad: 26, edadDeclarada: 40, edadDeclaradaEn: "2026-11-23" }, "2026-05-31", "2026-11-23")).toBe(25);
+    // Negativa no hay: como el servidor, null.
+    expect(edadEnFecha({ fechaNacimiento: null, edad: 1, edadDeclarada: 1, edadDeclaradaEn: "2026-11-23" }, "2024-11-23", "2026-11-23")).toBeNull();
   });
 
   it("la edad corporal se compara con la de verdad", () => {
@@ -283,7 +354,7 @@ describe("la aguja del medidor del IMC", () => {
 describe("topes de validación (para frenar un dedazo)", () => {
   it("fuera de rango dice entre cuánto y cuánto", () => {
     expect(errorDeTope("pesoKg", "8,2")).toBe("Entre 20 y 400 kg");
-    expect(errorDeTope("tallaCm", "1,58")).toBe("Entre 80 y 250 cm");
+    expect(errorDeTope("tallaCm", "58")).toBe("Entre 80 y 250 cm");
     expect(errorDeTope("grasaPct", "41,2")).toBeNull();
   });
 
@@ -296,5 +367,77 @@ describe("topes de validación (para frenar un dedazo)", () => {
   it("vacío está bien; letras, no", () => {
     expect(errorDeTope("pesoKg", "")).toBeNull();
     expect(errorDeTope("pesoKg", "ochenta")).toBe("Escribí sólo el número");
+  });
+
+  it("la talla escrita en metros vale en centímetros: «1,80» es 180 (testing profundo, 23-nov)", () => {
+    for (const t of ["1,80", "1.80", "1,8", "1.8"]) {
+      expect(errorDeTope("tallaCm", t)).toBeNull();
+      expect(valorDe("tallaCm", t)).toBe(180);
+    }
+    expect(valorDe("tallaCm", "1,755")).toBe(175.5);
+    expect(valorDe("tallaCm", "2,5")).toBe(250);
+    // Desde 3 ya son centímetros (y fuera del tope); el cero no se agranda.
+    const fueraTalla = "Entre 80 y 250 cm";
+    expect(errorDeTope("tallaCm", "3")).toBe(fueraTalla);
+    expect(errorDeTope("tallaCm", "18")).toBe(fueraTalla);
+    expect(errorDeTope("tallaCm", "0")).toBe(fueraTalla);
+    expect(errorDeTope("tallaCm", "0,5")).toBe(fueraTalla);
+    // Sólo la talla: un peso de 1,8 sigue siendo un dedazo.
+    expect(errorDeTope("pesoKg", "1,8")).toBe("Entre 20 y 400 kg");
+    expect(valorDe("pesoKg", "1,8")).toBe(1.8);
+  });
+
+  it("al salir del campo: lo que está bien se muestra con coma; lo que está mal queda como se escribió", () => {
+    expect(textoAlSalir("tallaCm", "1,80")).toBe("180");
+    expect(textoAlSalir("tallaCm", " 180 ")).toBe("180");
+    expect(textoAlSalir("pesoKg", "82.40")).toBe("82,4");
+    // Antes «2,5» hijos se volvía «3» (y 29,5 años, 30) sin decir nada.
+    expect(textoAlSalir("hijos", "2,5")).toBe("2,5");
+    expect(errorDeTope("hijos", "2,5")).toBe("Sin decimales");
+    expect(textoAlSalir("edad", "29,5")).toBe("29,5");
+    expect(textoAlSalir("edadCorporal", "44,5")).toBe("44,5");
+    expect(textoAlSalir("pesoKg", "1.270")).toBe("1.270");
+    expect(textoAlSalir("pesoKg", "abc")).toBe("abc");
+    expect(textoAlSalir("pesoKg", "")).toBe("");
+  });
+});
+
+describe("IMC imposible (QA, 22-nov: 127 kg con 80 cm daba 198,4)", () => {
+  it("se avisa fuera de 10 a 80, sin bloquear", () => {
+    expect(avisoImc(198.4)).toBe("Revisá la talla y el peso: el IMC da 198,4");
+    expect(avisoImc(9.9)).toBe("Revisá la talla y el peso: el IMC da 9,9");
+    expect(avisoImc(10)).toBeNull();
+    expect(avisoImc(80)).toBeNull();
+    expect(avisoImc(39.2)).toBeNull();
+    expect(avisoImc(null)).toBeNull();
+  });
+
+  it("el IMC de lo escrito: la talla en metros cuenta, y con un dato en error no hay IMC", () => {
+    expect(imcDeLoEscrito("127", "80")).toBe(198.4);
+    expect(imcDeLoEscrito("127", "1,80")).toBe(39.2);
+    expect(imcDeLoEscrito("127", "18")).toBeNull();
+    expect(imcDeLoEscrito("12", "180")).toBeNull();
+    expect(imcDeLoEscrito("", "180")).toBeNull();
+  });
+});
+
+describe("dos controles el mismo día", () => {
+  it("el segundo lleva «(2)», el tercero «(3)»; el primero, nada", () => {
+    expect(vecesDelDia(["2026-10-24", "2026-10-24", "2026-11-01", "2026-10-24"])).toEqual([1, 2, 1, 3]);
+    expect(sufijoDelDia(1)).toBe("");
+    expect(sufijoDelDia(2)).toBe(" (2)");
+    expect(sufijoDelDia(undefined)).toBe("");
+  });
+
+  it("en el gráfico, la vez se cuenta entre todos los controles, como en la planilla", () => {
+    const controles = [
+      control({ id: 1, fecha: "2026-10-24", inicial: true, pesoKg: 78 }),
+      control({ id: 2, fecha: "2026-10-24", cinturaCm: 90 }),
+      control({ id: 3, fecha: "2026-10-24", pesoKg: 77.5 }),
+    ];
+    expect(evolucion(controles, "pesoKg")).toEqual([
+      { fecha: "2026-10-24", valor: 78, vez: 1 },
+      { fecha: "2026-10-24", valor: 77.5, vez: 3 },
+    ]);
   });
 });

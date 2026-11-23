@@ -120,6 +120,9 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   // Nutrición (CONTRATO-nutricion-evaluacion-22nov §1): la evaluación de pacientes.
   "nutricion.ver": "nutricion",
   "nutricion.editar": "nutricion",
+  // El seguimiento del tratamiento (CONTRATO-nutricion-seguimiento-23nov §1): la misma feature.
+  "seguimiento.ver": "nutricion",
+  "seguimiento.editar": "nutricion",
 };
 
 /**
@@ -227,6 +230,8 @@ export const PLANTILLAS = {
     "planilla.liquidar",
     "nutricion.ver",
     "nutricion.editar",
+    "seguimiento.ver",
+    "seguimiento.editar",
   ],
   SUPERVISOR: [
     "ventas.vender",
@@ -382,7 +387,15 @@ export const PLANTILLAS = {
    * (código legado PROFESIONAL; CONTRATO-nutricion-evaluacion-22nov §1 y §3.4).
    * Trae SÓLO ver y registrar las evaluaciones, con alcance general; la
    * global PROFESIONAL no cambia. El Encargado y la Recepción no los traen (el
-   * dueño se los da en Roles).
+   * dueño se los da en Roles). Desde el seguimiento (23-nov) suma también ver y
+   * cargar el seguimiento del tratamiento.
    */
-  NUTRICIONISTA: ["nutricion.ver", "nutricion.editar"],
+  NUTRICIONISTA: ["nutricion.ver", "nutricion.editar", "seguimiento.ver", "seguimiento.editar"],
+  /**
+   * La otra plantilla de RUBRO de NUTRICION con el código legado PROFESIONAL
+   * (como Estilista y Colorista en la peluquería): «Médico», quien aplica el
+   * tratamiento y lleva el seguimiento semanal (CONTRATO-nutricion-seguimiento-23nov
+   * §1). Mira la evaluación pero no la registra. Permisos propios, GENERAL.
+   */
+  MEDICO: ["nutricion.ver", "seguimiento.ver", "seguimiento.editar"],
 } as const;

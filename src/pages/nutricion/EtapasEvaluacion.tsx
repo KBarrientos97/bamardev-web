@@ -1,7 +1,18 @@
 import type { ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { EXPEDIDOS } from "../../lib/academia/formato";
-import { calcularImc, edadEn, fmtNumero, hoyIso, rangoDe, tablaQueToca, textoDe, textoEdadCorporal, valorDe, type CampoNumerico } from "../../lib/nutricion/calculo";
+import {
+  edadEn,
+  fmtNumero,
+  hoyIso,
+  imcDeLoEscrito,
+  rangoDe,
+  tablaQueToca,
+  textoAlSalir,
+  textoEdadCorporal,
+  valorDe,
+  type CampoNumerico,
+} from "../../lib/nutricion/calculo";
 import { edadDelControl, type FormControl, type FormFicha } from "../../lib/nutricion/formulario";
 import type { Catalogo, MedidaConTabla, Sexo } from "../../lib/nutricion/tipos";
 import { Tarjeta } from "../academia/piezas";
@@ -51,6 +62,18 @@ export interface PropsEtapa {
   /** Salió del campo: desde ahí se le muestran los errores. */
   tocar: (campo: CampoForm) => void;
   irAFicha: () => void;
+  /** «Revisá la talla y el peso: el IMC da 198,4», si ya hay que mostrarlo (no bloquea). */
+  avisoImc?: string | null;
+}
+
+/** El aviso del IMC imposible, junto al campo: en ámbar, como lo que hay que mirar. */
+function AvisoImc({ texto }: { texto: string }) {
+  return (
+    <span className="inline-flex items-start gap-1.5 font-semibold text-warning-text" role="status">
+      <Icon name="alert" size={14} className="mt-px shrink-0" />
+      {texto}
+    </span>
+  );
 }
 
 const sexoDe = (f: FormFicha): Sexo | null => f.sexo || null;
@@ -103,8 +126,8 @@ function Numero({
         onChange={onCambiar}
         onFocus={onFocus}
         onBlur={() => {
-          const n = valorDe(campo, valor);
-          if (n != null && valor.trim()) onCambiar(textoDe(campo, n));
+          const t = textoAlSalir(campo, valor);
+          if (t !== valor) onCambiar(t);
           p.tocar(campo);
           onBlur?.();
         }}
@@ -200,9 +223,12 @@ export function EtapaFicha(
             <BotonesSexo valor={ficha.sexo} onElegir={(s) => cambiarFicha("sexo", s)} />
           </div>
 
+          {/* Rótulo, campo y ayuda en tres filas compartidas: cuando «opcional» baja a
+              otro renglón (tablet y celular) los dos campos siguen a la misma altura. */}
           <div className="col-span-2 grid grid-cols-2 gap-x-4 sm:col-span-1">
             <Numero
               id="ev-edad"
+              className="row-span-3 grid grid-rows-subgrid"
               campo="edad"
               label="Edad (años)"
               valor={edadCalculada != null ? String(edadCalculada) : ficha.edad}
@@ -211,7 +237,13 @@ export function EtapaFicha(
               onCambiar={(v) => cambiarFicha("edad", v)}
               p={p}
             />
-            <Rotulo htmlFor="ev-nacimiento" label="Fecha de nacimiento" extra="opcional" error={p.error("fechaNacimiento")}>
+            <Rotulo
+              htmlFor="ev-nacimiento"
+              label="Fecha de nacimiento"
+              extra="opcional"
+              error={p.error("fechaNacimiento")}
+              className="row-span-3 grid grid-rows-subgrid"
+            >
               <CampoTexto
                 id="ev-nacimiento"
                 type="date"
@@ -225,7 +257,16 @@ export function EtapaFicha(
             </Rotulo>
           </div>
 
-          <Numero id="ev-talla" campo="tallaCm" label="Talla" unidad="cm" valor={ficha.tallaCm} onCambiar={(v) => cambiarFicha("tallaCm", v)} p={p} />
+          <Numero
+            id="ev-talla"
+            campo="tallaCm"
+            label="Talla"
+            unidad="cm"
+            valor={ficha.tallaCm}
+            onCambiar={(v) => cambiarFicha("tallaCm", v)}
+            ayuda={p.avisoImc ? <AvisoImc texto={p.avisoImc} /> : undefined}
+            p={p}
+          />
           <Numero id="ev-peso" campo="pesoKg" label="Peso" unidad="kg" valor={control.pesoKg} onCambiar={(v) => cambiarControl("pesoKg", v)} p={p} />
 
           <Numero id="ev-hijos" campo="hijos" label="Hijos" valor={ficha.hijos} onCambiar={(v) => cambiarFicha("hijos", v)} p={p} />
@@ -519,7 +560,7 @@ export function EtapaComposicion(p: PropsEtapa) {
 
 export function EtapaPesoImc(p: PropsEtapa) {
   const { ficha, control } = p;
-  const imc = calcularImc(valorDe("pesoKg", control.pesoKg), valorDe("tallaCm", ficha.tallaCm));
+  const imc = imcDeLoEscrito(control.pesoKg, ficha.tallaCm);
   const tablaImc = tablaQueToca(p.catalogo?.tablas.imc, null, null).tabla;
   const rango = control.grados.imc
     ? (tablaImc?.rangos.find((r) => r.grado === control.grados.imc) ?? null)
@@ -539,6 +580,11 @@ export function EtapaPesoImc(p: PropsEtapa) {
                   <span className="text-2xl font-bold tabular-nums text-texto">{fmtNumero(imc)}</span>
                   <span className="text-[12px] text-texto-3">kg/m²</span>
                   <ChipGrado rango={rango} />
+                  {p.avisoImc && (
+                    <p className="w-full text-[12px]">
+                      <AvisoImc texto={p.avisoImc} />
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="mt-1 text-[13px] text-texto-3">Sale solo con el peso y la talla.</p>

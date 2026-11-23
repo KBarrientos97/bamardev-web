@@ -27,10 +27,15 @@ const NOMBRE: Record<Plantilla, string> = {
   REPARTIDOR: "Repartidor",
   PROFESIONAL: "Estilista",
   NUTRICIONISTA: "Nutricionista",
+  MEDICO: "Médico",
 };
 
-/** El código legado de las plantillas de rubro que no se llaman como el suyo. */
-const CODIGO_LEGADO: Partial<Record<Plantilla, string>> = { NUTRICIONISTA: "PROFESIONAL" };
+/**
+ * El código legado de las plantillas de rubro que no se llaman como el suyo.
+ * En NUTRICION hay dos con PROFESIONAL (Nutricionista y Médico): el nombre que
+ * se lee es el `rolNombre` del login, no la etiqueta del código.
+ */
+const CODIGO_LEGADO: Partial<Record<Plantilla, string>> = { NUTRICIONISTA: "PROFESIONAL", MEDICO: "PROFESIONAL" };
 
 export interface OpcionesPermisos {
   /** Las features del plan: el backend cruza los permisos con ellas. Vacío = todas. */

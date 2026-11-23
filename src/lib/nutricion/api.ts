@@ -57,6 +57,14 @@ export const apiNutricion = {
       `/nutricion/pacientes${qs({ q: f.q?.trim() || undefined, archivados: f.archivados ? 1 : undefined, pagina: f.page, porPagina: f.pageSize })}`,
     ),
 
+  /**
+   * El paciente que tiene ese carnet, activo o archivado (el ítem trae
+   * `activo`). Lo decide el servidor, que normaliza: puntos, espacios, el
+   * guion del complemento y la expedición pegada («8958703 SC» = «8958703» + SC).
+   */
+  delCarnet: (carnet: string) =>
+    request<ListaPacientes>(`/nutricion/pacientes${qs({ carnet: carnet.trim() || undefined, pagina: 1, porPagina: 20 })}`),
+
   paciente: (id: number) => request<Paciente>(`/nutricion/pacientes/${id}`),
 
   crear: (cuerpo: AltaPacienteInput) => request<Paciente>("/nutricion/pacientes", { method: "POST", body: json(cuerpo) }),

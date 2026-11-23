@@ -173,6 +173,7 @@ export function paciente(datos: Partial<Paciente> = {}): Paciente {
     fechaNacimiento: "1990-05-14",
     edad: 36,
     edadDeclarada: null,
+    edadDeclaradaEn: null,
     sexo: "F",
     hijos: 2,
     tallaCm: 158,

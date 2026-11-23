@@ -250,6 +250,17 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "nutricion",
     bloque: "agenda",
   },
+  // El seguimiento del tratamiento (23-nov): la hoja de cada paciente, semana
+  // a semana. Justo debajo de Evaluación y con el mismo encierro (NUTRICION y
+  // la feature `nutricion`).
+  {
+    a: "/seguimiento",
+    label: "Seguimiento",
+    titulo: "Seguimiento del tratamiento",
+    icono: "seguimiento",
+    seccion: "seguimiento",
+    bloque: "agenda",
+  },
   // Educación (PLAN-ACADEMIAS §4): lo del día con el alumno, en Atención.
   // Sólo existen con la feature `academia` (estricta, ver permisos.ts): a los
   // demás rubros no les mueven el menú.
@@ -852,6 +863,9 @@ const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/evaluacion\/nuevo\/?$/, "Nuevo paciente"],
   [/^\/evaluacion\/\d+\/editar\/?$/, "Editar evaluación"],
   [/^\/evaluacion\/\d+\/?$/, "Paciente"],
+  // El seguimiento (23-nov): los pagos y la hoja de cada paciente, desde la lista.
+  [/^\/seguimiento\/pagos\/?$/, "Pagos pendientes"],
+  [/^\/seguimiento\/\d+\/?$/, "Hoja de seguimiento"],
 ];
 
 /** Título de la barra móvil. */

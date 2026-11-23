@@ -271,7 +271,13 @@ export type Seccion =
    * planilla de controles de cada uno. Sólo en NUTRICION. Sin
    * `nutricion.editar`, todo de sólo lectura (ver `editaNutricion`).
    */
-  | "nutricion";
+  | "nutricion"
+  /**
+   * El seguimiento del tratamiento semana a semana: peso, dosis, observaciones
+   * y pagos (CONTRATO-nutricion-seguimiento-23nov). Sólo en NUTRICION. Sin
+   * `seguimiento.editar`, todo de sólo lectura (ver `editaSeguimiento`).
+   */
+  | "seguimiento";
 
 /**
  * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
@@ -495,6 +501,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // ── Nutrición ──
   // Ver los pacientes; registrar es `nutricion.editar`, adentro.
   nutricion: { permiso: "nutricion.ver", feature: "nutricion" },
+  // Ver la hoja de seguimiento; cargar semanas es `seguimiento.editar`, adentro.
+  // No pide `nutricion.ver`: un rol puede tener sólo el seguimiento.
+  seguimiento: { permiso: "seguimiento.ver", feature: "nutricion" },
 };
 
 /**
@@ -644,6 +653,8 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // La evaluación de pacientes es del consultorio de nutrición: segundo
   // candado además de su feature estricta.
   nutricion: ["NUTRICION"],
+  // El seguimiento del tratamiento, lo mismo (23-nov).
+  seguimiento: ["NUTRICION"],
 };
 
 /**
@@ -964,6 +975,20 @@ export function rutaInicial(ctx: ContextoPermisos): string {
   // NUTRICION (feature estricta + rubro): el profesional de un salón y el
   // docente del instituto no pasan nunca por acá. El dueño y la recepción
   // venden, y siguen entrando donde entraban.
+  //
+  // Antes, el Médico (23-nov): quien carga el seguimiento y no registra
+  // evaluaciones ni vende entra directo al seguimiento. Tiene que ir ANTES:
+  // también trae `nutricion.ver` (mira la evaluación) y la regla de la
+  // Nutricionista lo mandaría a `/evaluacion`. La Nutricionista, que ahora
+  // también carga el seguimiento, registra evaluaciones y sigue de largo.
+  if (
+    tiene("seguimiento.editar") &&
+    !tiene("nutricion.editar") &&
+    !tiene("ventas.vender") &&
+    puedeVer(ctx, "seguimiento")
+  ) {
+    return RUTA_SEGUIMIENTO;
+  }
   if (tiene("nutricion.ver") && !tiene("ventas.vender") && puedeVer(ctx, "nutricion")) return RUTA_EVALUACION;
 
   // Ve sólo su agenda: "Mi agenda", y no pasa por la lista. Con la agenda
@@ -1035,6 +1060,9 @@ const ORDEN_INICIO: [Seccion, string][] = [
   // y la recepción entran donde siempre y un rol armado a mano que vende y
   // atiende pacientes sin caja ni POS en el plan no cae en «/sin-acceso».
   ["nutricion", "/evaluacion"],
+  // El seguimiento, después de la evaluación: un rol con sólo `seguimiento.ver`
+  // (de sólo lectura) entra ahí y no en «/sin-acceso».
+  ["seguimiento", "/seguimiento"],
   ["reportes", "/reportes"],
   ["usuarios", "/usuarios"],
   ["creditos", "/creditos"],
@@ -1107,6 +1135,18 @@ export const RUTA_EVALUACION = "/evaluacion";
  */
 export function editaNutricion(usuario: ConPermisos): boolean {
   return tienePermiso(usuario, "nutricion.editar");
+}
+
+/** El seguimiento del tratamiento: la lista y la hoja de cada paciente (rubro NUTRICION). */
+export const RUTA_SEGUIMIENTO = "/seguimiento";
+
+/**
+ * ¿Carga el seguimiento? Lo mismo que pide el backend para escribir: iniciar
+ * o terminar un tratamiento y cargar o corregir cada semana. Sin él, la hoja
+ * se ve de sólo lectura.
+ */
+export function editaSeguimiento(usuario: ConPermisos): boolean {
+  return tienePermiso(usuario, "seguimiento.editar");
 }
 
 /**
