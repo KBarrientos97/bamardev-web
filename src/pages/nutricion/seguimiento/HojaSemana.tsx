@@ -3,7 +3,7 @@ import { Boton, Confirmar, Modal } from "../../../components/ui";
 import { fmtFechaHora, fmtPlata } from "../../../lib/format";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
 import { fechaLarga, hoyIso } from "../../../lib/nutricion/calculo";
-import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
+import { apiSeguimiento, esCodigo, hojaDesactualizada } from "../../../lib/nutricion/seguimiento/api";
 import {
   dosisDelRegistro,
   esSemanaDePago,
@@ -62,6 +62,8 @@ export default function HojaSemana({
   onEditarTratamiento,
   onCerrar,
   onGuardado,
+  onDesactualizada,
+  onVerSemana,
 }: {
   tratamiento: Tratamiento;
   catalogo: CatalogoSeguimiento;
@@ -77,6 +79,13 @@ export default function HojaSemana({
   onEditarTratamiento?: () => void;
   onCerrar: () => void;
   onGuardado: (t: Tratamiento, aviso: string) => void;
+  /** El servidor dijo que la hoja de atrás quedó vieja (404 / 409): se vuelve a leer al cerrar. */
+  onDesactualizada?: () => void;
+  /**
+   * «Ver la hoja» después de un SEMANA_REPETIDA al cargar: cierra sin
+   * preguntar, vuelve a leer la hoja y deja a la vista esa semana.
+   */
+  onVerSemana?: (semana: number) => void;
 }) {
   const esInicial = registro?.semana === 0;
   const [antes] = useState<FormSemana>(() => (registro ? semanaDesde(registro) : semanaVacia(semana)));
@@ -88,7 +97,10 @@ export default function HojaSemana({
   const [borrando, setBorrando] = useState(false);
   const [preguntaCerrar, setPreguntaCerrar] = useState(false);
   const [preguntaPago, setPreguntaPago] = useState(false);
-  const avisoError = useRef<HTMLParagraphElement>(null);
+  // La semana que el servidor dijo que ya existe al CARGARLA (puede que se haya
+  // guardado y se perdió la respuesta): la ayuda para no cargarla dos veces.
+  const [repetida, setRepetida] = useState<number | null>(null);
+  const avisoError = useRef<HTMLDivElement>(null);
   const medicamento = useRef<HTMLInputElement>(null);
   const hoy = hoyIso();
 
@@ -140,6 +152,7 @@ export default function HojaSemana({
   async function guardar(sinPago = false) {
     if (guardando) return;
     setIntento(true);
+    setRepetida(null);
     if (hayErrores(errores)) {
       setError("Hay un dato para revisar.");
       return;
@@ -166,6 +179,9 @@ export default function HojaSemana({
       onGuardado(t, registro ? (esInicial ? "Registro inicial corregido." : `Semana ${numero} corregida.`) : `Semana ${numero} guardada.`);
     } catch (e) {
       setPreguntaPago(false);
+      if (hojaDesactualizada(e)) onDesactualizada?.();
+      // Al cargar (no al mover una ya cargada): que no invite a cambiarle el número y duplicarla.
+      setRepetida(!registro && esCodigo(e, "SEMANA_REPETIDA") ? numero : null);
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
     } finally {
       setGuardando(false);
@@ -181,6 +197,7 @@ export default function HojaSemana({
       onGuardado(t, `Semana ${registro.semana} borrada.`);
     } catch (e) {
       setBorrando(false);
+      if (hojaDesactualizada(e)) onDesactualizada?.();
       setError(e instanceof Error ? e.message : "No se pudo borrar.");
     } finally {
       setGuardando(false);
@@ -317,9 +334,17 @@ export default function HojaSemana({
           <QuienYCuando partes={quien} />
 
           {error && (
-            <p ref={avisoError} className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-sm text-danger-text" role="alert">
-              {error}
-            </p>
+            <div ref={avisoError} className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-sm text-danger-text" role="alert">
+              <p>{error}</p>
+              {repetida != null && onVerSemana && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <span className="min-w-0 flex-1 text-texto-2">Puede que ya esté guardada. Mirá la hoja antes de cargarla de nuevo.</span>
+                  <Boton variante="ghost" className="min-h-11 lg:min-h-10" onClick={() => onVerSemana(repetida)}>
+                    Ver la hoja
+                  </Boton>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </Modal>

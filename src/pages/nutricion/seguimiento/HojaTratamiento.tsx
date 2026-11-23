@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Boton, Confirmar, Modal } from "../../../components/ui";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
 import { fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
-import { apiSeguimiento, tratamientoQueYaTiene } from "../../../lib/nutricion/seguimiento/api";
+import { apiSeguimiento, hojaDesactualizada, tratamientoQueYaTiene } from "../../../lib/nutricion/seguimiento/api";
 import {
   concentracion,
   delCatalogo,
@@ -51,6 +51,7 @@ export default function HojaTratamiento({
   onCerrar,
   onGuardado,
   onYaTiene,
+  onDesactualizada,
 }: {
   modo: "iniciar" | "editar";
   pacienteId: number;
@@ -63,6 +64,8 @@ export default function HojaTratamiento({
   onGuardado: (t: Tratamiento, aviso: string) => void;
   /** El paciente ya tenía uno activo (409): volver a leer la hoja. */
   onYaTiene?: () => void;
+  /** El servidor dijo que la hoja de atrás quedó vieja (404 / 409): se vuelve a leer al cerrar. */
+  onDesactualizada?: () => void;
 }) {
   const iniciar = modo === "iniciar";
   const [antesT] = useState<FormTratamiento>(() => (!iniciar && tratamiento ? tratamientoDesde(tratamiento) : tratamientoVacio()));
@@ -130,6 +133,7 @@ export default function HojaTratamiento({
       }
     } catch (e) {
       setPreguntaPago(false);
+      if (hojaDesactualizada(e)) onDesactualizada?.();
       setYaTiene(tratamientoQueYaTiene(e) != null);
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
     } finally {

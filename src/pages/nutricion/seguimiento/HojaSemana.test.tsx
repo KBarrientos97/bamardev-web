@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../../lib/api";
 import { isoDia } from "../../../lib/format";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
 import type { Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
@@ -107,6 +108,19 @@ describe("cargar una semana", () => {
     expect(boton(exacto("50 UI · 15 mg"))).toBeInTheDocument();
   });
 
+  // Kevin (23-nov): «7,5» anotado en UI se leía «≈ 8 UI» y el botón escribía 8.
+  it("«Igual que la anterior» con una dosis anotada con decimales: la muestra y la escribe como se anotó", () => {
+    const conDecimal = delPaciente(12, (t) => {
+      const ultima = t.semanas.reduce((a, s) => (s.semana > a.semana ? s : a));
+      ultima.dosis = 7.5;
+      return t;
+    });
+    abrir(conDecimal);
+    fireEvent.click(boton(exacto("Igual que la anterior: 7,5 UI")));
+    expect(screen.getByLabelText("Dosis")).toHaveValue("7,5");
+    expect(sinNb(screen.getByText(/^Lleva/).textContent)).toBe("Lleva 1 semana con 7,5 UI");
+  });
+
   it("guarda lo escrito y avisa", async () => {
     const { onGuardado } = abrir(lucia);
     fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,9" } });
@@ -116,6 +130,64 @@ describe("cargar una semana", () => {
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
     expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, { semana: 8, fecha: HOY, pesoKg: 123.9, dosis: 25, observaciones: "Sube a 7,5 mg." });
     expect(onGuardado.mock.calls[0][1]).toBe("Semana 8 guardada.");
+  });
+
+  // Probado el 23-nov: con la respuesta perdida (o dos personas), el reintento dice «Ya hay un registro…» y la
+  // tentación es cambiarle el número y duplicarla. Al CARGAR, la ayuda y «Ver la hoja»; al mover una cargada, no.
+  it("semana repetida del servidor al cargar: la ayuda y «Ver la hoja», sin tocar lo escrito", async () => {
+    vi.mocked(apiSeguimiento.cargarSemana).mockRejectedValue(new ApiError("Ya hay un registro de la semana 8.", 409, { codigo: "SEMANA_REPETIDA" }));
+    const onVerSemana = vi.fn();
+    const onCerrar = vi.fn();
+    render(
+      <MemoryRouter>
+        <HojaSemana
+          tratamiento={lucia}
+          catalogo={CATALOGO_SEGUIMIENTO}
+          registro={null}
+          semana={8}
+          pacienteNombre="Paciente de prueba"
+          ultimoControl={null}
+          onCerrar={onCerrar}
+          onGuardado={vi.fn()}
+          onVerSemana={onVerSemana}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,9" } });
+    fireEvent.click(boton(/^Guardar/));
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("Ya hay un registro de la semana 8.");
+    expect(alerta).toHaveTextContent("Puede que ya esté guardada. Mirá la hoja antes de cargarla de nuevo.");
+    expect(screen.getByLabelText("Peso (kg)")).toHaveValue("123,9");
+    fireEvent.click(boton("Ver la hoja"));
+    expect(onVerSemana).toHaveBeenCalledWith(8);
+    expect(onCerrar).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
+  });
+
+  it("semana repetida al MOVER una ya cargada: sólo el mensaje del servidor", async () => {
+    vi.mocked(apiSeguimiento.corregirRegistro).mockRejectedValue(new ApiError("Ya hay un registro de la semana 8.", 409, { codigo: "SEMANA_REPETIDA" }));
+    render(
+      <MemoryRouter>
+        <HojaSemana
+          tratamiento={lucia}
+          catalogo={CATALOGO_SEGUIMIENTO}
+          registro={lucia.registros.find((r) => r.semana === 6)!}
+          semana={6}
+          pacienteNombre="Paciente de prueba"
+          ultimoControl={null}
+          onCerrar={vi.fn()}
+          onGuardado={vi.fn()}
+          onVerSemana={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText("Semana"), { target: { value: "8" } });
+    fireEvent.click(boton(/^Guardar/));
+    const alerta = await screen.findByRole("alert");
+    expect(alerta).toHaveTextContent("Ya hay un registro de la semana 8.");
+    expect(alerta).not.toHaveTextContent("Puede que ya esté guardada");
+    expect(screen.queryByRole("button", { name: "Ver la hoja" })).not.toBeInTheDocument();
   });
 
   it("vacía no se guarda; una semana repetida se avisa antes de mandarla", () => {

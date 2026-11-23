@@ -8,8 +8,10 @@ import {
   esSemanaDePago,
   flechaKg,
   fmtDosis,
+  fmtDosisCalculada,
   haceDias,
   mesDeLaSemana,
+  mismaDosisEn,
   paraEscribir,
   pasoSiguiente,
   pasosDe,
@@ -46,19 +48,27 @@ const PASOS_15: Paso[] = [
 ];
 
 describe("una dosis, en toda la sección (§4.2)", () => {
-  it("primero lo anotado en su unidad: las UI en entero, los mg sin ceros de más, los ml con 2", () => {
+  // Kevin (23-nov): lo anotado va como se anotó. Antes «7,5» en UI se leía «≈ 8 UI» y «0,5 ml», «0,50 ml».
+  it("lo anotado, en su propia unidad y exacto: hasta 3 decimales, sin ceros de más", () => {
     expect(sinNb(fmtDosis(17, "UI"))).toBe("17 UI");
+    expect(sinNb(fmtDosis(7.5, "UI"))).toBe("7,5 UI");
+    expect(sinNb(fmtDosis(8.25, "UI"))).toBe("8,25 UI");
     expect(sinNb(fmtDosis(5.1, "mg"))).toBe("5,1 mg");
     expect(sinNb(fmtDosis(2.5, "mg"))).toBe("2,5 mg");
     expect(sinNb(fmtDosis(10, "mg"))).toBe("10 mg");
     expect(sinNb(fmtDosis(0.17, "ml"))).toBe("0,17 ml");
-    expect(sinNb(fmtDosis(0.5, "ml"))).toBe("0,50 ml");
+    expect(sinNb(fmtDosis(0.15, "ml"))).toBe("0,15 ml");
+    expect(sinNb(fmtDosis(0.5, "ml"))).toBe("0,5 ml");
+    expect(sinNb(fmtDosis(0.083, "ml"))).toBe("0,083 ml");
+    expect(sinNb(textoDosis({ dosis: 7.5, unidadDosis: "UI", dosisMg: 2.25, dosisUi: 7.5, dosisMl: 0.075 }).anotado)).toBe("7,5 UI");
   });
 
-  it("las UI con «≈» delante cuando hubo que redondear", () => {
-    expect(sinNb(fmtDosis(8.3, "UI"))).toBe("≈ 8 UI");
-    expect(sinNb(fmtDosis(16.7, "UI"))).toBe("≈ 17 UI");
-    expect(sinNb(fmtDosis(25, "UI"))).toBe("25 UI");
+  it("lo calculado (pasado a otro vial o a otra unidad): las UI en entero con «≈» si se redondeó, mg y ml con 2", () => {
+    expect(sinNb(fmtDosisCalculada(8.3, "UI"))).toBe("≈ 8 UI");
+    expect(sinNb(fmtDosisCalculada(37.5, "UI"))).toBe("≈ 38 UI");
+    expect(sinNb(fmtDosisCalculada(25, "UI"))).toBe("25 UI");
+    expect(sinNb(fmtDosisCalculada(2.25, "mg"))).toBe("2,25 mg");
+    expect(sinNb(fmtDosisCalculada(0.5, "ml"))).toBe("0,50 ml");
   });
 
   it("al lado, en gris, las equivalencias que haya, sin la unidad anotada", () => {
@@ -145,6 +155,47 @@ describe("los botones de un toque de la dosis (§4.2)", () => {
     expect(enUnidad(antes, "UI")).toBe(16.7);
     expect(enUnidad({ dosis: 17, unidadDosis: "UI", dosisMg: null, dosisUi: 17, dosisMl: 0.17 }, "mg")).toBeNull();
   });
+
+  // Probado contra el backend (23-nov): con el vial de 15 mg (30 mg/ml) iba en 25 UI = 7,5 mg; al pasar al
+  // de 10 mg (20 mg/ml) «Subir» ofrecía «38 UI (7,5 mg)» (los mismos mg) e «Igual» escribía 25 UI (5 mg).
+  const PASOS_10: Paso[] = [
+    { mg: 2.5, ui: 12.5, ml: 0.125 },
+    { mg: 5, ui: 25, ml: 0.25 },
+    { mg: 7.5, ui: 37.5, ml: 0.375 },
+    { mg: 10, ui: 50, ml: 0.5 },
+    { mg: 12.5, ui: 62.5, ml: 0.625 },
+    { mg: 15, ui: 75, ml: 0.75 },
+  ];
+  const UI_25_DE_30 = { dosis: 25, unidadDosis: "UI" as const, dosisMg: 7.5, dosisUi: 25, dosisMl: 0.25 };
+  const UI_25_DE_20 = { dosis: 25, unidadDosis: "UI" as const, dosisMg: 5, dosisUi: 25, dosisMl: 0.25 };
+
+  it("con otro vial, «Subir» compara por los mg de esa semana: ni repite la dosis ni saltea un escalón", () => {
+    // 7,5 mg con el vial viejo → sube a 10 mg (50 UI del vial nuevo), no a 7,5 mg (38 UI).
+    expect(pasoSiguiente(PASOS_10, UI_25_DE_30, "UI")?.mg).toBe(10);
+    expect(sinNb(textoSubir(pasoSiguiente(PASOS_10, UI_25_DE_30, "UI")!, "UI"))).toBe("Subir: 50 UI (10 mg)");
+    // 5 mg con el de 20 mg/ml → al volver al de 30 mg/ml sube a 7,5 mg (25 UI), no a 10 mg.
+    expect(pasoSiguiente(PASOS_15, UI_25_DE_20, "UI")?.mg).toBe(7.5);
+    // En ml y con la unidad cambiada a mg, igual.
+    expect(pasoSiguiente(PASOS_15, { dosis: 0.17, unidadDosis: "ml", dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 }, "ml")?.mg).toBe(7.5);
+    expect(pasoSiguiente(PASOS_10, UI_25_DE_30, "mg")?.mg).toBe(10);
+    // Anotada sin vial (sin mg): como antes, lo anotado contra los escalones de hoy.
+    expect(pasoSiguiente(PASOS_15, { dosis: 17, unidadDosis: "UI", dosisMg: null, dosisUi: 17, dosisMl: 0.17 }, "UI")?.mg).toBe(7.5);
+  });
+
+  it("con otro vial, «Igual que la anterior» escribe los mismos mg en el vial de hoy", () => {
+    expect(mismaDosisEn(UI_25_DE_30, "UI", 20, 100)).toBe(37.5);
+    expect(paraEscribir(mismaDosisEn(UI_25_DE_30, "UI", 20, 100)!, "UI")).toBe("38");
+    expect(mismaDosisEn(UI_25_DE_20, "UI", 30, 100)).toBe(16.7);
+    expect(mismaDosisEn(UI_25_DE_30, "ml", 20, 100)).toBe(0.375);
+    expect(mismaDosisEn(UI_25_DE_30, "mg", null, 100)).toBe(7.5);
+    // Mismo vial: lo anotado tal cual (8 UI no se vuelve 8,0 por la cuenta).
+    expect(mismaDosisEn({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, "UI", 30, 100)).toBe(8);
+    expect(mismaDosisEn(UI_25_DE_30, "UI", 30, 100)).toBe(25);
+    // Sin vial hoy o sin mg de antes: lo anotado (o su equivalencia), como antes.
+    expect(mismaDosisEn(UI_25_DE_30, "UI", null, 100)).toBe(25);
+    expect(mismaDosisEn({ dosis: 17, unidadDosis: "UI", dosisMg: null, dosisUi: 17, dosisMl: 0.17 }, "ml", 30, 100)).toBe(0.17);
+    expect(mismaDosisEn(null, "UI", 30, 100)).toBeNull();
+  });
 });
 
 describe("los kilos", () => {
@@ -205,6 +256,8 @@ describe("los meses y los pagos (sin la cuenta: la hace el servidor)", () => {
     expect(sinNb(textoUltimoPago({ fecha: "2026-11-02", total: 630 }))).toBe("Último pago: Bs 630 el 02/11/2026");
     expect(sinNb(textoUltimoPago({ fecha: "2026-11-02", total: 1260 }))).toBe("Último pago: Bs 1.260 el 02/11/2026");
     expect(textoUltimoPago(null)).toBe("Todavía no pagó nada");
+    // «el» y la fecha no se separan (en la tablet, la fecha quedaba sola en otro renglón).
+    expect(textoUltimoPago({ fecha: "2026-11-02", total: 630 })).toContain(`el${NB}02/11/2026`);
   });
 });
 

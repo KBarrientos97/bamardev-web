@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../../lib/api";
 import { isoDia } from "../../../lib/format";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
 import { CATALOGO_SEGUIMIENTO, filaDe, hojaDe, pacientesDePrueba, pagosDe } from "../../../test/seguimientoFixtures";
@@ -60,10 +61,12 @@ async function abrirHoja(id: number) {
     <MemoryRouter initialEntries={[`/seguimiento/${id}`]}>
       <Routes>
         <Route path="/seguimiento/:id" element={<HojaSeguimiento />} />
+        <Route path="/seguimiento" element={<p>La lista del seguimiento</p>} />
       </Routes>
     </MemoryRouter>,
   );
-  await screen.findByRole("heading", { level: 1 });
+  // 5 s: con la máquina cargada (Vite y Chrome andando) el primer render pasaba el segundo de fábrica.
+  await screen.findByRole("heading", { level: 1 }, { timeout: 5000 });
 }
 
 describe("la hoja del paciente, con permiso de cargar", () => {
@@ -105,6 +108,90 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Cargar la semana 9" }));
     expect(screen.getByRole("dialog", { name: "Semana 9" })).toBeInTheDocument();
     expect(screen.getByLabelText("Semana")).toHaveValue("9");
+  });
+
+  // Probado en la tablet y en la PC (23-nov): desde la semana 10, «Semana» / «11» quedaba en dos renglones
+  // en los renglones por cargar (la columna es de ancho fijo); los cargados ya iban sin partir.
+  it("el nombre de una semana, cargada o por cargar, no se parte en dos renglones", async () => {
+    await abrirHoja(12);
+    const tabla = screen.getByRole("table");
+    expect(within(tabla).getByText("Semana 9")).toHaveClass("whitespace-nowrap");
+    expect(within(tabla).getByText("Semana 6")).toHaveClass("whitespace-nowrap");
+  });
+
+  it("«Ver la hoja» tras una semana repetida: cierra sin preguntar, relee la hoja y marca el mes de esa semana", async () => {
+    await abrirHoja(12);
+    // La semana 8 ya estaba guardada (la respuesta se perdió, u otra persona la cargó).
+    const lucia = pacientes.find((p) => p.paciente.id === 12)!;
+    const conLa8 = structuredClone(lucia);
+    const ultima = conLa8.tratamientos[0].semanas.reduce((a, s) => (s.semana > a.semana ? s : a));
+    conLa8.tratamientos[0].semanas.push({ ...ultima, id: undefined, semana: 8, observaciones: "La cargada antes" });
+    vi.mocked(apiSeguimiento.cargarSemana).mockRejectedValue(new ApiError("Ya hay un registro de la semana 8.", 409, { codigo: "SEMANA_REPETIDA" }));
+    const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
+    vi.mocked(apiSeguimiento.hoja).mockResolvedValueOnce(hojaDe(conLa8));
+    fireEvent.click(screen.getByRole("button", { name: "Mes 1" }));
+    fireEvent.keyDown(document, { key: "n", code: "KeyN", altKey: true });
+    const hoja = screen.getByRole("dialog", { name: "Semana 8" });
+    fireEvent.change(within(hoja).getByLabelText("Peso (kg)"), { target: { value: "123" } });
+    fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
+    fireEvent.click(await within(hoja).findByRole("button", { name: "Ver la hoja" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(apiSeguimiento.hoja).mock.calls.length).toBe(lecturas + 1));
+    // Con la hoja releída: el mes de la semana 8 marcado y la semana a la vista. (5 s: con todos los
+    // archivos en paralelo, los dos re-render de la hoja entera pasaban el segundo de fábrica.)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Mes 2" })).toHaveAttribute("aria-pressed", "true"), { timeout: 5000 });
+    expect(within(screen.getByRole("table")).getByText("La cargada antes")).toBeInTheDocument();
+  });
+
+  // Probado con dos personas contra el backend (23-nov): la otra borró la semana 6; el 404 se veía en la
+  // hoja, pero al cerrarla la tabla seguía mostrando la semana borrada (y volver a tocarla, otro 404).
+  it("si el servidor dice que la semana ya no existe (404), al cerrar la hoja se vuelve a leer", async () => {
+    await abrirHoja(12);
+    vi.mocked(apiSeguimiento.corregirRegistro).mockRejectedValue(new ApiError("Esa semana no existe.", 404, { codigo: "REGISTRO_NO_ENCONTRADO" }));
+    const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Corregir la semana 6" }));
+    const hoja = screen.getByRole("dialog", { name: "Semana 6" });
+    fireEvent.change(within(hoja).getByLabelText("Observaciones"), { target: { value: "Otra cosa" } });
+    fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
+    expect(await within(hoja).findByText("Esa semana no existe.")).toBeInTheDocument();
+    // Lo escrito sigue ahí mientras la hoja está abierta; todavía no se volvió a leer.
+    expect(within(hoja).getByLabelText("Observaciones")).toHaveValue("Otra cosa");
+    expect(vi.mocked(apiSeguimiento.hoja).mock.calls.length).toBe(lecturas);
+    fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sin guardar" }));
+    await waitFor(() => expect(vi.mocked(apiSeguimiento.hoja).mock.calls.length).toBe(lecturas + 1));
+  });
+
+  it("un error que no es de datos viejos (la red) no vuelve a leer la hoja al cerrar", async () => {
+    await abrirHoja(12);
+    vi.mocked(apiSeguimiento.corregirRegistro).mockRejectedValue(new Error("Sin conexión"));
+    const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Corregir la semana 6" }));
+    const hoja = screen.getByRole("dialog", { name: "Semana 6" });
+    fireEvent.change(within(hoja).getByLabelText("Observaciones"), { target: { value: "Otra cosa" } });
+    fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
+    expect(await within(hoja).findByText("Sin conexión")).toBeInTheDocument();
+    fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sin guardar" }));
+    expect(vi.mocked(apiSeguimiento.hoja).mock.calls.length).toBe(lecturas);
+  });
+
+  // Probado el 23-nov: con la nota del tratamiento a medio escribir, `Ctrl+K` se iba a la lista y la nota se perdía.
+  it("`Ctrl+K` escribiendo la nota del tratamiento no se va de la hoja; afuera de un campo, sí", async () => {
+    await abrirHoja(12);
+    fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+    const nota = screen.getByLabelText("Notas del tratamiento");
+    fireEvent.change(nota, { target: { value: "A medio escribir" } });
+    fireEvent.keyDown(nota, { key: "k", ctrlKey: true });
+    expect(screen.getByLabelText("Notas del tratamiento")).toHaveValue("A medio escribir");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Lucía Paredes Soria");
+    // Con la nota abierta pero el foco afuera (al cerrar otra hoja encima, el foco no vuelve a la nota).
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(screen.getByLabelText("Notas del tratamiento")).toHaveValue("A medio escribir");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    expect(screen.getByText("La lista del seguimiento")).toBeInTheDocument();
   });
 
   it("`Alt+N` abre «Cargar semana N»", async () => {

@@ -58,6 +58,13 @@ export function tratamientoQueYaTiene(e: unknown): number | null {
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
+/**
+ * ¿El servidor dijo que lo que se ve ya no es lo que hay? (404: otra persona
+ * lo borró; 409: cargó esa semana, terminó el tratamiento, inició uno…). La
+ * hoja del paciente se vuelve a leer al cerrar la que dio el error.
+ */
+export const hojaDesactualizada = (e: unknown) => e instanceof ApiError && (e.status === 404 || e.status === 409);
+
 /** ¿El error es de este código? */
 export const esCodigo = (e: unknown, codigo: keyof typeof CODIGOS_SEGUIMIENTO) => e instanceof ApiError && e.codigo === codigo;
 

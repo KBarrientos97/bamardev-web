@@ -20,7 +20,7 @@ import {
   textoSexo,
   textoVial,
 } from "../../../lib/nutricion/seguimiento/formato";
-import type { CatalogoSeguimiento, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
+import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
@@ -70,6 +70,13 @@ export default function HojaSeguimiento() {
   const [error, setError] = useState("");
   const [procesando, setProcesando] = useState(false);
   const [mesElegido, setMesElegido] = useState<number | "todo" | null>(null);
+  // Una hoja abierta recibió un 404/409 (otra persona borró, cargó o terminó
+  // algo mientras tanto): al cerrarla se vuelve a leer, para no seguir
+  // mostrando una semana que ya no existe o un tratamiento que ya terminó.
+  const desactualizada = useRef(false);
+  // «Ver la hoja» tras una semana repetida: la semana a dejar a la vista cuando
+  // llegue la hoja releída (`antes`: la que había al tocar el botón).
+  const [aVer, setAVer] = useState<{ semana: number; antes: HojaPaciente | null } | null>(null);
 
   const t: Tratamiento | null = mirando ? (otro.datos ?? null) : activo;
   const enCurso = !!t && t.estado === "ACTIVO";
@@ -81,6 +88,22 @@ export default function HojaSeguimiento() {
   useEffect(() => setMesElegido(null), [t?.id]);
   const mes = mesElegido === "todo" ? null : (mesElegido ?? ultimoMes);
 
+  // Con la hoja releída (otra que la de antes, no la vieja con `cargando` en
+  // falso): el mes de esa semana marcado y su renglón a la vista.
+  const datosHoja = hoja.datos;
+  useEffect(() => {
+    if (!aVer || datosHoja === aVer.antes) return;
+    setAVer(null);
+    const r = t?.registros.find((x) => x.semana === aVer.semana);
+    if (!r) return;
+    setMesElegido(r.mes);
+    // Sin limpieza: el `setAVer(null)` de arriba vuelve a correr este efecto y la cortaría.
+    setTimeout(() => {
+      const visible = Array.from(document.querySelectorAll<HTMLElement>(`[data-semana="${aVer.semana}"]`)).find((e) => e.getClientRects().length > 0);
+      visible?.scrollIntoView?.({ block: "center" });
+    }, 60);
+  }, [aVer, datosHoja, t]);
+
   useTeclas((e) => {
     if (abierta || hayDialogoAbierto()) return;
     if (editable && conAlt(e, "n")) {
@@ -89,7 +112,11 @@ export default function HojaSeguimiento() {
       return;
     }
     // Buscar a otro paciente: de vuelta a la lista, con el buscador enfocado.
-    if (((e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey)) || (e.key === "/" && !escribiendo(e.target))) {
+    // Escribiendo, o con la nota del tratamiento abierta (aunque el foco haya
+    // quedado en otro lado), no: se iba de la hoja y la nota a medio escribir
+    // se perdía sin preguntar (probado el 23-nov).
+    if (escribiendo(e.target) || document.getElementById("nota-tratamiento")) return;
+    if (((e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey)) || e.key === "/") {
       e.preventDefault();
       navigate(RUTA_SEGUIMIENTO);
     }
@@ -128,8 +155,28 @@ export default function HojaSeguimiento() {
   if (!h || !cat) return <Cargando texto="Cargando la hoja…" />;
   const p = h.paciente;
 
+  /** Cierra la hoja de encima; si el servidor avisó que lo de atrás quedó viejo, lo vuelve a leer. */
+  const cerrarHoja = () => {
+    setAbierta(null);
+    if (!desactualizada.current) return;
+    desactualizada.current = false;
+    hoja.recargar();
+    if (mirando) otro.recargar();
+  };
+  const marcarDesactualizada = () => {
+    desactualizada.current = true;
+  };
+  /** «Ver la hoja» (semana repetida al cargar): cierra la carga sin preguntar y relee la hoja. */
+  const verSemana = (semana: number) => {
+    desactualizada.current = false;
+    setAbierta(null);
+    setAVer({ semana, antes: h });
+    hoja.recargar();
+  };
+
   /** Lo que devuelve una escritura: el tratamiento al día. */
   const alGuardar = (nuevo: Tratamiento, texto: string) => {
+    desactualizada.current = false;
     if (nuevo.estado === "ACTIVO" && (!mirando || mirando === nuevo.id)) {
       hoja.setDatos({ ...h, tratamiento: nuevo, anteriores: h.anteriores.filter((a) => a.id !== nuevo.id) });
       if (mirando) setParams({}, { replace: true });
@@ -383,8 +430,10 @@ export default function HojaSeguimiento() {
           ultimoControl={h.ultimoControl}
           focoPago={abierta.focoPago}
           onEditarTratamiento={editable ? () => setAbierta({ que: "editar" }) : undefined}
-          onCerrar={() => setAbierta(null)}
+          onCerrar={cerrarHoja}
           onGuardado={alGuardar}
+          onDesactualizada={marcarDesactualizada}
+          onVerSemana={verSemana}
         />
       )}
       {(abierta?.que === "iniciar" || abierta?.que === "editar") && (
@@ -395,9 +444,11 @@ export default function HojaSeguimiento() {
           catalogo={cat}
           tratamiento={abierta.que === "editar" ? t : null}
           ultimoControl={h.ultimoControl}
-          onCerrar={() => setAbierta(null)}
+          onCerrar={cerrarHoja}
+          onDesactualizada={marcarDesactualizada}
           onGuardado={(nuevo, texto) => {
             if (abierta.que === "iniciar") {
+              desactualizada.current = false;
               setParams({}, { replace: true });
               hoja.setDatos({ ...h, tratamiento: nuevo });
               setAbierta(null);

@@ -110,8 +110,9 @@ export default function TablaSemanas({
               ) : (
                 <tr key={r.semana} className="text-texto-4">
                   <td className="border-t border-borde-soft px-3 py-2 pl-4 align-middle sm:pl-5">
-                    <span className="block font-semibold">{nombreSemana(r.semana)}</span>
-                    <span className="block text-[11px]">por cargar</span>
+                    {/* Sin partir, como en los cargados: «Semana» / «11» en dos renglones (desde la 10, en todos los tamaños). */}
+                    <span className="block whitespace-nowrap font-semibold">{nombreSemana(r.semana)}</span>
+                    <span className="block whitespace-nowrap text-[11px]">por cargar</span>
                   </td>
                   <td colSpan={4} className="border-t border-borde-soft px-2.5 py-2 align-middle">
                     {editable ? (
@@ -145,7 +146,7 @@ export default function TablaSemanas({
             </div>
             <ul className="space-y-2">
               {g.renglones.map((r) => (
-                <li key={r.semana}>
+                <li key={r.semana} data-semana={r.registro ? r.semana : undefined}>
                   {r.registro ? (
                     <TarjetaCargada r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
                   ) : (
@@ -271,6 +272,8 @@ function KgDeLaSemana({ registro }: { registro: Registro }) {
 function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
   return (
     <tr
+      // Para dejarla a la vista («Ver la hoja» después de una semana repetida).
+      data-semana={registro.semana}
       onClick={editable ? () => onCorregir(registro) : undefined}
       className={`transition-colors ${editable ? "cursor-pointer hover:bg-muted" : ""}`}
     >

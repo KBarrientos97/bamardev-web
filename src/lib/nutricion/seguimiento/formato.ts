@@ -29,9 +29,10 @@ export const UNIDADES_DOSIS: UnidadDosis[] = ["UI", "mg", "ml"];
 // ── La dosis ────────────────────────────────────────────────────────────────
 
 /**
- * Un número de dosis en su unidad (§4.2 «Cómo se muestra una dosis»): las UI
- * en entero, los mg con hasta 2 decimales sin ceros de más y los ml con 2.
- * `aprox` dice si hubo que redondear (8,3 UI → «8»).
+ * Un número de dosis CALCULADO (una equivalencia, lo que escribe un escalón):
+ * las UI en entero, los mg con hasta 2 decimales sin ceros de más y los ml
+ * con 2. `aprox` dice si hubo que redondear (8,3 UI → «8»). Lo anotado no
+ * pasa por acá: va como se anotó (`fmtDosis`).
  */
 export function numeroDeDosis(n: number, unidad: UnidadDosis): { texto: string; aprox: boolean } {
   if (unidad === "UI") {
@@ -43,8 +44,20 @@ export function numeroDeDosis(n: number, unidad: UnidadDosis): { texto: string; 
   return { texto, aprox: Math.abs(r - n) > 1e-9 };
 }
 
-/** «17 UI», «5,1 mg», «0,17 ml»; con «≈» delante si se redondeó. */
+/**
+ * Una dosis ANOTADA, en su propia unidad, como se anotó (Kevin, 23-nov: si
+ * escribió «7,5» en UI es «7,5 UI», no «≈ 8 UI»): hasta 3 decimales, sin
+ * ceros de más, en mg, UI o ml («17 UI», «5,1 mg», «0,15 ml», «0,5 ml»).
+ */
 export function fmtDosis(n: number, unidad: UnidadDosis): string {
+  return `${fmtNumero(n, 3)}${NB}${unidad}`;
+}
+
+/**
+ * Una dosis CALCULADA (pasada a otra unidad o a otro vial), con la regla de
+ * las equivalencias: «≈ 38 UI», «2,25 mg», «0,25 ml»; con «≈» si se redondeó.
+ */
+export function fmtDosisCalculada(n: number, unidad: UnidadDosis): string {
   const { texto, aprox } = numeroDeDosis(n, unidad);
   return `${aprox ? `≈${NB}` : ""}${texto}${NB}${unidad}`;
 }
@@ -121,24 +134,62 @@ export function textoSubir(p: Paso, unidad: UnidadDosis): string {
 }
 
 /**
+ * La dosis de antes en la unidad de hoy, para «Igual que la anterior» (§2
+ * «Misma dosis»: la misma dosis son los mismos mg). Si se conocen sus mg y la
+ * concentración de HOY, se pasa por los mg: con otro vial, 25 UI de 30 mg/ml
+ * (7,5 mg) son 37,5 UI de 20 mg/ml, no 25 (eso serían 5 mg). Si lo que
+ * escribiría el botón es lo mismo que se anotó, va lo anotado tal cual. Sin mg
+ * o sin vial hoy, como antes: lo anotado o su equivalencia.
+ */
+export function mismaDosisEn(
+  antes: Partial<DosisAnotada> | null | undefined,
+  unidad: UnidadDosis,
+  mgPorMl: number | null | undefined,
+  uiPorMl: number,
+): number | null {
+  if (!antes) return null;
+  const mg = antes.dosisMg ?? (antes.unidadDosis === "mg" ? antes.dosis : null);
+  if (mg != null && (unidad === "mg" || (mgPorMl && mgPorMl > 0))) {
+    const eq = equivalenciasDe(mg, "mg", mgPorMl, uiPorMl);
+    const hoy = unidad === "mg" ? mg : unidad === "UI" ? eq.dosisUi : eq.dosisMl;
+    if (hoy != null) {
+      if (antes.unidadDosis === unidad && antes.dosis != null && paraEscribir(antes.dosis, unidad) === paraEscribir(hoy, unidad)) return antes.dosis;
+      return hoy;
+    }
+  }
+  return enUnidad(antes, unidad);
+}
+
+/**
  * El escalón que sigue al de la dosis de antes, comparando por mg (§4.2
- * «Subir»). La dosis de antes «está» en un escalón si el botón de ese escalón
- * escribiría el mismo número (8 UI es el escalón de 2,5 mg: 8,3 UI redondeado);
- * si no está en ninguno, el primero con más mg. Sin dosis de antes, sin mg o en
- * el último escalón: null.
+ * «Subir»). La dosis de antes «está» en un escalón si el botón de ese escalón,
+ * con el vial de ESA semana, habría escrito el mismo número (8 UI es el
+ * escalón de 2,5 mg: 8,3 UI redondeado); así un cambio de vial no hace que
+ * «Subir» repita los mismos mg ni saltee un escalón. Si no está en ninguno, el
+ * primero con más mg. Sin mg de antes (se anotó sin vial), lo anotado contra
+ * los escalones de hoy. Sin dosis de antes, sin mg o en el último escalón: null.
  */
 export function pasoSiguiente(pasos: Paso[], antes: Partial<DosisAnotada> | null | undefined, unidad: UnidadDosis): Paso | null {
   if (!antes || !pasos.length) return null;
-  const actual = enUnidad(antes, unidad);
-  if (actual != null) {
-    const escrito = paraEscribir(actual, unidad);
-    const i = pasos.findIndex((p) => {
-      const v = valorDelPaso(p, unidad);
-      return v != null && paraEscribir(v, unidad) === escrito;
-    });
-    if (i >= 0) return pasos[i + 1] ?? null;
-  }
   const mg = antes.dosisMg ?? (antes.unidadDosis === "mg" ? antes.dosis : null);
+  const u = antes.unidadDosis;
+  if (mg != null && u && antes.dosis != null && antes.dosis > 0 && mg > 0) {
+    // Cuánto de su unidad era cada mg ese día (el vial de entonces).
+    const porMg = u === "mg" ? 1 : antes.dosis / mg;
+    const escrito = paraEscribir(antes.dosis, u);
+    const i = pasos.findIndex((p) => paraEscribir(p.mg * porMg, u) === escrito);
+    if (i >= 0) return pasos[i + 1] ?? null;
+  } else {
+    const actual = enUnidad(antes, unidad);
+    if (actual != null) {
+      const escrito = paraEscribir(actual, unidad);
+      const i = pasos.findIndex((p) => {
+        const v = valorDelPaso(p, unidad);
+        return v != null && paraEscribir(v, unidad) === escrito;
+      });
+      if (i >= 0) return pasos[i + 1] ?? null;
+    }
+  }
   if (mg == null) return null;
   return pasos.find((p) => p.mg > mg + 1e-9) ?? null;
 }
@@ -326,9 +377,13 @@ export function textoPendiente(p: PagoPendiente, hoy = hoyIso()): string {
   return `${que} · desde el ${fechaLarga(p.desde)}${hace ? ` (${hace})` : ""}`;
 }
 
-/** «Último pago: Bs 630 el 02/11/2026», o «Todavía no pagó nada». */
+/**
+ * «Último pago: Bs 630 el 02/11/2026», o «Todavía no pagó nada». «el» va
+ * pegado a la fecha: en la columna angosta de «Pagos pendientes» quedaba «…Bs
+ * 630 el» en un renglón y la fecha sola en el otro.
+ */
 export function textoUltimoPago(u: UltimoPago | null | undefined): string {
-  return u ? `Último pago: ${fmtPlata(u.total)} el ${fechaLarga(u.fecha)}` : "Todavía no pagó nada";
+  return u ? `Último pago: ${fmtPlata(u.total)} el${NB}${fechaLarga(u.fecha)}` : "Todavía no pagó nada";
 }
 
 /** Lo que se ofrece del peso de la Evaluación: «Evaluación del 14/12/2026: 121,8 kg» con «Usar». */

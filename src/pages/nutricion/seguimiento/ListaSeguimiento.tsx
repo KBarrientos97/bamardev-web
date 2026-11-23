@@ -285,9 +285,11 @@ function Filas({ filas, marcada, avisar, onAbrir }: { filas: FilaSeguimiento[]; 
                 className={`${TABLA.fila} cursor-pointer ${i === marcada ? "bg-primary-50 hover:bg-primary-50" : ""}`}
               >
                 <td className={`${TABLA.td} max-w-[300px]`}>
+                  {/* Un ancho mínimo para el nombre: a 1024 con el menú abierto, un tratamiento largo
+                      («Semaglutida magistral · …») le comía el lugar y «Paciente de prueba / 40» se partía. */}
                   <Link
                     to={`${RUTA_SEGUIMIENTO}/${p.id}`}
-                    className="block break-words font-semibold text-texto hover:text-primary-700"
+                    className="block min-w-[11rem] break-words font-semibold text-texto hover:text-primary-700"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {p.nombre}

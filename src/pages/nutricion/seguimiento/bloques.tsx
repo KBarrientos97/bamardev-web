@@ -4,9 +4,10 @@ import { Boton, Modal } from "../../../components/ui";
 import { fmtNumero, textoAlSalir, valorDe } from "../../../lib/nutricion/calculo";
 import {
   type PesoDeLaEvaluacion,
-  enUnidad,
   equivalenciasDe,
   fmtDosis,
+  fmtDosisCalculada,
+  mismaDosisEn,
   paraEscribir,
   partesEquivalencias,
   pasoSiguiente,
@@ -143,7 +144,9 @@ export function BloqueDosis({
   const equivalencias = guardadas ?? (n != null && unidad ? partesEquivalencias(equivalenciasDe(n, unidad, mgPorMl, uiPorMl), unidad) : []);
   const apagada = form.sinDosis || !unidad;
   const escribir = (v: number) => unidad && cambiar("dosis", paraEscribir(v, unidad));
-  const igual = unidad && antes ? enUnidad(antes, unidad) : null;
+  // Los mismos mg que la anterior (con otro vial, otro número de UI o de ml).
+  const igual = unidad && antes ? mismaDosisEn(antes, unidad, mgPorMl, uiPorMl) : null;
+  const igualOtroNumero = igual != null && antes != null && unidad !== "" && (antes.unidadDosis !== unidad || paraEscribir(igual, unidad) !== paraEscribir(antes.dosis, unidad));
   const subir = unidad && !sinPresentacion ? pasoSiguiente(pasos, antes, unidad) : null;
   const visibles = unidad ? pasos.filter((p) => valorDelPaso(p, unidad) != null) : [];
   const motivo = useRef<HTMLInputElement>(null);
@@ -182,7 +185,12 @@ export function BloqueDosis({
             {(igual != null || subir) && (
               <div className="flex flex-wrap gap-2">
                 {igual != null && antes && (
-                  <BotonToque onClick={() => escribir(igual)}>Igual que la anterior: {fmtDosis(igual, unidad)}</BotonToque>
+                  // La misma que se anotó va tal cual («7,5 UI» escribe 7,5); pasada a otro vial o a otra
+                  // unidad es una cuenta, y va como las equivalencias («≈ 38 UI (7,5 mg)» escribe 38).
+                  <BotonToque onClick={() => (igualOtroNumero ? escribir(igual) : cambiar("dosis", fmtNumero(igual, 3)))}>
+                    Igual que la anterior: {igualOtroNumero ? fmtDosisCalculada(igual, unidad) : fmtDosis(igual, unidad)}
+                    {igualOtroNumero && antes.dosisMg != null && unidad !== "mg" ? ` (${fmtDosisCalculada(antes.dosisMg, "mg")})` : null}
+                  </BotonToque>
                 )}
                 {subir && (
                   <BotonToque onClick={() => escribir(valorDelPaso(subir, unidad)!)} className="border-primary-200 text-primary-700">

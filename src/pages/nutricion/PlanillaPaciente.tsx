@@ -259,7 +259,8 @@ export default function PlanillaPaciente() {
             <Tarjeta
               titulo="Evolución"
               barra={
-                <div className="py-3">
+                // 44 px para el dedo hasta `lg` (en la tablet medían 34); en la PC, como siempre.
+                <div className="py-3 [&_button]:min-h-11 lg:[&_button]:min-h-0">
                   <Chips<CampoControl> envolver valor={medida} onChange={setMedida} opciones={DEL_GRAFICO.map((c) => [c, MEDIDAS[c].corto] as const)} />
                 </div>
               }
