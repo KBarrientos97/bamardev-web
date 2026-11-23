@@ -712,6 +712,13 @@ export const apiReportes = {
    * rubro responde 0. Lo decide el backend.
    */
   jornada: () => request<{ corteMin: number }>("/reportes/jornada"),
+  /**
+   * El dueño elige a qué hora termina su día (Configuración › Caja, 23-nov):
+   * 0 = medianoche. Devuelve el corte que quedó. Un billar recibe 400 (el suyo
+   * se cambia en Mesas › Jornada).
+   */
+  guardarJornada: (corteMin: number) =>
+    request<{ corteMin: number }>("/reportes/jornada", { method: "PATCH", body: JSON.stringify({ corteMin }) }),
   resumen: (r: RangoReporte, ant?: RangoReporte) => api.reporte<ResumenApi>("resumen", r, anterior(ant)),
   financiero: (r: RangoReporte, ant?: RangoReporte) => api.reporte<FinancieroApi>("financiero", r, anterior(ant)),
   insumos: (r: RangoReporte, ant?: RangoReporte) => api.reporte<InsumosApi>("insumos", r, anterior(ant)),
