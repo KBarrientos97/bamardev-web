@@ -6,7 +6,7 @@ import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { useTextoDemorado } from "../../lib/academia/useBusquedaEstudiante";
 import { apiNutricion } from "../../lib/nutricion/api";
 import { conAlt, escribiendo, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
-import { cambio, conUnidad, esSoloDigitos, fechaLarga, fmtCambio, grado } from "../../lib/nutricion/calculo";
+import { cambio, conUnidad, empiezaConDigito, fechaLarga, fmtCambio, grado } from "../../lib/nutricion/calculo";
 import type { PacienteFila } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
 import { usePaginado } from "../../lib/paginado";
@@ -46,7 +46,8 @@ export default function Pacientes() {
   const abrir = (p: PacienteFila) => navigate(`/evaluacion/${p.id}`);
   const nuevo = (texto = "") => {
     const t = texto.trim();
-    const qs = !t ? "" : esSoloDigitos(t) ? `?ci=${encodeURIComponent(t)}` : `?nombre=${encodeURIComponent(t)}`;
+    // Lo que empieza con un número es un carnet («1112223 LP»): va al Carnet, no al Nombre.
+    const qs = !t ? "" : empiezaConDigito(t) ? `?ci=${encodeURIComponent(t)}` : `?nombre=${encodeURIComponent(t)}`;
     navigate(`/evaluacion/nuevo${qs}`);
   };
 

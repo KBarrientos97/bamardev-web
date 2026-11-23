@@ -13,7 +13,10 @@ import {
   fechaLarga,
   fmtCambio,
   grado,
+  gradoDelResumen,
   resumenDe,
+  sufijoDelDia,
+  vecesDelDia,
   type CampoControl,
 } from "../../lib/nutricion/calculo";
 import type { Catalogo, Control, MedidaConTabla, Paciente } from "../../lib/nutricion/tipos";
@@ -74,14 +77,10 @@ const DEL_RESUMEN: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", 
 
 const valorCon = (m: Medida, n: number | null | undefined) => conUnidad(n, m.unidad, m.decimales);
 
-/** El grado guardado en el último control que tiene esa medida. */
+/** El grado del valor que muestra la tarjeta: el del mismo control (ver `gradoDelResumen`). */
 function gradoActual(controles: Control[], m: Medida, catalogo: Catalogo | null) {
   if (!m.grado) return null;
-  for (let i = controles.length - 1; i >= 0; i--) {
-    const c = controles[i];
-    if (c[m.campo] != null || c[m.grado.campo]) return grado(catalogo, m.grado.medida, c[m.grado.campo]);
-  }
-  return null;
+  return grado(catalogo, m.grado.medida, gradoDelResumen(controles, m.campo, m.grado.campo));
 }
 
 /**
@@ -390,22 +389,29 @@ function Planilla({
 
   const celdaFija =
     "sticky left-0 z-10 border-r border-borde-soft bg-white px-4 py-2.5 text-left shadow-[4px_0_8px_-6px_rgba(15,23,42,0.18)] max-sm:px-3 sm:px-5";
+  // El segundo control del mismo día lleva «(2)»: si no, las dos columnas se llaman igual.
+  const veces = vecesDelDia(controles.map((c) => c.fecha));
 
-  // En el celular cada control ocupa justo la mitad de lo que queda al lado de
-  // la columna fija, y el carril encaja de a una columna: nunca asoma medio
-  // control (con su nota cortada) detrás de los nombres de las medidas.
+  // Cada control ocupa justo 1/N de lo que queda al lado de la columna fija
+  // (N = cuántos entran: 2 en el celular, de 3 a 7 según el ancho) y el carril
+  // encaja de a una columna: nunca asoma medio control detrás de los nombres
+  // de las medidas («besidad grado 1»). Con menos controles que N, llenan el ancho.
+  const anchoControl = "calc((100cqw - var(--fija)) / min(var(--columnas), var(--visibles)))";
   return (
     <div className="@container">
       {/* scroll-lateral-ok: la planilla de controles se lee como la hoja, con la primera columna fija (contrato §4.3). */}
-      <div ref={carril} className="overflow-x-auto max-sm:snap-x max-sm:snap-mandatory max-sm:scroll-pl-[8.75rem]">
+      <div
+        ref={carril}
+        className="overflow-x-auto snap-x snap-mandatory scroll-pl-(--fija) [--fija:8.75rem] [--visibles:2] sm:[--fija:12.5rem] sm:[--visibles:3] sm:@3xl:[--visibles:4] sm:@4xl:[--visibles:5] sm:@5xl:[--visibles:6] sm:@6xl:[--visibles:7]"
+      >
         <table
-          className="w-max min-w-full border-separate border-spacing-0 text-sm max-sm:table-fixed max-sm:w-[calc(8.75rem_+_var(--columnas)_*_(100cqw_-_8.75rem)_/_2)]"
-          style={{ "--columnas": controles.length } as React.CSSProperties}
+          className="min-w-full table-fixed border-separate border-spacing-0 text-sm"
+          style={{ "--columnas": controles.length, width: `calc(var(--fija) + var(--columnas) * ${anchoControl})` } as React.CSSProperties}
         >
           <colgroup>
-            <col className="max-sm:w-[8.75rem]" />
+            <col style={{ width: "var(--fija)" }} />
             {controles.map((c) => (
-              <col key={c.id} className="max-sm:w-[calc((100cqw_-_8.75rem)_/_2)]" />
+              <col key={c.id} style={{ width: anchoControl }} />
             ))}
           </colgroup>
         <thead>
@@ -413,20 +419,20 @@ function Planilla({
             <th scope="col" className={`${celdaFija} bg-muted`}>
               Medida
             </th>
-            {controles.map((c) => (
-              <th scope="col" key={c.id} className="min-w-[7.5rem] snap-start border-b border-borde-soft bg-muted px-2 py-1.5 text-center align-bottom max-sm:min-w-0">
+            {controles.map((c, i) => (
+              <th scope="col" key={c.id} className="min-w-0 snap-start border-b border-borde-soft bg-muted px-2 py-1.5 text-center align-bottom">
                 {onAbrir ? (
                   <button
                     type="button"
                     onClick={() => onAbrir(c)}
-                    aria-label={`Corregir el control del ${fechaLarga(c.fecha)}`}
+                    aria-label={`Corregir el control del ${fechaLarga(c.fecha)}${sufijoDelDia(veces[i])}`}
                     className="inline-flex w-full flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-colors hover:bg-white hover:text-primary-700 focus-visible:bg-white"
                   >
-                    <Encabezado c={c} />
+                    <Encabezado c={c} vez={veces[i]} />
                   </button>
                 ) : (
                   <span className="inline-flex flex-col items-center gap-0.5 px-2 py-1">
-                    <Encabezado c={c} />
+                    <Encabezado c={c} vez={veces[i]} />
                   </span>
                 )}
               </th>
@@ -457,7 +463,12 @@ function Planilla({
                         <span className="text-texto-4">—</span>
                       ) : (
                         <span className={`inline-flex w-full max-w-[7.5rem] flex-col items-center rounded-lg px-1.5 py-1 ${t ? `${t.suave} ${t.texto}` : "text-texto"}`}>
-                          <span className="font-semibold tabular-nums">{v != null ? valorCon({ ...m, unidad: "" }, v) : "—"}</span>
+                          {v != null ? (
+                            <span className="font-semibold tabular-nums">{valorCon({ ...m, unidad: "" }, v)}</span>
+                          ) : (
+                            // El grado se eligió sin escribir el valor: «—» parecía un dato que falta.
+                            <span className="text-[12px] font-medium">sin medir</span>
+                          )}
                           {g && <span className="text-[11px] font-medium leading-tight">{g.nombre}</span>}
                         </span>
                       )}
@@ -488,10 +499,13 @@ function Planilla({
   );
 }
 
-function Encabezado({ c }: { c: Control }) {
+function Encabezado({ c, vez }: { c: Control; vez: number }) {
   return (
     <>
-      <span className="text-[13px] font-bold normal-case tracking-normal text-texto tabular-nums">{fechaLarga(c.fecha)}</span>
+      <span className="whitespace-nowrap text-[13px] font-bold normal-case tracking-normal text-texto tabular-nums">
+        {fechaLarga(c.fecha)}
+        {sufijoDelDia(vez)}
+      </span>
       {c.inicial ? (
         <span className="rounded-full bg-primary-100 px-2 py-px text-[10px] font-bold uppercase tracking-wide text-primary-700">Inicial</span>
       ) : (

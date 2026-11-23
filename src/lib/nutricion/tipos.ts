@@ -81,6 +81,8 @@ export interface Paciente {
   edad: number | null;
   /** Lo que se escribió, si no hay fecha de nacimiento. */
   edadDeclarada: number | null;
+  /** El día en que se anotó esa edad ("AAAA-MM-DD"). Una respuesta vieja no lo trae. */
+  edadDeclaradaEn?: string | null;
   sexo: Sexo | null;
   hijos: number | null;
   tallaCm: number | null;

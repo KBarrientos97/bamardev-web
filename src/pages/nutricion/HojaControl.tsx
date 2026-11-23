@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { Icon } from "../../components/Icon";
 import { Boton, Confirmar, Modal } from "../../components/ui";
 import { apiNutricion } from "../../lib/nutricion/api";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../lib/nutricion/atajos";
 import {
+  avisoImc,
   calcularImc,
   cambio,
   edadEnFecha,
@@ -14,13 +16,22 @@ import {
   hoyIso,
   rangoDe,
   tablaQueToca,
-  textoDe,
+  textoAlSalir,
   textoEdadCorporal,
   ultimoValor,
   valorDe,
   type CampoControl,
 } from "../../lib/nutricion/calculo";
-import { cambiosDeControl, controlAInput, controlConDatos, controlDesde, controlVacio, soloConValor, type FormControl } from "../../lib/nutricion/formulario";
+import {
+  cambiosDeControl,
+  controlAInput,
+  controlConDatos,
+  controlDesde,
+  controlVacio,
+  hayCambios,
+  soloConValor,
+  type FormControl,
+} from "../../lib/nutricion/formulario";
 import type { Catalogo, Control, MedidaConTabla, Paciente } from "../../lib/nutricion/tipos";
 import { TONO } from "../../lib/nutricion/tonos";
 import { AreaTexto, CampoNumero, CampoTexto, ChipGrado, Rotulo, Tecla } from "./piezas";
@@ -61,7 +72,14 @@ export default function HojaControl({
   onGuardado: (p: Paciente, aviso: string) => void;
 }) {
   const navigate = useNavigate();
-  const ctx = { catalogo, sexo: paciente.sexo, edad: paciente.edad, fechaNacimiento: paciente.fechaNacimiento };
+  const ctx = {
+    catalogo,
+    sexo: paciente.sexo,
+    edad: paciente.edad,
+    fechaNacimiento: paciente.fechaNacimiento,
+    edadDeclarada: paciente.edadDeclarada,
+    edadDeclaradaEn: paciente.edadDeclaradaEn,
+  };
   const [inicial] = useState<FormControl>(() => (control ? controlDesde(control, ctx) : controlVacio()));
   const [form, setForm] = useState<FormControl>(inicial);
   const [guardando, setGuardando] = useState(false);
@@ -74,6 +92,10 @@ export default function HojaControl({
   }, [error]);
   const [intento, setIntento] = useState(false);
   const [borrando, setBorrando] = useState(false);
+  // `Esc` (o la ✕) con algo escrito pregunta antes de perderlo; sin nada escrito, cierra.
+  const [preguntaCerrar, setPreguntaCerrar] = useState(false);
+  const conCambios = hayCambios(controlAInput(inicial), controlAInput(form));
+  const pedirCerrar = () => (conCambios ? setPreguntaCerrar(true) : onCerrar());
   const hoy = hoyIso();
   // La tabla de los grados es la de la edad que tenía el día de ESTE control (§3.4).
   const edadControl = edadEnFecha(paciente, form.fecha, hoy);
@@ -141,7 +163,7 @@ export default function HojaControl({
   }
 
   useTeclas((e) => {
-    if (borrando || !ctrlEnter(e)) return;
+    if (borrando || preguntaCerrar || !ctrlEnter(e)) return;
     e.preventDefault();
     void guardar();
   });
@@ -174,8 +196,8 @@ export default function HojaControl({
             autoFocus={!control && campo === "pesoKg"}
             onChange={(v) => cambiar(campo, v)}
             onBlur={() => {
-              const n = valorDe(campo, form[campo]);
-              if (n != null) cambiar(campo, textoDe(campo, n));
+              const t = textoAlSalir(campo, form[campo]);
+              if (t !== form[campo]) cambiar(campo, t);
             }}
           />
         </Rotulo>
@@ -201,7 +223,9 @@ export default function HojaControl({
     />
   );
 
-  const imc = calcularImc(valorDe("pesoKg", form.pesoKg), paciente.tallaCm);
+  // Con el peso en error no hay IMC; uno imposible (la talla de la ficha mal escrita) se avisa.
+  const imc = errores.pesoKg ? null : calcularImc(valorDe("pesoKg", form.pesoKg), paciente.tallaCm);
+  const imcImposible = avisoImc(imc);
   const tablaImc = tablaQueToca(catalogo?.tablas.imc, null, null).tabla;
   const rangoImc = form.grados.imc ? (tablaImc?.rangos.find((r) => r.grado === form.grados.imc) ?? null) : rangoDe(tablaImc, imc);
   const edadCorp = textoEdadCorporal(valorDe("edadCorporal", form.edadCorporal), edadControl);
@@ -212,7 +236,9 @@ export default function HojaControl({
         abierto
         titulo={control ? "Editar control" : "Nuevo control"}
         subtitulo={control ? `Del ${fechaLarga(control.fecha)}${control.inicial ? " · el inicial" : ""}` : paciente.nombre}
-        onClose={onCerrar}
+        // Con «¿Borrar este control?» (o «¿Cerrar sin guardar?») encima, `Esc` es
+        // de esa pregunta: cerraba también la hoja y se perdía lo corregido.
+        onClose={borrando || preguntaCerrar ? sinCerrar : pedirCerrar}
         ancho="max-w-2xl"
         cerrarAlClicAfuera={false}
         acciones={
@@ -262,6 +288,12 @@ export default function HojaControl({
                   <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <span className="text-xl font-bold tabular-nums text-texto">{fmtNumero(imc)}</span>
                     <ChipGrado rango={rangoImc} />
+                    {imcImposible && (
+                      <span className="flex w-full items-start gap-1.5 text-[12px] font-semibold text-warning-text" role="status">
+                        <Icon name="alert" size={14} className="mt-px shrink-0" />
+                        {imcImposible}
+                      </span>
+                    )}
                   </p>
                 ) : (
                   <p className="mt-1 text-[13px] text-texto-3">
@@ -319,9 +351,20 @@ export default function HojaControl({
         onCancel={() => setBorrando(false)}
         onOk={() => void borrar()}
       />
+      <Confirmar
+        abierto={preguntaCerrar}
+        titulo="¿Cerrar sin guardar?"
+        texto="Lo que escribiste en este control se pierde."
+        etiquetaOk="Cerrar sin guardar"
+        peligroso
+        onCancel={() => setPreguntaCerrar(false)}
+        onOk={onCerrar}
+      />
     </>
   );
 }
+
+const sinCerrar = () => {};
 
 function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (

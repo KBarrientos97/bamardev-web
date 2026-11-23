@@ -29,6 +29,12 @@ export interface FormFicha {
   conductaSueno: string;
   actividadFisica: string;
   consumoAgua: string;
+  /**
+   * La edad como la tiene anotada el servidor (sin fecha de nacimiento): lo
+   * que se escribió y el día. No se edita ni viaja: sirve para que la tabla
+   * de un control use la misma edad que va a usar el servidor.
+   */
+  edadAnotada?: { edad: number; en: string } | null;
 }
 
 /** Los grados elegidos A MANO (null = el de la tabla). */
@@ -98,9 +104,26 @@ export function edadDeFicha(f: Pick<FormFicha, "edad" | "fechaNacimiento">, hoy 
   return valorDe("edad", f.edad);
 }
 
-/** La edad el día del control: la que elige la tabla de sus grados (§3.4). */
-export function edadDelControl(f: Pick<FormFicha, "edad" | "fechaNacimiento">, fecha: string, hoy = hoyIso()): number | null {
-  return edadEnFecha({ fechaNacimiento: f.fechaNacimiento || null, edad: edadDeFicha(f, hoy) }, fecha, hoy);
+/**
+ * La edad el día del control: la que elige la tabla de sus grados (§3.4),
+ * con la cuenta del servidor. Si la edad escrita es la de hoy que sale de lo
+ * anotado (no se tocó), vale lo anotado con su día; si se escribió otra, el
+ * servidor la anota con la fecha de hoy.
+ */
+export function edadDelControl(f: Pick<FormFicha, "edad" | "fechaNacimiento" | "edadAnotada">, fecha: string, hoy = hoyIso()): number | null {
+  const deHoy = edadDeFicha(f, hoy);
+  const a = f.edadAnotada;
+  const sinTocar = !f.fechaNacimiento && a != null && deHoy === edadEnFecha({ edadDeclarada: a.edad, edadDeclaradaEn: a.en }, hoy, hoy);
+  return edadEnFecha(
+    {
+      fechaNacimiento: f.fechaNacimiento || null,
+      edad: deHoy,
+      edadDeclarada: sinTocar ? a.edad : deHoy,
+      edadDeclaradaEn: sinTocar ? a.en : hoy,
+    },
+    fecha,
+    hoy,
+  );
 }
 
 /** La ficha tal como se manda: vacío = null, los números ya leídos. */
@@ -242,7 +265,21 @@ export function fichaDesde(p: Paciente): FormFicha {
     conductaSueno: deTexto(p.conductaSueno),
     actividadFisica: deTexto(p.actividadFisica),
     consumoAgua: deTexto(p.consumoAgua),
+    edadAnotada: edadAnotadaDe(p),
   };
+}
+
+function edadAnotadaDe(p: Paciente): FormFicha["edadAnotada"] {
+  return !p.fechaNacimiento && p.edadDeclarada != null && p.edadDeclaradaEn ? { edad: p.edadDeclarada, en: p.edadDeclaradaEn } : null;
+}
+
+/**
+ * Después de guardar, lo que el servidor normaliza queda a la vista como lo
+ * guardó: si en el carnet se escribió «8958703 SC», queda «8958703» y «SC» en
+ * Exp. (y la edad anotada, con su día).
+ */
+export function conLoDelServidor(f: FormFicha, p: Paciente): FormFicha {
+  return { ...f, ci: deTexto(p.ci), ciExpedido: p.ci ? deTexto(p.ciExpedido) : "", edadAnotada: edadAnotadaDe(p) };
 }
 
 /** De qué valor sale cada grado, para saber si el guardado lo puso la tabla o la doctora. */
@@ -261,11 +298,18 @@ const VALOR_DEL_GRADO: Record<MedidaConTabla, keyof Control> = {
  */
 export function controlDesde(
   c: Control,
-  contexto: { catalogo: Catalogo | null; sexo: Sexo | null; edad: number | null; fechaNacimiento?: string | null },
+  contexto: {
+    catalogo: Catalogo | null;
+    sexo: Sexo | null;
+    edad: number | null;
+    fechaNacimiento?: string | null;
+    edadDeclarada?: number | null;
+    edadDeclaradaEn?: string | null;
+  },
   hoy = hoyIso(),
 ): FormControl {
   const grados = { ...SIN_GRADOS };
-  const edad = edadEnFecha({ fechaNacimiento: contexto.fechaNacimiento, edad: contexto.edad }, c.fecha, hoy);
+  const edad = edadEnFecha(contexto, c.fecha, hoy);
   for (const m of Object.keys(CAMPO_GRADO) as MedidaConTabla[]) {
     const guardado = c[CAMPO_GRADO[m]];
     if (!guardado) continue;

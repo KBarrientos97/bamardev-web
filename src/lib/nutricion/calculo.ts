@@ -78,9 +78,12 @@ export function cambio(actual: number | null | undefined, anterior: number | nul
   return redondear(actual - anterior, 2);
 }
 
-/** ¿Es sólo números? (el buscador manda el texto al carnet en vez del nombre). */
-export function esSoloDigitos(texto: string): boolean {
-  return /^\d+$/.test(texto.trim());
+/**
+ * ¿Empieza con un número? Lo buscado va al carnet en vez del nombre al crear
+ * el paciente desde la lista: «1112223 LP» es un carnet con su expedición.
+ */
+export function empiezaConDigito(texto: string): boolean {
+  return /^\d/.test(texto.trim());
 }
 
 // ── Topes (para frenar un dedazo; el backend valida lo mismo) ─────────────
@@ -123,11 +126,39 @@ export const TOPES: Record<CampoNumerico, Tope> = {
   edad: { min: 1, max: 120, decimales: 0, unidad: "años" },
 };
 
+/**
+ * La talla escrita en metros («1,80», «1.8»): nadie mide menos de 3 cm, así
+ * que un número menor que 3 es en metros y vale como centímetros (180). Sin
+ * esto «1,80» quedaba en error y el IMC daba 391975 (testing profundo, 23-nov).
+ */
+export const TALLA_EN_METROS_HASTA = 3;
+
+/** El número leído en la unidad del campo: la talla en metros pasa a centímetros. */
+function enSuUnidad(campo: CampoNumerico, n: number): number {
+  return campo === "tallaCm" && n > 0 && n < TALLA_EN_METROS_HASTA ? n * 100 : n;
+}
+
+/** Las unidades que se pueden escribir pegadas al número: «180cm», «82,4 kg», «75 %». */
+const UNIDADES_AL_FINAL = ["cm", "kg", "%"];
+
+/**
+ * Lo escrito sin la unidad de ESE campo al final (con o sin espacio, en
+ * mayúsculas o minúsculas). Otra unidad u otra letra sigue siendo un error:
+ * «180 kg» en la talla no es un número de la talla.
+ */
+function sinSuUnidad(campo: CampoNumerico, texto: string): string {
+  const t = texto.trim();
+  const u = TOPES[campo].unidad;
+  if (!UNIDADES_AL_FINAL.includes(u) || !t.toLowerCase().endsWith(u)) return t;
+  return t.slice(0, t.length - u.length).trimEnd();
+}
+
 /** Lo que está mal en lo escrito, o null si está bien (o vacío). */
 export function errorDeTope(campo: CampoNumerico, texto: string): string | null {
   if (!texto.trim()) return null;
-  const n = leerNumero(texto);
-  if (n == null) return "Escribí sólo el número";
+  const leido = leerNumero(sinSuUnidad(campo, texto));
+  if (leido == null) return "Escribí sólo el número";
+  const n = enSuUnidad(campo, leido);
   const t = TOPES[campo];
   if (t.decimales === 0 && !Number.isInteger(n)) return "Sin decimales";
   if (t.paso && Math.abs(n / t.paso - Math.round(n / t.paso)) > 1e-9) {
@@ -137,16 +168,30 @@ export function errorDeTope(campo: CampoNumerico, texto: string): string | null 
   return null;
 }
 
-/** El número escrito, redondeado a lo que se guarda; null vacío o inválido. */
+/**
+ * El número escrito, redondeado a lo que se guarda; null vacío o inválido. La
+ * talla en metros, en centímetros; la unidad del campo pegada al final, fuera.
+ */
 export function valorDe(campo: CampoNumerico, texto: string): number | null {
-  const n = leerNumero(texto);
+  const n = leerNumero(sinSuUnidad(campo, texto));
   if (n == null) return null;
-  return redondear(n, TOPES[campo].decimales);
+  return redondear(enSuUnidad(campo, n), TOPES[campo].decimales);
 }
 
 /** Cómo se ve un valor del campo: con coma y sin ceros de más («82,4»). */
 export function textoDe(campo: CampoNumerico, n: number | null | undefined): string {
   return fmtNumero(n, TOPES[campo].decimales);
+}
+
+/**
+ * Lo que queda escrito al salir del campo: el número con coma y sin ceros de
+ * más («82.40» → «82,4», la talla «1,80» → «180»). Lo que está mal queda tal
+ * cual, con su error a la vista: «2,5» hijos no se vuelve «3» en silencio.
+ */
+export function textoAlSalir(campo: CampoNumerico, texto: string): string {
+  const n = valorDe(campo, texto);
+  if (n == null || !texto.trim() || errorDeTope(campo, texto)) return texto;
+  return textoDe(campo, n);
 }
 
 // ── IMC y edad ──────────────────────────────────────────────────────────────
@@ -156,6 +201,30 @@ export function calcularImc(pesoKg: number | null | undefined, tallaCm: number |
   if (!pesoKg || !tallaCm || pesoKg <= 0 || tallaCm <= 0) return null;
   const metros = tallaCm / 100;
   return redondear(pesoKg / (metros * metros), 1);
+}
+
+/**
+ * El IMC de lo escrito, sólo si el peso y la talla están dentro de sus topes:
+ * con un dato en error no se muestra un IMC (con «18» de talla daba 3919,8 y
+ * «Obesidad grado 3» al lado del error).
+ */
+export function imcDeLoEscrito(pesoKg: string, tallaCm: string): number | null {
+  if (errorDeTope("pesoKg", pesoKg) || errorDeTope("tallaCm", tallaCm)) return null;
+  return calcularImc(valorDe("pesoKg", pesoKg), valorDe("tallaCm", tallaCm));
+}
+
+/** Fuera de esto, el IMC no es de una persona: la talla o el peso están mal escritos. */
+export const IMC_CREIBLE = { min: 10, max: 80 };
+
+/**
+ * El aviso de un IMC imposible (QA, 22-nov: 127 kg con 80 cm de talla daba
+ * 198,4). No bloquea: avisa junto al campo. null si el IMC es creíble.
+ */
+export function avisoImc(imc: number | null | undefined): string | null {
+  if (imc == null || !Number.isFinite(imc)) return null;
+  if (imc >= IMC_CREIBLE.min && imc <= IMC_CREIBLE.max) return null;
+  // Espacio duro: el número no baja solo al otro renglón.
+  return `Revisá la talla y el peso: el IMC da ${fmtNumero(imc)}`;
 }
 
 const DIA = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -179,17 +248,27 @@ export function edadEn(nacimiento: string | null | undefined, hoy: string): numb
 
 /**
  * La edad que tenía el paciente el día de un control: la que manda para elegir
- * la tabla de ese control (§3.4), no la de hoy. Con fecha de nacimiento, la
- * cuenta exacta; con la edad anotada (la de hoy), se le restan los años que
- * pasaron desde el control.
+ * la tabla de ese control (§3.4), no la de hoy. La misma cuenta del servidor:
+ *  · con fecha de nacimiento, la exacta;
+ *  · sin ella, con la edad anotada y el día en que se anotó: en ese día o
+ *    después, la anotada más los años cumplidos desde entonces; antes, la
+ *    anotada menos los años enteros que faltaban (21 anotado hoy: ayer 21, un
+ *    año justo antes 20). Negativa no hay: null.
+ *  · una respuesta vieja, sin el día en que se anotó: la edad de hoy menos los
+ *    años que pasaron desde el control.
  */
 export function edadEnFecha(
-  paciente: { fechaNacimiento?: string | null; edad?: number | null },
+  paciente: { fechaNacimiento?: string | null; edad?: number | null; edadDeclarada?: number | null; edadDeclaradaEn?: string | null },
   fecha: string | null | undefined,
   hoy = hoyIso(),
 ): number | null {
   if (!fecha) return paciente.fechaNacimiento ? edadEn(paciente.fechaNacimiento, hoy) : (paciente.edad ?? null);
   if (paciente.fechaNacimiento) return edadEn(paciente.fechaNacimiento, fecha);
+  const { edadDeclarada: anotada, edadDeclaradaEn: en } = paciente;
+  if (anotada != null && en) {
+    const edad = fecha >= en ? anotada + (edadEn(en, fecha) ?? 0) : anotada - (edadEn(fecha, en) ?? 0);
+    return edad >= 0 ? edad : null;
+  }
   if (paciente.edad == null) return null;
   const pasaron = edadEn(fecha, hoy) ?? 0;
   return Math.max(0, paciente.edad - pasaron);
@@ -352,9 +431,32 @@ export function primerValor(controles: Control[], campo: CampoControl): { valor:
   return null;
 }
 
-/** Los puntos de la evolución de una medida: sólo los controles que la tienen. */
-export function evolucion(controles: Control[], campo: CampoControl): { fecha: string; valor: number }[] {
-  return controles.flatMap((c) => (c[campo] == null ? [] : [{ fecha: c.fecha, valor: c[campo] as number }]));
+/**
+ * La vez de cada fecha en la lista, en orden: [1, 1, 2, 1] si el tercer
+ * control es el segundo de su día. Así la planilla y el gráfico distinguen
+ * dos controles del mismo día.
+ */
+export function vecesDelDia(fechas: string[]): number[] {
+  const cuenta = new Map<string, number>();
+  return fechas.map((f) => {
+    const n = (cuenta.get(f) ?? 0) + 1;
+    cuenta.set(f, n);
+    return n;
+  });
+}
+
+/** « (2)» para el segundo control del mismo día (y « (3)»…); nada para el primero. */
+export function sufijoDelDia(vez: number | null | undefined): string {
+  return vez != null && vez > 1 ? ` (${vez})` : "";
+}
+
+/**
+ * Los puntos de la evolución de una medida: sólo los controles que la tienen,
+ * cada uno con su vez del día (contada entre TODOS los controles, como en la planilla).
+ */
+export function evolucion(controles: Control[], campo: CampoControl): { fecha: string; valor: number; vez: number }[] {
+  const veces = vecesDelDia(controles.map((c) => c.fecha));
+  return controles.flatMap((c, i) => (c[campo] == null ? [] : [{ fecha: c.fecha, valor: c[campo] as number, vez: veces[i] }]));
 }
 
 export interface ResumenMedida {
@@ -364,6 +466,28 @@ export interface ResumenMedida {
   desdeInicio: number | null;
   /** Desde el control anterior con esa medida (null si no hay). */
   desdeAnterior: number | null;
+}
+
+/**
+ * El grado que acompaña al valor de la tarjeta de resumen: el del último
+ * control que TIENE esa medida (el mismo de `resumenDe`). Un grado elegido sin
+ * valor en un control más nuevo no se le pega a un número de otro día (salía
+ * «35 %» con «Ideal», cuando el 35 % era «Sobre el promedio»). Si la medida
+ * nunca se escribió, el último grado elegido sin valor.
+ */
+export function gradoDelResumen(
+  controles: Control[],
+  campo: CampoControl,
+  campoGrado: "imcGrado" | "grasaGrado" | "musculoGrado" | "visceralGrado",
+): string | null {
+  for (let i = controles.length - 1; i >= 0; i--) {
+    if (controles[i][campo] != null) return controles[i][campoGrado] ?? null;
+  }
+  for (let i = controles.length - 1; i >= 0; i--) {
+    const g = controles[i][campoGrado];
+    if (g) return g;
+  }
+  return null;
 }
 
 /** El valor de hoy de una medida, con lo que cambió desde el inicio y desde el anterior. */
