@@ -448,6 +448,16 @@ describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago
     expect(screen.queryByText("Tiene beca")).not.toBeInTheDocument();
   });
 
+  it("23-nov (Derick): la que pagó después de la fecha tope dice «Fuera de plazo» y por qué", async () => {
+    const explicacion = "Pagó Bs 500 el 26-oct, después de la fecha tope (25-oct): no se le paga al docente";
+    await montarCon({
+      sinPagar: [{ ...SIN_PAGAR, monto: 0, fueraDePlazo: "2026-10-25", explicacion }],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
+    expect(screen.getByText("Fuera de plazo · tope 25-oct")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver el detalle de Rivero Gil, Matías" })).toHaveAttribute("title", explicacion);
+  });
+
   it("cancelar el motivo vuelve al panel sin guardar; otra línea abre sin el editor", async () => {
     await montarCon({
       sinPagar: [SIN_PAGAR, { ...SIN_PAGAR, inscripcionId: 106, alumno: { id: 56, nombre: "Soria Paz, Ana" } }],

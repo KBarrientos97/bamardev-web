@@ -53,6 +53,14 @@ export interface AjustesAcademia {
    */
   diasEspera?: number;
   /**
+   * 23-nov (Derick): la fecha tope de cobro para pagarle al docente, el día
+   * de cada mes (1..31). Lo que el estudiante paga después ya no se le paga al
+   * docente. `null` = sin tope; ausente en un backend anterior (el campo no se
+   * muestra). `topeCobroDocenteDesde` es el mes (`AAAA-MM`) desde el que vale.
+   */
+  diaTopeCobroDocente?: number | null;
+  topeCobroDocenteDesde?: string | null;
+  /**
    * B9: el subdominio del negocio, para armar el enlace de preinscripción
    * desde la recepción (que no ve "Mi página"). Ausente en un backend que no
    * lo manda: ahí se intenta con "Mi página".
@@ -1317,6 +1325,12 @@ export interface LineaPlanilla {
   sede?: Ref;
   /** "Pagó Bs 1.350 el 8-sep · 1.350 ÷ 3 = 450 · 20 % = Bs 90". */
   explicacion: string;
+  /**
+   * 23-nov (Derick): la fecha tope (`AAAA-MM-DD`) si el módulo quedó fuera de
+   * ella; va en sin pagar con Bs 0 y ya no se le paga al docente. `null` = no;
+   * ausente en un backend anterior.
+   */
+  fueraDePlazo?: string | null;
 }
 
 export interface PlanillaDocente {
