@@ -17,6 +17,7 @@ import { useInfoPedidos } from "../../lib/pedidosWeb/useInfoPedidos";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
 import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
+import PedirPagina, { plantillaPedir } from "./PedirPagina";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { tonosPagina } from "../../lib/pagina/estilosPagina";
@@ -33,7 +34,7 @@ import ChatPagina from "./ChatPagina";
  * el HTML con Open Graph, y la página las Pages Functions, también en
  * `link.bamardev.com`): sirve para la pestaña del navegador y para quien sí lo lee.
  */
-function useMetadatosPagina(p: Pagina | null) {
+function useMetadatosPagina(p: Pagina | null, pedir = false) {
   useEffect(() => {
     if (!p) return;
     const anterior = document.title;
@@ -51,12 +52,21 @@ function useMetadatosPagina(p: Pagina | null) {
     poner("property", "og:description", p.og.descripcion);
     // La barra del navegador del color del estilo (Noche, oscura; Boutique, marfil).
     const c = paleta(p.color.hex);
-    poner("name", "theme-color", (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra);
+    // En el modo pedir, del color de su barra fija: parece una app.
+    const barra = pedir ? c.oscuro : (p.sitio ? tonosSitio(p.sitio.plantilla, c) : tonosPagina(p.estilo, c, !!p.portadaUrl)).barra;
+    // El navegador usa el PRIMER theme-color del documento, y el index.html ya trae
+    // el de la app (verde): uno agregado al final no se veía nunca (20-nov). Se
+    // cambia el que hay y se devuelve al salir.
+    const existentes = Array.from(document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]'));
+    const previos = existentes.map((m) => m.content);
+    if (existentes.length) existentes.forEach((m) => (m.content = barra));
+    else poner("name", "theme-color", barra);
     return () => {
       document.title = anterior;
       metas.forEach((m) => m.remove());
+      existentes.forEach((m, i) => (m.content = previos[i]));
     };
-  }, [p]);
+  }, [p, pedir]);
 }
 
 export function NoDisponible({ mensaje = "Esta página no está disponible" }: { mensaje?: string }) {
@@ -165,7 +175,7 @@ const BOTON_REGALO: EnlacePublico = {
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
  * al login. También en `link.bamardev.com/<subdominio>` (RutasLink.tsx).
  */
-export default function PaginaPublica({ tienda = false }: { tienda?: boolean } = {}) {
+export default function PaginaPublica({ tienda = false, pedir = false }: { tienda?: boolean; pedir?: boolean } = {}) {
   const { subdominio } = useParams();
   // `/tienda?categoria=Bebidas`: llega desde una categoría de la portada.
   const [busqueda] = useSearchParams();
@@ -173,10 +183,11 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   // La letra del texto del estilo y sólo la que eligió el negocio para su
   // nombre, no las 30.
   const tipografia = pagina?.tipografia;
-  // Con sitio, la letra del texto es la de su plantilla.
-  const estilo = pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
+  // Con sitio, la letra del texto es la de su plantilla. En el modo pedir, la
+  // de la plantilla con que se dibuja su carta.
+  const estilo = pagina && pedir ? estiloTextoSitio(plantillaPedir(pagina)) : pagina?.sitio ? estiloTextoSitio(pagina.sitio.plantilla) : pagina?.estilo;
   useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
-  useMetadatosPagina(pagina);
+  useMetadatosPagina(pagina, pedir);
   const pedido = usePedido(subdominio ?? "");
   const [regalando, setRegalando] = useState(false);
   // La sucursal elegida en el catálogo («Mis productos» con más de una): de
@@ -259,11 +270,25 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
   if (!pagina || !vista) return <Cargando />;
   // La tienda es del sitio del Profesional: sin sitio, la página de siempre.
   if (tienda && !pagina.sitio) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
+  // El modo pedir es para pedir: sin carrito (ni WhatsApp ni pedidos al sistema) o sin carta, la página de siempre.
+  if (pedir && (!carrito || !pagina.catalogo?.items.length)) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
   return (
     <>
-      {conSistema && (
+      {conSistema && !pedir && (
         <FranjasPedido subdominio={pagina.subdominio} fuerte={paleta(pagina.color.hex).oscuro} aviso={sinPedidos} />
       )}
+      {pedir ? (
+        <PedirPagina
+          pagina={pagina}
+          sucursal={sucursal}
+          urlPagina={urlPaginaDe(pagina.subdominio)}
+          alAgregarAlPedido={agregarAlPedido}
+          lineasPedido={pedido.lineas}
+          alCambiarPedido={pedido.cambiar}
+          agotados={agotadosCarta}
+          franjas={conSistema ? <FranjasPedido subdominio={pagina.subdominio} fuerte={paleta(pagina.color.hex).oscuro} aviso={sinPedidos} /> : null}
+        />
+      ) : (
       <VistaPagina
         pagina={vista}
         urlReservar={urlReservaDe(pagina.subdominio)}
@@ -280,6 +305,7 @@ export default function PaginaPublica({ tienda = false }: { tienda?: boolean } =
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
       />
+      )}
       {carrito && (
         <PedidoPagina
           negocio={pagina.nombre}

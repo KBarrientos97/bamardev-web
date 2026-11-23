@@ -37,6 +37,7 @@ import {
   resumenCajeros,
   resumenPorMedio,
   situacionDelTurno,
+  textoDescuentosDePlataforma,
   textoDiferencia,
   textoPorCobrar,
   tonoDeActividad,
@@ -260,6 +261,10 @@ export default function Supervision() {
                         {plural(r.cantidad, "pedido", "pedidos")}
                         {r.anulados > 0 && <> · {plural(r.anulados, "anulado", "anulados")}</>}
                       </dd>
+                      {/* El total ya es neto (22-nov): esto dice cuánto descontó la app. Sin descuentos, nada. */}
+                      {textoDescuentosDePlataforma(r) && (
+                        <dd className="break-words text-[11px] leading-tight tabular-nums text-texto-3">{textoDescuentosDePlataforma(r)}</dd>
+                      )}
                     </div>
                   ))}
                 </dl>

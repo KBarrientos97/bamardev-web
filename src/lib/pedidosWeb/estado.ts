@@ -7,8 +7,19 @@ export const ESTADOS_FINALES: EstadoSeguimiento[] = ["ENTREGADO", "RECHAZADO", "
 
 export const esFinal = (e: EstadoSeguimiento) => ESTADOS_FINALES.includes(e);
 
-/** Los pasos de la línea de tiempo, según el tipo de pedido (en RECOGER no hay «En camino»). */
-export function pasosDe(tipo: Seguimiento["tipo"]): { estado: EstadoSeguimiento; titulo: string }[] {
+/**
+ * Los pasos de la línea de tiempo, según el tipo de pedido (en RECOGER no hay
+ * «En camino»). Si se paga por QR antes (PLAN-PEDIDOS-QR), el primero es «Pago».
+ */
+export function pasosDe(
+  tipo: Seguimiento["tipo"],
+  conPago = false,
+): { estado: EstadoSeguimiento; titulo: string }[] {
+  const pasos = pasosSinPago(tipo);
+  return conPago ? [{ estado: "ESPERANDO_PAGO", titulo: "Pago" }, ...pasos] : pasos;
+}
+
+function pasosSinPago(tipo: Seguimiento["tipo"]): { estado: EstadoSeguimiento; titulo: string }[] {
   return tipo === "DELIVERY"
     ? [
         { estado: "RECIBIDO", titulo: "Recibido" },
@@ -25,8 +36,8 @@ export function pasosDe(tipo: Seguimiento["tipo"]): { estado: EstadoSeguimiento;
 }
 
 /** Cuántos pasos lleva hecho (el índice del actual): para pintar la línea. */
-export function pasoActual(s: Pick<Seguimiento, "tipo" | "estado">): number {
-  const i = pasosDe(s.tipo).findIndex((p) => p.estado === s.estado);
+export function pasoActual(s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "prepago">>): number {
+  const i = pasosDe(s.tipo, !!s.prepago).findIndex((p) => p.estado === s.estado);
   return i < 0 ? 0 : i;
 }
 
@@ -36,12 +47,16 @@ export function pasoActual(s: Pick<Seguimiento, "tipo" | "estado">): number {
  * y no hay moto: las frases lo dicen.
  */
 export function fraseDe(
-  s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "canceladoPor" | "entrega" | "pago">>,
+  s: Pick<Seguimiento, "tipo" | "estado"> & Partial<Pick<Seguimiento, "canceladoPor" | "entrega" | "pago" | "prepago">>,
 ): string {
   const externo = s.tipo === "DELIVERY" && esExterno(s.entrega?.modo);
   switch (s.estado) {
+    case "ESPERANDO_PAGO":
+      return `Pagá ${formatoPrecio(s.prepago?.monto ?? s.pago?.monto ?? 0)} con el QR para que tu pedido llegue al local.`;
     case "RECIBIDO":
-      return "Recibimos tu pedido. Esperá un momento: el local lo está revisando.";
+      return s.prepago?.pagado
+        ? "¡Pago recibido! El local ya tiene tu pedido y lo está revisando."
+        : "Recibimos tu pedido. Esperá un momento: el local lo está revisando.";
     case "ACEPTADO":
       if (externo) {
         return s.pago?.pendiente ? `Pagá ${formatoPrecio(s.pago.monto)} con este QR para que salga tu pedido` : "¡Pago recibido! Lo estamos preparando.";

@@ -26,7 +26,11 @@ const NOMBRE: Record<Plantilla, string> = {
   MESERO: "Mesero",
   REPARTIDOR: "Repartidor",
   PROFESIONAL: "Estilista",
+  NUTRICIONISTA: "Nutricionista",
 };
+
+/** El código legado de las plantillas de rubro que no se llaman como el suyo. */
+const CODIGO_LEGADO: Partial<Record<Plantilla, string>> = { NUTRICIONISTA: "PROFESIONAL" };
 
 export interface OpcionesPermisos {
   /** Las features del plan: el backend cruza los permisos con ellas. Vacío = todas. */
@@ -72,7 +76,7 @@ export function usuarioDe(
   return {
     id: 1,
     username: plantilla.toLowerCase(),
-    rol: plantilla,
+    rol: CODIGO_LEGADO[plantilla] ?? plantilla,
     rolId: Object.keys(NOMBRE).indexOf(plantilla) + 1,
     rolNombre: NOMBRE[plantilla],
     esAdministrador: plantilla === "ADMIN",

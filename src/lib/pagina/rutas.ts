@@ -34,6 +34,13 @@ export const urlPrivacidadDe = (subdominio: string) => `${urlPaginaDe(subdominio
 export const urlTiendaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/tienda`;
 
 /**
+ * El modo pedir (20-nov): la carta sola, con buscador y el carrito, sin la
+ * presentación del negocio. Es el enlace para vender: el que se manda por
+ * WhatsApp o se pone en la bio para que el cliente elija y pida sin vueltas.
+ */
+export const urlPedirDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/pedir`;
+
+/**
  * El seguimiento de un pedido hecho desde la página (pedidos web, 13-nov): el
  * token largo del enlace es lo único que lo abre, sin cuenta.
  */
@@ -61,7 +68,8 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/mi-cuenta`: «Pagar mi inscripción» con el carnet (M5).
   // `/p/<negocio>/tienda`: el catálogo entero del sitio (09-nov).
   // `/p/<negocio>/pedido/<token>`: el seguimiento de un pedido web (13-nov).
-  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/tienda|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
+  // `/p/<negocio>/pedir`: directo a la carta para pedir (20-nov).
+  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/tienda|\/pedir|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
 }
 
 /**

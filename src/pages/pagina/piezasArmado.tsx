@@ -201,3 +201,59 @@ export function enFilas<T>(lista: T[], porFila: number): T[][] {
     return fila;
   });
 }
+
+/**
+ * El cuerpo de la página en el orden de siempre (anuncio, botón grande,
+ * botones, catálogo, sucursales y pie) en una columna centrada. Lo usan los
+ * estilos del 20-nov: cada uno cambia el encabezado y el fondo, no el orden.
+ * Con cursos la columna se ensancha en la compu, como en Dulce: el curso y el
+ * pago van de a dos por fila y en 640 px no entran.
+ */
+export function ColumnaContenido({
+  x,
+  ancho = 640,
+  gap = 14,
+  padding,
+  antes,
+}: {
+  x: PiezasArmado;
+  ancho?: number;
+  gap?: number;
+  /** El relleno en el celular; en la compu, el de la columna. */
+  padding?: string;
+  /** Algo propio del estilo arriba del anuncio (el papelito de Álbum, la línea de Revista). */
+  antes?: ReactNode;
+}) {
+  const { escritorio, Principal } = x;
+  const ancha = escritorio && !!x.cursos;
+  return (
+    <Principal
+      aria-label={x.etiquetaPrincipal}
+      style={{
+        ...columna,
+        gap,
+        maxWidth: ancha ? 1000 : escritorio ? ancho : 480,
+        margin: "0 auto",
+        padding: ancha ? "24px 32px 40px" : escritorio ? "24px 0 40px" : (padding ?? "18px 18px 24px"),
+        ...(ancha || !escritorio ? { boxSizing: "border-box" as const, width: "100%" } : { width: "100%" }),
+      }}
+    >
+      {antes}
+      {x.anuncio}
+      {x.principal}
+      <BotonesEnGrilla botones={x.botones} dos={escritorio} />
+      {x.catalogo}
+      {x.sucursales}
+      {x.pie}
+    </Principal>
+  );
+}
+
+/** Las iniciales del negocio (hasta dos), para los sellos y cuadros sin logo. */
+export function inicialesNombre(nombre: string): string {
+  const palabras = nombre.split(/\s+/).filter((w) => w.length > 2);
+  return (palabras.length ? palabras : nombre.split(/\s+/))
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}

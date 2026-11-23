@@ -59,7 +59,7 @@ export const OPCIONES_CONFIGURACION: readonly OpcionConfiguracion[] = [
     seccion: "config_pos",
     a: "/configuracion/caja",
     titulo: "Caja",
-    detalle: "Lo que se cuenta al abrir y al cerrar el turno.",
+    detalle: "Lo que se cuenta al abrir y al cerrar el turno, y a qué hora termina el día.",
     icono: "lock",
   },
   {

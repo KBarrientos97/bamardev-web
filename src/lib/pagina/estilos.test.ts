@@ -82,8 +82,9 @@ describe("forma de los botones", () => {
 
 describe("letra del nombre", () => {
   it("son 30, de 5 grupos, y las de siempre conservan su clave y su letra", () => {
-    expect(LETRAS).toHaveLength(30);
-    expect(new Set(LETRAS.map((l) => l.clave)).size).toBe(30);
+    // 30 y las 3 de los estilos del 20-nov (Neón, Space Grotesk y Outfit).
+    expect(LETRAS).toHaveLength(33);
+    expect(new Set(LETRAS.map((l) => l.clave)).size).toBe(33);
     expect(new Set(LETRAS.map((l) => l.grupo)).size).toBe(5);
     expect(letraTitulo("MODERNA").familia).toMatch(/^Roboto/);
     expect(letraTitulo("ELEGANTE").familia).toMatch(/Playfair Display/);
@@ -123,11 +124,11 @@ describe("carga de las letras", () => {
     expect(hojas()).toHaveLength(1);
   });
 
-  it("el catálogo del editor pide las 30 en un solo css2", () => {
+  it("el catálogo del editor pide las 33 en un solo css2", () => {
     cargarCatalogoLetras();
     const [h] = hojas();
     expect(hojas()).toHaveLength(1);
-    expect(h.match(/family=/g)).toHaveLength(29);
+    expect(h.match(/family=/g)).toHaveLength(32);
   });
 });
 
@@ -340,7 +341,7 @@ describe("sugerencia por rubro", () => {
     expect(estiloRecomendado("VETERINARIA", true)).toBe("CLASICO");
   });
 
-  it("los 9 estilos con sus 3 recomendados de cada cosa, válidos", () => {
+  it("los 17 estilos con sus 3 recomendados de cada cosa, válidos", () => {
     expect(ESTILOS_PAGINA.map((e) => e.nombre)).toEqual([
       "Clásico",
       "Vitrina",
@@ -351,6 +352,14 @@ describe("sugerencia por rubro", () => {
       "Carta",
       "Dulce",
       "Mosaico",
+      "Revista",
+      "Afiche",
+      "Neón",
+      "Álbum",
+      "Sello",
+      "Ondas",
+      "Cristal",
+      "Brutal",
     ]);
     for (const e of ESTILOS_PAGINA) {
       expect(e.letras[0]).toBe(e.letra);

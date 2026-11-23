@@ -264,7 +264,14 @@ export type Seccion =
   /** N9: el panel de control del dueño. */
   | "academia_control"
   /** E18: los reportes del instituto. */
-  | "academia_reportes";
+  | "academia_reportes"
+  // ── Vertical Salud, rubro Nutrición (CONTRATO-nutricion-evaluacion-22nov) ──
+  /**
+   * La evaluación de pacientes: la lista, la ficha de evaluación inicial y la
+   * planilla de controles de cada uno. Sólo en NUTRICION. Sin
+   * `nutricion.editar`, todo de sólo lectura (ver `editaNutricion`).
+   */
+  | "nutricion";
 
 /**
  * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
@@ -485,6 +492,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   academia_control: { permiso: "academia.control", feature: "academia" },
   // Los del instituto, con el permiso de siempre de los reportes.
   academia_reportes: { permiso: "reportes.ver", feature: "academia" },
+  // ── Nutrición ──
+  // Ver los pacientes; registrar es `nutricion.editar`, adentro.
+  nutricion: { permiso: "nutricion.ver", feature: "nutricion" },
 };
 
 /**
@@ -549,6 +559,9 @@ const FEATURES_ESTRICTAS: Feature[] = [
   // feature en la lista no hay botón ni reporte, aunque la lista venga vacía.
   "pedidos_yango",
   "pedidos_pedidosya",
+  // La evaluación de pacientes (22-nov): nace con la vertical Salud, donde
+  // viene siempre; nadie la tuvo antes.
+  "nutricion",
 ];
 
 /**
@@ -628,6 +641,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
   // ahí carga a sus docentes y su NIT (sin retención desde el 08-nov).
   personal: [...RUBROS_BELLEZA, "ACADEMIA"],
+  // La evaluación de pacientes es del consultorio de nutrición: segundo
+  // candado además de su feature estricta.
+  nutricion: ["NUTRICION"],
 };
 
 /**
@@ -642,19 +658,20 @@ const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   config_sucursales: ["ACADEMIA"],
   // El salón entero es de restaurante: una farmacia no atiende mesas, y una
   // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos. La
-  // licorería vende en el mostrador: ni mesas, ni insumos, ni billar.
-  mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
-  salon: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  // licorería vende en el mostrador: ni mesas, ni insumos, ni billar. Un
+  // consultorio de nutrición, tampoco.
+  mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
+  salon: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
   // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
   // no transforma nada, compra y vende lo mismo. El tinte de un salón se
   // gasta, pero no es una receta que se descuente al vender.
-  insumos: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  insumos: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
   // Una farmacia o un salón de belleza no tienen mesas de pool, aunque alguien
   // les prenda el extra en el panel por error.
-  billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
-  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
-  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
-  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA"],
+  billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
+  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
+  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
+  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA", "LICORERIA", "NUTRICION"],
   // La Supervisión del local va en la lista NEGRA y no en la blanca: el
   // minimarket o la ferretería que cobran en caja la necesitan igual que el
   // restaurante. La farmacia y el billar ya tienen la suya (con sus libros y
@@ -939,12 +956,21 @@ export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
  * mesas sin vender. Después, la primera sección visible en `ORDEN_INICIO`.
  */
 export function rutaInicial(ctx: ContextoPermisos): string {
+  const tiene = (p: string) => !!ctx.permisos?.includes(p);
+  // Quien atiende pacientes y no vende (la Nutricionista) entra directo a la
+  // evaluación, como el repartidor a sus entregas. Va primero porque su rol
+  // nace con el código legado PROFESIONAL: si algún día le llega un permiso
+  // de agenda, no tiene que caer en «Mi agenda». `puedeVer` la encierra en
+  // NUTRICION (feature estricta + rubro): el profesional de un salón y el
+  // docente del instituto no pasan nunca por acá. El dueño y la recepción
+  // venden, y siguen entrando donde entraban.
+  if (tiene("nutricion.ver") && !tiene("ventas.vender") && puedeVer(ctx, "nutricion")) return RUTA_EVALUACION;
+
   // Ve sólo su agenda: "Mi agenda", y no pasa por la lista. Con la agenda
   // apagada en el plan la misma ruta dice que llega pronto; por la lista
   // caería en "/sin-acceso", que le diría que su cuenta está mal configurada.
   if (veSoloSuAgenda(ctx)) return RUTA_AGENDA_PRONTO;
 
-  const tiene = (p: string) => !!ctx.permisos?.includes(p);
   if (tiene("entregas.realizar") && !tiene("ventas.vender") && puedeVer(ctx, "reparto")) {
     return "/reparto";
   }
@@ -1005,6 +1031,10 @@ const ORDEN_INICIO: [Seccion, string][] = [
   // Quien sólo despacha (un rol armado con `tickets.despachar`) entra directo
   // a su pantalla; la caja, que también despacha, sigue entrando al POS.
   ["despacho", "/despacho"],
+  // La evaluación de pacientes (sólo NUTRICION): después del POS, así el dueño
+  // y la recepción entran donde siempre y un rol armado a mano que vende y
+  // atiende pacientes sin caja ni POS en el plan no cae en «/sin-acceso».
+  ["nutricion", "/evaluacion"],
   ["reportes", "/reportes"],
   ["usuarios", "/usuarios"],
   ["creditos", "/creditos"],
@@ -1066,6 +1096,18 @@ const ORDEN_INICIO: [Seccion, string][] = [
  * cambia la pantalla y no a dónde aterriza cada quien.
  */
 export const RUTA_AGENDA_PRONTO = "/mi-agenda";
+
+/** La lista de pacientes de la evaluación (rubro NUTRICION). */
+export const RUTA_EVALUACION = "/evaluacion";
+
+/**
+ * ¿Registra evaluaciones y controles? Lo mismo que pide el backend para
+ * escribir. Sin él, la evaluación se ve de sólo lectura: sin alta, sin
+ * editar, sin controles nuevos.
+ */
+export function editaNutricion(usuario: ConPermisos): boolean {
+  return tienePermiso(usuario, "nutricion.editar");
+}
 
 /**
  * Lo que hace falta del negocio para nombrar un rol. Estructural para poder

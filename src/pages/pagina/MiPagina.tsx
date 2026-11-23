@@ -1055,6 +1055,20 @@ export default function MiPagina({ soporte }: { soporte?: ModoSoporte } = {}) {
                   </>
                 )}
               </div>
+              {/* El modo pedir (20-nov): la carta sola, para mandar por WhatsApp a quien quiere comprar. */}
+              {e.pagina.publicada && (e.pagina.pedidosSistema || e.pagina.pedidosWhatsapp) && (
+                <div data-testid="enlace-pedir" className="flex flex-wrap items-center gap-2">
+                  <span className="w-full text-[13px] font-semibold text-texto-2">
+                    Para vender: abre directo en tu carta, sin la presentación
+                  </span>
+                  <span className="flex min-h-11 min-w-0 flex-[1_1_240px] items-center break-all rounded-xl border border-borde bg-muted px-3.5 text-[15px] font-semibold max-sm:basis-full">
+                    {`${e.urlPublica.replace(/^https?:\/\//, "")}/pedir`}
+                  </span>
+                  <Boton variante="soft" onClick={() => void copiar(`${e.urlPublica}/pedir`, "Enlace para pedir copiado")}>
+                    Copiar
+                  </Boton>
+                </div>
+              )}
               <p className="text-xs text-texto-3">
                 La dirección la configura BamarDev. Escribinos si querés cambiarla.
                 {e.enlacesCortos && !soporte && (

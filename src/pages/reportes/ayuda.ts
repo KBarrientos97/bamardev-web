@@ -257,7 +257,7 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
       return {
         queMuestra: "Los pedidos de Yango y PedidosYa que se tomaron en el punto de venta, por período de liquidación: cuántos y por cuánto, para cuadrar lo que paga cada app.",
         deDonde:
-          "El período lo arma el sistema con el calendario de pago de cada app: PedidosYa paga los jueves (de jueves a miércoles) y Yango los lunes (viernes a domingo) y viernes (lunes a jueves). Con ← y → ves los anteriores. Cada pedido cuenta el día en que se tomó, en la hora del negocio, y el total es el bruto: sin la comisión de la app.",
+          "El período lo arma el sistema con el calendario de pago de cada app: PedidosYa paga los jueves (de jueves a miércoles) y Yango los lunes (viernes a domingo) y viernes (lunes a jueves). Con ← y → ves los anteriores. Cada pedido cuenta el día en que se tomó, en la hora del negocio, y el total es lo vendido por la app, ya con el descuento del local restado y sin la comisión de la app.",
         incluye: ["El N° de pedido de la app, si se anotó: sirve para cruzarlo a mano con su liquidación."],
         noIncluye: [
           "Los pedidos anulados: salen en la lista, marcados, pero no suman.",

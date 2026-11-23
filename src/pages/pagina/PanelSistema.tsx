@@ -134,6 +134,12 @@ export default function PanelSistema({
   const [direccion, setDireccion] = useState(inicial.direccion);
   const [referencia, setReferencia] = useState(inicial.referencia);
   const [nota, setNota] = useState("");
+  /**
+   * Dirección, referencia y nota van plegadas (modo pedir, 20-nov): a la vista
+   * queda sólo lo que hace falta para pedir. Se abren solas si el cliente ya
+   * había dejado su dirección: así ve lo que se va a mandar.
+   */
+  const [detalles, setDetalles] = useState(() => !!(inicial.direccion.trim() || inicial.referencia.trim()));
   const [pin, setPin] = useState<Ubicacion | null>(null);
   /** El pin salió de un GPS poco preciso y el cliente todavía no lo movió. */
   const [pinSinAjustar, setPinSinAjustar] = useState(false);
@@ -143,6 +149,11 @@ export default function PanelSistema({
   const [formaPago, setFormaPago] = useState<FormaPagoWeb>("EFECTIVO");
   const [pagaCon, setPagaCon] = useState<number | null>(null);
   const [otroMonto, setOtroMonto] = useState("");
+  /**
+   * «¿Con cuánto pagás?» va plegado (20-nov, el dueño: «podría ser por demás»):
+   * casi todos pagan justo. Quien necesita cambio lo abre y elige el billete.
+   */
+  const [conCambio, setConCambio] = useState(false);
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
   const [estadoCaptcha, setEstadoCaptcha] = useState<EstadoCaptcha>("verificando");
@@ -254,7 +265,6 @@ export default function PanelSistema({
   const centroMapa = conMapa.length ? { lat: conMapa[0].latitud!, lng: conMapa[0].longitud! } : null;
   const externoEntrega = esExterno(entrega.modo) && tipoReal === "DELIVERY";
   // Con envío por servicio externo el pago es siempre QR y antes de que salga: no se elige.
-  const formaPagoReal: FormaPagoWeb = externoEntrega ? "QR" : formaPago;
 
   // ── Qué sucursal lo atiende ──
   const punto = useMemo(() => (pin ? { latitud: pin.lat, longitud: pin.lng } : null), [pin]);
@@ -290,6 +300,11 @@ export default function PanelSistema({
   const ev = filas.find((f) => f.e.indice === elegida)?.e ?? null;
   const sucursal = ev?.sucursal ?? null;
   const sucursalId = sucursal?.id ?? null;
+  // QR = pagar los productos ANTES (PLAN-PEDIDOS-QR). Sin QR en la sucursal
+  // que atiende, sólo efectivo; con un servicio externo, sólo QR.
+  const pagoAntes = sucursal ? (sucursal.pagoAntes ?? null) : (sucursales.find((s) => s.pagoAntes)?.pagoAntes ?? null);
+  const formaPagoReal: FormaPagoWeb = externoEntrega ? "QR" : formaPago === "QR" && pagoAntes ? "QR" : "EFECTIVO";
+  const pagarAntes = formaPagoReal === "QR" && !!pagoAntes;
   // El error del envío era de ESE pedido en ESE local: al cambiar de local o de
   // productos ya no corresponde, y dejaba el «está agotado» pegado en el pie de
   // la hoja aunque ya se hubiera arreglado (QA R2, M2).
@@ -418,6 +433,7 @@ export default function PanelSistema({
       nombre: nombre.trim(),
       telefono: tel,
       formaPago: formaPagoReal,
+      ...(pagarAntes ? { pagarAntes: true } : {}),
       ...(tipoReal === "DELIVERY" && pin
         ? {
             // Vacía no se manda: el backend la guarda en null y las pantallas dicen «Ubicación marcada en el mapa».
@@ -532,6 +548,8 @@ export default function PanelSistema({
     background: "#ffffff",
   };
   const etiqueta: CSSProperties = { fontSize: 13, fontWeight: 600, color: "#4B5563" };
+  /** Entrega · Tus datos · Pago: las secciones del pedido, en el orden de las apps de delivery (20-nov). */
+  const tituloSeccion: CSSProperties = { margin: "8px 0 -4px", fontSize: 17, fontWeight: 800, color: "#111827" };
   const conError = (malo: boolean): CSSProperties => ({ ...campo, borderColor: intento && malo ? "#DC2626" : "#D1D5DB" });
   /** Con el intento hecho y el dato mal, el lector de pantalla lo anuncia como inválido (QA R1, N5). */
   const invalido = (malo: boolean) => (intento && malo ? true : undefined);
@@ -665,6 +683,7 @@ export default function PanelSistema({
 
           {info && !sinPedidos && (
             <>
+              <h3 style={tituloSeccion}>Entrega</h3>
               <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
                 <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>¿Cómo lo recibís?</legend>
                 <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
@@ -691,15 +710,6 @@ export default function PanelSistema({
                 </div>
               </fieldset>
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={etiqueta}>Tu nombre</span>
-                <input ref={guardar("nombre")} aria-invalid={invalido(nombre.trim().length < 2)} aria-label="Tu nombre" value={nombre} maxLength={60} autoComplete="name" placeholder="Para que sepan de quién es" onChange={(e) => setNombre(e.target.value)} style={conError(nombre.trim().length < 2)} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={etiqueta}>Tu WhatsApp</span>
-                <input ref={guardar("telefono")} aria-invalid={invalido(!tel)} aria-label="Tu WhatsApp" value={telefono} inputMode="tel" autoComplete="tel-national" maxLength={16} placeholder="71234567" onChange={(e) => setTelefono(e.target.value)} style={conError(!tel)} />
-                <span style={{ fontSize: 12, color: "#6B7280" }}>Para avisarte si pasa algo con tu pedido.</span>
-              </label>
 
               {tipoReal === "DELIVERY" && (
                 <>
@@ -733,18 +743,12 @@ export default function PanelSistema({
                       </p>
                     )}
                   </div>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={etiqueta}>Dirección (opcional)</span>
-                    <input ref={guardar("direccion")} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={campo} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={etiqueta}>Referencia (opcional)</span>
-                    <input aria-label="Referencia" value={referencia} maxLength={200} placeholder="Portón negro, frente a la farmacia…" onChange={(e) => setReferencia(e.target.value)} style={campo} />
-                  </label>
                 </>
               )}
 
-              {sucursales.length > 1 && (
+              {/* Con delivery, la lista sale recién con el pin: antes todas dicen «Marcá tu
+                  ubicación» y sólo alargan la hoja (modo pedir, 20-nov). */}
+              {sucursales.length > 1 && (tipoReal !== "DELIVERY" || !!pin) && (
                 <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
                   <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>{tipoReal === "DELIVERY" ? "Sale desde" : "¿Dónde lo retirás?"}</legend>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -782,27 +786,105 @@ export default function PanelSistema({
                 </p>
               )}
 
+              {detalles ? (
+                <>
+                  {tipoReal === "DELIVERY" && (
+                    <>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={etiqueta}>Dirección (opcional)</span>
+                        <input ref={guardar("direccion")} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={campo} />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={etiqueta}>Referencia (opcional)</span>
+                        <input aria-label="Referencia" value={referencia} maxLength={200} placeholder="Portón negro, frente a la farmacia…" onChange={(e) => setReferencia(e.target.value)} style={campo} />
+                      </label>
+                    </>
+                  )}
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={etiqueta}>Nota (opcional)</span>
+                    <input aria-label="Nota para el negocio" value={nota} maxLength={200} placeholder="Sin cebolla, extra crema…" onChange={(e) => setNota(e.target.value)} style={campo} />
+                  </label>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  aria-expanded={false}
+                  onClick={() => setDetalles(true)}
+                  style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: fuerte, fontWeight: 700, fontSize: 15, cursor: "pointer", padding: "4px 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
+                >
+                  <Trazo d="M12 5v14M5 12h14" color={fuerte} size={16} grosor={2.6} />
+                  {tipoReal === "DELIVERY" ? "Agregar dirección, referencia o nota" : "Agregar una nota"}
+                </button>
+              )}
+
+              <h3 style={tituloSeccion}>Tus datos</h3>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={etiqueta}>Tu nombre</span>
+                <input ref={guardar("nombre")} aria-invalid={invalido(nombre.trim().length < 2)} aria-label="Tu nombre" value={nombre} maxLength={60} autoComplete="name" placeholder="Para que sepan de quién es" onChange={(e) => setNombre(e.target.value)} style={conError(nombre.trim().length < 2)} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={etiqueta}>Tu WhatsApp</span>
+                <input ref={guardar("telefono")} aria-invalid={invalido(!tel)} aria-label="Tu WhatsApp" value={telefono} inputMode="tel" autoComplete="tel-national" maxLength={16} placeholder="71234567" onChange={(e) => setTelefono(e.target.value)} style={conError(!tel)} />
+                <span style={{ fontSize: 12, color: "#6B7280" }}>Para avisarte si pasa algo con tu pedido.</span>
+              </label>
+
+              <h3 style={tituloSeccion}>Pago</h3>
               <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
-                <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>
-                  {externoEntrega ? "¿Cómo pagás? Antes de que salga" : tipoReal === "DELIVERY" ? "¿Cómo pagás? Al recibir" : "¿Cómo pagás? Al retirar"}
+                {/* Bajo el título «Pago» la pregunta sobra a la vista; queda para el lector de pantalla. */}
+                <legend style={externoEntrega ? { ...etiqueta, marginBottom: 8, padding: 0 } : { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", padding: 0 }}>
+                  {externoEntrega ? "¿Cómo pagás? Antes de que salga" : "¿Cómo pagás?"}
                 </legend>
                 {externoEntrega ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#F3F4F6", borderRadius: 14, padding: "12px 14px" }}>
                     <span style={{ fontWeight: 800, color: fuerte, fontSize: 15 }}>QR</span>
-                    <span style={{ fontSize: 14, color: "#374151" }}>Se paga por QR antes de que salga</span>
+                    <span style={{ fontSize: 14, color: "#374151" }}>
+                      {pagoAntes ? "Pagás los productos ahora con QR; el envío, al recibir" : "Se paga por QR antes de que salga"}
+                    </span>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", gap: 6, background: "#F3F4F6", borderRadius: 14, padding: 4 }}>
-                    {(["EFECTIVO", "QR"] as const).map((f) => (
-                      <label key={f} className="seg-pedido" style={segmento(formaPago === f)}>
-                        <input type="radio" name="forma-pago" checked={formaPago === f} onChange={() => setFormaPago(f)} style={oculto} />
-                        {f === "EFECTIVO" ? "Efectivo" : "QR"}
-                      </label>
-                    ))}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {/* QR sólo donde el local cobra por QR antes; si no, efectivo y nada más. */}
+                    {(["EFECTIVO", "QR"] as const).filter((f) => f === "EFECTIVO" || !!pagoAntes).map((f) => {
+                      const activo = formaPagoReal === f;
+                      const cuando = tipoReal === "DELIVERY" ? "al recibir el pedido" : "al retirarlo en el local";
+                      return (
+                        <label
+                          key={f}
+                          className="seg-pedido"
+                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, border: `1.5px solid ${activo ? fuerte : "#E5E7EB"}`, background: activo ? tinte : "#ffffff", cursor: "pointer", position: "relative" }}
+                        >
+                          <input type="radio" name="forma-pago" aria-label={f === "EFECTIVO" ? "Efectivo" : "QR"} checked={activo} onChange={() => setFormaPago(f)} style={oculto} />
+                          <span aria-hidden="true" style={{ width: 20, height: 20, flex: "none", borderRadius: 999, border: `2px solid ${activo ? fuerte : "#9CA3AF"}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            {activo && <span style={{ width: 10, height: 10, borderRadius: 999, background: fuerte }} />}
+                          </span>
+                          <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                            <span style={{ fontWeight: 700, fontSize: 15 }}>{f === "EFECTIVO" ? "Efectivo" : "QR"}</span>
+                            <span style={{ fontSize: 13, color: "#6B7280" }}>
+                              {f === "EFECTIVO"
+                                ? `Pagás ${cuando}`
+                                : tipoReal === "DELIVERY"
+                                  ? "Pagás los productos ahora con QR; el envío, al recibir"
+                                  : "Pagás ahora con QR y pasás a retirarlo"}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </fieldset>
-              {formaPagoReal === "EFECTIVO" && (
+              {formaPagoReal === "EFECTIVO" && !conCambio && (
+                <button
+                  type="button"
+                  aria-expanded={false}
+                  onClick={() => setConCambio(true)}
+                  style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: fuerte, fontWeight: 700, fontSize: 15, cursor: "pointer", padding: "4px 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
+                >
+                  <Trazo d="M12 5v14M5 12h14" color={fuerte} size={16} grosor={2.6} />
+                  ¿Necesitás cambio?
+                </button>
+              )}
+              {formaPagoReal === "EFECTIVO" && conCambio && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <span style={etiqueta}>¿Con cuánto pagás?</span>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -839,18 +921,10 @@ export default function PanelSistema({
                   )}
                 </div>
               )}
-              {formaPagoReal === "QR" && (
-                <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>
-                  {externoEntrega
-                    ? "Cuando el local acepte tu pedido, te mostramos el QR para pagar los productos y el envío."
-                    : `Te mostramos el QR para pagar ${tipoReal === "DELIVERY" ? "cuando recibas el pedido" : "cuando lo retires"}.`}
-                </p>
+              {externoEntrega && (
+                <p style={{ margin: 0, fontSize: 13, color: "#6B7280" }}>Cuando el local acepte tu pedido, te mostramos el QR para pagar los productos y el envío.</p>
               )}
 
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={etiqueta}>Nota (opcional)</span>
-                <input aria-label="Nota para el negocio" value={nota} maxLength={200} placeholder="Sin cebolla, extra crema…" onChange={(e) => setNota(e.target.value)} style={campo} />
-              </label>
               {/* Campo trampa: invisible y fuera del Tab. Una persona no lo ve; un bot que llena todo, sí. */}
               <div aria-hidden="true" style={{ position: "absolute", left: -9999, width: 1, height: 1, overflow: "hidden" }}>
                 <label>
@@ -887,7 +961,13 @@ export default function PanelSistema({
           </button>
           <p style={{ margin: 0, fontSize: 12, color: "#6B7280", textAlign: "center" }}>
             El local acepta tu pedido y lo seguís desde tu celular.{" "}
-            {externoEntrega ? "Pagás por QR antes de que salga." : tipoReal === "DELIVERY" ? "Pagás al recibir." : "Pagás al retirar."}
+            {pagarAntes
+              ? "Al tocar «Hacer pedido» te mostramos el QR para pagar."
+              : externoEntrega
+                ? "Pagás por QR antes de que salga."
+                : tipoReal === "DELIVERY"
+                  ? "Pagás al recibir."
+                  : "Pagás al retirar."}
           </p>
         </div>
 
@@ -949,7 +1029,16 @@ export default function PanelSistema({
             onClick={hacerPedido}
             style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: enviando ? "wait" : "pointer", opacity: bloqueado ? 0.55 : 1, fontFamily: "inherit" }}
           >
-            {enviando ? "Enviando tu pedido…" : enviarAlVerificar ? "Verificando… se envía solo" : "Hacer pedido"}
+            {enviando ? (
+              "Enviando tu pedido…"
+            ) : enviarAlVerificar ? (
+              "Verificando… se envía solo"
+            ) : (
+              <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 18px" }}>
+                <span>Hacer pedido</span>
+                <span aria-hidden="true">{formatoPrecio(total)}</span>
+              </span>
+            )}
           </button>
         </footer>
       </section>

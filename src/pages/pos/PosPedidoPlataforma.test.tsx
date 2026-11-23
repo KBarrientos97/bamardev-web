@@ -304,6 +304,32 @@ describe("el precio de la app (escrito a mano, 20-nov), el descuento y las obser
     ]);
   });
 
+  it("con «Mismo precio» el cuerpo lleva precioApp en todos los renglones, igual al del local (22-nov)", async () => {
+    vi.mocked(api.getProductos).mockResolvedValue([ARROZ, GASEOSA]);
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify([
+        { id: 5, cantidad: 2, enMesa: 0, nota: "" },
+        { id: 6, cantidad: 1, enMesa: 0, nota: "" },
+      ]),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mismo precio" }));
+    expect(precioDelArroz()).toHaveValue("35");
+    expect(screen.getByLabelText("Precio de «Gaseosa» en Yango")).toHaveValue("10");
+    // El total no cambia: 2 × 35 + 10, lo mismo que el carrito.
+    expect(screen.getByText("Total").nextElementSibling!.textContent).toMatch(/Bs.80,00/);
+    fireEvent.change(screen.getByLabelText("Descuento (Bs)"), { target: { value: "6" } });
+    await registrar();
+    const cuerpo = vi.mocked(api.crearPedidoPlataforma).mock.calls[0][0];
+    expect(cuerpo).toMatchObject({ descuento: 6 });
+    expect(cuerpo.detalles).toEqual([
+      { productoId: 5, cantidad: 2, precioApp: 35 },
+      { productoId: 6, cantidad: 1, precioApp: 10 },
+    ]);
+  });
+
   it("nada se guarda para el próximo pedido: vuelve a abrir vacío, al precio del local", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "pedido YANGO" }));

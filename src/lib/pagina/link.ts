@@ -12,6 +12,7 @@
  *   link…/<sub>/inscribirme/<id> preinscribirse a un grupo (= app…/p/<sub>/inscribirme/<id>)
  *   link…/<sub>/mi-cuenta        pagar con el carnet (= app…/p/<sub>/mi-cuenta)
  *   link…/<sub>/pedido/<token>   seguir un pedido web (= app…/p/<sub>/pedido/<token>)
+ *   link…/<sub>/pedir            directo a la carta para pedir (= app…/p/<sub>/pedir)
  *
  * Lo usan la SPA (qué rutas dibujar) y la Pages Function de la raíz (Open
  * Graph y redirecciones), así que no toca `import.meta.env` ni el DOM: corre
@@ -66,6 +67,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (segundo === "mi-cuenta" && tercero === undefined) return `/p/${sub}/mi-cuenta`;
   // La tienda del sitio del Profesional (09-nov): el catálogo entero.
   if (segundo === "tienda" && tercero === undefined) return `/p/${sub}/tienda`;
+  // El modo pedir (20-nov): directo a la carta, el enlace que se comparte para vender.
+  if (segundo === "pedir" && tercero === undefined) return `/p/${sub}/pedir`;
   if (segundo === "reservar") {
     if (tercero === undefined) return `/r/${sub}/reservar`;
     return RESTO.test(tercero) ? `/r/${sub}/reservar/${tercero}` : null;

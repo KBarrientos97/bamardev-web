@@ -193,9 +193,10 @@ export function enlaceWhatsapp(datos: {
 
 /**
  * Pantallas donde el botón flotante taparía algo (el carrito y Cobrar, el
- * salón del mesero, la cola de despacho): ahí la Ayuda queda en el menú.
+ * salón del mesero, la cola de despacho, el pie de «Guardar y seguir» de la
+ * evaluación de pacientes): ahí la Ayuda queda en el menú.
  */
-const SIN_FLOTANTE = ["/pos", "/salon", "/despacho", "/billar", "/reparto", "/buscar", "/academia/cobrar"];
+const SIN_FLOTANTE = ["/pos", "/salon", "/despacho", "/billar", "/reparto", "/buscar", "/academia/cobrar", "/evaluacion"];
 
 export function conBotonFlotante(pathname: string): boolean {
   return !SIN_FLOTANTE.some((r) => pathname === r || pathname.startsWith(`${r}/`));

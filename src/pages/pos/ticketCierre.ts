@@ -1,7 +1,7 @@
 import { aCentavos } from "../../lib/dinero";
 import { NOMBRE_PLATAFORMA } from "../../lib/pedidosPlataforma/tipos";
 import type { CategoriaVendida, ReporteCierreProductos } from "../../types";
-import { redondearCantidad } from "./productosVendidos";
+import { descuentosDePlataforma, ETIQUETA_DESCUENTOS_PLATAFORMA, redondearCantidad } from "./productosVendidos";
 
 /**
  * El «Ticket de cierre» de 58 mm (PLAN-ELGANADERO-16NOV §4.2): lo vendido en
@@ -189,6 +189,10 @@ export function lineasTicketCierre(d: ReporteCierreProductos, o: DatosTicketCier
     const nombre = (NOMBRE_PLATAFORMA[p.plataforma] ?? p.plataforma).toUpperCase();
     lineas.push(recortar(`${nombre} ${cantidadTicket(p.pedidos)} ped`, COLUMNAS_TICKET));
     for (const it of items) lineas.push(renglonDeProducto(it, ancho));
+    // Los renglones van al precio de la app; lo que descontó, al final y sólo si
+    // hubo (22-nov): así el papel suma lo que paga la app. Igual que Android.
+    const descuentos = descuentosDePlataforma(p);
+    if (descuentos > 0) lineas.push(renglon(ETIQUETA_DESCUENTOS_PLATAFORMA, `-${montoTicket(descuentos)}`));
   });
   if (plataformas.length > 0) lineas.push(RAYA);
 

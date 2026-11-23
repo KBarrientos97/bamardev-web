@@ -35,6 +35,7 @@ export default function RutasPaginaPublica() {
         <Route path="/p/:subdominio/pagar/:token" element={<PagarPagina />} />
         <Route path="/p/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />
         <Route path="/p/:subdominio/tienda" element={<PaginaPublica tienda />} />
+        <Route path="/p/:subdominio/pedir" element={<PaginaPublica pedir />} />
         <Route path="/p/:subdominio/pedido/:token" element={<SeguimientoPedido />} />
       </Routes>
     </Suspense>

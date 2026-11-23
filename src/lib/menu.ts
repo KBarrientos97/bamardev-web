@@ -84,9 +84,10 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
   // El del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro lo usa. No se
   // llama "Academia" por lo mismo que Stock: adentro vive el grupo Academia.
   instituto: "Instituto",
-  // Sólo belleza con la feature `agenda`: en los demás rubros no hay ningún
-  // ítem en este bloque y el rótulo no se dibuja. No se llama "Agenda" por lo
-  // mismo que Stock: adentro vive el grupo Agenda.
+  // Sólo belleza con la feature `agenda` y el consultorio de nutrición (la
+  // evaluación de pacientes): en los demás rubros no hay ningún ítem en este
+  // bloque y el rótulo no se dibuja. No se llama "Agenda" por lo mismo que
+  // Stock: adentro vive el grupo Agenda.
   agenda: "Atención",
   vender: "Vender",
   // Las TVs del local y el despacho (extra `tickets_pedido`).
@@ -237,6 +238,18 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Íconos distintos en la barra colapsada (QA VER-06). Los de Omar no
   // cambian: Clientes, Comisiones, Propinas y Promociones no existen para él.
   { a: "/clientes", label: "Clientes", icono: "userHeart", seccion: "clientes", bloque: "agenda" },
+  // Nutrición (22-nov): los pacientes, su evaluación inicial y sus controles.
+  // Es a quién se atiende, como Clientes en el salón. Sólo existe en
+  // NUTRICION con la feature `nutricion` (estricta, ver permisos.ts): a los
+  // demás rubros no les mueve el menú.
+  {
+    a: "/evaluacion",
+    label: "Evaluación",
+    titulo: "Evaluación de pacientes",
+    icono: "evaluacion",
+    seccion: "nutricion",
+    bloque: "agenda",
+  },
   // Educación (PLAN-ACADEMIAS §4): lo del día con el alumno, en Atención.
   // Sólo existen con la feature `academia` (estricta, ver permisos.ts): a los
   // demás rubros no les mueven el menú.
@@ -835,6 +848,10 @@ const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/tutoriales\/?$/, "Tutoriales"],
   // Lo del cajero (18-nov): desde "Más opciones" o desde la cabecera del POS.
   [/^\/mi-punto-de-venta\/?$/, "Mi punto de venta"],
+  // La evaluación de pacientes (22-nov): se llega desde la lista.
+  [/^\/evaluacion\/nuevo\/?$/, "Nuevo paciente"],
+  [/^\/evaluacion\/\d+\/editar\/?$/, "Editar evaluación"],
+  [/^\/evaluacion\/\d+\/?$/, "Paciente"],
 ];
 
 /** Título de la barra móvil. */

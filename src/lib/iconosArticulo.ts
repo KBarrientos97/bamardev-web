@@ -75,6 +75,8 @@ export const CATEGORIA_DEL_RUBRO: Record<Rubro, ClaveCategoriaIcono> = {
   BILLAR: "licoreria",
   ACADEMIA: "educacion",
   LICORERIA: "licoreria",
+  // Lo que vende además de la consulta son suplementos: frascos y cápsulas.
+  NUTRICION: "farmacia",
 };
 
 /** La sección con la que abre el selector; sin rubro conocido, la primera. */

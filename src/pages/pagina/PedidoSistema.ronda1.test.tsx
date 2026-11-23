@@ -99,7 +99,14 @@ async function abrirPedido() {
   await screen.findByRole("dialog", { name: "Tu pedido" });
 }
 
-const escribir = (etiqueta: string, valor: string) => fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+/** Dirección, referencia y nota van plegadas (modo pedir, 20-nov): se abren antes de escribirlas. */
+const PLEGADOS = new Set(["Dirección", "Referencia", "Nota para el negocio"]);
+const escribir = (etiqueta: string, valor: string) => {
+  if (PLEGADOS.has(etiqueta) && !screen.queryByLabelText(etiqueta)) {
+    fireEvent.click(screen.getByRole("button", { name: /^Agregar (dirección, referencia o nota|una nota)$/ }));
+  }
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+};
 
 /** Cloudflare de juguete: guarda las opciones de cada widget para poder dispararle los avisos. */
 function turnstileDeJuguete() {
@@ -269,12 +276,13 @@ describe("N2: un local sin caja abierta no «está cerrado»", () => {
     await montar();
     await abrirPedido();
     await screen.findByRole("button", { name: "Marcar mi casa" });
-    expect(screen.getByText("¿Cómo pagás? Al recibir")).toBeInTheDocument();
+    // Cada forma de pago dice cuándo se paga (20-nov: tarjetas como en las apps de delivery).
+    expect(screen.getByText("Pagás al recibir el pedido")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
-    expect(screen.getByText("¿Cómo pagás? Al retirar")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("radio", { name: "QR" }));
-    expect(screen.getByText(/cuando lo retires/)).toBeInTheDocument();
-    expect(screen.queryByText(/cuando recibas/)).not.toBeInTheDocument();
+    expect(screen.getByText("Pagás al retirarlo en el local")).toBeInTheDocument();
+    expect(screen.queryByText(/al recibir/)).not.toBeInTheDocument();
+    // Sin QR para pagar antes en el local (PLAN-PEDIDOS-QR), sólo efectivo.
+    expect(screen.queryByRole("radio", { name: "QR" })).not.toBeInTheDocument();
   });
 });
 

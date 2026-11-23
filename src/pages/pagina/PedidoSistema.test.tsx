@@ -104,7 +104,14 @@ async function abrirPedido() {
   await screen.findByRole("dialog", { name: "Tu pedido" });
 }
 
-const escribir = (etiqueta: string, valor: string) => fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+/** Dirección, referencia y nota van plegadas (modo pedir, 20-nov): se abren antes de escribirlas. */
+const PLEGADOS = new Set(["Dirección", "Referencia", "Nota para el negocio"]);
+const escribir = (etiqueta: string, valor: string) => {
+  if (PLEGADOS.has(etiqueta) && !screen.queryByLabelText(etiqueta)) {
+    fireEvent.click(screen.getByRole("button", { name: /^Agregar (dirección, referencia o nota|una nota)$/ }));
+  }
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+};
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -172,6 +179,7 @@ describe("el carrito con pedidos en el sistema", () => {
     escribir("Dirección", "Calle Los Tajibos 23");
     escribir("Referencia", "Portón negro");
     escribir("Nota para el negocio", "Sin cebolla");
+    fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
     fireEvent.click(screen.getByRole("button", { name: "Bs 100" }));
     // El envío estimado ya está a la vista: ~2,9 km por calles de Las Brisas = Bs 9.
     expect(screen.getByText("≈ Bs 9")).toBeInTheDocument();
@@ -228,7 +236,75 @@ describe("el carrito con pedidos en el sistema", () => {
       await montar();
       await abrirPedido();
       await screen.findByRole("button", { name: "Marcar mi casa" });
+      fireEvent.click(screen.getByRole("button", { name: "Agregar dirección, referencia o nota" }));
       expect(screen.getByText("Dirección (opcional)")).toBeInTheDocument();
+    });
+
+    it("con delivery, «Sale desde» aparece recién con el pin (modo pedir, 20-nov)", async () => {
+      servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      expect(await screen.findByText("Sale desde")).toBeInTheDocument();
+    });
+
+    it("con delivery y sin pin no lista las sucursales", async () => {
+      servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
+      await montar();
+      await abrirPedido();
+      await screen.findByRole("button", { name: "Marcar mi casa" });
+      expect(screen.queryByText("Sale desde")).not.toBeInTheDocument();
+    });
+
+    it("«¿Con cuánto pagás?» empieza plegado: en efectivo va justo salvo que pida cambio (20-nov)", async () => {
+      const srv = servidor();
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      expect(screen.queryByText("¿Con cuánto pagás?")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Justo" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
+      expect(screen.getByText("¿Con cuánto pagás?")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Justo" })).toHaveAttribute("aria-pressed", "true");
+      // Con «Justo», el pedido sale sin pagaCon.
+      fireEvent.click(screen.getByRole("button", { name: "Justo" }));
+      escribir("Tu nombre", "Lucía");
+      escribir("Tu WhatsApp", "71234567");
+      fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+      await screen.findByText("Seguimiento del pedido");
+      expect(JSON.parse(String(srv.posteos()[0].init?.body))).not.toHaveProperty("pagaCon");
+    });
+
+    it("con QR para pagar antes en el local, ofrece QR y manda pagarAntes (PLAN-PEDIDOS-QR)", async () => {
+      const srv = servidor({ info: { ...INFO, sucursales: [{ ...BRISAS, pagoAntes: "AUTOMATICO" }] } });
+      await montar();
+      await abrirPedido();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      fireEvent.click(screen.getByRole("radio", { name: "QR" }));
+      expect(screen.getByText("Pagás los productos ahora con QR; el envío, al recibir")).toBeInTheDocument();
+      expect(screen.getByText(/te mostramos el QR para pagar/)).toBeInTheDocument();
+      // Con QR no se pregunta por el cambio.
+      expect(screen.queryByRole("button", { name: "¿Necesitás cambio?" })).not.toBeInTheDocument();
+      escribir("Tu nombre", "Lucía");
+      escribir("Tu WhatsApp", "71234567");
+      fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
+      await screen.findByText("Seguimiento del pedido");
+      expect(JSON.parse(String(srv.posteos()[0].init?.body))).toMatchObject({ formaPago: "QR", pagarAntes: true });
+    });
+
+    // Modo pedir (20-nov): a la vista sólo lo obligatorio; lo opcional, plegado.
+    it("dirección, referencia y nota empiezan plegadas", async () => {
+      servidor();
+      await montar();
+      await abrirPedido();
+      await screen.findByRole("button", { name: "Marcar mi casa" });
+      expect(screen.queryByLabelText("Dirección")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Referencia")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Nota para el negocio")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Agregar dirección, referencia o nota" }));
+      expect(screen.getByLabelText("Dirección")).toBeInTheDocument();
+      expect(screen.getByLabelText("Referencia")).toBeInTheDocument();
+      expect(screen.getByLabelText("Nota para el negocio")).toBeInTheDocument();
     });
 
     it.each([
@@ -457,6 +533,7 @@ describe("el carrito con pedidos en el sistema", () => {
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
     // Total 59 (50 + 9 de envío): el atajo de Bs 100 alcanza.
+    fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
     fireEvent.click(screen.getByRole("button", { name: "Bs 100" }));
     expect(screen.getByRole("button", { name: "Bs 100" })).toHaveAttribute("aria-pressed", "true");
     // Dos más: 150 + 9 = 159. El atajo de 100 ya no se ofrece.

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DialogoPedidoPlataforma, { type LineaDelPedido } from "./DialogoPedidoPlataforma";
 
@@ -8,7 +8,9 @@ import DialogoPedidoPlataforma, { type LineaDelPedido } from "./DialogoPedidoPla
  * se cobra, y qué pasa cuando el servidor dice que no. Desde el 19-nov, además,
  * el precio de cada producto EN LA APP, el descuento y las observaciones
  * (CONTRATO-PRECIO-PLATAFORMA). Desde el 20-nov el precio de la app se escribe
- * a mano en cada pedido: el campo abre vacío y, vacío, vale el del local.
+ * a mano en cada pedido: el campo abre vacío y, vacío, vale el del local. Desde
+ * el 22-nov el renglón ya no muestra su monto (con el Total alcanza) y «Mismo
+ * precio» llena todos los campos con el del local.
  */
 
 const lineas: LineaDelPedido[] = [
@@ -45,9 +47,9 @@ describe("DialogoPedidoPlataforma", () => {
     expect(screen.getByRole("dialog", { name: "Pedido de Yango" })).toBeInTheDocument();
     expect(screen.getByText("Arroz con leche L")).toBeInTheDocument();
     expect(screen.getByText("Gaseosa")).toBeInTheDocument();
-    // 2 × Bs 35 y el total del pedido.
-    expect(screen.getByText(/Bs.70,00/)).toBeInTheDocument();
+    // El total del pedido, sin el monto de cada renglón (2 × Bs 35 no se escribe).
     expect(screen.getAllByText(/Bs.80,00/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Bs.70,00/)).not.toBeInTheDocument();
     expect(screen.getByText("Queda en el reporte de Yango.")).toBeInTheDocument();
     expect(screen.getByLabelText("N° de pedido de Yango (opcional)")).toBeInTheDocument();
   });
@@ -170,10 +172,11 @@ describe("el precio de la app (escrito a mano, 20-nov), el descuento y las obser
       expect(precio(nombre)).toHaveValue("");
       expect(precio(nombre)).not.toHaveAttribute("placeholder");
     }
-    // 3 × 18 = 54 · (18 + 3) × 1 = 21 · total 75: lo mismo que dice el carrito.
-    expect(screen.getByText(/Bs.54,00/)).toBeInTheDocument();
-    expect(screen.getByText(/Bs.21,00/)).toBeInTheDocument();
+    // 3 × 18 + (18 + 3) × 1 = 75: lo mismo que dice el carrito. Los montos de
+    // cada renglón (54 y 21) no se muestran: confundían con el precio (22-nov).
     expect(total()).toMatch(/Bs.75,00/);
+    expect(screen.queryByText(/Bs.54,00/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bs.21,00/)).not.toBeInTheDocument();
     // «En el local» va siempre, en cada renglón; «c/u» sólo con cantidad distinta de 1.
     expect(screen.getAllByText(/En el local: Bs.18,00/)).toHaveLength(2);
     expect(screen.getAllByText("c/u")).toHaveLength(1);
@@ -181,17 +184,16 @@ describe("el precio de la app (escrito a mano, 20-nov), el descuento y las obser
     expect(screen.queryByText("Subtotal")).not.toBeInTheDocument();
   });
 
-  it("escribir el precio cambia el renglón y el total; borrarlo vuelve al del local", () => {
+  it("escribir el precio cambia el total; borrarlo vuelve al del local", () => {
     montar({ plataforma: "PEDIDOS_YA", lineas: [BRASA, CUARTO] });
     fireEvent.change(precio("Brasa económico"), { target: { value: "21" } });
-    // 3 × 21 = 63 · total 63 + 21 = 84. El precio del local sigue a la vista.
-    expect(screen.getByText(/Bs.63,00/)).toBeInTheDocument();
+    // 3 × 21 + 21 = 84. El precio del local sigue a la vista y el renglón no
+    // dice su monto (63).
     expect(total()).toMatch(/Bs.84,00/);
+    expect(screen.queryByText(/Bs.63,00/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/En el local: Bs.18,00/)).toHaveLength(2);
     expect(screen.getByRole("dialog", { name: "Pedido de PedidosYa" })).toHaveTextContent(/2 productos · Bs.84,00/);
     fireEvent.change(precio("Brasa económico"), { target: { value: "" } });
-    expect(screen.getByText(/Bs.54,00/)).toBeInTheDocument();
-    expect(screen.queryByText(/Bs.63,00/)).not.toBeInTheDocument();
     expect(total()).toMatch(/Bs.75,00/);
   });
 
@@ -267,5 +269,84 @@ describe("el precio de la app (escrito a mano, 20-nov), el descuento y las obser
     fireEvent.change(precio("Brasa económico"), { target: { value: "0" } });
     await registrar();
     expect(confirmado(a.onRegistrar)).toMatchObject({ precios: [{ precioApp: 0 }], total: 0 });
+  });
+
+  describe("«Mismo precio» (22-nov): los negocios con los precios de la app iguales a los del local", () => {
+    // Uno con centavos, para ver que queda escrito como lo tipearía el cajero.
+    const REFRESCO: LineaDelPedido = { clave: "14", productoId: 14, nombre: "Refresco de durazno", cantidad: 1, precioLocal: 12.5 };
+    const TRES = [BRASA, CUARTO, REFRESCO];
+    // Se llama como se lee: quien lo pide por voz dice «Mismo precio».
+    const boton = () => screen.getByRole("button", { name: "Mismo precio" });
+
+    it("está a la vista, dice «Mismo precio» y tocarlo no registra ni cierra", () => {
+      const a = montar({ plataforma: "PEDIDOS_YA", lineas: TRES });
+      expect(boton()).toHaveTextContent("Mismo precio");
+      expect(boton()).toHaveAttribute("title", "Poner en todos el precio del local");
+      expect(boton()).toHaveAttribute("type", "button");
+      fireEvent.click(boton());
+      expect(a.onRegistrar).not.toHaveBeenCalled();
+      expect(a.onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog", { name: "Pedido de PedidosYa" })).toBeInTheDocument();
+    });
+
+    it("llena todos los campos con el precio del local, sin tocar el total", () => {
+      montar({ plataforma: "PEDIDOS_YA", lineas: TRES });
+      // 3 × 18 + (18 + 3) + 12,50 = 87,50 con los campos vacíos.
+      expect(total()).toMatch(/Bs.87,50/);
+      fireEvent.click(boton());
+      expect(precio("Brasa económico")).toHaveValue("18");
+      expect(precio("Cuarto pierna broaster")).toHaveValue("18");
+      expect(precio("Refresco de durazno")).toHaveValue("12.50");
+      expect(total()).toMatch(/Bs.87,50/);
+    });
+
+    it("pisa un precio ya escrito", () => {
+      montar({ plataforma: "PEDIDOS_YA", lineas: TRES });
+      fireEvent.change(precio("Brasa económico"), { target: { value: "21" } });
+      expect(total()).toMatch(/Bs.96,50/);
+      fireEvent.click(boton());
+      expect(precio("Brasa económico")).toHaveValue("18");
+      expect(total()).toMatch(/Bs.87,50/);
+    });
+
+    it("registrado así, lleva precioApp en todos los renglones y el mismo total que dejándolos vacíos", async () => {
+      // El mismo pedido, con el mismo descuento, dejando los campos vacíos.
+      const vacio = montar({ plataforma: "PEDIDOS_YA", lineas: TRES });
+      fireEvent.change(screen.getByLabelText("Descuento (Bs)"), { target: { value: "4" } });
+      await registrar();
+      const sinEscribir = confirmado(vacio.onRegistrar);
+      for (const p of sinEscribir.precios) expect(p).not.toHaveProperty("precioApp");
+      cleanup();
+
+      const a = montar({ plataforma: "PEDIDOS_YA", lineas: TRES });
+      fireEvent.click(boton());
+      fireEvent.change(screen.getByLabelText("Descuento (Bs)"), { target: { value: "4" } });
+      await registrar();
+      expect(confirmado(a.onRegistrar)).toEqual({
+        codigoExterno: undefined,
+        precios: [
+          { clave: "12", productoId: 12, precioLocal: 18, precioApp: 18 },
+          { clave: "13", productoId: 13, precioLocal: 18, precioApp: 18 },
+          { clave: "14", productoId: 14, precioLocal: 12.5, precioApp: 12.5 },
+        ],
+        descuento: 4,
+        observaciones: undefined,
+        subtotal: 87.5,
+        total: 83.5,
+      });
+      expect(confirmado(a.onRegistrar).subtotal).toBe(sinEscribir.subtotal);
+      expect(confirmado(a.onRegistrar).total).toBe(sinEscribir.total);
+    });
+
+    it("después se corrige a mano el que haga falta y el total cambia", async () => {
+      const a = montar({ plataforma: "PEDIDOS_YA", lineas: TRES });
+      fireEvent.click(boton());
+      fireEvent.change(precio("Cuarto pierna broaster"), { target: { value: "20" } });
+      // 3 × 18 + (20 + 3) + 12,50 = 89,50.
+      expect(total()).toMatch(/Bs.89,50/);
+      await registrar();
+      expect(confirmado(a.onRegistrar).precios.map((p: { precioApp?: number }) => p.precioApp)).toEqual([18, 20, 12.5]);
+      expect(confirmado(a.onRegistrar).total).toBe(89.5);
+    });
   });
 });

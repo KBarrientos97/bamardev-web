@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import { Cargador, Chip, FilaLista, KpiR, Lista, Nota, Segmentos } from "../ui";
 import DialogoAnularPedido from "./DialogoAnularPedido";
 import {
+  descuentosDelReporte,
   diaCorto,
   resumenDeLineas,
   textoAnulado,
@@ -205,6 +206,16 @@ export default function PedidosPlataforma() {
                       ajustar
                     />
                   ))}
+                  {/* Los productos van al precio de la app; lo que descontó cierra la
+                      lista (22-nov), como en «Productos vendidos»: productos − esto = Total. */}
+                  {descuentosDelReporte(r) > 0 && (
+                    <FilaLista
+                      titulo={<span className="font-semibold text-texto-2">Descuentos</span>}
+                      linea="Lo que descontó la app: el Total ya lo resta"
+                      valor={`−${fmtMoney(descuentosDelReporte(r))}`}
+                      ajustar
+                    />
+                  )}
                 </Lista>
               </Bloque>
             )}
@@ -282,10 +293,13 @@ function FilaPedido({
   // nota del cajero. El valor de la fila es el total neto, el que paga la app.
   const descuento = textoDescuentoDelPedido(p);
   const obs = textoObservacionesDelPedido(p);
+  // En un anulado van tachados como lo que llevaba (22-nov: igual que en
+  // Supervisión y en el resumen impreso); el motivo de la anulación, no.
+  const tachar = anulado ? " line-through" : "";
   const extras = (
     <>
-      {descuento && <span className="block">{descuento}</span>}
-      {obs && <span className="block">{obs}</span>}
+      {descuento && <span className={`block${tachar}`}>{descuento}</span>}
+      {obs && <span className={`block${tachar}`}>{obs}</span>}
     </>
   );
   return (
