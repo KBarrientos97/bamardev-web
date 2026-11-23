@@ -650,6 +650,16 @@ const paths: Record<string, ReactNode> = {
       <path d="M7.5 14h2.2l1.4-3 2 6 1.4-3h2" />
     </>
   ),
+  /** Seguimiento del tratamiento (nutrición): la hoja de cada semana, con el peso que baja. */
+  seguimiento: (
+    <>
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <path d="M16 2v4" />
+      <path d="M8 2v4" />
+      <path d="M3 10h18" />
+      <path d="m7 13.5 3.5 2.5 3-1.5 3.5 3" />
+    </>
+  ),
 };
 
 export type NombreIcono = keyof typeof paths | (string & {});

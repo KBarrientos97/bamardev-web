@@ -1,0 +1,218 @@
+import { describe, expect, it } from "vitest";
+import {
+  casilleroAmarillo,
+  delCatalogo,
+  diasEntre,
+  enUnidad,
+  equivalenciasDe,
+  esSemanaDePago,
+  flechaKg,
+  fmtDosis,
+  haceDias,
+  mesDeLaSemana,
+  paraEscribir,
+  pasoSiguiente,
+  pasosDe,
+  textoCambioPeso,
+  textoDosis,
+  textoEquivalencias,
+  textoFaltaPago,
+  textoPaso,
+  textoPendiente,
+  textoSubir,
+  textoUltimoPago,
+  tituloMes,
+} from "./formato";
+import type { MesTratamiento, Paso } from "./tipos";
+import { CATALOGO_SEGUIMIENTO } from "../../../test/seguimientoFixtures";
+
+/**
+ * Cómo se leen los números del seguimiento (CONTRATO-nutricion-seguimiento-23nov
+ * §4.2 «Cómo se muestra una dosis», §4.1 y §4.1 bis). La tabla del vial de
+ * 15 mg en 0,5 ml es la del §2: 30 mg/ml, 1 UI = 0,3 mg.
+ */
+
+const NB = " ";
+const sinNb = (s: string) => s.replace(/ /g, " ");
+
+/** Los escalones de la tirzepatida con el vial de 15 mg en 0,5 ml, como los manda el servidor. */
+const PASOS_15: Paso[] = [
+  { mg: 2.5, ui: 8.3, ml: 0.083 },
+  { mg: 5, ui: 16.7, ml: 0.167 },
+  { mg: 7.5, ui: 25, ml: 0.25 },
+  { mg: 10, ui: 33.3, ml: 0.333 },
+  { mg: 12.5, ui: 41.7, ml: 0.417 },
+  { mg: 15, ui: 50, ml: 0.5 },
+];
+
+describe("una dosis, en toda la sección (§4.2)", () => {
+  it("primero lo anotado en su unidad: las UI en entero, los mg sin ceros de más, los ml con 2", () => {
+    expect(sinNb(fmtDosis(17, "UI"))).toBe("17 UI");
+    expect(sinNb(fmtDosis(5.1, "mg"))).toBe("5,1 mg");
+    expect(sinNb(fmtDosis(2.5, "mg"))).toBe("2,5 mg");
+    expect(sinNb(fmtDosis(10, "mg"))).toBe("10 mg");
+    expect(sinNb(fmtDosis(0.17, "ml"))).toBe("0,17 ml");
+    expect(sinNb(fmtDosis(0.5, "ml"))).toBe("0,50 ml");
+  });
+
+  it("las UI con «≈» delante cuando hubo que redondear", () => {
+    expect(sinNb(fmtDosis(8.3, "UI"))).toBe("≈ 8 UI");
+    expect(sinNb(fmtDosis(16.7, "UI"))).toBe("≈ 17 UI");
+    expect(sinNb(fmtDosis(25, "UI"))).toBe("25 UI");
+  });
+
+  it("al lado, en gris, las equivalencias que haya, sin la unidad anotada", () => {
+    const d = { dosis: 17, unidadDosis: "UI" as const, dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 };
+    expect(sinNb(textoDosis(d).anotado)).toBe("17 UI");
+    expect(sinNb(textoDosis(d).equivalencias)).toBe("≈ 5,1 mg · 0,17 ml");
+    expect(sinNb(textoEquivalencias({ dosisMg: 2.5, dosisUi: 8.3, dosisMl: 0.083 }, "mg"))).toBe("≈ 8 UI · 0,08 ml");
+    // UI sin presentación: sólo los ml; los mg no se pueden saber.
+    expect(sinNb(textoEquivalencias({ dosisMg: null, dosisUi: 17, dosisMl: 0.17 }, "UI"))).toBe("≈ 0,17 ml");
+    expect(textoEquivalencias({ dosisMg: null, dosisUi: null, dosisMl: null }, "mg")).toBe("");
+  });
+
+  it("el número no se separa de su unidad (espacio duro)", () => {
+    expect(fmtDosis(17, "UI")).toBe(`17${NB}UI`);
+  });
+});
+
+describe("las equivalencias mientras se escribe (la cuenta del §2, sólo para mostrar)", () => {
+  it("la tabla del vial de 15 mg en 0,5 ml (30 mg/ml)", () => {
+    const tabla: [number, number, number][] = [
+      [2.5, 8.3, 0.083],
+      [5, 16.7, 0.167],
+      [7.5, 25, 0.25],
+      [10, 33.3, 0.333],
+      [12.5, 41.7, 0.417],
+      [15, 50, 0.5],
+    ];
+    for (const [mg, ui, ml] of tabla) expect(equivalenciasDe(mg, "mg", 30, 100), String(mg)).toEqual({ dosisMg: mg, dosisUi: ui, dosisMl: ml });
+    expect(equivalenciasDe(17, "UI", 30, 100)).toEqual({ dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 });
+    expect(equivalenciasDe(0.25, "ml", 30, 100)).toEqual({ dosisMg: 7.5, dosisUi: 25, dosisMl: 0.25 });
+  });
+
+  it("sin presentación: de UI a ml sí; los mg quedan sin saber", () => {
+    expect(equivalenciasDe(17, "UI", null, 100)).toEqual({ dosisMg: null, dosisUi: 17, dosisMl: 0.17 });
+    expect(equivalenciasDe(2.5, "mg", null, 100)).toEqual({ dosisMg: 2.5, dosisUi: null, dosisMl: null });
+  });
+
+  it("los escalones del catálogo, para iniciar (todavía sin tratamiento)", () => {
+    expect(pasosDe([2.5, 5], 30, 100)).toEqual(PASOS_15.slice(0, 2));
+    expect(pasosDe([2.5], null, 100)).toEqual([{ mg: 2.5, ui: null, ml: null }]);
+  });
+});
+
+describe("los botones de un toque de la dosis (§4.2)", () => {
+  it("escriben en la unidad del tratamiento: UI en entero, ml con 2 decimales, mg tal cual", () => {
+    expect(paraEscribir(8.3, "UI")).toBe("8");
+    expect(paraEscribir(16.7, "UI")).toBe("17");
+    expect(paraEscribir(0.083, "ml")).toBe("0,08");
+    expect(paraEscribir(0.5, "ml")).toBe("0,5");
+    expect(paraEscribir(2.5, "mg")).toBe("2,5");
+    expect(paraEscribir(12.5, "mg")).toBe("12,5");
+  });
+
+  it("cada escalón con sus dos datos: «8 UI · 2,5 mg»; con la unidad en mg, «2,5 mg · ≈ 8 UI»", () => {
+    expect(PASOS_15.slice(0, 3).map((p) => sinNb(textoPaso(p, "UI")))).toEqual(["8 UI · 2,5 mg", "17 UI · 5 mg", "25 UI · 7,5 mg"]);
+    expect(sinNb(textoPaso(PASOS_15[0], "mg"))).toBe("2,5 mg · ≈ 8 UI");
+    expect(sinNb(textoPaso({ mg: 2.5, ui: null, ml: null }, "mg"))).toBe("2,5 mg");
+    expect(sinNb(textoPaso(PASOS_15[2], "ml"))).toBe("0,25 ml · 7,5 mg");
+  });
+
+  it("«Subir»: el escalón que sigue al de la dosis de antes, comparando por mg", () => {
+    // 17 UI = 5,1 mg está en el escalón de 5 mg (17 UI): sube a 7,5 mg = 25 UI.
+    const antes = { dosis: 17, unidadDosis: "UI" as const, dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 };
+    const s = pasoSiguiente(PASOS_15, antes, "UI");
+    expect(s?.mg).toBe(7.5);
+    expect(sinNb(textoSubir(s!, "UI"))).toBe("Subir: 25 UI (7,5 mg)");
+    // 8 UI (2,4 mg) es el primer escalón (8,3 UI redondeado), no uno «entre» escalones: sube a 5 mg.
+    expect(pasoSiguiente(PASOS_15, { dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, "UI")?.mg).toBe(5);
+    // Una dosis entre dos escalones (6 mg): el primero con más mg.
+    expect(pasoSiguiente(PASOS_15, { dosis: 6, unidadDosis: "mg", dosisMg: 6, dosisUi: 20, dosisMl: 0.2 }, "mg")?.mg).toBe(7.5);
+    expect(sinNb(textoSubir(PASOS_15[2], "mg"))).toBe("Subir: 7,5 mg (≈ 25 UI)");
+  });
+
+  it("sin dosis de antes, en el último escalón o sin poder pasar a mg: no hay «Subir»", () => {
+    expect(pasoSiguiente(PASOS_15, null, "UI")).toBeNull();
+    expect(pasoSiguiente(PASOS_15, { dosis: 50, unidadDosis: "UI", dosisMg: 15, dosisUi: 50, dosisMl: 0.5 }, "UI")).toBeNull();
+    expect(pasoSiguiente([], { dosis: 17, unidadDosis: "UI", dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 }, "UI")).toBeNull();
+    expect(pasoSiguiente(PASOS_15, { dosis: 17, unidadDosis: "UI", dosisMg: null, dosisUi: 17, dosisMl: 0.17 }, "mg")).toBeNull();
+  });
+
+  it("«Igual que la anterior» usa la dosis de antes en la unidad de hoy (si la unidad cambió)", () => {
+    const antes = { dosis: 5, unidadDosis: "mg" as const, dosisMg: 5, dosisUi: 16.7, dosisMl: 0.167 };
+    expect(enUnidad(antes, "mg")).toBe(5);
+    expect(enUnidad(antes, "UI")).toBe(16.7);
+    expect(enUnidad({ dosis: 17, unidadDosis: "UI", dosisMg: null, dosisUi: 17, dosisMl: 0.17 }, "mg")).toBeNull();
+  });
+});
+
+describe("los kilos", () => {
+  it("bajó con «↓», subió con «↑», igual con «=»", () => {
+    expect(sinNb(flechaKg(7.2)!.texto)).toBe("↓ 7,2");
+    expect(flechaKg(-0.8)).toEqual({ texto: `↑${NB}0,8`, subio: true, igual: false });
+    expect(flechaKg(0)!.igual).toBe(true);
+    expect(flechaKg(null)).toBeNull();
+  });
+
+  it("lo que cambia con el peso que se escribe: «↓ 1,2 esta semana · ↓ 7,2 en total»", () => {
+    expect(sinNb(textoCambioPeso(121.8, 123, 129))).toBe("↓ 1,2 esta semana · ↓ 7,2 en total");
+    expect(sinNb(textoCambioPeso(124.7, 123.9, 129))).toBe("↑ 0,8 esta semana · ↓ 4,3 en total");
+    expect(textoCambioPeso(123, null, null)).toBe("");
+    expect(textoCambioPeso(null, 123, 129)).toBe("");
+  });
+});
+
+describe("las fechas", () => {
+  it("los días desde la última visita: «hoy», «ayer», «hace 7 días»", () => {
+    expect(haceDias("2026-11-23", "2026-11-23")).toBe("hoy");
+    expect(haceDias("2026-11-22", "2026-11-23")).toBe("ayer");
+    expect(haceDias("2026-11-16", "2026-11-23")).toBe(`hace${NB}7${NB}días`);
+    // Cruza el fin de mes y el cambio de año.
+    expect(diasEntre("2026-12-28", "2027-01-04")).toBe(7);
+    expect(haceDias(null, "2026-11-23")).toBe("");
+  });
+});
+
+describe("los meses y los pagos (sin la cuenta: la hace el servidor)", () => {
+  const meses: MesTratamiento[] = [
+    { mes: 1, desdeSemana: 0, hastaSemana: 4, semanaDePago: 0, debe: false, pagado: { medicamento: 480, control: 150, otro: 0, total: 630 } },
+    { mes: 2, desdeSemana: 5, hastaSemana: 9, semanaDePago: 5, debe: true, pagado: { medicamento: 0, control: 0, otro: 0, total: 0 } },
+  ];
+
+  it("«Mes 1 · Inicial a semana 4», «Mes 2 · Semanas 5 a 9»", () => {
+    expect(tituloMes(meses[0])).toBe("Mes 1 · Inicial a semana 4");
+    expect(tituloMes(meses[1])).toBe("Mes 2 · Semanas 5 a 9");
+  });
+
+  it("el casillero amarillo es la semana de pago de su mes, sin el inicial; el mes sale de lo que mandó el servidor", () => {
+    expect(mesDeLaSemana(meses, 7)?.mes).toBe(2);
+    expect(mesDeLaSemana(meses, 12)).toBeNull();
+    expect(esSemanaDePago(meses, 0)).toBe(true);
+    expect(casilleroAmarillo(meses, 0)).toBe(false);
+    expect(casilleroAmarillo(meses, 5)).toBe(true);
+    expect(casilleroAmarillo(meses, 6)).toBe(false);
+    // Con los avisos apagados el servidor no manda semana de pago: nada amarillo.
+    expect(casilleroAmarillo([{ ...meses[1], semanaDePago: null }], 5)).toBe(false);
+  });
+
+  it("lo que falta pagar y el último pago, para leer", () => {
+    const pp = { mes: 2, semana: 5, desde: "2026-12-07" };
+    expect(textoFaltaPago(pp)).toBe("Falta el pago de la semana 5 (desde el 07/12/2026)");
+    expect(textoFaltaPago({ mes: 1, semana: 0, desde: "2026-11-02" })).toBe("Falta el pago inicial");
+    expect(sinNb(textoPendiente(pp, "2026-12-16"))).toBe("Pago de la semana 5 · desde el 07/12/2026 (hace 9 días)");
+    expect(textoPendiente({ mes: 1, semana: 0, desde: "2026-11-02" }, "2026-11-02")).toBe("Pago inicial · desde el 02/11/2026 (hoy)");
+    expect(sinNb(textoUltimoPago({ fecha: "2026-11-02", total: 630 }))).toBe("Último pago: Bs 630 el 02/11/2026");
+    expect(sinNb(textoUltimoPago({ fecha: "2026-11-02", total: 1260 }))).toBe("Último pago: Bs 1.260 el 02/11/2026");
+    expect(textoUltimoPago(null)).toBe("Todavía no pagó nada");
+  });
+});
+
+describe("el catálogo", () => {
+  it("el tratamiento se busca sin distinguir mayúsculas ni tildes", () => {
+    expect(delCatalogo(CATALOGO_SEGUIMIENTO, "tirzepatída")?.nombre).toBe("Tirzepatida");
+    expect(delCatalogo(CATALOGO_SEGUIMIENTO, " RETATRUTIDA ")?.nombre).toBe("Retatrutida");
+    expect(delCatalogo(CATALOGO_SEGUIMIENTO, "Otro")).toBeNull();
+    expect(delCatalogo(CATALOGO_SEGUIMIENTO, "")).toBeNull();
+  });
+});

@@ -13,7 +13,7 @@ import { usePaginado } from "../../lib/paginado";
 import { editaNutricion } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import { EncabezadoPagina, LISTA, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../academia/piezas";
-import { ChipGrado, Tecla } from "./piezas";
+import { BuscadorPacientes, ChipGrado, Tecla } from "./piezas";
 
 /**
  * Evaluación · la lista de pacientes (CONTRATO-nutricion-evaluacion-22nov
@@ -107,7 +107,7 @@ export default function Pacientes() {
     <Pagina>
       <EncabezadoPagina
         titulo={archivados ? "Pacientes archivados" : "Evaluación"}
-        bajada={archivados ? "No salen en la lista; sus evaluaciones siguen guardadas." : "Pacientes y su seguimiento"}
+        bajada={archivados ? "No salen en la lista; sus evaluaciones siguen guardadas." : "Pacientes, su evaluación y sus controles"}
         volver={archivados ? { a: "/evaluacion", texto: "Pacientes" } : undefined}
         acciones={
           edita && !archivados ? (
@@ -120,37 +120,7 @@ export default function Pacientes() {
       />
 
       {/* El buscador grande, con el foco puesto al entrar. */}
-      <label className="relative block">
-        <span className="sr-only">Buscar por carnet o nombre</span>
-        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-texto-4">
-          <Icon name="search" size={20} />
-        </span>
-        <input
-          ref={buscador}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por carnet o nombre…"
-          autoFocus
-          autoComplete="off"
-          spellCheck={false}
-          className="h-14 w-full rounded-2xl border border-borde bg-white pl-12 pr-12 text-base text-texto shadow-sm outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-4 focus:ring-primary-100"
-        />
-        {q ? (
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              buscador.current?.focus();
-            }}
-            aria-label="Limpiar búsqueda"
-            className="absolute inset-y-0 right-2 my-auto flex h-10 w-10 items-center justify-center rounded-xl text-texto-4 hover:bg-muted hover:text-texto-2"
-          >
-            <Icon name="close" size={17} />
-          </button>
-        ) : (
-          <Tecla className="pointer-events-none absolute inset-y-0 right-4 my-auto">/</Tecla>
-        )}
-      </label>
+      <BuscadorPacientes ref={buscador} valor={q} onCambiar={setQ} />
 
       <Tarjeta
         etiqueta={archivados ? "Pacientes archivados" : "Lista de pacientes"}

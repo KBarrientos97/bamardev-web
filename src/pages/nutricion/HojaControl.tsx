@@ -32,9 +32,11 @@ import {
   soloConValor,
   type FormControl,
 } from "../../lib/nutricion/formulario";
+import { pesoAnteriorDeLaSerie } from "../../lib/nutricion/pesos";
+import { diaYMes } from "../../lib/nutricion/seguimiento/formato";
 import type { Catalogo, Control, MedidaConTabla, Paciente } from "../../lib/nutricion/tipos";
 import { TONO } from "../../lib/nutricion/tonos";
-import { AreaTexto, CampoNumero, CampoTexto, ChipGrado, Rotulo, Tecla } from "./piezas";
+import { AreaTexto, CampoNumero, CampoTexto, ChipGrado, Rotulo, SeccionHoja, Tecla } from "./piezas";
 import TablaGrados from "./TablaGrados";
 
 type CampoHoja = Exclude<CampoControl, "imc">;
@@ -102,7 +104,15 @@ export default function HojaControl({
 
   // Lo «anterior» es lo de antes de este control (al corregir) o lo último que hay (al cargar uno nuevo).
   const indice = control ? paciente.controles.findIndex((c) => c.id === control.id) : undefined;
-  const anterior = (campo: CampoControl) => ultimoValor(paciente.controles, campo, indice != null && indice >= 0 ? indice : undefined);
+  // El peso de antes sale de la serie al día (§4.4 del seguimiento): puede ser
+  // el de una semana del seguimiento. Sin la serie, el del control anterior.
+  const pesoDeLaSerie = pesoAnteriorDeLaSerie(paciente.pesos, control);
+  const anterior = (campo: CampoControl): { valor: number; fecha: string; delSeguimiento?: boolean } | null => {
+    if (campo === "pesoKg" && pesoDeLaSerie !== undefined) {
+      return pesoDeLaSerie ? { valor: pesoDeLaSerie.pesoKg, fecha: pesoDeLaSerie.fecha, delSeguimiento: pesoDeLaSerie.origen === "SEGUIMIENTO" } : null;
+    }
+    return ultimoValor(paciente.controles, campo, indice != null && indice >= 0 ? indice : undefined);
+  };
 
   const cambiar = (campo: keyof FormControl, valor: string) => setForm((f) => ({ ...f, [campo]: valor }));
   const elegirGrado = (m: MedidaConTabla, g: string | null) => setForm((f) => ({ ...f, grados: { ...f.grados, [m]: g } }));
@@ -175,8 +185,9 @@ export default function HojaControl({
     const decimales = campo === "pesoKg" ? 2 : campo === "edadCorporal" ? 0 : 1;
     const d = cambio(valorDe(campo, form[campo]), a.valor);
     return (
-      <span title={`El ${fechaLarga(a.fecha)}`}>
+      <span title={`El ${fechaLarga(a.fecha)}${a.delSeguimiento ? ", en el seguimiento" : ""}`}>
         anterior: {fmtNumero(a.valor, decimales)}
+        {a.delSeguimiento && <> · seguimiento {diaYMes(a.fecha)}</>}
         {d != null && <span className="font-semibold text-texto-2"> · {fmtCambio(d, decimales)}</span>}
       </span>
     );
@@ -366,11 +377,4 @@ export default function HojaControl({
 
 const sinCerrar = () => {};
 
-function Seccion({ titulo, children }: { titulo: string; children: ReactNode }) {
-  return (
-    <section className="space-y-3 border-t border-borde-soft pt-4">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">{titulo}</h3>
-      {children}
-    </section>
-  );
-}
+const Seccion = SeccionHoja;

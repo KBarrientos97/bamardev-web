@@ -100,6 +100,24 @@ export interface Paciente {
   actualizadoEn: string;
   /** Por fecha ascendente (después id). */
   controles: Control[];
+  /**
+   * La serie de pesos al día (CONTRATO-nutricion-seguimiento-23nov §4.4): los
+   * de los controles y los de cada semana del seguimiento, por fecha. Una
+   * respuesta sin el seguimiento no la trae, y todo se lee de los controles.
+   */
+  pesos?: PesoDelPaciente[];
+}
+
+/** Un peso de la serie: de un control de la evaluación o de una semana del seguimiento. */
+export interface PesoDelPaciente {
+  fecha: string;
+  pesoKg: number;
+  imc: number | null;
+  imcGrado: string | null;
+  origen: "CONTROL" | "SEGUIMIENTO";
+  controlId: number | null;
+  registroId: number | null;
+  semana: number | null;
 }
 
 /** Un renglón de la lista de pacientes. */
