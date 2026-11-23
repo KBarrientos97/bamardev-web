@@ -5,6 +5,7 @@ import { Campo, Cargando, Confirmar, ErrorMsg, Input, Select } from "../../../co
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { ApiError } from "../../../lib/api";
 import { RUTA_SEDES } from "../../../lib/academia/vista";
+import { tituloMes } from "../../../lib/academia/calendario";
 import type { AjustesAcademia as Ajustes, Carrera } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney } from "../../../lib/format";
@@ -368,6 +369,25 @@ export default function AjustesAcademia() {
           <Campo label={`El atraso del ${p.docente} cuenta desde (min)`}>
             <Input type="number" className="sm:max-w-[140px]" {...numero("toleranciaAtrasoMin", 0, 240)} />
           </Campo>
+          {/* 23-nov (Derick): la fecha tope de cobro. Sólo si el backend ya la conoce. */}
+          {a.diaTopeCobroDocente !== undefined && (
+            <Campo
+              label={`Fecha tope de cobro para pagarle al ${p.docente} (día de cada mes)`}
+              hint={
+                a.diaTopeCobroDocente != null
+                  ? `Lo que un ${p.alumno} no pagó hasta el día ${a.diaTopeCobroDocente} ya no se le paga al ${p.docente}, aunque pague después. ${a.topeCobroDocenteDesde ? `Vale desde ${tituloMes(a.topeCobroDocenteDesde).toLowerCase()}. ` : ""}Vacío = sin fecha tope.`
+                  : `Vacío = sin fecha tope: lo que se cobra tarde se le suma al ${p.docente} como atrasado en la planilla siguiente.`
+              }
+            >
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="Sin tope"
+                className="sm:max-w-[140px]"
+                {...numero("diaTopeCobroDocente", 1, 31, true)}
+              />
+            </Campo>
+          )}
         </div>
       </SeccionAjuste>
 

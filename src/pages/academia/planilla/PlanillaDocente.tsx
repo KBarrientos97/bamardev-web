@@ -459,6 +459,10 @@ export default function PlanillaDocente() {
                         <span className="min-w-0 max-lg:order-1">
                           <span className="block truncate text-sm font-medium text-texto">{l.alumno.nombre}</span>
                           {esAjustes && <span className="block truncate text-[12px] text-texto-3">{textoMotivoAjuste(l)}</span>}
+                          {/* 23-nov (Derick): pagó después de la fecha tope, o no pagó a tiempo: ya no se le paga al docente. */}
+                          {l.fueraDePlazo && (
+                            <span className="block truncate text-[12px] font-semibold text-warning-text">Fuera de plazo · tope {fechaCorta(l.fueraDePlazo)}</span>
+                          )}
                         </span>
                         <span className="hidden truncate text-sm text-texto-2 lg:block">
                           M{l.materia.orden} {l.materia.nombre}
