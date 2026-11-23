@@ -7,6 +7,7 @@ import { normalizarConfigPos, type ConfigPos } from "../../lib/configPos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { SiNo, Tarjeta } from "../tickets/piezas";
+import { TarjetaCierreDelDia } from "./TarjetaCierreDelDia";
 
 /**
  * Configuración › Caja (17-nov): lo que se cuenta al abrir y al cerrar el turno.
@@ -87,6 +88,8 @@ export default function ConfigCaja() {
           </div>
         </Tarjeta>
       )}
+      {/* A qué hora termina el día de los reportes (23-nov): el local que cierra de madrugada. */}
+      <TarjetaCierreDelDia />
     </div>
   );
 }
