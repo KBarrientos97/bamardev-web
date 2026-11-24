@@ -26,7 +26,11 @@ const ICONO_MAS = "M12 5v14M5 12h14";
 const ICONO_MENOS = "M5 12h14";
 const ICONO_TACHO = "M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12";
 const ICONO_LUPA = "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Zm5-2 4 4";
-const ICONO_INFO = "M12 11v6M12 7.5v.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z";
+/**
+ * El local con su toldo: lleva a la página del negocio. La «i» de información
+ * no decía adónde iba (pedido del dueño, 24-nov).
+ */
+const ICONO_LOCAL = "M3 9l1.5-5h15L21 9M3 9a3 3 0 0 0 6 0a3 3 0 0 0 6 0a3 3 0 0 0 6 0M5 11.5V20h14v-8.5M10 20v-5h4v5";
 const ICONO_CERRAR = "M6 6l12 12M18 6 6 18";
 
 /** El grupo de los ítems sin categoría, al final, cuando los demás sí tienen. */
@@ -230,7 +234,7 @@ export default function PedirMovil({
             className="pd-toque"
             style={{ width: 40, height: 40, flex: "none", borderRadius: 999, background: "rgba(255,255,255,0.16)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
           >
-            <Trazo d={ICONO_INFO} color="#ffffff" size={20} grosor={2.2} />
+            <Trazo d={ICONO_LOCAL} color="#ffffff" size={20} grosor={2} />
           </Link>
         </header>
         <div style={{ padding: "10px 16px 8px" }}>

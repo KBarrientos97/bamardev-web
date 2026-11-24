@@ -155,7 +155,9 @@ export default function CartaSitio({
         ))}
       </ul>
     ) : plantilla === "GASTRONOMIA" && escritorio ? (
-      <ul style={grilla(tienda ? 2 : 3, 18)}>
+      // 3 por fila también en la tienda y en el modo pedir, con la barra de
+      // categorías al costado: a 2 las fotos quedaban enormes (dueño, 24-nov).
+      <ul style={grilla(3, tienda ? 16 : 18)}>
         {productos.map((it) => (
           <TarjetaFoto key={it.id} it={it} onAbrir={() => abrir(it)} {...base} />
         ))}

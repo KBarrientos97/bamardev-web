@@ -403,7 +403,8 @@ describe("el carrito con pedidos en el sistema", () => {
   it("con todas las sucursales cerradas avisa en la franja de la página", async () => {
     servidor({ info: { ...INFO, sucursales: [{ ...BRISAS, abierta: false }] } });
     await montar();
-    expect(await screen.findByText(/Ahora no estamos recibiendo pedidos por acá/)).toBeInTheDocument();
+    // Sin horario cargado, el texto general (con horario lo prueba lib/pedidosWeb/aviso.test.ts).
+    expect(await screen.findByText("Por ahora no estamos tomando pedidos. Volvé en un rato.")).toBeInTheDocument();
   });
 
   it("reintentar el MISMO pedido conserva la clave; si cambió el carrito, sale con otra (PW-10)", async () => {

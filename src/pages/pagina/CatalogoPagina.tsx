@@ -136,6 +136,14 @@ function Icono({ d, color, size = 20 }: { d: string; color: string; size?: numbe
   );
 }
 
+/**
+ * El ícono y el texto del botón del visor en una fila, centrados. Va primero
+ * para que el estilo de cada página pueda pisarlo, pero no depende de que lo
+ * traiga: el del modo pedir no lo traía, y como el CSS base pone los `svg`
+ * como bloque, el «+» de «Agregar al pedido» quedaba solo en un renglón.
+ */
+const filaBoton: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center", gap: 10 };
+
 /** "Agregar al pedido" con un "Agregado ✓" de un segundo y medio: se nota que sumó. */
 function BotonAgregar({
   alAgregar,
@@ -1094,14 +1102,14 @@ export function VisorCatalogo({
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{item.descripcion}</p>
         )}
         {accion?.alAgregar && accion.agotado?.(item) ? (
-          <p role="status" style={{ ...estiloBoton, marginTop: 10, minHeight: 52, background: "#F3F4F6", color: "#6B7280", border: "none", cursor: "default" }}>
+          <p role="status" style={{ ...filaBoton, ...estiloBoton, marginTop: 10, minHeight: 52, background: "#F3F4F6", color: "#6B7280", border: "none", cursor: "default" }}>
             Agotado en este local
           </p>
         ) : accion?.alAgregar ? (
           <BotonAgregar
             key={item.id}
             alAgregar={() => accion.alAgregar!(item)}
-            estilo={{ ...estiloBoton, marginTop: 10, minHeight: 52, border: "none", cursor: "pointer" }}
+            estilo={{ ...filaBoton, ...estiloBoton, marginTop: 10, minHeight: 52, border: "none", cursor: "pointer" }}
             icono={accion.icono}
             colorIcono={colorIconoBoton}
             texto={accion.texto}
@@ -1113,7 +1121,7 @@ export function VisorCatalogo({
               href={href}
               rel="noopener noreferrer"
               onClick={(ev) => accion.alClic?.(ev, item)}
-              style={{ ...estiloBoton, marginTop: 10, minHeight: 52 }}
+              style={{ ...filaBoton, ...estiloBoton, marginTop: 10, minHeight: 52 }}
             >
               <Icono d={accion.icono} color={colorIconoBoton} />
               {accion.texto}

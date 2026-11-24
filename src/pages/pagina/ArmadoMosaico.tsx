@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { iconoDe } from "../../lib/pagina/aspecto";
+import { atributosEnlace } from "../../lib/pagina/enlaceExterno";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
 import { rgbaCapa } from "../../lib/pagina/estilosPagina";
 import type { ItemCatalogoPublico } from "../../lib/pagina/tipos";
@@ -96,7 +97,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       key="principal"
       href={accionPrincipal.href}
       onClick={accionPrincipal.onClick}
-      rel="noopener noreferrer"
+      {...atributosEnlace(accionPrincipal.href)}
       style={{
         ...bloque,
         background: k.principal.fondo,
@@ -121,7 +122,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       key={clave}
       href={href}
       onClick={onClick}
-      rel="noopener noreferrer"
+      {...atributosEnlace(href)}
       style={{
         ...bloque,
         background: colores.fondo,

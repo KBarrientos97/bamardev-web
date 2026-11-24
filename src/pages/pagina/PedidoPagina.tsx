@@ -395,6 +395,21 @@ export default function PedidoPagina({
           {totalTexto === "a confirmar" ? "A confirmar" : totalTexto}
         </span>
         <Trazo d={ICONO_SEGUIR} color="#ffffff" size={18} grosor={2.6} />
+        {/* Un brillo que cruza la barra cada 4 s: el cliente que agregó algo
+            tiene que notar dónde está su pedido (pedido del dueño, 24-nov). El
+            recorte va en esta capa y no en el botón: así no corta el número. */}
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            borderRadius: "inherit",
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
+        >
+          <span className="barra-pedido-brillo" />
+        </span>
       </button>
     );
   }
