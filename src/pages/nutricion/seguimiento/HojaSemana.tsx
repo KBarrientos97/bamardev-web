@@ -31,6 +31,8 @@ import {
   type FormSemana,
 } from "../../../lib/nutricion/seguimiento/formulario";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
+import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
 import { CampoNumero, CampoTexto, Rotulo, Tecla } from "../piezas";
 import {
   BloqueDosis,
@@ -205,6 +207,13 @@ export default function HojaSemana({
   }
 
   const otraPregunta = borrando || preguntaCerrar || preguntaPago;
+  // El atrás del navegador con algo escrito tampoco se lleva la hoja: pregunta
+  // lo mismo que `Esc` (si ya hay una pregunta abierta, no abre otra). Cerrar o
+  // recargar la pestaña, el aviso del navegador.
+  useAtrasConCambios(conCambios && !guardando, () => {
+    if (!otraPregunta) pedirCerrar();
+  });
+  useAvisoAlCerrar(conCambios);
   useTeclas((e) => {
     if (otraPregunta || !ctrlEnter(e)) return;
     e.preventDefault();

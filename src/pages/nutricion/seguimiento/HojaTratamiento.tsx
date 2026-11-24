@@ -30,6 +30,8 @@ import {
   type FormTratamiento,
 } from "../../../lib/nutricion/seguimiento/formulario";
 import type { CatalogoSeguimiento, HojaPaciente, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
+import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
 import { CampoNumero, CampoTexto, Rotulo, SeccionHoja, Tecla } from "../piezas";
 import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PreguntaSinPago } from "./bloques";
 import { BotonesUnidad, BotonToque } from "./piezas";
@@ -142,6 +144,13 @@ export default function HojaTratamiento({
   }
 
   const otraPregunta = preguntaCerrar || preguntaPago;
+  // El atrás del navegador con algo escrito tampoco se lleva la hoja: pregunta
+  // lo mismo que `Esc` (si ya hay una pregunta abierta, no abre otra). Cerrar o
+  // recargar la pestaña, el aviso del navegador.
+  useAtrasConCambios(conCambios && !guardando, () => {
+    if (!otraPregunta) pedirCerrar();
+  });
+  useAvisoAlCerrar(conCambios);
   useTeclas((e) => {
     if (otraPregunta || !ctrlEnter(e)) return;
     e.preventDefault();

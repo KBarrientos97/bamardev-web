@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
 import { isoDia } from "../../../lib/format";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
 import type { Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import { avisaAlCerrar, historialDePrueba } from "../../../test/historial";
 import { armarTratamiento, CATALOGO_SEGUIMIENTO, pacientesDePrueba, type TratamientoCrudo } from "../../../test/seguimientoFixtures";
 import HojaSemana from "./HojaSemana";
 
@@ -315,5 +316,60 @@ describe("sin la presentación del vial", () => {
     abrir(daniel);
     expect(boton(exacto("2,5 mg"))).toBeInTheDocument();
     expect(boton(exacto("Subir: 5 mg"))).toBeInTheDocument();
+  });
+});
+
+// 23-nov: el atrás del navegador se llevaba la página de abajo y la hoja con lo escrito, sin preguntar.
+describe("el atrás del navegador", () => {
+  let h: ReturnType<typeof historialDePrueba>;
+  beforeEach(() => {
+    h = historialDePrueba(5);
+  });
+  afterEach(() => h.limpiar());
+
+  it("con algo escrito se queda y pregunta; «Cancelar» conserva lo escrito y «Cerrar sin guardar» cierra la hoja", () => {
+    const { onCerrar } = abrir(lucia);
+    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,9" } });
+
+    h.viajar(4);
+    expect(h.go).toHaveBeenCalledWith(1);
+    h.viajar(5);
+    expect(h.router).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "¿Cerrar sin guardar?" })).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Peso (kg)")).toHaveValue("123,9");
+    expect(onCerrar).not.toHaveBeenCalled();
+
+    h.viajar(4);
+    h.viajar(5);
+    fireEvent.click(boton("Cerrar sin guardar"));
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+    expect(h.router).not.toHaveBeenCalled();
+  });
+
+  it("sin nada escrito el atrás hace lo de siempre", () => {
+    const { onCerrar } = abrir(lucia);
+    h.viajar(4);
+    expect(h.router).toHaveBeenCalledTimes(1);
+    expect(h.go).not.toHaveBeenCalled();
+    expect(onCerrar).not.toHaveBeenCalled();
+  });
+
+  it("con «¿Guardar sin el pago?» abierta no abre otra pregunta encima", () => {
+    abrir(carla, { semana: 5 });
+    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "84,6" } });
+    fireEvent.click(boton(/^Guardar/));
+    h.viajar(4);
+    h.viajar(5);
+    expect(h.router).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "¿Guardar sin el pago?" })).toBeInTheDocument();
+  });
+
+  it("cerrar o recargar la pestaña avisa sólo con algo escrito", () => {
+    abrir(lucia);
+    expect(avisaAlCerrar()).toBe(false);
+    fireEvent.change(screen.getByLabelText("Observaciones"), { target: { value: "Una nota" } });
+    expect(avisaAlCerrar()).toBe(true);
   });
 });

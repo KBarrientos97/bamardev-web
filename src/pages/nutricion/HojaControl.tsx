@@ -36,6 +36,8 @@ import { pesoAnteriorDeLaSerie } from "../../lib/nutricion/pesos";
 import { diaYMes } from "../../lib/nutricion/seguimiento/formato";
 import type { Catalogo, Control, MedidaConTabla, Paciente } from "../../lib/nutricion/tipos";
 import { TONO } from "../../lib/nutricion/tonos";
+import { useAtrasConCambios } from "../../lib/useAtrasConCambios";
+import { useAvisoAlCerrar } from "../../lib/useAvisoAlCerrar";
 import { AreaTexto, CampoNumero, CampoTexto, ChipGrado, Rotulo, SeccionHoja, Tecla } from "./piezas";
 import TablaGrados from "./TablaGrados";
 
@@ -98,6 +100,13 @@ export default function HojaControl({
   const [preguntaCerrar, setPreguntaCerrar] = useState(false);
   const conCambios = hayCambios(controlAInput(inicial), controlAInput(form));
   const pedirCerrar = () => (conCambios ? setPreguntaCerrar(true) : onCerrar());
+  // El atrás del navegador con algo escrito tampoco se lleva la hoja: pregunta
+  // lo mismo que `Esc` (si ya hay una pregunta abierta, no abre otra). Cerrar o
+  // recargar la pestaña, el aviso del navegador.
+  useAtrasConCambios(conCambios && !guardando, () => {
+    if (!borrando) pedirCerrar();
+  });
+  useAvisoAlCerrar(conCambios);
   const hoy = hoyIso();
   // La tabla de los grados es la de la edad que tenía el día de ESTE control (§3.4).
   const edadControl = edadEnFecha(paciente, form.fecha, hoy);
