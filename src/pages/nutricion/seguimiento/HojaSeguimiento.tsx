@@ -30,6 +30,7 @@ import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../li
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { ChipsFiltro, EncabezadoPagina, KpiTarjeta, PaginaAcademia as Pagina, Tarjeta } from "../../academia/piezas";
+import BotonesPdf from "../BotonesPdf";
 import GraficoEvolucion from "../GraficoEvolucion";
 import { AreaTexto, CampoTexto, Rotulo, Tecla } from "../piezas";
 import HojaSemana from "./HojaSemana";
@@ -399,7 +400,16 @@ export default function HojaSeguimiento() {
           <Tarjeta
             titulo="Semanas"
             bajada={editable ? "Tocá una semana para corregirla." : undefined}
-            acciones={<BotonesPdf t={t} catalogo={cat} paciente={p} negocio={negocio?.nombre ?? null} onAviso={setAviso} onError={setError} />}
+            // El PDF (§7.2): con `seguimiento.ver` alcanza.
+            acciones={
+              <BotonesPdf
+                listo="PDF del seguimiento listo."
+                descargar={() => bajarPdfSeguimiento(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat }))}
+                enviar={() => enviarPdfSeguimientoPorWhatsapp(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat }), p.telefono)}
+                onAviso={setAviso}
+                onError={setError}
+              />
+            }
             sinRelleno
             barra={
               t.meses.length > 1 ? (
@@ -794,76 +804,6 @@ function ChipsDeMes({ valor, onChange, opciones }: { valor: string; onChange: (v
     >
       <ChipsFiltro<string> etiqueta="Filtrar por mes" valor={valor} onChange={onChange} opciones={opciones} />
     </div>
-  );
-}
-
-// ── El PDF ──────────────────────────────────────────────────────────────────
-
-/**
- * «Descargar PDF» y «Enviar por WhatsApp» (§7.2): con `seguimiento.ver`
- * alcanza. En el teléfono y la tablet, el diálogo de compartir del equipo; en
- * la PC, «Guardar como» o la descarga, y para WhatsApp el chat del paciente
- * con el mensaje y el PDF descargado para adjuntar.
- */
-function BotonesPdf({
-  t,
-  catalogo,
-  paciente,
-  negocio,
-  onAviso,
-  onError,
-}: {
-  t: Tratamiento;
-  catalogo: CatalogoSeguimiento;
-  paciente: HojaPaciente["paciente"];
-  negocio: string | null;
-  onAviso: (texto: string) => void;
-  onError: (texto: string) => void;
-}) {
-  const [armando, setArmando] = useState<"pdf" | "whatsapp" | null>(null);
-  async function hacer(que: "pdf" | "whatsapp") {
-    if (armando) return;
-    setArmando(que);
-    onError("");
-    try {
-      const doc = documentoSeguimiento({ negocio, paciente, tratamiento: t, catalogo });
-      if (que === "pdf") {
-        const r = await bajarPdfSeguimiento(doc);
-        if (r === "guardado" || r === "descargado") onAviso("PDF del seguimiento listo.");
-      } else {
-        const r = await enviarPdfSeguimientoPorWhatsapp(doc, paciente.telefono);
-        if (r === "descargado") onAviso("Se descargó el PDF: adjuntalo en el chat de WhatsApp.");
-      }
-    } catch {
-      onError("No se pudo armar el PDF. Probá de nuevo.");
-    } finally {
-      setArmando(null);
-    }
-  }
-  // En el teléfono, cortos: los dos entran en un renglón.
-  return (
-    <>
-      <Boton variante="ghost" icono="download" aria-label="Descargar PDF" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("pdf")}>
-        {armando === "pdf" ? (
-          "Armando…"
-        ) : (
-          <>
-            <span className="sm:hidden">PDF</span>
-            <span className="max-sm:hidden">Descargar PDF</span>
-          </>
-        )}
-      </Boton>
-      <Boton variante="ghost" icono="compartir" aria-label="Enviar por WhatsApp" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
-        {armando === "whatsapp" ? (
-          "Armando…"
-        ) : (
-          <>
-            <span className="sm:hidden">WhatsApp</span>
-            <span className="max-sm:hidden">Enviar por WhatsApp</span>
-          </>
-        )}
-      </Boton>
-    </>
   );
 }
 

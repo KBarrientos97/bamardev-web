@@ -1,8 +1,31 @@
 import type { jsPDF } from "jspdf";
-import { esCelular } from "../../compartirTicket";
 import { entregarPdf, type EntregaPdf } from "../../pdf/tablaPdf";
-import { Telefono } from "../../telefono";
 import { calcularImc, fechaLarga, fmtNumero, hoyIso } from "../calculo";
+import {
+  AMBAR,
+  BORDE,
+  colorDeMarca,
+  dibujarCabecera,
+  dibujarDatos,
+  dibujarPies,
+  enviarPdfPorWhatsapp,
+  FIN,
+  FONDO_CUADRO,
+  FUENTES,
+  GRIS,
+  GRIS_CLARO,
+  MARCA_NUTRICION,
+  MARGEN,
+  partir,
+  partirPorPartes,
+  ROJO,
+  sinEspaciosDuros,
+  TEXTO,
+  usar,
+  UTIL,
+  type EnvioWhatsapp,
+  type Fuente,
+} from "../pdfComun";
 import { escalonesDeLaSemana, leerDosis, nombreSemana, productoVigente, rachaAntes, textoKg, textoKgTotal, textoProducto, type EscalonesDeLaSemana } from "./formato";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento } from "./tipos";
 
@@ -69,8 +92,6 @@ export function dosisParaPdf(r: Pick<Registro, "dosis" | "unidadDosis" | "dosisM
   const anotado = `${fmtNumero(r.dosis, 3)} ${r.unidadDosis}`;
   return sinEspaciosDuros(l.otraSinAprox ? `${anotado} · ${l.otraSinAprox}` : anotado);
 }
-
-const sinEspaciosDuros = (s: string) => s.replace(/[   ]/g, " ");
 
 /** Lo que va en el papel, armado del tratamiento que se está mirando. */
 export function documentoSeguimiento({
@@ -241,21 +262,10 @@ export function paginarFilas<T>(
 
 // ── El dibujo ───────────────────────────────────────────────────────────────
 
-const ANCHO = 595.28;
-const ALTO = 841.89;
-const MARGEN = 34;
-const UTIL = ANCHO - MARGEN * 2;
-const PIE = 30;
-const FIN = ALTO - MARGEN - PIE;
+/** El color de siempre del seguimiento (el verde de nutrición). */
+export const MARCA_SEGUIMIENTO = MARCA_NUTRICION;
 
-const TEXTO = "#0F172A";
-const GRIS = "#475569";
-const GRIS_CLARO = "#64748B";
-const BORDE = "#CBD5E1";
-const FONDO_CUADRO = "#F5FBF7";
-const ROJO = "#B91C1C";
-const AMBAR = "#B45309";
-export const MARCA_SEGUIMIENTO = "#047857";
+export { conUnidadesPegadas, type EnvioWhatsapp } from "../pdfComun";
 
 /** Las columnas de la tabla (pt): Semana · Fecha · Peso · Kg bajado · Dosis · Observaciones (lo que sobra). */
 const RELLENO_X = 7;
@@ -272,60 +282,13 @@ const ALTO_CABECERA_TABLA = 24;
 const ALTO_LINEA_OBS = 11.5;
 const RELLENO_Y = 7;
 
-type Fuente = { tam: number; negrita?: boolean; color?: string };
-function usar(pdf: jsPDF, f: Fuente) {
-  pdf.setFont("helvetica", f.negrita ? "bold" : "normal");
-  pdf.setFontSize(f.tam);
-  pdf.setTextColor(f.color ?? TEXTO);
-}
-function partir(pdf: jsPDF, texto: string, ancho: number, f: Fuente, pegarUnidades = false): string[] {
-  usar(pdf, f);
-  // Con `pegarUnidades` (las observaciones y la marca), un número no queda separado de su
-  // unidad ni el vial partido («10» / «mg en 0,5 ml»): se pegan con espacios duros para
-  // cortar y se vuelven espacios comunes para dibujar. (jsPDF mide el espacio duro un poco
-  // más ancho: en las columnas angostas de los datos cortaría antes de tiempo.)
-  return (pdf.splitTextToSize(pegarUnidades ? conUnidadesPegadas(texto) : texto, ancho) as string[])
-    .map((l) => l.replace(/ /g, " "))
-    .filter((l, i, a) => l.length > 0 || i < a.length - 1);
-}
-
-/** «10 mg en 0,5 ml», «17 UI», «7,5 kg»: el número con su unidad (y el vial entero) no se cortan. */
-export function conUnidadesPegadas(texto: string): string {
-  return texto.replace(/(\d) (mg|ml|UI|kg)(?![\p{L}])/gu, "$1 $2").replace(/mg en (\d)/g, "mg en $1");
-}
-
-/**
- * Como `partir`, pero «Tirze · 15 mg en 0,5 ml» se corta en el «·»: el vial no
- * queda partido («15 mg en» / «0,5 ml»). Si una parte sola no entra, se corta
- * como siempre.
- */
-function partirPorPartes(pdf: jsPDF, texto: string, ancho: number, f: Fuente): string[] {
-  usar(pdf, f);
-  if (pdf.getTextWidth(texto) <= ancho || !texto.includes(" · ")) return partir(pdf, texto, ancho, f);
-  const lineas: string[] = [];
-  for (const parte of texto.split(" · ")) {
-    const ultima = lineas[lineas.length - 1];
-    if (ultima != null && pdf.getTextWidth(`${ultima} · ${parte}`) <= ancho) lineas[lineas.length - 1] = `${ultima} · ${parte}`;
-    else lineas.push(...partir(pdf, parte, ancho, f));
-  }
-  return lineas;
-}
-
 const F = {
-  negocio: { tam: 13.5, negrita: true },
-  titulo: { tam: 16, negrita: true },
-  emitido: { tam: 9.5, color: GRIS },
-  rotulo: { tam: 8, negrita: true, color: GRIS },
-  dato: { tam: 11 },
-  cuadroValor: { tam: 16, negrita: true },
-  cuadroNota: { tam: 9, color: GRIS },
+  ...FUENTES,
   cabeceraTabla: { tam: 8, negrita: true, color: "#FFFFFF" },
   semana: { tam: 10, negrita: true },
   celda: { tam: 9.5 },
-  chico: { tam: 8, color: GRIS_CLARO },
   obs: { tam: 9.5, color: "#334155" },
   marca: { tam: 9.5, negrita: true, color: "#1E40AF" },
-  pie: { tam: 8, color: GRIS_CLARO },
 } satisfies Record<string, Fuente>;
 
 /** Mide una semana: cuánto ocupan sus columnas (sin las observaciones) y los renglones de las observaciones. */
@@ -504,42 +467,10 @@ function dibujarGrafico(pdf: jsPDF, y: number, puntos: PuntoPdf[], marca: string
 /** Dibuja el documento entero en `pdf` (A4, en puntos). */
 export function dibujarSeguimiento(pdf: jsPDF, doc: DocumentoSeguimiento, marca = MARCA_SEGUIMIENTO) {
   // ── Cabecera ──
-  let y = MARGEN;
-  const anchoTitulo = 210;
-  usar(pdf, F.titulo);
-  pdf.setTextColor(marca);
-  pdf.text("Seguimiento del tratamiento", MARGEN + UTIL, y + 14, { align: "right" });
-  usar(pdf, F.emitido);
-  pdf.text(doc.emitido, MARGEN + UTIL, y + 28, { align: "right" });
-  let altoCab = 34;
-  if (doc.negocio) {
-    const l = partir(pdf, doc.negocio, UTIL - anchoTitulo, F.negocio).slice(0, 2);
-    usar(pdf, F.negocio);
-    l.forEach((t, i) => pdf.text(t, MARGEN, y + 14 + i * 16));
-    altoCab = Math.max(altoCab, 14 + (l.length - 1) * 16 + 14);
-  }
-  y += altoCab;
-  pdf.setDrawColor(marca);
-  pdf.setLineWidth(2.25);
-  pdf.line(MARGEN, y, MARGEN + UTIL, y);
-  y += 16;
+  let y = dibujarCabecera(pdf, { titulo: "Seguimiento del tratamiento", emitido: doc.emitido, negocio: doc.negocio }, marca);
 
   // ── Datos del paciente y del tratamiento: 4 columnas ──
-  const anchoDato = (UTIL - 3 * 12) / 4;
-  for (let fila = 0; fila < doc.datos.length; fila += 4) {
-    let altoFila = 0;
-    doc.datos.slice(fila, fila + 4).forEach((d, i) => {
-      const x = MARGEN + i * (anchoDato + 12);
-      usar(pdf, F.rotulo);
-      pdf.text(d.etiqueta, x, y + 8, { charSpace: 0.5 });
-      const l = partirPorPartes(pdf, d.valor, anchoDato, F.dato).slice(0, 3);
-      usar(pdf, F.dato);
-      l.forEach((t, k) => pdf.text(t, x, y + 22 + k * 13));
-      altoFila = Math.max(altoFila, 22 + (l.length - 1) * 13 + 6);
-    });
-    y += altoFila + 8;
-  }
-  y += 4;
+  y = dibujarDatos(pdf, y, doc.datos) + 4;
 
   // ── Los cuatro cuadros ──
   const anchoCuadro = (UTIL - 3 * 9) / 4;
@@ -588,23 +519,7 @@ export function dibujarSeguimiento(pdf: jsPDF, doc: DocumentoSeguimiento, marca 
   });
 
   // ── El pie de cada hoja ──
-  const total = pdf.getNumberOfPages();
-  for (let p = 1; p <= total; p++) {
-    pdf.setPage(p);
-    pdf.setDrawColor(BORDE);
-    pdf.setLineWidth(0.75);
-    pdf.line(MARGEN, ALTO - MARGEN - 14, MARGEN + UTIL, ALTO - MARGEN - 14);
-    usar(pdf, F.pie);
-    pdf.text(`Seguimiento del tratamiento · ${doc.paciente}`, MARGEN, ALTO - MARGEN);
-    pdf.text(`Página ${p} de ${total}`, MARGEN + UTIL, ALTO - MARGEN, { align: "right" });
-  }
-}
-
-/** El verde (o el color) del tema del negocio; sin pantalla, el de siempre. */
-function colorDeMarca(): string {
-  if (typeof document === "undefined") return MARCA_SEGUIMIENTO;
-  const v = getComputedStyle(document.documentElement).getPropertyValue("--color-primary-700").trim();
-  return /^#[0-9a-f]{6}$/i.test(v) ? v : MARCA_SEGUIMIENTO;
+  dibujarPies(pdf, `Seguimiento del tratamiento · ${doc.paciente}`);
 }
 
 /** El PDF ya armado. jsPDF se carga recién acá: no pesa en el resto de la web. */
@@ -624,51 +539,16 @@ export async function bajarPdfSeguimiento(doc: DocumentoSeguimiento): Promise<En
   return entregarPdf(await pdfDelSeguimiento(doc), nombreDelPdf());
 }
 
-export type EnvioWhatsapp = "compartido" | "cancelado" | "descargado";
-
 /**
- * El teléfono o la tablet: `esCelular` no alcanza, porque la tablet Android
- * (y el iPad) no se dicen «mobile» y ahí «Enviar por WhatsApp» abría wa.me y
- * bajaba el PDF para adjuntarlo a mano. Una pantalla sólo táctil, sin mouse,
- * también usa el diálogo de compartir.
- */
-function conDedo(): boolean {
-  if (esCelular()) return true;
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-}
-
-/**
- * «Enviar por WhatsApp», como el recibo (`enviarPorWhatsapp` de
- * `compartirTicket`): en el teléfono y la tablet, el diálogo de compartir del
- * sistema con el PDF y el mensaje (ahí se elige WhatsApp y el chat); en la PC
- * `wa.me` no puede adjuntar archivos: se abre el chat del paciente (si tiene
- * teléfono) con el mensaje y se baja el PDF para arrastrarlo. El chat se abre
- * ANTES de armar el PDF, mientras dura el clic (si no, lo frena el bloqueador
- * de ventanas).
+ * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`): en el teléfono y la
+ * tablet, el diálogo de compartir con el PDF; en la PC, el chat del paciente
+ * (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF descargado.
  */
 export async function enviarPdfSeguimientoPorWhatsapp(doc: DocumentoSeguimiento, telefono: string | null): Promise<EnvioWhatsapp> {
-  const texto = `Seguimiento del tratamiento al ${fechaLarga(hoyIso())}.`;
-  const celular = conDedo() && typeof navigator.share === "function" && typeof navigator.canShare === "function";
-  if (!celular) {
-    const numero = Telefono.paraWhatsApp(telefono);
-    window.open(`https://wa.me/${numero ?? ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
-  }
-  const blob = await pdfDelSeguimiento(doc);
-  const archivo = new File([blob], nombreDelPdf(), { type: "application/pdf" });
-  if (celular && navigator.canShare({ files: [archivo] })) {
-    try {
-      const conTexto = navigator.canShare({ files: [archivo], text: texto });
-      await navigator.share(conTexto ? { files: [archivo], text: texto, title: nombreDelPdf() } : { files: [archivo], title: nombreDelPdf() });
-      return "compartido";
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") return "cancelado";
-    }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nombreDelPdf();
-  a.click();
-  URL.revokeObjectURL(url);
-  return "descargado";
+  return enviarPdfPorWhatsapp({
+    texto: `Seguimiento del tratamiento al ${fechaLarga(hoyIso())}.`,
+    telefono,
+    nombreArchivo: nombreDelPdf(),
+    armar: () => pdfDelSeguimiento(doc),
+  });
 }

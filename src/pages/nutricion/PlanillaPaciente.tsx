@@ -7,82 +7,21 @@ import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Vacio, useAviso } from "
 import { iniciales } from "../../lib/format";
 import { apiNutricion, esNoEncontrado } from "../../lib/nutricion/api";
 import { conAlt, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
-import {
-  conUnidad,
-  evolucion,
-  fechaLarga,
-  fmtCambio,
-  grado,
-  gradoDelResumen,
-  resumenDe,
-  sufijoDelDia,
-  vecesDelDia,
-  type CampoControl,
-} from "../../lib/nutricion/calculo";
-import type { Catalogo, Control, MedidaConTabla, Paciente } from "../../lib/nutricion/tipos";
+import { conUnidad, fechaLarga, fmtCambio, sufijoDelDia, vecesDelDia, type CampoControl } from "../../lib/nutricion/calculo";
+import { bajarPdfEvaluacion, documentoEvaluacion, enviarPdfEvaluacionPorWhatsapp } from "../../lib/nutricion/pdfEvaluacion";
+import { celdaDe, DEL_GRAFICO, evolucionDe, FILAS, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "../../lib/nutricion/planilla";
+import type { Catalogo, Control, Paciente } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
-import { hayDeLosDos, puntosDeLaSerie, resumenDeLaSerie, ultimoImcDeLaSerie } from "../../lib/nutricion/pesos";
 import { editaNutricion, RUTA_SEGUIMIENTO } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { EncabezadoPagina, PaginaAcademia as Pagina, Tarjeta } from "../academia/piezas";
+import BotonesPdf from "./BotonesPdf";
 import GraficoEvolucion from "./GraficoEvolucion";
 import HojaControl from "./HojaControl";
 import MedidorImc from "./MedidorImc";
 import { TONO } from "../../lib/nutricion/tonos";
 import { ChipGrado, Tecla } from "./piezas";
-
-/** Cada medida de la planilla: cómo se llama, su unidad, sus decimales y, si tiene, su tabla de grados. */
-interface Medida {
-  campo: CampoControl;
-  nombre: string;
-  /** El nombre corto para la planilla y los chips del gráfico. */
-  corto: string;
-  unidad: string;
-  decimales: number;
-  grado?: { medida: MedidaConTabla; campo: "imcGrado" | "grasaGrado" | "musculoGrado" | "visceralGrado" };
-}
-
-const MEDIDAS: Record<CampoControl, Medida> = {
-  pesoKg: { campo: "pesoKg", nombre: "Peso", corto: "Peso", unidad: "kg", decimales: 2 },
-  imc: { campo: "imc", nombre: "IMC", corto: "IMC", unidad: "", decimales: 1, grado: { medida: "imc", campo: "imcGrado" } },
-  grasaPct: { campo: "grasaPct", nombre: "% de grasa", corto: "% grasa", unidad: "%", decimales: 1, grado: { medida: "grasa", campo: "grasaGrado" } },
-  musculoPct: {
-    campo: "musculoPct",
-    nombre: "% de músculo",
-    corto: "% músculo",
-    unidad: "%",
-    decimales: 1,
-    grado: { medida: "musculo", campo: "musculoGrado" },
-  },
-  edadCorporal: { campo: "edadCorporal", nombre: "Edad corporal", corto: "Edad corporal", unidad: "años", decimales: 0 },
-  grasaVisceral: {
-    campo: "grasaVisceral",
-    nombre: "Grasa visceral",
-    corto: "Grasa visceral",
-    unidad: "",
-    decimales: 1,
-    grado: { medida: "visceral", campo: "visceralGrado" },
-  },
-  cinturaCm: { campo: "cinturaCm", nombre: "Cintura", corto: "Cintura", unidad: "cm", decimales: 1 },
-  caderaCm: { campo: "caderaCm", nombre: "Cadera", corto: "Cadera", unidad: "cm", decimales: 1 },
-  pechoCm: { campo: "pechoCm", nombre: "Pecho", corto: "Pecho", unidad: "cm", decimales: 1 },
-};
-
-/** Los renglones de la planilla, como la hoja de papel. */
-const FILAS: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "edadCorporal", "grasaVisceral", "cinturaCm", "caderaCm", "pechoCm"];
-/** Las medidas que se pueden ver en el gráfico, en este orden. */
-const DEL_GRAFICO: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "cinturaCm", "caderaCm", "pechoCm", "grasaVisceral"];
-/** Las tarjetas de arriba. */
-const DEL_RESUMEN: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "grasaVisceral", "cinturaCm"];
-
-const valorCon = (m: Medida, n: number | null | undefined) => conUnidad(n, m.unidad, m.decimales);
-
-/** El grado del valor que muestra la tarjeta: el del mismo control (ver `gradoDelResumen`). */
-function gradoActual(controles: Control[], m: Medida, catalogo: Catalogo | null) {
-  if (!m.grado) return null;
-  return grado(catalogo, m.grado.medida, gradoDelResumen(controles, m.campo, m.grado.campo));
-}
 
 /**
  * La planilla del paciente (CONTRATO-nutricion-evaluacion-22nov §4.3): quién
@@ -94,7 +33,7 @@ function gradoActual(controles: Control[], m: Medida, catalogo: Catalogo | null)
 export default function PlanillaPaciente() {
   const { id } = useParams();
   const pacienteId = Number(id);
-  const { usuario, puede } = useAuth();
+  const { usuario, puede, negocio } = useAuth();
   const edita = editaNutricion(usuario);
   // El seguimiento del tratamiento (23-nov): quien lo ve tiene el atajo a la hoja.
   const veSeguimiento = puede("seguimiento");
@@ -273,6 +212,16 @@ export default function PlanillaPaciente() {
           <Tarjeta
             titulo="Controles"
             contador={controles.length}
+            // El PDF (§6.1): con `nutricion.ver` alcanza, también archivado.
+            acciones={
+              <BotonesPdf
+                listo="PDF de la evaluación listo."
+                descargar={() => bajarPdfEvaluacion(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat }))}
+                enviar={() => enviarPdfEvaluacionPorWhatsapp(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat }), p.telefono)}
+                onAviso={setAviso}
+                onError={setError}
+              />
+            }
             bajada={
               // Sin pesos del seguimiento, la bajada de siempre.
               conPesoSemanal ? (
@@ -347,28 +296,14 @@ export default function PlanillaPaciente() {
 
 // ── Las tarjetas de arriba ──────────────────────────────────────────────────
 
-/** ¿Esta medida sale de la serie de pesos al día (§4.4 del seguimiento)? Sólo Peso e IMC, y si la respuesta la trae. */
-const deLaSerie = (p: Paciente, campo: CampoControl): campo is "pesoKg" | "imc" => !!p.pesos && (campo === "pesoKg" || campo === "imc");
-
 function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
-  const controles = paciente.controles;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      {DEL_RESUMEN.map((campo) => {
-        const m = MEDIDAS[campo];
-        const serie = deLaSerie(paciente, campo) ? puntosDeLaSerie(paciente, campo) : null;
-        const r = serie ? resumenDeLaSerie(serie) : resumenDe(controles, campo);
-        // El grado del IMC de la serie es el del último peso con IMC (el del seguimiento sale de la tabla).
-        const g =
-          serie && campo === "imc" ? grado(catalogo, "imc", ultimoImcDeLaSerie(paciente.pesos)?.imcGrado) : gradoActual(controles, m, catalogo);
-        const cuantos = serie ? serie.length : controles.length;
-        const delSeguimiento = !!r && "delSeguimiento" in r && r.delSeguimiento;
+      {tarjetasDeHoy(paciente, catalogo).map(({ campo, medida: m, resumen: r, grado: g, desdeInicio, desdeAnterior, delSeguimiento }) => {
         const pies: string[] = [];
         // Espacios duros: «desde el anterior» baja entero, no queda «anterior» solo abajo.
-        if (r?.desdeInicio != null) pies.push(`${fmtCambio(r.desdeInicio, m.decimales)}${m.unidad ? ` ${m.unidad}` : ""} desde el inicio`);
-        if (campo === "pesoKg" && r?.desdeAnterior != null && cuantos > 2) {
-          pies.push(`${fmtCambio(r.desdeAnterior, m.decimales)} kg desde el anterior`);
-        }
+        if (desdeInicio != null) pies.push(`${fmtCambio(desdeInicio, m.decimales)}${m.unidad ? ` ${m.unidad}` : ""} desde el inicio`);
+        if (desdeAnterior != null) pies.push(`${fmtCambio(desdeAnterior, m.decimales)} kg desde el anterior`);
         return (
           <div key={campo} className="card min-w-0 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">{m.nombre}</p>
@@ -380,9 +315,9 @@ function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalog
               </p>
             ))}
             {/* La fecha entera, en su renglón si no entra: «·» al final de un renglón se leía suelto. */}
-            {delSeguimiento && r && (
+            {delSeguimiento && (
               <p className="mt-1 text-xs tabular-nums text-texto-4">
-                del seguimiento <span className="whitespace-nowrap">({fechaLarga(r.fecha)})</span>
+                del seguimiento <span className="whitespace-nowrap">({fechaLarga(delSeguimiento)})</span>
               </p>
             )}
           </div>
@@ -398,11 +333,7 @@ function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalog
 function ImcDeHoy({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
   // Con la serie de pesos al día, el último IMC de la serie (puede ser de una
   // semana del seguimiento); sin ella, el del último control, como siempre.
-  const ultimo: { fecha: string; imc: number | null; imcGrado: string | null } | undefined = paciente.pesos
-    ? (ultimoImcDeLaSerie(paciente.pesos) ?? undefined)
-    : [...paciente.controles].reverse().find((c) => c.imc != null || c.imcGrado);
-  const rangos = catalogo.tablas.imc?.find((t) => t.sexo == null && t.edadDesde == null && t.edadHasta == null)?.rangos ?? catalogo.tablas.imc?.[0]?.rangos;
-  const g = grado(catalogo, "imc", ultimo?.imcGrado);
+  const { ultimo, rangos, grado: g } = imcDeHoy(paciente, catalogo);
   return (
     <Tarjeta titulo="IMC" bajada={ultimo ? `Del ${fechaLarga(ultimo.fecha)}` : "Sale con el peso y la talla"}>
       <div className="space-y-3">
@@ -422,8 +353,7 @@ function ImcDeHoy({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalo
 
 function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Medida }) {
   // Peso e IMC: todos los puntos de la serie al día; los del seguimiento, más chicos.
-  const serie = deLaSerie(paciente, medida.campo) ? puntosDeLaSerie(paciente, medida.campo) : null;
-  const puntos = serie ? serie.map((x) => ({ ...x, chico: x.delSeguimiento })) : evolucion(paciente.controles, medida.campo);
+  const { puntos, leyenda } = evolucionDe(paciente, medida.campo);
   if (!puntos.length) {
     return <p className="py-8 text-center text-sm text-texto-3">Todavía no hay datos de {medida.nombre.toLowerCase()}.</p>;
   }
@@ -431,7 +361,7 @@ function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Medida })
     <div className="space-y-2">
       <GraficoEvolucion puntos={puntos} nombre={medida.nombre} formato={(n) => valorCon(medida, n)} />
       {puntos.length === 1 && <p className="text-center text-[13px] text-texto-3">Con el próximo control vas a ver la evolución.</p>}
-      {serie && hayDeLosDos(serie) && (
+      {leyenda && (
         <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[12px] text-texto-3" aria-hidden="true">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full border-2 border-primary-boton bg-white" />
@@ -532,8 +462,7 @@ function Planilla({
                   {m.unidad && m.unidad !== "%" && <span className="font-normal text-texto-4 max-sm:block sm:ml-1">({m.unidad})</span>}
                 </th>
                 {controles.map((c) => {
-                  const v = c[campo];
-                  const g = m.grado ? grado(catalogo, m.grado.medida, c[m.grado.campo]) : null;
+                  const { valor: v, grado: g } = celdaDe(c, m, catalogo);
                   const t = g ? TONO[g.tono] : null;
                   return (
                     <td
