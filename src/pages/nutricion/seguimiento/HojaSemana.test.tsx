@@ -286,10 +286,10 @@ describe("cargar una semana", () => {
     expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, { semana: 8, fecha: HOY, sinDosis: true, motivoSinDosis: "Viaje" });
   });
 
-  it("«Cambio de laboratorio» agrega el texto para completar", () => {
+  it("ya no escribe «Cambio de laboratorio» en las observaciones: va el cambio de producto", () => {
     abrir(lucia);
-    fireEvent.click(boton("Cambio de laboratorio"));
-    expect(screen.getByLabelText("Observaciones de la semana")).toHaveValue("Cambio de laboratorio: ");
+    expect(screen.queryByRole("button", { name: "Cambio de laboratorio" })).not.toBeInTheDocument();
+    expect(sinNb(boton(/^Cambió de producto desde esta semana/).textContent)).toContain("Hoy usa: Tirzepatida · 15 mg en 0,5 ml");
   });
 
   it("ofrece el peso de la Evaluación si es del mismo día o posterior, con «Usar ese» (no se precarga)", () => {
@@ -396,6 +396,124 @@ describe("corregir una semana", () => {
     fireEvent.click(boton(/^Guardar/));
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
     expect(apiSeguimiento.corregirRegistro).toHaveBeenCalledWith(lucia.registros.find((r) => r.semana === 6)!.id, { motivoSinDosis: "Salud" });
+  });
+});
+
+describe("el cambio de producto (§7.1 y §7.2)", () => {
+  /** Lucía con la marca en la semana 7: «desde esta semana usa Tirze» (con el vial que se pase). */
+  const conMarca = (producto: { nombre: string; vialMg?: number; vialMl?: number }, extra?: (t: TratamientoCrudo) => TratamientoCrudo) =>
+    delPaciente(12, (t) => {
+      const c = { ...t, semanas: t.semanas.map((s) => (s.semana === 7 ? { ...s, producto } : s)) };
+      return extra ? extra(c) : c;
+    });
+
+  it("se marca en la semana: el producto (vacío) y su vial; con otro vial, la dosis de ESTA hoja se cuenta con él", async () => {
+    const onGuardado = vi.fn();
+    render(
+      <MemoryRouter>
+        <HojaSemana tratamiento={lucia} catalogo={CATALOGO_SEGUIMIENTO} registro={null} semana={8} pacienteNombre="Paciente de prueba" ultimoControl={null} onCerrar={vi.fn()} onGuardado={onGuardado} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    const nombre = screen.getByLabelText("Producto nuevo");
+    expect(nombre).toHaveValue("");
+    expect(sinNb(screen.getByText(/^Antes usaba:/).textContent)).toBe("Antes usaba: Tirzepatida · 15 mg en 0,5 ml");
+    // Sin el nombre no se guarda.
+    fireEvent.change(peso(), { target: { value: "124" } });
+    fireEvent.click(boton(/^Guardar/));
+    expect(screen.getByText("Escribí el producto nuevo")).toBeInTheDocument();
+    expect(apiSeguimiento.cargarSemana).not.toHaveBeenCalled();
+    // El vial de 10 mg en 0,5 ml (20 mg/ml): la marcada son los mismos 5,1 mg, ahora ≈ 26 UI; los escalones, con ese vial.
+    fireEvent.change(nombre, { target: { value: "Tirze" } });
+    fireEvent.click(boton(exacto("10 mg en 0,5 ml")));
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior≈ 26 UI · 5,1 mg");
+    expect(igual()).toHaveAttribute("aria-pressed", "true");
+    expect(boton(exacto("13 UI · 2,5 mg"))).toBeInTheDocument();
+    fireEvent.click(boton(/^Guardar/));
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled());
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, {
+      semana: 8,
+      fecha: HOY,
+      pesoKg: 124,
+      dosis: 26,
+      producto: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 },
+    });
+    // La marca cambia las equivalencias de las semanas siguientes: se relee la hoja.
+    expect(onGuardado.mock.calls[0][2]).toBe(true);
+  });
+
+  it("abrirlo y cerrarlo sin escribir no deja cambios", () => {
+    const { onCerrar } = abrir(lucia);
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    expect(screen.queryByLabelText("Producto nuevo")).not.toBeInTheDocument();
+    fireEvent.click(boton("Cancelar"));
+    expect(onCerrar).toHaveBeenCalled();
+  });
+
+  it("la semana siguiente a la marca usa el producto nuevo: en la cabecera, «Hoy usa» y la dosis con su vial", () => {
+    const t = conMarca({ nombre: "Tirze", vialMg: 10, vialMl: 0.5 }, (c) => ({ ...c, semanas: c.semanas.map((s) => (s.semana === 7 ? { ...s, dosis: 26 } : s)) }));
+    abrir(t);
+    expect(sinNb(screen.getByText(/^Paciente de prueba · /).textContent)).toBe("Paciente de prueba · Tirze, 10 mg en 0,5 ml");
+    expect(sinNb(boton(/^Cambió de producto desde esta semana/).textContent)).toContain("Hoy usa: Tirze · 10 mg en 0,5 ml");
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior26 UI · 5,2 mg");
+    expect(boton(exacto("13 UI · 2,5 mg"))).toBeInTheDocument();
+  });
+
+  it("corregir la semana de la marca: el bloque abierto con lo guardado; «Quitar el cambio» manda `producto: null`", async () => {
+    const t = conMarca({ nombre: "Tirze", vialMg: 10, vialMl: 0.5 });
+    const { onGuardado } = abrir(t, { registro: 7 });
+    expect(screen.getByLabelText("Producto nuevo")).toHaveValue("Tirze");
+    expect(screen.getByLabelText("Miligramos del vial")).toHaveValue("10");
+    expect(sinNb(screen.getByText(/^Antes usaba:/).textContent)).toBe("Antes usaba: Tirzepatida · 15 mg en 0,5 ml");
+    fireEvent.click(boton("Quitar el cambio"));
+    expect(screen.getByText(/^Al guardar se quita el cambio a Tirze/)).toBeInTheDocument();
+    fireEvent.click(boton(/^Guardar/));
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled());
+    expect(apiSeguimiento.corregirRegistro).toHaveBeenCalledWith(t.registros.find((r) => r.semana === 7)!.id, { producto: null });
+    expect(onGuardado.mock.calls[0][2]).toBe(true);
+  });
+
+  it("una semana que sólo tiene la marca: no ofrece «Quitar» (quedaría vacía), dice que se borra la semana", () => {
+    const t = conMarca({ nombre: "Tirze" }, (c) => ({
+      ...c,
+      semanas: c.semanas.map((s) => (s.semana === 7 ? { semana: 7, fecha: s.fecha, producto: { nombre: "Tirze" } } : s)),
+    }));
+    abrir(t, { registro: 7 });
+    expect(screen.queryByRole("button", { name: "Quitar el cambio" })).not.toBeInTheDocument();
+    expect(screen.getByText("Esta semana sólo tiene el cambio de producto: para quitarlo, borrá la semana.")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Borrar semana" })[0]);
+    expect(screen.getByRole("dialog", { name: "¿Borrar la semana 7?" })).toBeInTheDocument();
+  });
+
+  it("una marca sin vial: el aviso del vial lleva a corregir ESA marca, no el tratamiento", () => {
+    const t = conMarca({ nombre: "Tirze" });
+    const onCorregirMarca = vi.fn();
+    render(
+      <MemoryRouter>
+        <HojaSemana
+          tratamiento={t}
+          catalogo={CATALOGO_SEGUIMIENTO}
+          registro={null}
+          semana={8}
+          pacienteNombre="Paciente de prueba"
+          ultimoControl={null}
+          onEditarTratamiento={vi.fn()}
+          onCorregirMarca={onCorregirMarca}
+          onCerrar={vi.fn()}
+          onGuardado={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Cargá la presentación del vial de Tirze para ver las dosis en UI/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar tratamiento" })).not.toBeInTheDocument();
+    fireEvent.click(boton("Corregir el cambio de la semana 7"));
+    expect(onCorregirMarca).toHaveBeenCalledWith(t.registros.find((r) => r.semana === 7));
+  });
+
+  it("en el inicial no hay cambio de producto", () => {
+    abrir(lucia, { registro: 0 });
+    expect(screen.queryByRole("button", { name: /^Cambió de producto/ })).not.toBeInTheDocument();
   });
 });
 

@@ -24,6 +24,12 @@ export interface FormSemana {
   pagoControl: string;
   pagoOtro: string;
   pagoNota: string;
+  /** «Cambió de producto desde esta semana» (§7.1): la marca está puesta. Nunca en el inicial. */
+  cambioProducto: boolean;
+  /** El producto nuevo (arranca vacío) y su vial (opcional: los dos o ninguno). */
+  productoNombre: string;
+  productoVialMg: string;
+  productoVialMl: string;
 }
 
 /** Una semana nueva: el número y la fecha de hoy; lo demás, vacío. */
@@ -40,10 +46,15 @@ export function semanaVacia(semana: number, fecha = hoyIso()): FormSemana {
     pagoControl: "",
     pagoOtro: "",
     pagoNota: "",
+    cambioProducto: false,
+    productoNombre: "",
+    productoVialMg: "",
+    productoVialMl: "",
   };
 }
 
 const plata = (n: number | null) => (n == null ? "" : fmtNumero(n, 2));
+const vial = (n: number | null | undefined) => (n == null ? "" : fmtNumero(n, 2));
 
 /** Un registro que se corrige, tal como se guardó (la dosis, en la unidad en que se anotó). */
 export function semanaDesde(r: Registro): FormSemana {
@@ -59,6 +70,10 @@ export function semanaDesde(r: Registro): FormSemana {
     pagoControl: plata(r.pagoControl),
     pagoOtro: plata(r.pagoOtro),
     pagoNota: r.pagoNota ?? "",
+    cambioProducto: !!r.producto,
+    productoNombre: r.producto?.nombre ?? "",
+    productoVialMg: vial(r.producto?.vialMg),
+    productoVialMl: vial(r.producto?.vialMl),
   };
 }
 
@@ -147,11 +162,13 @@ export function semanaConDatos(f: FormSemana): boolean {
     !!f.pagoMedicamento.trim() ||
     !!f.pagoControl.trim() ||
     !!f.pagoOtro.trim() ||
-    !!f.pagoNota.trim()
+    !!f.pagoNota.trim() ||
+    // §7.1: una semana que sólo trae la marca del cambio de producto no está vacía.
+    (f.cambioProducto && !!f.productoNombre.trim())
   );
 }
 
-export type ErroresSemana = Partial<Record<keyof FormSemana, string | null>>;
+export type ErroresSemana = Partial<Record<keyof FormSemana | "productoVial", string | null>>;
 
 /** ¿Algún campo tiene un error? (para el «Hay un dato para revisar»). */
 export const hayErrores = (e: Record<string, string | null | undefined>) => Object.values(e).some(Boolean);
@@ -179,7 +196,21 @@ export function erroresDeSemana(
       ? "Escribí el número de la semana"
       : errorDeNumero("semana", f.semana) ?? (n != null && semanasCargadas.includes(n) ? `Ya hay un registro de la semana ${n}.` : null);
   }
+  if (!inicial && f.cambioProducto) {
+    const nombre = f.productoNombre.trim();
+    e.productoNombre = !nombre ? "Escribí el producto nuevo" : nombre.length < 2 ? "Al menos 2 letras" : nombre.length > 80 ? "Hasta 80 letras" : null;
+    e.productoVialMg = errorDeNumero("vialMg", f.productoVialMg);
+    e.productoVialMl = errorDeNumero("vialMl", f.productoVialMl);
+    e.productoVial = !!f.productoVialMg.trim() !== !!f.productoVialMl.trim() ? "Completá los dos: los mg y los ml del vial" : null;
+  }
   return e;
+}
+
+/** La marca del producto como viaja (§7.1), o null si no hay marca. */
+export function productoAInput(f: FormSemana): NonNullable<RegistroInput["producto"]> | null {
+  if (!f.cambioProducto) return null;
+  const v = vialDe({ vialMg: f.productoVialMg, vialMl: f.productoVialMl });
+  return { nombre: f.productoNombre.trim(), ...(v ? { vialMg: v.mg, vialMl: v.ml } : {}) };
 }
 
 /** Todo lo de la semana como viaja (con null en lo vacío). La dosis no va si «No se aplicó». */
@@ -200,6 +231,10 @@ export function semanaAInput(f: FormSemana, inicial: boolean): RegistroInput {
   } else {
     r.dosis = valorLimitado("dosis", f.dosis);
   }
+  // La clave `producto` viaja SÓLO con una marca: un backend anterior al
+  // §7.1 la rechaza, y así las semanas comunes se siguen guardando.
+  const producto = inicial ? null : productoAInput(f);
+  if (producto) r.producto = producto;
   return r;
 }
 
@@ -230,7 +265,14 @@ export function cambiosDeSemana(antes: FormSemana, ahora: FormSemana, inicial: b
   } else if (b.dosis !== a.dosis) {
     c.dosis = b.dosis ?? null;
   }
+  // La marca: la nueva (o corregida), o `null` si se quitó; sin tocarla, no viaja.
+  if (!inicial && JSON.stringify(a.producto ?? null) !== JSON.stringify(b.producto ?? null)) c.producto = b.producto ?? null;
   return c;
+}
+
+/** ¿Cambió la marca del producto (se puso, se corrigió o se quitó)? Después de guardar, la hoja se relee entera. */
+export function cambioLaMarca(antes: FormSemana, ahora: FormSemana): boolean {
+  return JSON.stringify(productoAInput(antes)) !== JSON.stringify(productoAInput(ahora));
 }
 
 /** ¿Cambió algo desde que se abrió la hoja? */
@@ -262,8 +304,19 @@ export function tratamientoVacio(): FormTratamiento {
   return { nombre: "", vialMg: "", vialMl: "", unidadDosis: "" };
 }
 
-/** El tratamiento que se edita, tal como está guardado. */
-export function tratamientoDesde(t: Pick<Tratamiento, "nombre" | "unidadDosis" | "presentacion">): FormTratamiento {
+/**
+ * El tratamiento que se edita, tal como está guardado. Si cambió de producto
+ * en alguna semana (§7.1), el nombre y el vial son los del producto con el que
+ * EMPEZÓ (los de `nombre`/`presentacion` son los de hoy, y se corrigen en la
+ * semana de su marca).
+ */
+export function tratamientoDesde(
+  t: Pick<Tratamiento, "nombre" | "unidadDosis" | "presentacion"> & Partial<Pick<Tratamiento, "productoInicial" | "cambiosDeProducto">>,
+): FormTratamiento {
+  const inicial = t.cambiosDeProducto && t.productoInicial ? t.productoInicial : null;
+  if (inicial) {
+    return { nombre: inicial.nombre, vialMg: vial(inicial.vialMg), vialMl: vial(inicial.vialMl), unidadDosis: t.unidadDosis };
+  }
   return {
     nombre: t.nombre,
     vialMg: t.presentacion ? fmtNumero(t.presentacion.mg, 2) : "",

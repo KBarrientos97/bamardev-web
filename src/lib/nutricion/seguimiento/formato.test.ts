@@ -35,6 +35,11 @@ import {
   textoKgTotal,
   textoPagoAnterior,
   ultimoPagoAntes,
+  marcaVigente,
+  productoInicialDe,
+  productoVigente,
+  textoMarca,
+  textoProducto,
 } from "./formato";
 import type { MesTratamiento, Paso } from "./tipos";
 import { armarTratamiento, CATALOGO_SEGUIMIENTO, pacientesDePrueba } from "../../../test/seguimientoFixtures";
@@ -353,6 +358,37 @@ describe("los meses y los pagos (sin la cuenta: la hace el servidor)", () => {
     expect(textoUltimoPago(null)).toBe("Todavía no pagó nada");
     // «el» y la fecha no se separan (en la tablet, la fecha quedaba sola en otro renglón).
     expect(textoUltimoPago({ fecha: "2026-11-02", total: 630 })).toContain(`el${NB}02/11/2026`);
+  });
+});
+
+describe("el producto de cada semana (§7.1)", () => {
+  const crudo = pacientesDePrueba("2026-11-23").find((p) => p.paciente.id === 12)!.tratamientos[0];
+  const marcas = (cambios: Record<number, { nombre: string; vialMg?: number; vialMl?: number }>) =>
+    armarTratamiento({ ...crudo, semanas: crudo.semanas.map((s) => (cambios[s.semana] ? { ...s, producto: cambios[s.semana] } : s)) });
+
+  it("vigente en la semana W: la marca más alta ≤ W; si no hay, el del inicio", () => {
+    const t = marcas({ 3: { nombre: "TG", vialMg: 10, vialMl: 0.5 }, 6: { nombre: "Tirze" } });
+    expect(productoVigente(t, 2)).toEqual({ nombre: "Tirzepatida", vialMg: 15, vialMl: 0.5 });
+    expect(productoVigente(t, 3)).toEqual({ nombre: "TG", vialMg: 10, vialMl: 0.5 });
+    expect(productoVigente(t, 5)).toEqual({ nombre: "TG", vialMg: 10, vialMl: 0.5 });
+    expect(productoVigente(t, 8)).toEqual({ nombre: "Tirze", vialMg: null, vialMl: null });
+    // Sin contar la marca del registro que se corrige (va en el formulario).
+    expect(productoVigente(t, 6, t.registros.find((r) => r.semana === 6)!.id).nombre).toBe("TG");
+    expect(marcaVigente(t.registros, 8)?.semana).toBe(6);
+    expect(productoInicialDe(t)).toEqual({ nombre: "Tirzepatida", vialMg: 15, vialMl: 0.5 });
+  });
+
+  it("un backend sin marcas: el producto es el del tratamiento", () => {
+    const t = armarTratamiento(crudo);
+    expect(t.productoInicial).toBeUndefined();
+    expect(productoVigente(t, 9)).toEqual({ nombre: "Tirzepatida", vialMg: 15, vialMl: 0.5 });
+  });
+
+  it("el renglón de la marca: «Desde la semana 6 usa Tirze · 10 mg en 0,5 ml · antes TG»", () => {
+    const t = marcas({ 3: { nombre: "TG" }, 6: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 } });
+    expect(sinNb(textoMarca(t.registros.find((r) => r.semana === 6)!))).toBe("Desde la semana 6 usa Tirze · 10 mg en 0,5 ml · antes TG");
+    expect(textoMarca(t.registros.find((r) => r.semana === 3)!)).toBe("Desde la semana 3 usa TG · antes Tirzepatida");
+    expect(sinNb(textoProducto({ nombre: "Tirze", vialMg: 15, vialMl: 0.5 }))).toBe("Tirze · 15 mg en 0,5 ml");
   });
 });
 

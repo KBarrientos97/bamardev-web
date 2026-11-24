@@ -105,6 +105,27 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(sinNb(screen.getByText(/^Última semana:/).textContent)).toBe("Última semana: subió 0,8 kg");
   });
 
+  // §7.1 y §7.2: el renglón de la marca en la tabla, con «Corregir»; y «Editar tratamiento» corrige el del inicio.
+  it("el cambio de producto: su renglón en la tabla abre esa semana con el producto; «Editar tratamiento» es el del inicio", async () => {
+    const lucia = structuredClone(pacientes.find((p) => p.paciente.id === 12)!);
+    lucia.tratamientos[0].semanas = lucia.tratamientos[0].semanas.map((s) => (s.semana === 7 ? { ...s, producto: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 } } : s));
+    vi.mocked(apiSeguimiento.hoja).mockResolvedValueOnce(hojaDe(lucia));
+    await abrirHoja(12);
+    const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+    const tabla = screen.getByRole("table");
+    expect(sinNb(within(tabla).getByText(/^Desde la semana 7 usa/).textContent)).toBe("Desde la semana 7 usa Tirze · 10 mg en 0,5 ml · antes Tirzepatida");
+    expect(sinNb(screen.getByText(/^Empezó con/).textContent)).toBe("Empezó con Tirzepatida · 15 mg en 0,5 ml · cambió de producto una vez");
+    fireEvent.click(within(tabla).getByRole("button", { name: "Corregir el cambio de producto de la semana 7" }));
+    const hoja = screen.getByRole("dialog", { name: "Semana 7" });
+    expect(within(hoja).getByLabelText("Producto nuevo")).toHaveValue("Tirze");
+    fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del tratamiento" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Editar tratamiento/ }));
+    const editar = screen.getByRole("dialog", { name: "Editar tratamiento" });
+    expect(within(editar).getByLabelText("Producto al empezar")).toHaveValue("Tirzepatida");
+    expect(within(editar).getByLabelText("Miligramos del vial")).toHaveValue("15");
+  });
+
   it("«Anotar pago» abre el último registro de ese mes con el foco en el medicamento", async () => {
     await abrirHoja(12);
     fireEvent.click(screen.getByRole("button", { name: "Anotar pago" }));

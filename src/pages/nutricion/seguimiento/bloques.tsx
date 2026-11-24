@@ -4,7 +4,9 @@ import { Boton, Modal } from "../../../components/ui";
 import { fmtNumero, textoAlSalir, valorDe } from "../../../lib/nutricion/calculo";
 import {
   type PesoDeLaEvaluacion,
+  concentracion,
   equivalenciasDe,
+  fmtDosis,
   fmtDosisCalculada,
   igualQueLaAnterior,
   numeroDeDosis,
@@ -13,13 +15,16 @@ import {
   partesPaso,
   pasoSiguiente,
   resultadoDelPeso,
+  textoJeringa,
+  textoMgPorUi,
+  textoProducto,
   valorDelPaso,
   dosisConMg,
   type TonoKg,
 } from "../../../lib/nutricion/seguimiento/formato";
-import { conCambioDeLaboratorio, valorLimitado, type ErroresSemana, type FormSemana } from "../../../lib/nutricion/seguimiento/formulario";
-import type { DosisAnotada, Paso, UnidadDosis } from "../../../lib/nutricion/seguimiento/tipos";
-import { CampoTexto } from "../piezas";
+import { valorLimitado, vialDe, type ErroresSemana, type FormSemana } from "../../../lib/nutricion/seguimiento/formulario";
+import type { DosisAnotada, Paso, Producto, UnidadDosis } from "../../../lib/nutricion/seguimiento/tipos";
+import { CampoNumero, CampoTexto } from "../piezas";
 import { BotonToque, Equivalentes } from "./piezas";
 
 /**
@@ -442,23 +447,18 @@ export function BloqueObservaciones({
   form,
   cambiar,
   etiqueta = "Observaciones de la semana",
-  conLaboratorio = true,
 }: {
   id: string;
   form: FormSemana;
   cambiar: Cambiar;
   etiqueta?: string;
-  /** El botón «Cambio de laboratorio» (no en el inicial). */
-  conLaboratorio?: boolean;
 }) {
-  const area = useRef<HTMLTextAreaElement>(null);
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={`${id}-observaciones`} className={ROTULO}>
         {etiqueta}
       </label>
       <textarea
-        ref={area}
         id={`${id}-observaciones`}
         rows={3}
         maxLength={2000}
@@ -467,27 +467,256 @@ export function BloqueObservaciones({
         onChange={(e) => cambiar("observaciones", e.target.value)}
         className="min-h-[72px] w-full resize-y rounded-2xl border border-slate-300 bg-white px-3.5 py-3 text-base leading-relaxed text-texto outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100 sm:min-h-[76px] sm:px-4 lg:min-h-[104px] lg:px-3.5 lg:text-[15px]"
       />
-      {conLaboratorio && (
-        <div>
-          <BotonToque
-            onClick={() => {
-              const t = conCambioDeLaboratorio(form.observaciones);
-              cambiar("observaciones", t);
-              // El cursor al final, para completar «de TG a Tirzec».
-              setTimeout(() => {
-                const el = area.current;
-                if (!el) return;
-                el.focus();
-                el.setSelectionRange(t.length, t.length);
-              }, 0);
-            }}
-          >
-            <Icon name="plus" size={15} />
-            Cambio de laboratorio
-          </BotonToque>
+    </div>
+  );
+}
+
+/**
+ * «Vial de [ ] mg en [ ] ml» (opcional, los dos o ninguno), con los botones de
+ * las presentaciones del catálogo y, al completarlo, la cuenta en gris («1 UI =
+ * 0,3 mg · 2,5 mg ≈ 8 UI (jeringa…)»). Lo usan «Iniciar tratamiento» y el
+ * cambio de producto de una semana.
+ */
+export function SelectorVial({
+  id,
+  titulo,
+  vialMg,
+  vialMl,
+  onCambiar,
+  presentaciones,
+  primerPasoMg,
+  uiPorMl,
+  error,
+  invalidoMg,
+  invalidoMl,
+}: {
+  id: string;
+  titulo: string;
+  vialMg: string;
+  vialMl: string;
+  onCambiar: (mg: string, ml: string) => void;
+  presentaciones: { mg: number; ml: number }[];
+  primerPasoMg: number | null;
+  uiPorMl: number;
+  error: string | null | undefined;
+  invalidoMg: boolean;
+  invalidoMl: boolean;
+}) {
+  const v = vialDe({ vialMg, vialMl });
+  const conc = v ? concentracion(v.mg, v.ml, uiPorMl) : null;
+  return (
+    <div className="space-y-2">
+      <p className="text-[13px] font-semibold text-texto-2">
+        {titulo} <span className="font-normal text-texto-4">(opcional)</span>
+      </p>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-sm text-texto-2">
+        <span>Vial de</span>
+        <div className="w-28">
+          <CampoNumero
+            id={`${id}-vialMg`}
+            aria-label="Miligramos del vial"
+            value={vialMg}
+            unidad="mg"
+            invalido={invalidoMg}
+            onChange={(x) => onCambiar(x, vialMl)}
+            className="min-h-12 text-base"
+          />
+        </div>
+        <span>en</span>
+        <div className="w-28">
+          <CampoNumero
+            id={`${id}-vialMl`}
+            aria-label="Mililitros del vial"
+            value={vialMl}
+            unidad="ml"
+            invalido={invalidoMl}
+            onChange={(x) => onCambiar(vialMg, x)}
+            className="min-h-12 text-base"
+          />
+        </div>
+      </div>
+      {error && <p className="text-xs text-danger-text">{error}</p>}
+      {presentaciones.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {presentaciones.map((p) => (
+            <BotonToque key={`${p.mg}-${p.ml}`} onClick={() => onCambiar(fmtNumero(p.mg, 2), fmtNumero(p.ml, 2))}>
+              {fmtNumero(p.mg, 2)}&nbsp;mg en {fmtNumero(p.ml, 2)}&nbsp;ml
+            </BotonToque>
+          ))}
         </div>
       )}
+      <p className="text-[12px] text-texto-3">
+        {conc ? (
+          <span className="font-semibold text-texto-2">
+            {textoMgPorUi(conc.mgPorUi)}
+            {primerPasoMg != null && (
+              <>
+                {" "}
+                · {fmtDosis(primerPasoMg, "mg")} ≈&nbsp;{numeroDeDosis(primerPasoMg / conc.mgPorUi, "UI").texto}&nbsp;UI
+              </>
+            )}{" "}
+            <span className="whitespace-nowrap font-normal text-texto-3">({textoJeringa(uiPorMl)})</span>
+          </span>
+        ) : (
+          "Sirve para pasar la dosis de mg a UI y a ml."
+        )}
+      </p>
     </div>
+  );
+}
+
+/** Los campos del producto en el formulario de la semana. */
+type CamposProducto = Pick<FormSemana, "cambioProducto" | "productoNombre" | "productoVialMg" | "productoVialMl">;
+
+/**
+ * «Cambió de producto desde esta semana» (§7.1 y §7.2), en vez del botón que
+ * escribía «Cambio de laboratorio: » en las observaciones. Cerrado dice lo que
+ * usa hoy; abierto pide el producto nuevo (vacío) y su vial (el mismo selector
+ * de «Iniciar tratamiento»). Con otro vial, la dosis de ESTA hoja se cuenta con
+ * el vial nuevo (lo hace la hoja). En una semana que ya tenía la marca, «Quitar
+ * el cambio»; si la semana no tiene nada más, quitarla la dejaría vacía (el
+ * servidor no deja): se ofrece borrar la semana.
+ */
+export function BloqueProducto({
+  id,
+  form,
+  errores,
+  intento,
+  cambiar,
+  vigente,
+  teniaMarca,
+  soloMarca,
+  presentaciones,
+  primerPasoMg,
+  uiPorMl,
+  onBorrarSemana,
+  refNombre,
+}: {
+  id: string;
+  form: FormSemana;
+  errores: ErroresSemana;
+  intento: boolean;
+  cambiar: (cambios: Partial<CamposProducto>) => void;
+  /** El producto que se usaba antes de esta semana (sin contar su marca). */
+  vigente: Producto;
+  /** La semana ya tenía la marca guardada. */
+  teniaMarca: boolean;
+  /** La semana guardada no tiene nada más que la marca. */
+  soloMarca: boolean;
+  presentaciones: { mg: number; ml: number }[];
+  primerPasoMg: number | null;
+  uiPorMl: number;
+  onBorrarSemana?: () => void;
+  refNombre?: RefObject<HTMLInputElement | null>;
+}) {
+  const propio = useRef<HTMLInputElement>(null);
+  const nombre = refNombre ?? propio;
+  const titulo = "Cambió de producto desde esta semana";
+
+  if (!form.cambioProducto) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          aria-expanded={false}
+          onClick={() => {
+            cambiar({ cambioProducto: true });
+            setTimeout(() => nombre.current?.focus(), 0);
+          }}
+          className="flex h-[52px] items-center justify-between gap-3 rounded-2xl border border-borde bg-white px-4 text-left text-[15px] font-medium text-texto transition-colors hover:bg-muted sm:h-14 sm:px-[18px] sm:text-base lg:h-12 lg:rounded-[14px] lg:px-4 lg:text-[15px]"
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            <Icon name="plus" size={20} strokeWidth={2.4} className="shrink-0 text-primary-boton" />
+            {titulo}
+          </span>
+          <span className="min-w-0 truncate text-sm font-normal text-texto-2 max-sm:hidden lg:hidden">Hoy usa: {textoProducto(vigente)}</span>
+        </button>
+        {teniaMarca && (
+          <p className="px-1 text-[13px] text-warning-text">
+            Al guardar se quita el cambio a {form.productoNombre.trim() || "otro producto"}: desde esta semana vuelve a contar {vigente.nombre}.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const errNombre = intento || form.productoNombre ? errores.productoNombre : null;
+  const errMg = intento || form.productoVialMg ? errores.productoVialMg : null;
+  const errMl = intento || form.productoVialMl ? errores.productoVialMl : null;
+  const errVial = intento ? errores.productoVial : null;
+  return (
+    <section aria-label={titulo} className="flex flex-col gap-3 rounded-2xl border border-primary-200 bg-primary-50/40 p-3.5 sm:px-[18px] sm:py-4 lg:p-3.5">
+      {teniaMarca ? (
+        <h3 className="flex min-h-11 items-center gap-2.5 text-[15px] font-semibold text-texto sm:text-base lg:text-[15px]">
+          <Icon name="swap" size={19} className="shrink-0 text-primary-boton" />
+          {titulo}
+        </h3>
+      ) : (
+        <button
+          type="button"
+          aria-expanded
+          title="Tocá para cerrar: no cambió de producto"
+          onClick={() => cambiar({ cambioProducto: false, productoNombre: "", productoVialMg: "", productoVialMl: "" })}
+          className="-mx-1 flex min-h-11 items-center justify-between gap-2.5 rounded-xl px-1 text-left text-[15px] font-semibold text-texto hover:bg-white/70 sm:text-base lg:text-[15px]"
+        >
+          <span className="flex items-center gap-2.5">
+            <Icon name="swap" size={19} className="shrink-0 text-primary-boton" />
+            {titulo}
+          </span>
+          <Icon name="chevronDown" size={18} className="shrink-0 rotate-180 text-texto-3" />
+        </button>
+      )}
+      <p className="-mt-1 text-sm text-texto-2">
+        Antes usaba: <span className="font-semibold text-texto">{textoProducto(vigente)}</span>
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${id}-producto`} className="text-[13px] font-semibold text-texto-2">
+          Producto nuevo
+        </label>
+        <CampoTexto
+          ref={nombre}
+          id={`${id}-producto`}
+          value={form.productoNombre}
+          maxLength={80}
+          autoComplete="off"
+          enterKeyHint="next"
+          invalido={!!errNombre}
+          onChange={(e) => cambiar({ productoNombre: e.target.value })}
+          className="min-h-12 text-base"
+        />
+        {errNombre && <p className="text-xs text-danger-text">{errNombre}</p>}
+      </div>
+      <SelectorVial
+        id={`${id}-producto`}
+        titulo="Presentación del vial"
+        vialMg={form.productoVialMg}
+        vialMl={form.productoVialMl}
+        onCambiar={(mg, ml) => cambiar({ productoVialMg: mg, productoVialMl: ml })}
+        presentaciones={presentaciones}
+        primerPasoMg={primerPasoMg}
+        uiPorMl={uiPorMl}
+        error={errMg ?? errMl ?? errVial}
+        invalidoMg={!!(errMg || errVial)}
+        invalidoMl={!!(errMl || errVial)}
+      />
+      {teniaMarca &&
+        (soloMarca ? (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-texto-2">
+            <span className="min-w-0 flex-1">Esta semana sólo tiene el cambio de producto: para quitarlo, borrá la semana.</span>
+            {onBorrarSemana && (
+              <Boton variante="ghost" icono="trash" className="min-h-11 text-danger-text! lg:min-h-10" onClick={onBorrarSemana}>
+                Borrar semana
+              </Boton>
+            )}
+          </p>
+        ) : (
+          <div>
+            <Boton variante="ghost" className="min-h-11 text-danger-text! lg:min-h-10" onClick={() => cambiar({ cambioProducto: false })}>
+              Quitar el cambio
+            </Boton>
+          </div>
+        ))}
+    </section>
   );
 }
 

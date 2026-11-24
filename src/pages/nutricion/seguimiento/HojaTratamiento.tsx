@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "../../../components/Icon";
 import { Boton, Confirmar } from "../../../components/ui";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
-import { fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
+import { hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, hojaDesactualizada, tratamientoQueYaTiene } from "../../../lib/nutricion/seguimiento/api";
 import {
   concentracion,
   delCatalogo,
-  fmtDosis,
-  numeroDeDosis,
   pasosDe,
   pesoDeLaEvaluacion,
-  textoJeringa,
-  textoMgPorUi,
+  productoVigente,
+  textoProducto,
   UNIDADES_DOSIS,
 } from "../../../lib/nutricion/seguimiento/formato";
 import {
@@ -32,8 +31,8 @@ import {
 import type { CatalogoSeguimiento, HojaPaciente, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
-import { CampoNumero, CampoTexto, Rotulo, SeccionHoja } from "../piezas";
-import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PieHoja, PreguntaSinPago } from "./bloques";
+import { CampoTexto, Rotulo, SeccionHoja } from "../piezas";
+import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PieHoja, PreguntaSinPago, SelectorVial } from "./bloques";
 import HojaGrande from "./HojaGrande";
 import { BotonesUnidad, BotonToque } from "./piezas";
 
@@ -163,6 +162,8 @@ export default function HojaTratamiento({
   const errMg = intento || formT.vialMg ? erroresT.vialMg : null;
   const errMl = intento || formT.vialMl ? erroresT.vialMl : null;
   const primerPaso = delCat?.pasosMg[0];
+  // §7.1: con cambios de producto, acá se corrige el producto con el que EMPEZÓ.
+  const alEmpezar = !iniciar && (tratamiento?.cambiosDeProducto ?? 0) > 0;
 
   const titulo = iniciar ? "Iniciar tratamiento" : "Editar tratamiento";
   return (
@@ -188,7 +189,17 @@ export default function HojaTratamiento({
             pasarAlSiguiente(e.currentTarget, el);
           }}
         >
-          <Rotulo htmlFor={`${id}-nombre`} label="Tratamiento" error={intento ? erroresT.nombre : null}>
+          {alEmpezar && tratamiento && (
+            <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+              <Icon name="info" size={16} className="mt-px shrink-0" />
+              <span>
+                Cambió de producto {tratamiento.cambiosDeProducto === 1 ? "una vez" : `${tratamiento.cambiosDeProducto} veces`}: hoy usa{" "}
+                <span className="font-semibold">{textoProducto(productoVigente(tratamiento, tratamiento.resumen.semana))}</span>. Acá se corrige el
+                producto con el que empezó; cada cambio se corrige en su semana.
+              </span>
+            </p>
+          )}
+          <Rotulo htmlFor={`${id}-nombre`} label={alEmpezar ? "Producto al empezar" : "Tratamiento"} error={intento ? erroresT.nombre : null}>
             <CampoTexto
               id={`${id}-nombre`}
               value={formT.nombre}
@@ -210,66 +221,19 @@ export default function HojaTratamiento({
             )}
           </Rotulo>
 
-          <div className="space-y-2">
-            <p className="text-[13px] font-semibold text-texto-2">
-              Presentación del vial <span className="font-normal text-texto-4">(opcional)</span>
-            </p>
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-sm text-texto-2">
-              <span>Vial de</span>
-              <div className="w-28">
-                <CampoNumero
-                  id={`${id}-vialMg`}
-                  aria-label="Miligramos del vial"
-                  value={formT.vialMg}
-                  unidad="mg"
-                  invalido={!!(errMg || errVial)}
-                  onChange={(v) => cambiarT("vialMg", v)}
-                  className="min-h-12 text-base"
-                />
-              </div>
-              <span>en</span>
-              <div className="w-28">
-                <CampoNumero
-                  id={`${id}-vialMl`}
-                  aria-label="Mililitros del vial"
-                  value={formT.vialMl}
-                  unidad="ml"
-                  invalido={!!(errMl || errVial)}
-                  onChange={(v) => cambiarT("vialMl", v)}
-                  className="min-h-12 text-base"
-                />
-              </div>
-            </div>
-            {(errMg || errMl || errVial) && <p className="text-xs text-danger-text">{errMg ?? errMl ?? errVial}</p>}
-            {delCat && delCat.presentaciones.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {delCat.presentaciones.map((p) => (
-                  <BotonToque
-                    key={`${p.mg}-${p.ml}`}
-                    onClick={() => setFormT((f) => ({ ...f, vialMg: fmtNumero(p.mg, 2), vialMl: fmtNumero(p.ml, 2) }))}
-                  >
-                    {fmtNumero(p.mg, 2)}&nbsp;mg en {fmtNumero(p.ml, 2)}&nbsp;ml
-                  </BotonToque>
-                ))}
-              </div>
-            )}
-            <p className="text-[12px] text-texto-3">
-              {conc ? (
-                <span className="font-semibold text-texto-2">
-                  {textoMgPorUi(conc.mgPorUi)}
-                  {primerPaso != null && (
-                    <>
-                      {" "}
-                      · {fmtDosis(primerPaso, "mg")} ≈&nbsp;{numeroDeDosis(primerPaso / conc.mgPorUi, "UI").texto}&nbsp;UI
-                    </>
-                  )}{" "}
-                  <span className="font-normal text-texto-3">({textoJeringa(catalogo.uiPorMl)})</span>
-                </span>
-              ) : (
-                "Sirve para pasar la dosis de mg a UI y a ml."
-              )}
-            </p>
-          </div>
+          <SelectorVial
+            id={id}
+            titulo={alEmpezar ? "Presentación del vial al empezar" : "Presentación del vial"}
+            vialMg={formT.vialMg}
+            vialMl={formT.vialMl}
+            onCambiar={(mg, ml) => setFormT((f) => ({ ...f, vialMg: mg, vialMl: ml }))}
+            presentaciones={delCat?.presentaciones ?? []}
+            primerPasoMg={primerPaso ?? null}
+            uiPorMl={catalogo.uiPorMl}
+            error={errMg ?? errMl ?? errVial}
+            invalidoMg={!!(errMg || errVial)}
+            invalidoMl={!!(errMl || errVial)}
+          />
 
           <div className="space-y-2">
             <p className="text-[13px] font-semibold text-texto-2">¿En qué anotás la dosis?</p>

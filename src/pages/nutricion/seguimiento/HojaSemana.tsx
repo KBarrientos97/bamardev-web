@@ -6,16 +6,22 @@ import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/a
 import { fechaLarga, fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, esCodigo, hojaDesactualizada } from "../../../lib/nutricion/seguimiento/api";
 import {
+  concentracion,
+  delCatalogo,
   diaYMes,
   dosisYSusMg,
   esSemanaDePago,
   igualQueLaAnterior,
+  marcaVigente,
   mesDeLaSemana,
   nombreSemana,
   pagoDelMes,
   pagoDelRegistro,
   partesEquivalencias,
+  pasosDe,
   pesoDeLaEvaluacion,
+  productoInicialDe,
+  productoVigente,
   rachaAntes,
   textoFaltaPago,
   textoPagoAnterior,
@@ -23,6 +29,7 @@ import {
   ultimoPagoAntes,
 } from "../../../lib/nutricion/seguimiento/formato";
 import {
+  cambioLaMarca,
   cambiosDeSemana,
   conPagoDelMes,
   erroresDeSemana,
@@ -34,12 +41,13 @@ import {
   semanaVacia,
   soloLoEscrito,
   valorLimitado,
+  vialDe,
   type FormSemana,
 } from "../../../lib/nutricion/seguimiento/formulario";
-import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import type { CatalogoSeguimiento, HojaPaciente, Producto, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
-import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PieHoja, PreguntaSinPago, QuienYCuando } from "./bloques";
+import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, BloqueProducto, PieHoja, PreguntaSinPago, QuienYCuando } from "./bloques";
 import HojaGrande from "./HojaGrande";
 
 /**
@@ -64,7 +72,9 @@ export default function HojaSemana({
   pacienteNombre,
   ultimoControl,
   focoPago = false,
+  focoProducto = false,
   onEditarTratamiento,
+  onCorregirMarca,
   onCerrar,
   onGuardado,
   onDesactualizada,
@@ -80,10 +90,18 @@ export default function HojaSemana({
   ultimoControl: HojaPaciente["ultimoControl"];
   /** «Anotar pago»: abre con el foco en «Medicamento». */
   focoPago?: boolean;
+  /** «Corregir» desde el renglón de la marca: abre con el foco en el producto nuevo. */
+  focoProducto?: boolean;
   /** Para el aviso del vial que falta («Editar tratamiento»), si puede editarlo. */
   onEditarTratamiento?: () => void;
+  /**
+   * El vial que falta es el de un producto que cambió en otra semana (§7.1):
+   * el aviso lleva a corregir ESA marca, no el tratamiento (que es el del inicio).
+   */
+  onCorregirMarca?: (r: Registro) => void;
   onCerrar: () => void;
-  onGuardado: (t: Tratamiento, aviso: string) => void;
+  /** `releer`: se puso, corrigió o quitó una marca de producto; las semanas siguientes cambiaron. */
+  onGuardado: (t: Tratamiento, aviso: string, releer?: boolean) => void;
   /** El servidor dijo que la hoja de atrás quedó vieja (404 / 409): se vuelve a leer al cerrar. */
   onDesactualizada?: () => void;
   /**
@@ -94,8 +112,9 @@ export default function HojaSemana({
 }) {
   const esInicial = registro?.semana === 0;
   const unidad = tratamiento.unidadDosis;
-  const mgPorMlHoy = tratamiento.presentacion?.mgPorMl ?? null;
   const otros = tratamiento.registros.filter((r) => r.id !== registro?.id);
+  /** La concentración del vial de un producto (null sin vial). */
+  const concDe = (p: Producto) => (p.vialMg != null && p.vialMl != null ? (concentracion(p.vialMg, p.vialMl, catalogo.uiPorMl)?.mgPorMl ?? null) : null);
 
   // Una semana nueva viene con «Igual que la anterior» marcada (Kevin, 23-nov):
   // la última dosis aplicada antes de ella. Va también en `antes`, así cerrar
@@ -103,11 +122,12 @@ export default function HojaSemana({
   const [antes] = useState<FormSemana>(() => {
     if (registro) return semanaDesde(registro);
     const r = rachaAntes(otros, semana);
-    const igual = r ? igualQueLaAnterior(r.dosis, unidad, mgPorMlHoy, catalogo.uiPorMl) : null;
+    const igual = r ? igualQueLaAnterior(r.dosis, unidad, concDe(productoVigente(tratamiento, semana)), catalogo.uiPorMl) : null;
     return { ...semanaVacia(semana), dosis: igual?.escribe ?? "" };
   });
   const [form, setForm] = useState<FormSemana>(antes);
   const cambiar = <K extends keyof FormSemana>(campo: K, valor: FormSemana[K]) => setForm((f) => ({ ...f, [campo]: valor }));
+  const refProducto = useRef<HTMLInputElement>(null);
   // Mientras no se toque la dosis, sigue a «Igual que la anterior» (si se cambia el número de la semana).
   const [dosisDeFabrica, setDosisDeFabrica] = useState(!registro && !!antes.dosis);
   const [guardando, setGuardando] = useState(false);
@@ -135,6 +155,15 @@ export default function HojaSemana({
     }, 50);
     return () => clearTimeout(t);
   }, [focoPago]);
+  // «Corregir» la marca desde la tabla: directo al producto.
+  useEffect(() => {
+    if (!focoProducto) return;
+    const t = setTimeout(() => {
+      refProducto.current?.scrollIntoView?.({ block: "center" });
+      refProducto.current?.focus();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [focoProducto]);
 
   const conCambios = semanaCambio(antes, form);
   const pedirCerrar = () => (conCambios ? setPreguntaCerrar(true) : onCerrar());
@@ -154,11 +183,23 @@ export default function HojaSemana({
   const otraUnidad = registro?.unidadDosis && registro.unidadDosis !== unidad && registro.dosis != null ? registro.unidadDosis : null;
   const sinTocarDosis = form.dosis === antes.dosis;
   const unidadDelCampo = otraUnidad && sinTocarDosis ? otraUnidad : unidad;
-  const mgPorMl = unidadDelCampo === unidad ? mgPorMlHoy : null;
 
-  // Si se cambia el número de una semana nueva sin haber tocado la dosis, la
-  // marcada sigue siendo la de antes de ESA semana.
-  const igualAhora = dosisDeFabrica && racha ? (igualQueLaAnterior(racha.dosis, unidad, mgPorMlHoy, catalogo.uiPorMl)?.escribe ?? "") : null;
+  // El producto de ESTA semana (§7.1): el de su marca, si se puso una; si no,
+  // el vigente (la marca más alta antes de ella, o el del inicio). Con otro
+  // vial, los botones de la dosis y las equivalencias usan el vial nuevo.
+  const vigente = productoVigente(tratamiento, numero, registro?.id);
+  const marcaDeAntes = marcaVigente(tratamiento.registros, numero, registro?.id);
+  const vialMarca = form.cambioProducto ? vialDe({ vialMg: form.productoVialMg, vialMl: form.productoVialMl }) : null;
+  const productoSemana: Producto =
+    form.cambioProducto && form.productoNombre.trim()
+      ? { nombre: form.productoNombre.trim(), vialMg: vialMarca?.mg ?? null, vialMl: vialMarca?.ml ?? null }
+      : vigente;
+  const mgPorMlSemana = form.cambioProducto ? (vialMarca ? concDe({ nombre: "", vialMg: vialMarca.mg, vialMl: vialMarca.ml }) : null) : concDe(vigente);
+  const mgPorMl = unidadDelCampo === unidad ? mgPorMlSemana : null;
+
+  // Si se cambia el número de una semana nueva (o el vial de esta semana) sin
+  // haber tocado la dosis, la marcada sigue siendo la de antes de ESA semana.
+  const igualAhora = dosisDeFabrica && racha ? (igualQueLaAnterior(racha.dosis, unidad, mgPorMlSemana, catalogo.uiPorMl)?.escribe ?? "") : null;
   useEffect(() => {
     if (igualAhora != null && !form.sinDosis && form.dosis !== igualAhora) setForm((f) => ({ ...f, dosis: igualAhora }));
   }, [igualAhora, form.sinDosis, form.dosis]);
@@ -177,8 +218,22 @@ export default function HojaSemana({
       : "Pago de esta semana";
   const pagoAnterior = ultimoPagoAntes(otros, numero);
 
-  const pasos = tratamiento.pasos;
-  const faltaVial = pasos.length > 0 && unidad !== "mg" && !tratamiento.presentacion;
+  // Los escalones son de la droga (en mg): los que manda el servidor o, si el
+  // producto de hoy no es del catálogo, los del producto de esta semana o del
+  // inicio. Se cuentan con el vial de ESTA semana.
+  const pasosMg = tratamiento.pasos.length
+    ? tratamiento.pasos.map((p) => p.mg)
+    : (delCatalogo(catalogo, productoSemana.nombre) ?? delCatalogo(catalogo, vigente.nombre) ?? delCatalogo(catalogo, productoInicialDe(tratamiento).nombre))?.pasosMg ?? [];
+  const pasos = pasosDe(pasosMg, mgPorMlSemana, catalogo.uiPorMl);
+  const faltaVial = pasos.length > 0 && unidad !== "mg" && !mgPorMlSemana;
+  // Las presentaciones del catálogo para el producto nuevo (o, si no es del catálogo, las de la droga).
+  const presentaciones = (
+    delCatalogo(catalogo, form.productoNombre) ??
+    delCatalogo(catalogo, vigente.nombre) ??
+    delCatalogo(catalogo, productoInicialDe(tratamiento).nombre)
+  )?.presentaciones ?? [];
+  // Una semana guardada que sólo tiene la marca: quitarla la dejaría vacía (§7.1, el servidor no deja).
+  const soloMarca = !!registro && !semanaConDatos({ ...form, cambioProducto: false });
 
   async function guardar(sinPago = false) {
     if (guardando) return;
@@ -196,6 +251,10 @@ export default function HojaSemana({
       onCerrar();
       return;
     }
+    if (registro && !esInicial && antes.cambioProducto && !form.cambioProducto && !semanaConDatos(form)) {
+      setError("Sin el cambio de producto esta semana queda vacía: para quitarlo, borrá la semana.");
+      return;
+    }
     if (tocaPago && !conPagoDelMes(form) && !sinPago) {
       setPreguntaPago(true);
       return;
@@ -207,7 +266,8 @@ export default function HojaSemana({
         ? await apiSeguimiento.corregirRegistro(registro.id, cambiosDeSemana(antes, form, esInicial))
         : await apiSeguimiento.cargarSemana(tratamiento.id, soloLoEscrito(semanaAInput(form, false)));
       setPreguntaPago(false);
-      onGuardado(t, registro ? (esInicial ? "Registro inicial corregido." : `Semana ${numero} corregida.`) : `Semana ${numero} guardada.`);
+      // Poner, corregir o quitar la marca cambia las equivalencias de las semanas siguientes: la hoja se relee entera.
+      onGuardado(t, registro ? (esInicial ? "Registro inicial corregido." : `Semana ${numero} corregida.`) : `Semana ${numero} guardada.`, cambioLaMarca(antes, form));
     } catch (e) {
       setPreguntaPago(false);
       if (hojaDesactualizada(e)) onDesactualizada?.();
@@ -225,7 +285,7 @@ export default function HojaSemana({
     try {
       const t = await apiSeguimiento.borrarRegistro(registro.id);
       setBorrando(false);
-      onGuardado(t, `Semana ${registro.semana} borrada.`);
+      onGuardado(t, `Semana ${registro.semana} borrada.`, !!registro.producto);
     } catch (e) {
       setBorrando(false);
       if (hojaDesactualizada(e)) onDesactualizada?.();
@@ -262,7 +322,33 @@ export default function HojaSemana({
   const deHoy = form.fecha === hoy;
   const errSemana = !esInicial && (intento || form.semana !== antes.semana) ? errores.semana : null;
   const errFecha = intento ? errores.fecha : null;
-  const vial = tratamiento.presentacion ? textoPresentacion(tratamiento.presentacion.mg, tratamiento.presentacion.ml) : null;
+  const vial = productoSemana.vialMg != null && productoSemana.vialMl != null ? textoPresentacion(productoSemana.vialMg, productoSemana.vialMl) : null;
+  // El vial que falta: el del producto nuevo de esta semana, el de una marca de antes o el del tratamiento.
+  const avisoVial = !faltaVial ? null : form.cambioProducto ? (
+    <>Completá la presentación del vial del producto nuevo para ver las dosis en {unidad}.</>
+  ) : marcaDeAntes ? (
+    <>
+      Cargá la presentación del vial de {vigente.nombre} para ver las dosis en {unidad}.{" "}
+      {onCorregirMarca && !conCambios ? (
+        <button type="button" onClick={() => onCorregirMarca(marcaDeAntes)} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
+          Corregir el cambio de la semana {marcaDeAntes.semana}
+        </button>
+      ) : onCorregirMarca ? (
+        <span>Se carga en el cambio de producto de la semana {marcaDeAntes.semana} (guardá antes esta semana).</span>
+      ) : null}
+    </>
+  ) : (
+    <>
+      Cargá la presentación del vial para ver las dosis en {unidad}.{" "}
+      {onEditarTratamiento && !conCambios ? (
+        <button type="button" onClick={onEditarTratamiento} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
+          Editar tratamiento
+        </button>
+      ) : onEditarTratamiento ? (
+        <span>Se carga en «Editar tratamiento» (guardá antes esta semana).</span>
+      ) : null}
+    </>
+  );
 
   return (
     <>
@@ -312,7 +398,7 @@ export default function HojaSemana({
               className="col-start-2 row-start-1 justify-self-start sm:row-span-2 sm:justify-self-end"
             />
             <p className="col-span-2 row-start-2 min-w-0 text-sm text-texto-2 sm:col-span-1 sm:col-start-1">
-              {pacienteNombre} · {tratamiento.nombre}
+              {pacienteNombre} · {productoSemana.nombre}
               {vial && <span className="max-sm:hidden">, {vial}</span>}
             </p>
             {(errSemana || errFecha) && (
@@ -362,20 +448,7 @@ export default function HojaSemana({
                 mgPorMl={mgPorMl}
                 uiPorMl={catalogo.uiPorMl}
                 pasos={pasos}
-                sinPresentacion={
-                  faltaVial ? (
-                    <>
-                      Cargá la presentación del vial para ver las dosis en {unidad}.{" "}
-                      {onEditarTratamiento && !conCambios ? (
-                        <button type="button" onClick={onEditarTratamiento} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
-                          Editar tratamiento
-                        </button>
-                      ) : onEditarTratamiento ? (
-                        <span>Se carga en «Editar tratamiento» (guardá antes esta semana).</span>
-                      ) : null}
-                    </>
-                  ) : null
-                }
+                sinPresentacion={avisoVial}
                 antes={racha?.dosis ?? null}
                 ofrecerSinDosis={!esInicial}
                 guardadas={guardadas && sinTocarDosis ? guardadas : null}
@@ -386,6 +459,24 @@ export default function HojaSemana({
 
             <div className="flex min-w-0 flex-col gap-4 sm:gap-3.5">
               <BloqueObservaciones id={id} form={form} cambiar={cambiar} etiqueta={esInicial ? "Observaciones" : "Observaciones de la semana"} />
+
+              {!esInicial && (
+                <BloqueProducto
+                  id={id}
+                  form={form}
+                  errores={errores}
+                  intento={intento}
+                  cambiar={(c) => setForm((f) => ({ ...f, ...c }))}
+                  vigente={vigente}
+                  teniaMarca={!!registro?.producto}
+                  soloMarca={soloMarca}
+                  presentaciones={presentaciones}
+                  primerPasoMg={pasosMg[0] ?? null}
+                  uiPorMl={catalogo.uiPorMl}
+                  onBorrarSemana={registro ? () => setBorrando(true) : undefined}
+                  refNombre={refProducto}
+                />
+              )}
 
               <BloquePagos
                 id={id}

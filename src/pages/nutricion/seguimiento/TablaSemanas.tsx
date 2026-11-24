@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
 import { fmtPlata } from "../../../lib/format";
 import { fechaLarga, fmtNumero } from "../../../lib/nutricion/calculo";
@@ -9,6 +9,7 @@ import {
   pagoDelMes,
   textoKg,
   textoKgTotal,
+  textoMarca,
   tituloMes,
 } from "../../../lib/nutricion/seguimiento/formato";
 import type { MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
@@ -60,6 +61,7 @@ export default function TablaSemanas({
   editable,
   onCorregir,
   onCargar,
+  onCorregirProducto,
 }: {
   tratamiento: Tratamiento;
   /** El mes elegido en los chips (null = todo). */
@@ -68,6 +70,8 @@ export default function TablaSemanas({
   editable: boolean;
   onCorregir: (r: Registro) => void;
   onCargar: (semana: number) => void;
+  /** «Corregir» en el renglón de la marca: abre esa semana con el producto a la vista. */
+  onCorregirProducto: (r: Registro) => void;
 }) {
   const grupos = gruposDe(tratamiento, editable).filter((g) => mes == null || g.mes.mes === mes);
   return (
@@ -114,7 +118,16 @@ export default function TablaSemanas({
             </tr>
             {g.renglones.map((r) =>
               r.registro ? (
-                <FilaCargada key={r.semana} r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
+                <Fragment key={r.semana}>
+                  {r.registro.producto && (
+                    <tr data-marca={r.semana}>
+                      <td colSpan={6} className="border-t border-borde-soft bg-info-bg/40 px-4 py-1.5 sm:px-5">
+                        <RenglonMarca registro={r.registro} editable={editable} onCorregir={onCorregirProducto} />
+                      </td>
+                    </tr>
+                  )}
+                  <FilaCargada r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
+                </Fragment>
               ) : (
                 <tr key={r.semana} className="text-texto-4">
                   <td className="border-t border-borde-soft px-3 py-2 pl-4 align-middle sm:pl-5">
@@ -154,7 +167,13 @@ export default function TablaSemanas({
             </div>
             <ul className="space-y-2">
               {g.renglones.map((r) => (
-                <li key={r.semana} data-semana={r.registro ? r.semana : undefined}>
+                <Fragment key={r.semana}>
+                {r.registro?.producto && (
+                  <li data-marca={r.semana} className="rounded-xl bg-info-bg/50 px-3 py-1.5">
+                    <RenglonMarca registro={r.registro} editable={editable} onCorregir={onCorregirProducto} />
+                  </li>
+                )}
+                <li data-semana={r.registro ? r.semana : undefined}>
                   {r.registro ? (
                     <TarjetaCargada r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
                   ) : (
@@ -178,12 +197,40 @@ export default function TablaSemanas({
                     </div>
                   )}
                 </li>
+                </Fragment>
               ))}
             </ul>
           </section>
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * El renglón de la marca del cambio de producto (§7.2), encima de su semana:
+ * «Desde la semana 12 usa Tirze · 15 mg en 0,5 ml · antes Tirzepatida», con
+ * «Corregir» (abre esa semana con el producto a la vista).
+ */
+function RenglonMarca({ registro, editable, onCorregir }: { registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
+  return (
+    <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+      <span className="flex min-w-0 items-start gap-2 py-1 text-[13px] font-semibold text-info-text">
+        <Icon name="swap" size={15} className="mt-0.5 shrink-0" />
+        <span className="min-w-0">{textoMarca(registro)}</span>
+      </span>
+      {editable && (
+        <button
+          type="button"
+          onClick={() => onCorregir(registro)}
+          aria-label={`Corregir el cambio de producto de la ${nombreSemana(registro.semana).toLowerCase()}`}
+          className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-info-text transition-colors hover:bg-white/70 lg:min-h-8"
+        >
+          <Icon name="edit" size={14} />
+          Corregir
+        </button>
+      )}
+    </span>
   );
 }
 

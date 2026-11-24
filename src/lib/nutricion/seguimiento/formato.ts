@@ -7,7 +7,9 @@ import type {
   MesTratamiento,
   Paso,
   PagoPendiente,
+  Producto,
   Registro,
+  Tratamiento,
   TratamientoDelCatalogo,
   UltimoPago,
   UnidadDosis,
@@ -336,6 +338,42 @@ export function textoMgPorUi(mgPorUi: number): string {
 /** La aclaración de la jeringa, con lo que trae el catálogo (100 UI por ml). */
 export function textoJeringa(uiPorMl: number): string {
   return `jeringa de insulina de ${fmtNumero(uiPorMl, 0)}${NB}UI por ml`;
+}
+
+// ── El producto de cada semana (§7.1) ───────────────────────────────────────
+
+/** El producto con el que EMPEZÓ el tratamiento (un backend sin marcas: el del tratamiento). */
+export function productoInicialDe(t: Pick<Tratamiento, "nombre" | "presentacion" | "productoInicial">): Producto {
+  return t.productoInicial ?? { nombre: t.nombre, vialMg: t.presentacion?.mg ?? null, vialMl: t.presentacion?.ml ?? null };
+}
+
+/** La semana con la marca de cambio más alta que sea ≤ `semana` (sin contar el registro `sinId`), o null. */
+export function marcaVigente(registros: Registro[], semana: number, sinId?: number | null): Registro | null {
+  let r: Registro | null = null;
+  for (const x of registros) if (x.producto && x.id !== sinId && x.semana <= semana && (!r || x.semana > r.semana)) r = x;
+  return r;
+}
+
+/**
+ * El producto vigente en la semana W (§7.1): la marca de la semana más alta
+ * ≤ W que tenga marca; si no hay, el del inicio. `sinId` saca de la cuenta el
+ * registro que se está corrigiendo (su marca está en el formulario).
+ */
+export function productoVigente(t: Pick<Tratamiento, "nombre" | "presentacion" | "productoInicial" | "registros">, semana: number, sinId?: number | null): Producto {
+  const m = marcaVigente(t.registros, semana, sinId)?.producto;
+  return m ? { nombre: m.nombre, vialMg: m.vialMg ?? null, vialMl: m.vialMl ?? null } : productoInicialDe(t);
+}
+
+/** «Tirze · 15 mg en 0,5 ml», o sólo el nombre si no tiene vial. */
+export function textoProducto(p: Producto): string {
+  return p.vialMg != null && p.vialMl != null ? `${p.nombre} · ${textoPresentacion(p.vialMg, p.vialMl)}` : p.nombre;
+}
+
+/** El renglón de la marca en la tabla: «Desde la semana 12 usa Tirze · 15 mg en 0,5 ml · antes Tirzepatida». */
+export function textoMarca(r: Pick<Registro, "semana" | "producto">): string {
+  if (!r.producto) return "";
+  const p = textoProducto({ nombre: r.producto.nombre, vialMg: r.producto.vialMg ?? null, vialMl: r.producto.vialMl ?? null });
+  return `Desde la semana ${r.semana} usa ${p}${r.producto.anterior ? ` · antes ${r.producto.anterior}` : ""}`;
 }
 
 // ── El catálogo ─────────────────────────────────────────────────────────────

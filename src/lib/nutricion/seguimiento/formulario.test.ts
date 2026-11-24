@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cambioLaMarca,
   cambiosDeSemana,
   cambiosDeTratamiento,
   conCambioDeLaboratorio,
@@ -42,6 +43,10 @@ describe("una semana nueva", () => {
       pagoControl: "",
       pagoOtro: "",
       pagoNota: "",
+      cambioProducto: false,
+      productoNombre: "",
+      productoVialMg: "",
+      productoVialMl: "",
     });
     expect(semanaConDatos(f)).toBe(false);
   });
@@ -153,6 +158,63 @@ describe("corregir una semana", () => {
   it("el inicial no manda el número de la semana", () => {
     const f0 = semanaDesde(t.registros[0]);
     expect(cambiosDeSemana(f0, { ...f0, pesoKg: "128" }, true)).toEqual({ pesoKg: 128 });
+  });
+});
+
+describe("el cambio de producto de una semana (§7.1)", () => {
+  const conMarca = armarTratamiento({
+    ...pacientesDePrueba(HOY).find((p) => p.paciente.id === 12)!.tratamientos[0],
+    semanas: pacientesDePrueba(HOY)
+      .find((p) => p.paciente.id === 12)!
+      .tratamientos[0].semanas.map((s) => (s.semana === 7 ? { ...s, producto: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 } } : s)),
+  });
+  const s7 = conMarca.registros.find((r) => r.semana === 7)!;
+
+  it("la clave `producto` viaja SÓLO con una marca (un backend anterior la rechaza)", () => {
+    const comun = { ...semanaVacia(8, HOY), pesoKg: "124" };
+    expect(soloLoEscrito(semanaAInput(comun, false))).toEqual({ semana: 8, fecha: HOY, pesoKg: 124 });
+    expect("producto" in semanaAInput(comun, false)).toBe(false);
+    const marca = { ...comun, cambioProducto: true, productoNombre: " Tirze ", productoVialMg: "10", productoVialMl: "0,5" };
+    expect(soloLoEscrito(semanaAInput(marca, false))).toEqual({ semana: 8, fecha: HOY, pesoKg: 124, producto: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 } });
+    // Sin vial, sólo el nombre; y nunca en el inicial.
+    expect(semanaAInput({ ...marca, productoVialMg: "", productoVialMl: "" }, false).producto).toEqual({ nombre: "Tirze" });
+    expect("producto" in semanaAInput(marca, true)).toBe(false);
+    // Una semana con sólo la marca no está vacía.
+    expect(semanaConDatos({ ...semanaVacia(8, HOY), cambioProducto: true, productoNombre: "Tirze" })).toBe(true);
+    expect(semanaConDatos({ ...semanaVacia(8, HOY), cambioProducto: true })).toBe(false);
+  });
+
+  it("los datos de la marca: el producto (2 a 80) y el vial, los dos o ninguno", () => {
+    const f = { ...semanaVacia(8, HOY), cambioProducto: true };
+    const e = erroresDeSemana(f, { inicial: false, semanasCargadas: [], hoy: HOY });
+    expect(e.productoNombre).toBe("Escribí el producto nuevo");
+    expect(erroresDeSemana({ ...f, productoNombre: "Tirze", productoVialMg: "10" }, { inicial: false, semanasCargadas: [], hoy: HOY }).productoVial).toBe(
+      "Completá los dos: los mg y los ml del vial",
+    );
+    expect(erroresDeSemana({ ...f, productoNombre: "Tirze", productoVialMg: "0", productoVialMl: "0,5" }, { inicial: false, semanasCargadas: [], hoy: HOY }).productoVialMg).toBeTruthy();
+    // Sin la marca puesta, nada de eso se mira.
+    expect(erroresDeSemana({ ...f, cambioProducto: false }, { inicial: false, semanasCargadas: [], hoy: HOY }).productoNombre).toBeUndefined();
+  });
+
+  it("corregir: abre con la marca; corregirla manda la nueva; quitarla manda `null`; sin tocarla no viaja", () => {
+    const f = semanaDesde(s7);
+    expect(f).toMatchObject({ cambioProducto: true, productoNombre: "Tirze", productoVialMg: "10", productoVialMl: "0,5" });
+    expect(cambiosDeSemana(f, { ...f, observaciones: "Otra" }, false)).toEqual({ observaciones: "Otra" });
+    expect(cambiosDeSemana(f, { ...f, productoVialMg: "15" }, false)).toEqual({ producto: { nombre: "Tirze", vialMg: 15, vialMl: 0.5 } });
+    expect(cambiosDeSemana(f, { ...f, cambioProducto: false }, false)).toEqual({ producto: null });
+    expect(cambioLaMarca(f, { ...f, cambioProducto: false })).toBe(true);
+    expect(cambioLaMarca(f, { ...f, pesoKg: "1" })).toBe(false);
+    // Una semana sin marca: ponérsela.
+    const s5 = semanaDesde(conMarca.registros.find((r) => r.semana === 5)!);
+    expect(s5.cambioProducto).toBe(false);
+    expect(cambiosDeSemana(s5, { ...s5, cambioProducto: true, productoNombre: "Tirze" }, false)).toEqual({ producto: { nombre: "Tirze" } });
+  });
+
+  it("editar el tratamiento con cambios de producto: el nombre y el vial son los del inicio", () => {
+    expect(conMarca.nombre).toBe("Tirze");
+    expect(tratamientoDesde(conMarca)).toEqual({ nombre: "Tirzepatida", vialMg: "15", vialMl: "0,5", unidadDosis: "UI" });
+    // Un backend sin marcas: el del tratamiento.
+    expect(tratamientoDesde({ ...conMarca, productoInicial: undefined, cambiosDeProducto: undefined })).toMatchObject({ nombre: "Tirze", vialMg: "10" });
   });
 });
 

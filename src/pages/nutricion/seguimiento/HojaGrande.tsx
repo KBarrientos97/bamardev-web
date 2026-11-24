@@ -58,7 +58,9 @@ export default function HojaGrande({
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
-        className={`relative flex h-full w-full flex-col bg-white text-texto max-lg:animate-[hoja-sube_.3s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none lg:h-auto lg:max-h-[min(94dvh,920px)] lg:overflow-hidden lg:rounded-[20px] lg:shadow-[0_24px_60px_rgba(15,23,42,0.35)] ${
+        // `overflow-clip` y no `hidden`: un `scrollIntoView` (el foco en un campo,
+        // «Anotar pago») corría el marco entero y la cabecera quedaba cortada arriba.
+        className={`relative flex h-full w-full flex-col overflow-clip bg-white text-texto max-lg:animate-[hoja-sube_.3s_cubic-bezier(0.32,0.72,0,1)] motion-reduce:animate-none lg:h-auto lg:max-h-[min(94dvh,920px)] lg:rounded-[20px] lg:shadow-[0_24px_60px_rgba(15,23,42,0.35)] ${
           ancha ? "lg:max-w-[1000px]" : "lg:max-w-[720px]"
         }`}
       >

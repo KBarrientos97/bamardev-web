@@ -14,6 +14,7 @@ import {
   semanaCorta,
   semanas,
   textoKg,
+  textoProducto,
   textoDosis,
   textoFaltaPago,
   textoJeringa,
@@ -36,7 +37,7 @@ import TablaSemanas from "./TablaSemanas";
 
 /** Qué hoja está abierta encima. */
 type Abierta =
-  | { que: "semana"; registro: Registro | null; semana: number; focoPago?: boolean }
+  | { que: "semana"; registro: Registro | null; semana: number; focoPago?: boolean; focoProducto?: boolean }
   | { que: "iniciar" }
   | { que: "editar" }
   | { que: "terminar" }
@@ -175,14 +176,20 @@ export default function HojaSeguimiento() {
     hoja.recargar();
   };
 
-  /** Lo que devuelve una escritura: el tratamiento al día. */
-  const alGuardar = (nuevo: Tratamiento, texto: string) => {
+  /**
+   * Lo que devuelve una escritura: el tratamiento al día. Con `releer` (se
+   * puso, corrigió o quitó una marca de producto, §7.1: el servidor recalcula
+   * las semanas siguientes) se vuelve a leer la hoja entera, además.
+   */
+  const alGuardar = (nuevo: Tratamiento, texto: string, releer = false) => {
     desactualizada.current = false;
     if (nuevo.estado === "ACTIVO" && (!mirando || mirando === nuevo.id)) {
       hoja.setDatos({ ...h, tratamiento: nuevo, anteriores: h.anteriores.filter((a) => a.id !== nuevo.id) });
       if (mirando) setParams({}, { replace: true });
+      if (releer) hoja.recargar();
     } else if (mirando === nuevo.id) {
       otro.setDatos(nuevo);
+      if (releer) otro.recargar();
     } else {
       hoja.recargar();
     }
@@ -410,6 +417,7 @@ export default function HojaSeguimiento() {
               editable={editable}
               onCorregir={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana })}
               onCargar={(s) => setAbierta({ que: "semana", registro: null, semana: s })}
+              onCorregirProducto={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana, focoProducto: true })}
             />
           </Tarjeta>
 
@@ -430,7 +438,9 @@ export default function HojaSeguimiento() {
           pacienteNombre={p.nombre}
           ultimoControl={h.ultimoControl}
           focoPago={abierta.focoPago}
+          focoProducto={abierta.focoProducto}
           onEditarTratamiento={editable ? () => setAbierta({ que: "editar" }) : undefined}
+          onCorregirMarca={editable ? (r) => setAbierta({ que: "semana", registro: r, semana: r.semana, focoProducto: true }) : undefined}
           onCerrar={cerrarHoja}
           onGuardado={alGuardar}
           onDesactualizada={marcarDesactualizada}
@@ -505,6 +515,13 @@ function RenglonTratamiento({
       {t.presentacion && (
         <p className="text-[13px] text-texto-3">
           {textoVial(t.presentacion.mg, t.presentacion.ml)} · {textoMgPorUi(t.presentacion.mgPorUi)} ({textoJeringa(catalogo.uiPorMl)})
+        </p>
+      )}
+      {/* §7.1: con cambios de producto, `nombre` es el de hoy; con qué empezó, en gris. */}
+      {(t.cambiosDeProducto ?? 0) > 0 && t.productoInicial && (
+        <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
+          <Icon name="swap" size={14} className="shrink-0" />
+          Empezó con {textoProducto(t.productoInicial)} · cambió de producto {t.cambiosDeProducto === 1 ? "una vez" : `${t.cambiosDeProducto} veces`}
         </p>
       )}
       <NotaTratamiento nota={t.nota} edita={edita} onGuardar={onNota} />
