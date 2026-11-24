@@ -25,7 +25,12 @@ vi.mock("../../lib/academia/fotos", async (importOriginal) => {
   return { ...real, prepararFoto: vi.fn(async (f: File) => new Blob([f], { type: "image/webp" })) };
 });
 
+// Armar la imagen del comprobante necesita un navegador de verdad: acá sólo se
+// comprueba qué comprobante se pide bajar y con qué nombre.
+vi.mock("../../lib/compartirTicket", () => ({ descargarComoImagen: vi.fn(async () => true) }));
+
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
+import { descargarComoImagen } from "../../lib/compartirTicket";
 import PagarPagina from "./PagarPagina";
 
 const PAGO: PagoPublico = {
@@ -370,5 +375,59 @@ describe("QR del banco (PLAN-QR-AUTOMATICO): el pago se acredita solo", () => {
     await pedirElPrimerMes();
     expect(screen.getByRole("alert")).toHaveTextContent("No pudimos generar el QR para pagar.");
     expect(screen.getByRole("button", { name: /Pagar con QR/ })).toBeEnabled();
+  });
+});
+
+describe("Tus pagos: los comprobantes ya pagados", () => {
+  const PAGOS = [
+    { comprobante: "EL-000012", fecha: "2026-11-20T15:30:00.000Z", total: 500, formas: ["QR"], conceptos: [{ concepto: "M2 · Degradados", monto: 500 }] },
+    { comprobante: "EL-000007", fecha: "2026-10-05T14:00:00.000Z", total: 350, formas: ["Efectivo", "QR"], conceptos: [{ concepto: "M1 · Corte clásico", monto: 350 }] },
+    { comprobante: "EL-000003", fecha: "2026-09-01T14:00:00.000Z", total: 100, formas: ["Efectivo"], conceptos: [{ concepto: "Matrícula", monto: 100 }] },
+    { comprobante: "EL-000001", fecha: "2026-08-01T14:00:00.000Z", total: 50, formas: ["Efectivo"], conceptos: [{ concepto: "Reserva", monto: 50 }] },
+  ];
+
+  it("sin pagos hechos (o un backend anterior) la sección no aparece", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: [] });
+    await montar();
+    expect(screen.queryByRole("region", { name: "Tus pagos" })).not.toBeInTheDocument();
+  });
+
+  it("lista los últimos pagos con número, fecha y monto, y «Ver todos» muestra el resto", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: PAGOS });
+    await montar();
+    const seccion = screen.getByRole("region", { name: "Tus pagos" });
+    expect(seccion).toHaveTextContent("EL-000012");
+    expect(seccion).toHaveTextContent("Bs 500,00");
+    expect(seccion).toHaveTextContent("Efectivo + QR");
+    expect(seccion).not.toHaveTextContent("EL-000001");
+    fireEvent.click(screen.getByRole("button", { name: "Ver todos (4)" }));
+    expect(seccion).toHaveTextContent("EL-000001");
+  });
+
+  it("«Descargar comprobante» arma ESE comprobante y lo baja con su número en el nombre", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: PAGOS });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Descargar comprobante EL-000007" }));
+    });
+    expect(descargarComoImagen).toHaveBeenCalledTimes(1);
+    const [nodo, nombre] = vi.mocked(descargarComoImagen).mock.calls[0];
+    expect(nombre).toBe("comprobante-EL-000007");
+    // El comprobante lleva el instituto, lo pagado y el total; nunca el carnet ni el teléfono.
+    expect(nodo.textContent).toContain("CCTP Horizonte");
+    expect(nodo.textContent).toContain("M1 · Corte clásico");
+    expect(nodo.textContent).toContain("Bs 350,00");
+    expect(nodo.textContent).not.toContain("70000000");
+  });
+
+  it("si no se pudo armar la imagen lo dice y deja volver a probar", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: PAGOS });
+    vi.mocked(descargarComoImagen).mockResolvedValueOnce(false);
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Descargar comprobante EL-000012" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/No se pudo preparar el comprobante/);
+    expect(screen.getByRole("button", { name: "Descargar comprobante EL-000012" })).toBeEnabled();
   });
 });

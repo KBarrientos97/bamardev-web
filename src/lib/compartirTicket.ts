@@ -94,6 +94,17 @@ export async function enviarPorWhatsapp(
   return { ok: false, motivo: "no_soportado" };
 }
 
+/**
+ * Baja el nodo como imagen PNG, sin diálogo de compartir: el comprobante que el
+ * estudiante guarda como evidencia (24-nov). `false` si no se pudo armar la imagen.
+ */
+export async function descargarComoImagen(nodo: HTMLElement, nombre: string): Promise<boolean> {
+  const blob = await rasterizar(nodo);
+  if (!blob) return false;
+  descargar(blob, nombre);
+  return true;
+}
+
 /** Un teléfono (o tablet Android). El iPad se presenta como Mac: va por el camino de la compu. */
 export function esCelular(): boolean {
   if (typeof navigator === "undefined") return false;

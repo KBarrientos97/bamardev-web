@@ -1728,6 +1728,22 @@ export interface EstadoCuentaPublico {
   saldoTotal: number;
   qr: { tipo: "FIJO"; imagenUrl: string } | null;
   pago: PagoPublico;
+  /**
+   * Los pagos ya hechos, el más reciente primero: sus comprobantes, que puede
+   * bajar como evidencia (24-nov). Un backend anterior no lo manda.
+   */
+  pagosHechos?: PagoHecho[];
+}
+
+/** Un pago de cuotas ya registrado: lo mismo que lleva el recibo de la caja. */
+export interface PagoHecho {
+  comprobante: string;
+  /** ISO con hora. */
+  fecha: string;
+  total: number;
+  /** Con qué se pagó («Efectivo», «QR»). */
+  formas: string[];
+  conceptos: { concepto: string; monto: number }[];
 }
 
 /**

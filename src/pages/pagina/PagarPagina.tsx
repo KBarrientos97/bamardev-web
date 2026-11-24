@@ -9,6 +9,7 @@ import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { Icon } from "../../components/Icon";
 import { Chip } from "../academia/piezas";
 import { NoDisponible } from "./PaginaPublica";
+import MisPagos from "./MisPagos";
 import PagoEnLineaPublico from "./PagoEnLineaPublico";
 import { MarcaBamarDev } from "./VistaPagina";
 
@@ -190,6 +191,8 @@ export default function PagarPagina() {
           </p>
         </section>
         )}
+
+        <MisPagos d={d} color={color} className={dos} />
 
         <section className={`space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm ${dos}`}>
           <p className="text-[13px] text-[#4B5563]">Guardá este enlace: siempre muestra tu estado de cuenta.</p>
