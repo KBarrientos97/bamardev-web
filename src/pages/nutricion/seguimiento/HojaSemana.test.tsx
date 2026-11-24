@@ -317,6 +317,14 @@ describe("cargar una semana", () => {
       expect(campo).toHaveAttribute("inputmode", "decimal");
     }
   });
+
+  // Probado el 24-nov en la tablet: `Enter` en el peso iba a la casilla «No se aplicó» y el teclado se cerraba.
+  it("`Enter` en el peso pasa al siguiente campo de escribir (la dosis), no a la casilla «No se aplicó»", () => {
+    abrir(lucia);
+    peso().focus();
+    fireEvent.keyDown(peso(), { key: "Enter" });
+    expect(document.activeElement).toBe(otra());
+  });
 });
 
 describe("el pago", () => {

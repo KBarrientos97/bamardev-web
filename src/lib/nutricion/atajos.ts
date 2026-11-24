@@ -55,14 +55,16 @@ export function useTeclas(manejar: (e: KeyboardEvent) => void, activo = true) {
 
 /**
  * «Enter pasa al siguiente» en un campo de una línea (§4.2): busca el próximo
- * campo habilitado dentro del contenedor. Devuelve true si movió el foco.
+ * campo habilitado dentro del contenedor, de escribir (una casilla no: del
+ * peso de la semana iba a «No se aplicó» y en la tablet se cerraba el
+ * teclado). Devuelve true si movió el foco.
  */
 export function pasarAlSiguiente(contenedor: HTMLElement | null, desde: HTMLElement): boolean {
   if (!contenedor) return false;
   // Sólo se dibuja la etapa abierta: no hay campos escondidos que saltear.
   const campos = Array.from(
     contenedor.querySelectorAll<HTMLElement>(
-      "input:not([disabled]):not([type=hidden]):not([type=button]), select:not([disabled]), textarea:not([disabled])",
+      "input:not([disabled]):not([type=hidden]):not([type=button]):not([type=checkbox]):not([type=radio]), select:not([disabled]), textarea:not([disabled])",
     ),
   );
   const i = campos.indexOf(desde);
