@@ -1723,7 +1723,17 @@ export interface EstadoCuentaPublico {
   alumno: { nombres: string };
   curso: string;
   grupo: { nombre: string; sede: string };
-  cuotas: { concepto: string; monto: number; pagado: number; saldo: number; vence: string; vencida: boolean; estado: EstadoCuota }[];
+  cuotas: {
+    concepto: string;
+    monto: number;
+    pagado: number;
+    saldo: number;
+    vence: string;
+    vencida: boolean;
+    estado: EstadoCuota;
+    /** Qué pagos la cubrieron: posiciones en `pagosHechos`, para su botón «ver comprobante». Un backend anterior no lo manda. */
+    pagos?: number[];
+  }[];
   proxima: { concepto: string; saldo: number; vence: string; vencida: boolean } | null;
   saldoTotal: number;
   qr: { tipo: "FIJO"; imagenUrl: string } | null;

@@ -376,6 +376,20 @@ function PagarConQr({
     setError("");
   }
 
+  /**
+   * «Ver mi estado de cuenta» tras el pago (24-nov: no hacía nada). La tarjeta
+   * «¡Pago recibido!» es estado de ESTE componente, que sigue montado mientras
+   * quede algo por pagar: sólo pedir el estado de nuevo no la sacaba. Se cierra,
+   * se pide el estado actualizado (la cuota ya sumada) y se baja a las cuotas.
+   */
+  function verMiEstadoDeCuenta() {
+    setHecho(null);
+    setQr(null);
+    setError("");
+    onCambio();
+    document.getElementById("t-cuenta")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }
+
   const tarjeta = "space-y-4 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm";
 
   if (hecho) {
@@ -394,7 +408,7 @@ function PagarConQr({
         </div>
         <button
           type="button"
-          onClick={onCambio}
+          onClick={verMiEstadoDeCuenta}
           className="flex min-h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-white"
           style={{ background: color }}
         >

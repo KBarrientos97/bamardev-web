@@ -1,12 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { EstadoCuentaPublico, PagoHecho } from "../../lib/academia/tipos";
 import { descargarComoImagen } from "../../lib/compartirTicket";
-import { Icon } from "../../components/Icon";
 
 const bs = (n: number) => `Bs ${n.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-/** Cuántos pagos se ven sin tocar «Ver todos». */
-const VISIBLES = 3;
 
 /** «24 nov 2026, 14:05», en la hora de Bolivia: es la hora que el estudiante vivió. */
 function cuando(iso: string): string {
@@ -67,15 +63,22 @@ function Comprobante({ d, p }: { d: EstadoCuentaPublico; p: PagoHecho }) {
 }
 
 /**
- * «Tus pagos» (24-nov): los pagos que el estudiante ya hizo, con su
- * comprobante para bajar como evidencia. Es el mismo recibo que le da la caja,
- * armado con lo que el backend ya manda en el estado de cuenta; no hay nada que
- * pedir ni subir. Un pago anulado no figura (el backend no lo manda).
+ * El comprobante de un pago ya hecho, para bajar como evidencia (24-nov). Es el
+ * mismo recibo que da la caja, armado con lo que el backend ya manda en el
+ * estado de cuenta; no hay nada que pedir ni subir. Cada renglón pagado del
+ * estado de cuenta tiene su botón (`pagos` de la cuota señala qué comprobantes
+ * le tocan); un pago anulado no figura porque el backend no lo manda.
+ *
+ * Devuelve `bajar(pago)`, cuál se está armando, el aviso si falló y `oculto`: el
+ * comprobante fuera de la vista, que quien llama pone UNA vez en la página (una
+ * imagen no sale de algo con display:none, y se arma sólo mientras se baja).
  */
-export default function MisPagos({ d, color, className = "" }: { d: EstadoCuentaPublico; color: string; className?: string }) {
-  const pagos = d.pagosHechos ?? [];
-  const [todos, setTodos] = useState(false);
-  /** El pago cuyo comprobante se está armando: se dibuja fuera de la vista, se rasteriza y se descarta. */
+export function useComprobantePago(d: EstadoCuentaPublico): {
+  bajar: (p: PagoHecho) => void;
+  bajando: PagoHecho | null;
+  fallo: string;
+  oculto: ReactNode;
+} {
   const [bajando, setBajando] = useState<PagoHecho | null>(null);
   const [fallo, setFallo] = useState("");
   const nodo = useRef<HTMLDivElement>(null);
@@ -95,67 +98,19 @@ export default function MisPagos({ d, color, className = "" }: { d: EstadoCuenta
     };
   }, [bajando]);
 
-  if (!pagos.length) return null;
-  const vistos = todos ? pagos : pagos.slice(0, VISIBLES);
-
-  return (
-    <section aria-labelledby="t-pagos" className={`overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm ${className}`}>
-      <h2 id="t-pagos" className="border-b border-[#E5E7EB] px-5 py-3.5 text-sm font-bold text-[#111827]">
-        Tus pagos
-      </h2>
-      <ul className="divide-y divide-[#F1F5F9] px-5">
-        {vistos.map((p) => (
-          <li key={`${p.comprobante}-${p.fecha}`} className="space-y-2 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-[#111827]">{p.conceptos.map((c) => c.concepto).join(" · ")}</span>
-                <span className="mt-0.5 block text-[12px] text-[#6B7280]">
-                  {cuando(p.fecha)} · {p.comprobante}
-                  {p.formas.length > 0 ? ` · ${p.formas.join(" + ")}` : ""}
-                </span>
-              </span>
-              <span className="shrink-0 text-sm font-semibold tabular-nums text-[#047857]">{bs(p.total)}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setFallo("");
-                setBajando(p);
-              }}
-              disabled={bajando != null}
-              className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border bg-white text-[13px] font-semibold hover:bg-[#F9FAFB] disabled:opacity-60"
-              style={{ color, borderColor: color }}
-              aria-label={`Descargar comprobante ${p.comprobante}`}
-            >
-              <Icon name="download" size={15} />
-              {bajando === p ? "Preparando…" : "Descargar comprobante"}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {pagos.length > VISIBLES && (
-        <button
-          type="button"
-          onClick={() => setTodos((t) => !t)}
-          className="block w-full border-t border-[#E5E7EB] bg-[#F9FAFB] px-5 py-3 text-center text-[13px] font-semibold"
-          style={{ color }}
-        >
-          {todos ? "Ver menos" : `Ver todos (${pagos.length})`}
-        </button>
-      )}
-      {fallo && (
-        <p role="alert" className="border-t border-[#FECACA] bg-[#FEF2F2] px-5 py-2.5 text-[13px] text-[#B91C1C]">
-          {fallo}
-        </p>
-      )}
-      {/* Fuera de la vista, no escondido: una imagen no sale de algo con display:none. */}
-      {bajando && (
-        <div aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0 }}>
-          <div ref={nodo}>
-            <Comprobante d={d} p={bajando} />
-          </div>
+  return {
+    bajar: (p) => {
+      setFallo("");
+      setBajando(p);
+    },
+    bajando,
+    fallo,
+    oculto: bajando ? (
+      <div aria-hidden="true" style={{ position: "fixed", left: -10000, top: 0 }}>
+        <div ref={nodo}>
+          <Comprobante d={d} p={bajando} />
         </div>
-      )}
-    </section>
-  );
+      </div>
+    ) : null,
+  };
 }

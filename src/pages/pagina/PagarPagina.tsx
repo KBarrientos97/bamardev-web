@@ -9,9 +9,12 @@ import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { Icon } from "../../components/Icon";
 import { Chip } from "../academia/piezas";
 import { NoDisponible } from "./PaginaPublica";
-import MisPagos from "./MisPagos";
+import { useComprobantePago } from "./ComprobantePago";
 import PagoEnLineaPublico from "./PagoEnLineaPublico";
 import { MarcaBamarDev } from "./VistaPagina";
+
+/** Para llamar al hook antes de tener el estado: sin pagos, no arma nada. */
+const SIN_ESTADO = { instituto: { nombre: "", logoUrl: null, telefono: null }, alumno: { nombres: "" }, curso: "", grupo: { nombre: "", sede: "" }, cuotas: [], proxima: null, saldoTotal: 0, qr: null } as unknown as EstadoCuentaPublico;
 
 const bs = (n: number) => `Bs ${n.toLocaleString("es-BO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
@@ -44,7 +47,6 @@ export default function PagarPagina() {
   const { pagina } = usePaginaPublica(sub);
   const [d, setD] = useState<EstadoCuentaPublico | null>(null);
   const [error, setError] = useState("");
-  const [copiado, setCopiado] = useState(false);
   /** Sube cada vez que hay que pedir el estado de nuevo (subió un comprobante). */
   const [vuelta, setVuelta] = useState(0);
 
@@ -62,6 +64,9 @@ export default function PagarPagina() {
     };
   }, [sub, token, vuelta]);
 
+  // Antes de los retornos tempranos: es un hook. El comprobante se arma sólo al bajarlo.
+  const comprobante = useComprobantePago(d ?? SIN_ESTADO);
+
   useEffect(() => {
     if (d) document.title = `Estado de cuenta · ${d.instituto.nombre}`;
   }, [d]);
@@ -78,15 +83,6 @@ export default function PagarPagina() {
   // mostrar, la compu no parte la pantalla en dos.
   const hayPago = !!d.pago.enRevision || preinscrita || d.pago.opciones.length > 0;
   const dos = hayPago ? "lg:col-start-1" : "";
-
-  async function copiar() {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopiado(true);
-    } catch {
-      /* sin portapapeles, el enlace queda en la barra del navegador */
-    }
-  }
 
   return (
     <div style={{ minHeight: "100dvh", background: "#F6F7F9", fontFamily: "Roboto, system-ui, sans-serif" }}>
@@ -180,7 +176,28 @@ export default function PagarPagina() {
                       <span className="mt-0.5 block text-[12px] text-[#6B7280]">{estado}</span>
                     )}
                   </span>
-                  <span className={`shrink-0 text-sm tabular-nums ${urgente ? "font-semibold text-[#B91C1C]" : "text-[#374151]"}`}>{bs(c.monto)}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {/* El comprobante de lo pagado: sólo el ícono, sin sección aparte (dueño, 24-nov). */}
+                    {(c.pagos ?? []).map((k) => {
+                      const hecho = d.pagosHechos?.[k];
+                      if (!hecho) return null;
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => comprobante.bajar(hecho)}
+                          disabled={comprobante.bajando != null}
+                          title={`Descargar comprobante ${hecho.comprobante}`}
+                          aria-label={`Descargar comprobante ${hecho.comprobante}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white hover:bg-[#F9FAFB] disabled:opacity-50"
+                          style={{ color, borderColor: color }}
+                        >
+                          <Icon name="fileText" size={16} />
+                        </button>
+                      );
+                    })}
+                    <span className={`text-sm tabular-nums ${urgente ? "font-semibold text-[#B91C1C]" : "text-[#374151]"}`}>{bs(c.monto)}</span>
+                  </span>
                 </li>
               );
             })}
@@ -189,23 +206,13 @@ export default function PagarPagina() {
             <span>Saldo del curso</span>
             <span className="tabular-nums">{bs(d.saldoTotal)}</span>
           </p>
+          {comprobante.fallo && (
+            <p role="alert" className="border-t border-[#FECACA] bg-[#FEF2F2] px-5 py-2.5 text-[13px] text-[#B91C1C]">
+              {comprobante.fallo}
+            </p>
+          )}
         </section>
         )}
-
-        <MisPagos d={d} color={color} className={dos} />
-
-        <section className={`space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm ${dos}`}>
-          <p className="text-[13px] text-[#4B5563]">Guardá este enlace: siempre muestra tu estado de cuenta.</p>
-          <button
-            type="button"
-            onClick={() => void copiar()}
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border bg-white text-sm font-semibold hover:bg-[#F9FAFB]"
-            style={{ color, borderColor: color }}
-          >
-            <Icon name={copiado ? "check" : "compartir"} size={16} />
-            {copiado ? "Enlace copiado" : "Copiar enlace"}
-          </button>
-        </section>
 
         <footer className={`space-y-3 text-center text-[12px] text-[#6B7280] ${dos}`}>
           {wa && (
@@ -226,6 +233,7 @@ export default function PagarPagina() {
           </a>
         </footer>
       </div>
+      {comprobante.oculto}
     </div>
   );
 }

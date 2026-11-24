@@ -321,6 +321,10 @@ describe("QR del banco (PLAN-QR-AUTOMATICO): el pago se acredita solo", () => {
       fireEvent.click(screen.getByRole("button", { name: "Ver mi estado de cuenta" }));
     });
     expect(vi.mocked(apiAcademiaPublica.estadoCuenta).mock.calls.length).toBe(antes + 1);
+    // Y la tarjeta se va: el botón tiene que hacer algo a la vista (antes quedaba igual).
+    expect(screen.queryByText("¡Pago recibido!")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ver mi estado de cuenta" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Pagar con QR/ })).toBeInTheDocument();
   });
 
   it("si el pago entró pero la academia lo confirma a mano, la página lo dice (no pide pagar de nuevo)", async () => {
@@ -378,34 +382,46 @@ describe("QR del banco (PLAN-QR-AUTOMATICO): el pago se acredita solo", () => {
   });
 });
 
-describe("Tus pagos: los comprobantes ya pagados", () => {
+describe("El comprobante en cada cuota pagada del estado de cuenta", () => {
   const PAGOS = [
     { comprobante: "EL-000012", fecha: "2026-11-20T15:30:00.000Z", total: 500, formas: ["QR"], conceptos: [{ concepto: "M2 · Degradados", monto: 500 }] },
     { comprobante: "EL-000007", fecha: "2026-10-05T14:00:00.000Z", total: 350, formas: ["Efectivo", "QR"], conceptos: [{ concepto: "M1 · Corte clásico", monto: 350 }] },
-    { comprobante: "EL-000003", fecha: "2026-09-01T14:00:00.000Z", total: 100, formas: ["Efectivo"], conceptos: [{ concepto: "Matrícula", monto: 100 }] },
-    { comprobante: "EL-000001", fecha: "2026-08-01T14:00:00.000Z", total: 50, formas: ["Efectivo"], conceptos: [{ concepto: "Reserva", monto: 50 }] },
   ];
+  /** M1 pagada con el pago 1 (EL-000007); M2 sin pagos todavía. */
+  const CON_PAGOS: EstadoCuentaPublico = {
+    ...ESTADO,
+    cuotas: [{ ...ESTADO.cuotas[0], pagos: [1] }, { ...ESTADO.cuotas[1], pagos: [] }],
+    pagosHechos: PAGOS,
+  };
 
-  it("sin pagos hechos (o un backend anterior) la sección no aparece", async () => {
-    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: [] });
+  it("no hay sección «Tus pagos» ni «Guardá este enlace»: el comprobante vive en el renglón", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(CON_PAGOS);
     await montar();
     expect(screen.queryByRole("region", { name: "Tus pagos" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Guardá este enlace/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Copiar enlace/ })).not.toBeInTheDocument();
   });
 
-  it("lista los últimos pagos con número, fecha y monto, y «Ver todos» muestra el resto", async () => {
-    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: PAGOS });
+  it("sólo la cuota pagada tiene su ícono, y sólo el ícono (sin texto)", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(CON_PAGOS);
     await montar();
-    const seccion = screen.getByRole("region", { name: "Tus pagos" });
-    expect(seccion).toHaveTextContent("EL-000012");
-    expect(seccion).toHaveTextContent("Bs 500,00");
-    expect(seccion).toHaveTextContent("Efectivo + QR");
-    expect(seccion).not.toHaveTextContent("EL-000001");
-    fireEvent.click(screen.getByRole("button", { name: "Ver todos (4)" }));
-    expect(seccion).toHaveTextContent("EL-000001");
+    const cuenta = screen.getByRole("region", { name: "Tu estado de cuenta" });
+    const iconos = cuenta.querySelectorAll("button[aria-label^='Descargar comprobante']");
+    expect(iconos).toHaveLength(1);
+    expect(iconos[0]).toHaveAttribute("aria-label", "Descargar comprobante EL-000007");
+    expect(iconos[0].textContent).toBe("");
+    // Está en el renglón de M1, no en el de M2.
+    expect(iconos[0].closest("li")).toHaveTextContent("M1 · Corte clásico");
   });
 
-  it("«Descargar comprobante» arma ESE comprobante y lo baja con su número en el nombre", async () => {
-    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: PAGOS });
+  it("un backend anterior (sin `pagos` en las cuotas) no muestra íconos ni se rompe", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(ESTADO);
+    await montar();
+    expect(screen.queryByRole("button", { name: /Descargar comprobante/ })).not.toBeInTheDocument();
+  });
+
+  it("el ícono arma ESE comprobante y lo baja con su número en el nombre", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(CON_PAGOS);
     await montar();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Descargar comprobante EL-000007" }));
@@ -421,13 +437,13 @@ describe("Tus pagos: los comprobantes ya pagados", () => {
   });
 
   it("si no se pudo armar la imagen lo dice y deja volver a probar", async () => {
-    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({ ...ESTADO, pagosHechos: PAGOS });
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(CON_PAGOS);
     vi.mocked(descargarComoImagen).mockResolvedValueOnce(false);
     await montar();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Descargar comprobante EL-000012" }));
+      fireEvent.click(screen.getByRole("button", { name: "Descargar comprobante EL-000007" }));
     });
     expect(screen.getByRole("alert")).toHaveTextContent(/No se pudo preparar el comprobante/);
-    expect(screen.getByRole("button", { name: "Descargar comprobante EL-000012" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Descargar comprobante EL-000007" })).toBeEnabled();
   });
 });
