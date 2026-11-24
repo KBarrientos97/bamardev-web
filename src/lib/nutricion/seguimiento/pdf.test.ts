@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { armarTratamiento, hojaDe, pacientesDePrueba, type SemanaCruda } from "../../../test/seguimientoFixtures";
-import { dibujarSeguimiento, documentoSeguimiento, dosisParaPdf, nombreDelPdf, paginarFilas, type FilaMedida } from "./pdf";
+import { dibujarSeguimiento, documentoSeguimiento, dosisParaPdf, enviarPdfSeguimientoPorWhatsapp, nombreDelPdf, paginarFilas, type FilaMedida } from "./pdf";
 
 /**
  * El PDF del seguimiento (CONTRATO-nutricion-seguimiento-23nov §7.2, maqueta
@@ -136,11 +136,31 @@ describe("con 34 semanas", () => {
   });
 });
 
-describe("la talla", () => {
+describe("la talla y el envío", () => {
   it("la talla en metros con dos decimales: «1,60 m», no «1,6 m»", () => {
     const h = hojaDe(lucia);
     const doc = documentoSeguimiento({ negocio: null, paciente: { ...h.paciente, tallaCm: 160 }, tratamiento: h.tratamiento!, hoy: HOY });
     expect(doc.datos.find((d) => d.etiqueta === "TALLA")!.valor).toBe("1,60 m");
   });
 
+  // Probado el 24-nov: en la tablet Android (que no se dice «mobile») abría wa.me y bajaba el PDF para adjuntarlo a mano.
+  it("«Enviar por WhatsApp» en una tablet (pantalla táctil sin mouse): el diálogo de compartir con el PDF, sin abrir wa.me", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    const abrir = vi.spyOn(window, "open").mockReturnValue(null);
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+    Object.assign(navigator, { share, canShare: () => true });
+    try {
+      const h = hojaDe(lucia);
+      const doc = documentoSeguimiento({ negocio: null, paciente: h.paciente, tratamiento: h.tratamiento!, hoy: HOY });
+      expect(await enviarPdfSeguimientoPorWhatsapp(doc, "70000000")).toBe("compartido");
+      expect(abrir).not.toHaveBeenCalled();
+      const datos = share.mock.calls[0][0] as ShareData;
+      expect(datos.files?.[0].name).toMatch(/^seguimiento-tratamiento-\d{4}-\d{2}-\d{2}\.pdf$/);
+      expect(datos.text).toMatch(/^Seguimiento del tratamiento al /);
+    } finally {
+      abrir.mockRestore();
+      vi.unstubAllGlobals();
+      Object.assign(navigator, { share: undefined, canShare: undefined });
+    }
+  });
 });

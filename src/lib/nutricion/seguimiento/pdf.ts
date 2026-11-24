@@ -613,6 +613,17 @@ export async function bajarPdfSeguimiento(doc: DocumentoSeguimiento): Promise<En
 export type EnvioWhatsapp = "compartido" | "cancelado" | "descargado";
 
 /**
+ * El teléfono o la tablet: `esCelular` no alcanza, porque la tablet Android
+ * (y el iPad) no se dicen «mobile» y ahí «Enviar por WhatsApp» abría wa.me y
+ * bajaba el PDF para adjuntarlo a mano. Una pantalla sólo táctil, sin mouse,
+ * también usa el diálogo de compartir.
+ */
+function conDedo(): boolean {
+  if (esCelular()) return true;
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+/**
  * «Enviar por WhatsApp», como el recibo (`enviarPorWhatsapp` de
  * `compartirTicket`): en el teléfono y la tablet, el diálogo de compartir del
  * sistema con el PDF y el mensaje (ahí se elige WhatsApp y el chat); en la PC
@@ -623,7 +634,7 @@ export type EnvioWhatsapp = "compartido" | "cancelado" | "descargado";
  */
 export async function enviarPdfSeguimientoPorWhatsapp(doc: DocumentoSeguimiento, telefono: string | null): Promise<EnvioWhatsapp> {
   const texto = `Seguimiento del tratamiento al ${fechaLarga(hoyIso())}.`;
-  const celular = esCelular() && typeof navigator.share === "function" && typeof navigator.canShare === "function";
+  const celular = conDedo() && typeof navigator.share === "function" && typeof navigator.canShare === "function";
   if (!celular) {
     const numero = Telefono.paraWhatsApp(telefono);
     window.open(`https://wa.me/${numero ?? ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
