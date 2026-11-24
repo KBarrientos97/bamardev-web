@@ -221,7 +221,15 @@ function TextoTratamiento({ p }: { p: FilaSeguimiento }) {
   const t = p.tratamiento;
   const partes = !t
     ? ["Sin tratamiento", ...(p.anteriores ? [`${p.anteriores} ${p.anteriores === 1 ? "anterior" : "anteriores"}`] : [])]
-    : [t.nombre, nombreSemana(t.semana), ...(t.dosisActual ? [textoDosis(t.dosisActual).anotado] : [])];
+    : [
+        // El nombre del producto es texto libre (hasta 80 letras): baja por palabras. Entero, uno largo
+        // ensanchaba la tabla de la tablet y dejaba «Peso» y «Última visita» de TODOS fuera de la pantalla.
+        <span key="nombre" className="whitespace-normal break-words">
+          {t.nombre}
+        </span>,
+        nombreSemana(t.semana),
+        ...(t.dosisActual ? [textoDosis(t.dosisActual).anotado] : []),
+      ];
   return <ConPuntos partes={partes} />;
 }
 
