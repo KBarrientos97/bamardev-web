@@ -7,6 +7,7 @@ import { fechaLarga, fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, esCodigo, hojaDesactualizada } from "../../../lib/nutricion/seguimiento/api";
 import {
   concentracion,
+  conMgDelEscalon,
   delCatalogo,
   diaYMes,
   dosisYSusMg,
@@ -125,7 +126,8 @@ export default function HojaSemana({
   const [antes] = useState<FormSemana>(() => {
     if (registro) return semanaDesde(registro);
     const r = rachaAntes(otros, semana);
-    const igual = r ? igualQueLaAnterior(r.dosis, unidad, concDe(productoVigente(tratamiento, semana)), catalogo.uiPorMl) : null;
+    const deAntes = r ? conMgDelEscalon(r.dosis, escalonesDeLaSemana(tratamiento, r.semana, catalogo)) : null;
+    const igual = deAntes ? igualQueLaAnterior(deAntes, unidad, concDe(productoVigente(tratamiento, semana)), catalogo.uiPorMl) : null;
     return { ...semanaVacia(semana), dosis: igual?.escribe ?? "" };
   });
   const [form, setForm] = useState<FormSemana>(antes);
@@ -180,6 +182,9 @@ export default function HojaSemana({
   const primerPeso = otros.find((r) => r.pesoKg != null && r.semana < numero) ?? null;
   const racha = rachaAntes(otros, numero);
   const pasada = previos[previos.length - 1] ?? null;
+  // La dosis de antes, con los mg de su escalón si es uno (§7.4): con otro vial, «Igual» son esos mismos mg.
+  const escalonesDeAntes = racha ? escalonesDeLaSemana(tratamiento, racha.semana, catalogo) : null;
+  const dosisDeAntes = racha ? conMgDelEscalon(racha.dosis, escalonesDeAntes) : null;
 
   // La semana se anotó en otra unidad (la del tratamiento cambió después):
   // mientras no se toque el número, se lee en la suya, con lo que tenía.
@@ -202,7 +207,7 @@ export default function HojaSemana({
 
   // Si se cambia el número de una semana nueva (o el vial de esta semana) sin
   // haber tocado la dosis, la marcada sigue siendo la de antes de ESA semana.
-  const igualAhora = dosisDeFabrica && racha ? (igualQueLaAnterior(racha.dosis, unidad, mgPorMlSemana, catalogo.uiPorMl)?.escribe ?? "") : null;
+  const igualAhora = dosisDeFabrica && dosisDeAntes ? (igualQueLaAnterior(dosisDeAntes, unidad, mgPorMlSemana, catalogo.uiPorMl)?.escribe ?? "") : null;
   useEffect(() => {
     if (igualAhora != null && !form.sinDosis && form.dosis !== igualAhora) setForm((f) => ({ ...f, dosis: igualAhora }));
   }, [igualAhora, form.sinDosis, form.dosis]);
@@ -416,7 +421,7 @@ export default function HojaSemana({
             )}
           </div>
         }
-        franja={pasada && <FranjaSemanaPasada pasada={pasada} racha={racha} escalones={racha ? escalonesDeLaSemana(tratamiento, racha.semana, catalogo) : null} />}
+        franja={pasada && <FranjaSemanaPasada pasada={pasada} racha={racha} escalones={escalonesDeAntes} />}
         pie={<PieHoja onCancelar={pedirCerrar} onGuardar={() => void guardar()} guardando={guardando} etiqueta={esInicial ? "Guardar el inicial" : `Guardar la semana ${numero}`} />}
       >
         <div
@@ -457,7 +462,7 @@ export default function HojaSemana({
                 uiPorMl={catalogo.uiPorMl}
                 pasos={pasos}
                 sinPresentacion={avisoVial}
-                antes={racha?.dosis ?? null}
+                antes={dosisDeAntes}
                 ofrecerSinDosis={!esInicial}
                 guardadas={guardadas && sinTocarDosis ? guardadas : null}
                 avisoUnidad={otraUnidad ? `Se anotó en ${otraUnidad}. Si la cambiás, se anota en ${unidad}.` : null}

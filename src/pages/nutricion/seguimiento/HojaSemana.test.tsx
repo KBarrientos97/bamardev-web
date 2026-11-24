@@ -181,15 +181,16 @@ describe("cargar una semana", () => {
     expect(sinNb(subir().textContent)).toContain("33 UI · 10 mg");
   });
 
-  it("con otro vial, la marcada son los mismos mg en el vial de hoy (≈ 26 UI de 20 mg/ml)", async () => {
+  it("con otro vial, la marcada son los mismos mg del escalón en el vial de hoy (17 UI de 30 mg/ml son 5 mg: 25 UI de 20 mg/ml)", async () => {
     // Las semanas se anotaron con 30 mg/ml; el tratamiento hoy tiene el vial de 10 mg en 0,5 ml.
     const otroVial = delPaciente(12, (t) => ({ ...t, vial: { mg: 10, ml: 0.5 }, semanas: t.semanas.map((s) => ({ ...s, mgPorMl: 30 })) }));
     const { onGuardado } = abrir(otroVial);
-    expect(sinNb(igual().textContent)).toBe("Igual que la anterior≈ 26 UI · 5,1 mg");
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior25 UI · 5 mg");
     fireEvent.change(peso(), { target: { value: "124" } });
     fireEvent.click(boton(/^Guardar/));
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
-    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, expect.objectContaining({ dosis: 26 }));
+    // §7.4: 17 UI eran el escalón de 5 mg (no 5,1): con el vial nuevo, 25 UI (el mismo escalón), no 26.
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, expect.objectContaining({ dosis: 25 }));
   });
 
   it("guarda lo escrito y avisa", async () => {
@@ -431,10 +432,10 @@ describe("el cambio de producto (§7.1 y §7.2)", () => {
     fireEvent.click(boton(/^Guardar/));
     expect(screen.getByText("Escribí el producto nuevo")).toBeInTheDocument();
     expect(apiSeguimiento.cargarSemana).not.toHaveBeenCalled();
-    // El vial de 10 mg en 0,5 ml (20 mg/ml): la marcada son los mismos 5,1 mg, ahora ≈ 26 UI; los escalones, con ese vial.
+    // El vial de 10 mg en 0,5 ml (20 mg/ml): la marcada son los mismos 5 mg del escalón, ahora 25 UI; los escalones, con ese vial.
     fireEvent.change(nombre, { target: { value: "Tirze" } });
     fireEvent.click(boton(exacto("10 mg en 0,5 ml")));
-    expect(sinNb(igual().textContent)).toBe("Igual que la anterior≈ 26 UI · 5,1 mg");
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior25 UI · 5 mg");
     expect(igual()).toHaveAttribute("aria-pressed", "true");
     expect(boton(exacto("13 UI · 2,5 mg"))).toBeInTheDocument();
     fireEvent.click(boton(/^Guardar/));
@@ -443,7 +444,7 @@ describe("el cambio de producto (§7.1 y §7.2)", () => {
       semana: 8,
       fecha: HOY,
       pesoKg: 124,
-      dosis: 26,
+      dosis: 25,
       producto: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 },
     });
     // La marca cambia las equivalencias de las semanas siguientes: se relee la hoja.

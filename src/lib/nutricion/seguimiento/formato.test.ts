@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   casilleroAmarillo,
+  conMgDelEscalon,
   delCatalogo,
   diasEntre,
   enUnidad,
@@ -446,6 +447,16 @@ describe("cómo se lee una dosis anotada (§7.4): la de un escalón, con sus val
     expect(leer({ dosis: 0.08, unidadDosis: "ml", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, ESC_30)).toMatchObject({ equivalencias: ["2,5 mg", "8 UI"], aprox: false, otra: "2,5 mg" });
     // En mg sin vial: es el escalón, pero no hay UI ni ml que mostrar.
     expect(leer({ dosis: 5, unidadDosis: "mg", dosisMg: 5, dosisUi: null, dosisMl: null }, { pasosMg: ESC_30.pasosMg })).toMatchObject({ equivalencias: [], otra: null });
+  });
+
+  it("«Igual que la anterior» con otro vial: los mg del escalón (17 UI de 30 mg/ml son 5 mg → 25 UI de 20 mg/ml, no 26)", () => {
+    const antes = { dosis: 17, unidadDosis: "UI" as const, dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 };
+    expect(conMgDelEscalon(antes, ESC_30).dosisMg).toBe(5);
+    expect(igualQueLaAnterior(conMgDelEscalon(antes, ESC_30), "UI", 20, 100)).toEqual({ escribe: "25", valor: 25, calculada: true });
+    // Con el mismo vial no cambia nada: escribe lo anotado.
+    expect(igualQueLaAnterior(conMgDelEscalon(antes, ESC_30), "UI", 30, 100)).toEqual({ escribe: "17", valor: 17, calculada: false });
+    // Fuera de los escalones, los mg de la cuenta.
+    expect(conMgDelEscalon({ dosis: 20, unidadDosis: "UI" as const, dosisMg: 6, dosisUi: 20, dosisMl: 0.2 }, ESC_30).dosisMg).toBe(6);
   });
 
   it("los escalones de cada semana: los del tratamiento y el vial del producto vigente (§7.1)", () => {

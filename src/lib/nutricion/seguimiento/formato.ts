@@ -230,6 +230,8 @@ export interface DosisLeida {
   otra: string | null;
   /** El mismo, sin «≈» (para el PDF, cuya fuente no lo tiene). */
   otraSinAprox: string | null;
+  /** Las equivalencias nominales del escalón con que coincide, o null si no coincide con ninguno. */
+  delEscalon: Equivalencias | null;
 }
 
 /**
@@ -256,7 +258,7 @@ export function leerDosis(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Parti
     const eq: Equivalencias = { dosisMg: paso, dosisUi: ml != null ? ml * uiPorMl : null, dosisMl: ml };
     const v = eq[CAMPO[otraUnidad]];
     const otra = v == null ? null : `${numeroDeDosis(v, otraUnidad).texto}${NB}${otraUnidad}`;
-    return { anotado, equivalencias: partesEquivalencias(eq, unidad), aprox: false, otra, otraSinAprox: otra };
+    return { anotado, equivalencias: partesEquivalencias(eq, unidad), aprox: false, otra, otraSinAprox: otra, delEscalon: eq };
   }
   const v = d[CAMPO[otraUnidad]];
   return {
@@ -265,7 +267,19 @@ export function leerDosis(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Parti
     aprox: true,
     otra: v == null ? null : fmtDosisCalculada(v, otraUnidad),
     otraSinAprox: v == null ? null : `${numeroDeDosis(v, otraUnidad).texto}${NB}${otraUnidad}`,
+    delEscalon: null,
   };
+}
+
+/**
+ * La dosis con los mg de su escalón, si es uno (§7.4: 17 UI con el vial de 30
+ * mg/ml SON los 5 mg). Para «Igual que la anterior» con otro vial: los mismos
+ * 5 mg son 25 UI con el de 20 mg/ml (el escalón), no 26 (los 5,1 mg de la
+ * cuenta exacta, que además subían de a poco la dosis en cada cambio de vial).
+ */
+export function conMgDelEscalon<T extends Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>>(d: T, escalones?: EscalonesDeLaSemana | null): T {
+  const e = leerDosis(d, escalones).delEscalon;
+  return e ? { ...d, dosisMg: e.dosisMg } : d;
 }
 
 /** Los escalones de la droga en mg: los que manda el servidor o, si el producto de hoy no es del catálogo, los de otro que sí (§7.1). */
