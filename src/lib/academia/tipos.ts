@@ -1270,6 +1270,9 @@ export interface FilaPlanillaMes {
   atrasados?: number;
   postergados?: number;
   sinPagar?: number;
+  /** Fecha tope (23-nov): cuántos quedaron fuera de plazo y lo que no se le paga por eso. */
+  fueraDePlazo?: number;
+  noSePaga?: number;
   /** Bug 4: cuántos ajustes trae el mes. */
   ajustes?: number;
   /** Ítem 15; un backend anterior no lo manda. */
@@ -1282,7 +1285,8 @@ export interface PlanillaMes {
   mes: string;
   retencionActiva: boolean;
   docentes: FilaPlanillaMes[];
-  totales: { bruto: number; liquido: number };
+  /** `noSePaga`: lo que no se le paga a ningún docente por la fecha tope (23-nov). */
+  totales: { bruto: number; liquido: number; noSePaga?: number };
 }
 
 /** A6 (22-oct): por qué no se le paga al docente una línea postergada o sin pagar. */
@@ -1390,12 +1394,21 @@ export interface PlanillaDocente {
     brutoAjustes?: number;
     postergadoHasta?: number;
     retencionPct?: number | null;
+    /** Fecha tope (23-nov): cuántos quedaron fuera de plazo y lo que le hubiera tocado por ellos. */
+    fueraDePlazo?: number;
+    noSePaga?: number;
   };
   /** Para el docente (PROPIO) las cuatro listas llegan vacías. */
   cuentan: LineaPlanilla[];
   postergados: LineaPlanilla[];
   atrasados: LineaPlanilla[];
   sinPagar: LineaPlanilla[];
+  /**
+   * Fecha tope (Derick, 23-nov): pagaron después del día tope o no pagaron a
+   * tiempo. Bs 0; `montoPotencial` es lo que no se le paga. Al cerrar queda
+   * guardado. Un backend anterior no lo manda.
+   */
+  fueraDePlazo?: LineaPlanilla[];
   /**
    * Bug 4: correcciones por cobros anulados o vueltos a cobrar de módulos ya
    * liquidados. Pueden ser negativas y ya están sumadas en el bruto.
