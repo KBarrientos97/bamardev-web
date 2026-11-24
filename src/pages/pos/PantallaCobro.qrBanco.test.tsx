@@ -105,14 +105,18 @@ describe("El QR del banco en la caja", () => {
     fireEvent.click(cobrar());
     expect(onConfirmar).not.toHaveBeenCalled();
 
-    // El banco avisa: el cobro se habilita solo y viaja el pagoQrId.
+    // El banco avisa: el cobro se confirma SOLO (sin tocar nada) y viaja el pagoQrId.
     vi.mocked(api.estadoCobroQr).mockResolvedValue({ id: 7, estado: "PAGADO", monto: 200, venceEn: COBRO.venceEn, pagadoEn: "2026-11-24T12:00:00Z" });
     await avanzar(3100);
     expect(screen.getByText(/QR del banco: pagado/)).toBeInTheDocument();
-    expect(cobrar()).toBeEnabled();
-    fireEvent.click(cobrar());
+    // Se deja ver «Pago recibido» un momento y la venta se registra sola.
+    expect(onConfirmar).not.toHaveBeenCalled();
+    await avanzar(1600);
+    expect(onConfirmar).toHaveBeenCalledTimes(1);
     expect(onConfirmar).toHaveBeenCalledWith([{ formaPagoId: 11, monto: 200, pagoQrId: 7 }]);
-    // Ya está cobrado: salir de la pantalla no lo anula.
+    // Ya está cobrado: salir de la pantalla no lo anula, y no se vuelve a mandar.
+    await avanzar(10_000);
+    expect(onConfirmar).toHaveBeenCalledTimes(1);
     expect(api.anularCobroQr).not.toHaveBeenCalled();
   });
 

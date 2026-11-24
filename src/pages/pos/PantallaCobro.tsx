@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { useCobroQrBanco } from "../../lib/cobroQrBanco";
@@ -34,6 +34,13 @@ function buscarForma(formas: FormaPago[], nombre: string): FormaPago | undefined
 
 /** El tope de la propina de una mesa: el `@Max` de `CobrarMesaDto` en el backend. */
 const PROPINA_MESA_MAXIMA = 100_000;
+
+/**
+ * Con el QR del banco cobrando todo, cuánto se deja a la vista el «Pago
+ * recibido» antes de registrar la venta sola (dueño, 24-nov: el cobro se
+ * confirma solo, sin que la cajera toque nada).
+ */
+const ESPERA_VENTA_AUTOMATICA_MS = 1500;
 
 /**
  * Lo que el cliente suele entregar: el total justo y los billetes o monedas de
@@ -368,6 +375,30 @@ export default function PantallaCobro({
       ],
     );
   }
+
+  // Cobrando TODO por el QR del banco, la venta se registra sola apenas el
+  // banco confirma: ya no hay nada que la cajera tenga que revisar ni teclear.
+  // En mixto no: falta el efectivo, que se recibe y se teclea en mano. Una sola
+  // vez por cobro: si el backend rechaza la venta (sin stock, caja cerrada…),
+  // el error queda a la vista y reintentar es el botón, no un bucle.
+  const confirmarAhora = useRef(confirmar);
+  const estaEnviando = useRef(enviando);
+  useEffect(() => {
+    confirmarAhora.current = confirmar;
+    estaEnviando.current = enviando;
+  });
+  const ventaAutomatica = useRef<number | null>(null);
+  useEffect(() => {
+    const id = cobroBanco.id;
+    if (metodo !== "QR" || cobroBanco.estado !== "pagado" || id == null) return;
+    if (ventaAutomatica.current === id) return;
+    const t = setTimeout(() => {
+      if (ventaAutomatica.current === id || estaEnviando.current) return;
+      ventaAutomatica.current = id;
+      confirmarAhora.current();
+    }, ESPERA_VENTA_AUTOMATICA_MS);
+    return () => clearTimeout(t);
+  }, [metodo, cobroBanco.estado, cobroBanco.id]);
 
   // El total y cómo paga. Con lugar va a la izquierda; si arriba hay un
   // detalle (el del instituto), ése ocupa la izquierda y esto encabeza la
