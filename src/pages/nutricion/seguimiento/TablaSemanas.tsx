@@ -10,12 +10,12 @@ import {
   pagoDelMes,
   textoKg,
   textoKgTotal,
-  textoMarca,
+  partesMarca,
   tituloMes,
   type EscalonesDeLaSemana,
 } from "../../../lib/nutricion/seguimiento/formato";
 import type { CatalogoSeguimiento, MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
-import { AMARILLO, Dosis } from "./piezas";
+import { AMARILLO, ConPuntos, Dosis } from "./piezas";
 
 /**
  * La tabla como la hoja de papel (§4.2): un renglón «Inicial» y uno por
@@ -228,7 +228,9 @@ function RenglonMarca({ registro, editable, onCorregir }: { registro: Registro; 
     <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
       <span className="flex min-w-0 items-start gap-2 py-1 text-[13px] font-semibold text-info-text">
         <Icon name="swap" size={15} className="mt-0.5 shrink-0" />
-        <span className="min-w-0">{textoMarca(registro)}</span>
+        <span className="min-w-0 flex-1">
+          <ConPuntos partes={partesMarca(registro)} partir />
+        </span>
       </span>
       {editable && (
         <button

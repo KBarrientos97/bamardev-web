@@ -123,7 +123,8 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     await abrirHoja(12);
     const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
     const tabla = screen.getByRole("table");
-    expect(sinNb(within(tabla).getByText(/^Desde la semana 7 usa/).textContent)).toBe("Desde la semana 7 usa Tirze · 10 mg en 0,5 ml · antes Tirzepatida");
+    // En partes que bajan enteras (el «·» de cada una va escrito para el lector de pantalla).
+    expect(sinNb(within(tabla).getByText(/^Desde la semana 7 usa/).parentElement!.textContent)).toBe("Desde la semana 7 usa Tirze · 10 mg en 0,5 ml · antes Tirzepatida");
     expect(sinNb(screen.getByText(/^Empezó con/).textContent)).toBe("Empezó con Tirzepatida · 15 mg en 0,5 ml · cambió de producto una vez");
     fireEvent.click(within(tabla).getByRole("button", { name: "Corregir el cambio de producto de la semana 7" }));
     const hoja = screen.getByRole("dialog", { name: "Semana 7" });

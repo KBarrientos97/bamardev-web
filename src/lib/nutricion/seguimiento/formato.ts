@@ -498,9 +498,18 @@ export function textoProducto(p: Producto): string {
 
 /** El renglón de la marca en la tabla: «Desde la semana 12 usa Tirze · 15 mg en 0,5 ml · antes Tirzepatida». */
 export function textoMarca(r: Pick<Registro, "semana" | "producto">): string {
-  if (!r.producto) return "";
-  const p = textoProducto({ nombre: r.producto.nombre, vialMg: r.producto.vialMg ?? null, vialMl: r.producto.vialMl ?? null });
-  return `Desde la semana ${r.semana} usa ${p}${r.producto.anterior ? ` · antes ${r.producto.anterior}` : ""}`;
+  return partesMarca(r).join(" · ");
+}
+
+/** El renglón de la marca en partes («Desde la semana 12 usa Tirze», «15 mg en 0,5 ml», «antes Tirzepatida»), para que baje entera cada una. */
+export function partesMarca(r: Pick<Registro, "semana" | "producto">): string[] {
+  if (!r.producto) return [];
+  const { nombre, vialMg, vialMl, anterior } = r.producto;
+  return [
+    `Desde la semana ${r.semana} usa ${nombre}`,
+    ...(vialMg != null && vialMl != null ? [textoPresentacion(vialMg, vialMl)] : []),
+    ...(anterior ? [`antes ${anterior}`] : []),
+  ];
 }
 
 // ── El catálogo ─────────────────────────────────────────────────────────────

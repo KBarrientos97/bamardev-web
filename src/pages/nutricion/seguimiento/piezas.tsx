@@ -55,16 +55,19 @@ export function Equivalentes({ partes, aprox = true, className = "" }: { partes:
  * el «·» colgando al final ni al principio: el «·» va dibujado delante de cada
  * parte y el de la que empieza un renglón queda fuera de la vista (margen
  * negativo y recorte). Para el lector de pantalla y al copiar, el separador va
- * escrito y oculto.
+ * escrito y oculto. Con `partir`, una parte más larga que el renglón se parte
+ * adentro (un nombre de producto de 80 letras) en vez de salirse.
  */
-export function ConPuntos({ partes }: { partes: ReactNode[] }) {
+export function ConPuntos({ partes, partir = false }: { partes: ReactNode[]; partir?: boolean }) {
   return (
     <span className="block overflow-hidden">
       <span className="-ml-[0.9em] flex flex-wrap">
         {partes.map((x, i) => (
           <span
             key={i}
-            className="relative whitespace-nowrap pl-[0.9em] before:absolute before:left-0 before:w-[0.9em] before:text-center before:content-['·']"
+            className={`relative pl-[0.9em] before:absolute before:left-0 before:w-[0.9em] before:text-center before:content-['·'] ${
+              partir ? "min-w-0 break-words" : "whitespace-nowrap"
+            }`}
           >
             {i > 0 && <span className="sr-only"> · </span>}
             {x}
