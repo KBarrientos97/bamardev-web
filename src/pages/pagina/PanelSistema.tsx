@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
 import { avisoDeQuitados, claveLinea, totalPedido, type LineaPedido } from "../../lib/pagina/pedido";
 import { urlPedidoDe } from "../../lib/pagina/rutas";
 import type { Pedido } from "../../lib/pagina/usePedido";
 import { alDescansar, precargarMapa, type Ubicacion } from "../../lib/mapa";
+import type { LocalEnMapa } from "./ElegirPin";
 import { ErrorPedido, apiPedidoPublico } from "../../lib/pedidosWeb/apiPublica";
 import {
   guardarDatosCliente,
@@ -41,6 +42,9 @@ const ElegirPin = lazy(pedazoPin);
 /** Hasta dónde aceptamos un GPS sin pedirle al cliente que mueva el pin. */
 export const PRECISION_MAXIMA_M = 100;
 
+/** La flecha de «seguir» y la de «volver». */
+const ICONO_SEGUIR = "M9 6l6 6-6 6";
+const ICONO_VOLVER = "M15 6l-6 6 6 6";
 const ICONO_PIN = "M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Zm0-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z";
 const ATAJOS_BILLETES = [50, 100, 200];
 
@@ -135,11 +139,16 @@ export default function PanelSistema({
   const [referencia, setReferencia] = useState(inicial.referencia);
   const [nota, setNota] = useState("");
   /**
-   * Dirección, referencia y nota van plegadas (modo pedir, 20-nov): a la vista
-   * queda sólo lo que hace falta para pedir. Se abren solas si el cliente ya
-   * había dejado su dirección: así ve lo que se va a mandar.
+   * El mapa va en su propia pantalla dentro de la hoja (24-nov, el dueño: con el
+   * mapa la hoja quedaba larguísima). Ahí se marca la casa, se ve el local y el
+   * envío calculado; la dirección y la referencia van con él. En la hoja queda
+   * una tarjeta con el resumen. La hoja sigue montada detrás (`inert`): no se
+   * pierde lo escrito ni dónde estaba el scroll.
    */
-  const [detalles, setDetalles] = useState(() => !!(inicial.direccion.trim() || inicial.referencia.trim()));
+  const [viendoMapa, setViendoMapa] = useState(false);
+  const tarjetaUbicacion = useRef<HTMLButtonElement>(null);
+  const volverDelMapa = useRef<HTMLButtonElement>(null);
+  const yaVioMapa = useRef(false);
   const [pin, setPin] = useState<Ubicacion | null>(null);
   /** El pin salió de un GPS poco preciso y el cliente todavía no lo movió. */
   const [pinSinAjustar, setPinSinAjustar] = useState(false);
@@ -187,6 +196,15 @@ export default function PanelSistema({
     cierre.current?.focus();
     return alDescansar(() => precargarMapa(pedazoPin));
   }, []);
+  // Al entrar al mapa, el foco va a «Volver»; al salir, a la tarjeta de la ubicación.
+  useEffect(() => {
+    if (viendoMapa) {
+      yaVioMapa.current = true;
+      volverDelMapa.current?.focus();
+    } else if (yaVioMapa.current) {
+      tarjetaUbicacion.current?.focus();
+    }
+  }, [viendoMapa]);
   useEffect(() => setAgotadosServidor(null), [info]);
 
   // El botón «atrás» del celular cierra la hoja y no la página (QA R2, M4).
@@ -305,6 +323,7 @@ export default function PanelSistema({
   const pagoAntes = sucursal ? (sucursal.pagoAntes ?? null) : (sucursales.find((s) => s.pagoAntes)?.pagoAntes ?? null);
   const formaPagoReal: FormaPagoWeb = externoEntrega ? "QR" : formaPago === "QR" && pagoAntes ? "QR" : "EFECTIVO";
   const pagarAntes = formaPagoReal === "QR" && !!pagoAntes;
+  const formasPago = (["EFECTIVO", "QR"] as const).filter((f) => f === "EFECTIVO" || !!pagoAntes);
   // El error del envío era de ESE pedido en ESE local: al cambiar de local o de
   // productos ya no corresponde, y dejaba el «está agotado» pegado en el pie de
   // la hoja aunque ya se hubiera arreglado (QA R2, M2).
@@ -354,6 +373,15 @@ export default function PanelSistema({
 
   const { total: subtotal } = totalPedido(lineas);
   const envio = tipoReal === "DELIVERY" ? (externoEntrega ? null : (ev?.envio ?? null)) : 0;
+  /** «2,3 km de Central · Envío ≈ Bs 9»: lo que se ve en la tarjeta y al pie del mapa. */
+  const resumenEnvio = !pin
+    ? null
+    : !sucursal
+      ? (motivoSinCobertura(punto, sucursales) ?? "Ningún local llega a esa dirección ahora.")
+      : externoEntrega
+        ? `Sale de ${sucursal.nombre} · el envío te lo confirma el local`
+        : `${ev?.distanciaKm?.toLocaleString("es-BO")} km de ${sucursal.nombre} · Envío ≈ ${formatoPrecio(envio ?? 0)}`;
+  const resumenUbicacion = [direccion.trim(), resumenEnvio].filter(Boolean).join(" · ");
   const total = subtotal + (envio ?? 0);
 
   // El billete elegido deja de alcanzar si el total sube (otro producto, otro local, un
@@ -579,7 +607,8 @@ export default function PanelSistema({
       aria-modal="true"
       aria-label="Tu pedido"
       onClick={(e) => e.target === e.currentTarget && onCerrar()}
-      onKeyDown={(e) => teclasDeDialogo(e, onCerrar)}
+      onKeyDown={(e) => teclasDeDialogo(e, viendoMapa ? () => setViendoMapa(false) : onCerrar)}
+      className="anim-velo"
       style={{
         position: "fixed",
         inset: 0,
@@ -594,7 +623,7 @@ export default function PanelSistema({
       {/* Las opciones son radios escondidos: sin esto, con el teclado no se ve cuál tiene el foco. */}
       <style>{`.seg-pedido:has(input:focus-visible){outline:3px solid ${fuerte};outline-offset:1px}${ESTILO_PANTALLA_CORTA}`}</style>
       <section
-        className="hoja-pedido"
+        className={ancho ? "hoja-pedido anim-hoja-ancho" : "hoja-pedido anim-hoja"}
         style={{
           background: "#ffffff",
           width: "min(520px, 100%)",
@@ -608,6 +637,30 @@ export default function PanelSistema({
           boxShadow: "0 20px 50px rgba(0,0,0,0.3)",
         }}
       >
+        {viendoMapa && (
+          <VistaMapa
+            volver={volverDelMapa}
+            onVolver={() => setViendoMapa(false)}
+            pin={pin}
+            centro={centroMapa}
+            locales={conDelivery.map((x) => ({ lat: x.latitud!, lng: x.longitud!, nombre: x.nombre }))}
+            onMoverPin={alMoverPin}
+            fuerte={fuerte}
+            ancho={ancho}
+            gps={gps}
+            onUsarMiUbicacion={usarMiUbicacion}
+            pinSinAjustar={pinSinAjustar}
+            resumen={resumenEnvio}
+            sinCobertura={!!pin && !sucursal}
+            direccion={direccion}
+            onDireccion={setDireccion}
+            referencia={referencia}
+            onReferencia={setReferencia}
+            campo={campo}
+            etiqueta={etiqueta}
+          />
+        )}
+        <div inert={viendoMapa} style={{ display: viendoMapa ? "none" : "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
         <header style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px 12px", borderBottom: "1px solid #F1F2F4" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Tu pedido</h2>
@@ -683,6 +736,20 @@ export default function PanelSistema({
 
           {info && !sinPedidos && (
             <>
+              {/* La nota es del PEDIDO («sin ensalada»), no de la ubicación: va con los productos (dueño, 24-nov). */}
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={etiqueta}>Notas (opcional)</span>
+                <textarea
+                  aria-label="Nota para el negocio"
+                  value={nota}
+                  maxLength={200}
+                  rows={2}
+                  placeholder="Sin ensalada, la gaseosa bien fría…"
+                  onChange={(e) => setNota(e.target.value)}
+                  style={{ ...campo, resize: "none", lineHeight: 1.4 }}
+                />
+              </label>
+
               <h3 style={tituloSeccion}>Entrega</h3>
               <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
                 <legend style={{ ...etiqueta, marginBottom: 8, padding: 0 }}>¿Cómo lo recibís?</legend>
@@ -712,38 +779,46 @@ export default function PanelSistema({
 
 
               {tipoReal === "DELIVERY" && (
-                <>
-                  <div ref={guardar("pin")} tabIndex={-1} aria-invalid={invalido(!pin || pinSinAjustar)} style={{ display: "flex", flexDirection: "column", gap: 8, outline: "none", ...(intento && (!pin || pinSinAjustar) ? { border: "2px solid #DC2626", borderRadius: 14, padding: 6 } : {}) }}>
-                    <span style={etiqueta}>Marcá dónde te lo llevamos</span>
-                    <Suspense fallback={<div style={{ height: 260, borderRadius: 14, background: "#EEF0F3" }} />}>
-                      <ElegirPin valor={pin} centro={centroMapa} onCambio={alMoverPin} />
-                    </Suspense>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={usarMiUbicacion}
-                        disabled={gps.buscando}
-                        style={{ minHeight: 44, borderRadius: 12, border: `1.5px solid ${fuerte}`, background: "#ffffff", color: fuerte, fontWeight: 700, fontSize: 14, padding: "0 14px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
-                      >
-                        <Trazo d={ICONO_PIN} color={fuerte} size={16} grosor={2.2} />
-                        {gps.buscando ? "Buscando…" : "Usar mi ubicación"}
-                      </button>
-                      <span style={{ fontSize: 12, color: pin && !pinSinAjustar ? "#047857" : intento && !pin ? "#B91C1C" : "#6B7280", fontWeight: pin ? 700 : 400 }}>
-                        {pin ? (pinSinAjustar ? "Falta ajustar el pin" : "Ubicación marcada") : "Tocá el mapa; el pin se arrastra."}
+                <div ref={guardar("pin")} tabIndex={-1} aria-invalid={invalido(!pin || pinSinAjustar)} style={{ display: "flex", flexDirection: "column", gap: 6, outline: "none" }}>
+                  <span style={etiqueta}>Marcá dónde te lo llevamos</span>
+                  <button
+                    ref={tarjetaUbicacion}
+                    type="button"
+                    aria-label={pin ? "Cambiar ubicación" : "Marcar mi ubicación"}
+                    onClick={() => setViendoMapa(true)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: `1.5px solid ${intento && (!pin || pinSinAjustar) ? "#DC2626" : pin && !pinSinAjustar ? fuerte : "#D1D5DB"}`,
+                      background: pin && !pinSinAjustar ? tinte : "#ffffff",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      color: "#1F2937",
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ width: 40, height: 40, flex: "none", borderRadius: 12, background: pin && !pinSinAjustar ? fuerte : "#F3F4F6", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                      <Trazo d={ICONO_PIN} color={pin && !pinSinAjustar ? "#ffffff" : fuerte} size={20} grosor={2.2} />
+                    </span>
+                    <span style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{!pin ? "Abrir el mapa" : pinSinAjustar ? "Falta ajustar el pin" : "Ubicación marcada"}</span>
+                      <span style={{ fontSize: 13, color: pin && !sucursal ? "#B91C1C" : "#6B7280", overflowWrap: "anywhere" }}>
+                        {!pin ? "Poné el pin en tu puerta y te decimos el envío" : pinSinAjustar ? "Tu ubicación es poco precisa: movela hasta tu puerta" : resumenUbicacion}
                       </span>
-                    </div>
-                    {gps.aviso && (
-                      <p role="alert" style={{ margin: 0, fontSize: 13, color: "#92400E", background: "#FFFBEB", borderRadius: 10, padding: "8px 10px" }}>
-                        {gps.aviso}
-                      </p>
+                    </span>
+                    {pin ? (
+                      <span aria-hidden="true" style={{ fontSize: 14, fontWeight: 700, color: fuerte }}>
+                        Cambiar
+                      </span>
+                    ) : (
+                      <Trazo d={ICONO_SEGUIR} color="#9CA3AF" size={18} grosor={2.4} />
                     )}
-                    {gps.falla && (
-                      <p role="alert" style={{ margin: 0, fontSize: 13, color: "#B91C1C" }}>
-                        {gps.falla}
-                      </p>
-                    )}
-                  </div>
-                </>
+                  </button>
+                </div>
               )}
 
               {/* Con delivery, la lista sale recién con el pin: antes todas dicen «Marcá tu
@@ -780,42 +855,7 @@ export default function PanelSistema({
                   </div>
                 </fieldset>
               )}
-              {sucursales.length === 1 && tipoReal === "DELIVERY" && pin && !sucursal && (
-                <p role="alert" style={{ margin: 0, fontSize: 14, color: "#B91C1C", fontWeight: 600 }}>
-                  {motivoSinCobertura(punto, sucursales)}
-                </p>
-              )}
 
-              {detalles ? (
-                <>
-                  {tipoReal === "DELIVERY" && (
-                    <>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <span style={etiqueta}>Dirección (opcional)</span>
-                        <input ref={guardar("direccion")} aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => setDireccion(e.target.value)} style={campo} />
-                      </label>
-                      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <span style={etiqueta}>Referencia (opcional)</span>
-                        <input aria-label="Referencia" value={referencia} maxLength={200} placeholder="Portón negro, frente a la farmacia…" onChange={(e) => setReferencia(e.target.value)} style={campo} />
-                      </label>
-                    </>
-                  )}
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={etiqueta}>Nota (opcional)</span>
-                    <input aria-label="Nota para el negocio" value={nota} maxLength={200} placeholder="Sin cebolla, extra crema…" onChange={(e) => setNota(e.target.value)} style={campo} />
-                  </label>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  aria-expanded={false}
-                  onClick={() => setDetalles(true)}
-                  style={{ alignSelf: "flex-start", border: "none", background: "transparent", color: fuerte, fontWeight: 700, fontSize: 15, cursor: "pointer", padding: "4px 0", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
-                >
-                  <Trazo d="M12 5v14M5 12h14" color={fuerte} size={16} grosor={2.6} />
-                  {tipoReal === "DELIVERY" ? "Agregar dirección, referencia o nota" : "Agregar una nota"}
-                </button>
-              )}
 
               <h3 style={tituloSeccion}>Tus datos</h3>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -843,33 +883,33 @@ export default function PanelSistema({
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {/* QR sólo donde el local cobra por QR antes; si no, efectivo y nada más. */}
-                    {(["EFECTIVO", "QR"] as const).filter((f) => f === "EFECTIVO" || !!pagoAntes).map((f) => {
-                      const activo = formaPagoReal === f;
-                      const cuando = tipoReal === "DELIVERY" ? "al recibir el pedido" : "al retirarlo en el local";
-                      return (
-                        <label
-                          key={f}
-                          className="seg-pedido"
-                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, border: `1.5px solid ${activo ? fuerte : "#E5E7EB"}`, background: activo ? tinte : "#ffffff", cursor: "pointer", position: "relative" }}
-                        >
-                          <input type="radio" name="forma-pago" aria-label={f === "EFECTIVO" ? "Efectivo" : "QR"} checked={activo} onChange={() => setFormaPago(f)} style={oculto} />
-                          <span aria-hidden="true" style={{ width: 20, height: 20, flex: "none", borderRadius: 999, border: `2px solid ${activo ? fuerte : "#9CA3AF"}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                            {activo && <span style={{ width: 10, height: 10, borderRadius: 999, background: fuerte }} />}
-                          </span>
-                          <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                            <span style={{ fontWeight: 700, fontSize: 15 }}>{f === "EFECTIVO" ? "Efectivo" : "QR"}</span>
-                            <span style={{ fontSize: 13, color: "#6B7280" }}>
-                              {f === "EFECTIVO"
-                                ? `Pagás ${cuando}`
-                                : tipoReal === "DELIVERY"
-                                  ? "Pagás los productos ahora con QR; el envío, al recibir"
-                                  : "Pagás ahora con QR y pasás a retirarlo"}
+                    {/* Una fila, una al lado de la otra (dueño, 24-nov). QR sólo donde el local cobra por QR antes. */}
+                    <div style={{ display: "grid", gridTemplateColumns: `repeat(${formasPago.length}, minmax(0, 1fr))`, gap: 8 }}>
+                      {formasPago.map((f) => {
+                        const activo = formaPagoReal === f;
+                        return (
+                          <label
+                            key={f}
+                            className="seg-pedido"
+                            style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px", borderRadius: 14, border: `1.5px solid ${activo ? fuerte : "#E5E7EB"}`, background: activo ? tinte : "#ffffff", cursor: "pointer", position: "relative", minWidth: 0 }}
+                          >
+                            <input type="radio" name="forma-pago" aria-label={f === "EFECTIVO" ? "Efectivo" : "QR"} checked={activo} onChange={() => setFormaPago(f)} style={oculto} />
+                            <span aria-hidden="true" style={{ width: 20, height: 20, flex: "none", borderRadius: 999, border: `2px solid ${activo ? fuerte : "#9CA3AF"}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                              {activo && <span style={{ width: 10, height: 10, borderRadius: 999, background: fuerte }} />}
                             </span>
-                          </span>
-                        </label>
-                      );
-                    })}
+                            <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                              <span style={{ fontWeight: 700, fontSize: 15 }}>{f === "EFECTIVO" ? "Efectivo" : "QR"}</span>
+                              <span style={{ fontSize: 12, color: "#6B7280" }}>{f === "EFECTIVO" ? (tipoReal === "DELIVERY" ? "Al recibir" : "Al retirar") : "Pagás ahora"}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {formaPagoReal === "QR" && (
+                      <span style={{ fontSize: 13, color: "#6B7280" }}>
+                        {tipoReal === "DELIVERY" ? "Pagás los productos ahora con QR; el envío, al recibir" : "Pagás ahora con QR y pasás a retirarlo"}
+                      </span>
+                    )}
                   </div>
                 )}
               </fieldset>
@@ -1041,7 +1081,130 @@ export default function PanelSistema({
             )}
           </button>
         </footer>
+        </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * La pantalla del mapa, dentro de la misma hoja (24-nov): el cliente pone el
+ * pin en su puerta, ve de qué local sale y cuánto es el envío, y vuelve. La
+ * dirección y la referencia van acá porque son de la ubicación; la nota del
+ * pedido no (dueño, 24-nov).
+ */
+function VistaMapa({
+  volver,
+  onVolver,
+  pin,
+  centro,
+  locales,
+  onMoverPin,
+  fuerte,
+  ancho,
+  gps,
+  onUsarMiUbicacion,
+  pinSinAjustar,
+  resumen,
+  sinCobertura,
+  direccion,
+  onDireccion,
+  referencia,
+  onReferencia,
+  campo,
+  etiqueta,
+}: {
+  volver: RefObject<HTMLButtonElement | null>;
+  onVolver: () => void;
+  pin: Ubicacion | null;
+  centro: Ubicacion | null;
+  locales: LocalEnMapa[];
+  onMoverPin: (u: Ubicacion) => void;
+  fuerte: string;
+  ancho: boolean;
+  gps: { buscando: boolean; falla: string; aviso: string };
+  onUsarMiUbicacion: () => void;
+  pinSinAjustar: boolean;
+  resumen: string | null;
+  sinCobertura: boolean;
+  direccion: string;
+  onDireccion: (v: string) => void;
+  referencia: string;
+  onReferencia: (v: string) => void;
+  campo: CSSProperties;
+  etiqueta: CSSProperties;
+}) {
+  return (
+    <div className="anim-vista" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 14px", borderBottom: "1px solid #F1F2F4" }}>
+        <button
+          ref={volver}
+          type="button"
+          aria-label="Volver al pedido"
+          onClick={onVolver}
+          style={{ width: 40, height: 40, flex: "none", borderRadius: 999, border: "none", background: "#F3F4F6", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <Trazo d={ICONO_VOLVER} color="#374151" size={20} grosor={2.4} />
+        </button>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>¿Dónde te lo llevamos?</h2>
+      </header>
+      <div style={{ overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
+        <span style={{ fontSize: 13, color: "#6B7280" }}>Tocá el mapa o arrastrá el pin hasta tu puerta.</span>
+        <Suspense fallback={<div style={{ height: ancho ? 340 : "min(46dvh, 380px)", borderRadius: 14, background: "#EEF0F3" }} />}>
+          <ElegirPin valor={pin} centro={centro} onCambio={onMoverPin} locales={locales} color={fuerte} alto={ancho ? 340 : "min(46dvh, 380px)"} />
+        </Suspense>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={onUsarMiUbicacion}
+            disabled={gps.buscando}
+            style={{ minHeight: 44, borderRadius: 12, border: `1.5px solid ${fuerte}`, background: "#ffffff", color: fuerte, fontWeight: 700, fontSize: 14, padding: "0 14px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "inherit" }}
+          >
+            <Trazo d={ICONO_PIN} color={fuerte} size={16} grosor={2.2} />
+            {gps.buscando ? "Buscando…" : "Usar mi ubicación"}
+          </button>
+          {locales.length > 0 && (
+            <span style={{ fontSize: 12, color: "#6B7280", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: 999, background: fuerte, border: "2px solid #ffffff", boxShadow: "0 0 0 1px #D1D5DB" }} />
+              {locales.length === 1 ? "El local" : "Los locales"}
+            </span>
+          )}
+        </div>
+        {gps.aviso && (
+          <p role="alert" style={{ margin: 0, fontSize: 13, color: "#92400E", background: "#FFFBEB", borderRadius: 10, padding: "8px 10px" }}>
+            {gps.aviso}
+          </p>
+        )}
+        {gps.falla && (
+          <p role="alert" style={{ margin: 0, fontSize: 13, color: "#B91C1C" }}>
+            {gps.falla}
+          </p>
+        )}
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={etiqueta}>Dirección (opcional)</span>
+          <input aria-label="Dirección" value={direccion} maxLength={200} autoComplete="street-address" placeholder="Calle y número" onChange={(e) => onDireccion(e.target.value)} style={campo} />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={etiqueta}>Referencia (opcional)</span>
+          <input aria-label="Referencia" value={referencia} maxLength={200} placeholder="Portón negro, frente a la farmacia…" onChange={(e) => onReferencia(e.target.value)} style={campo} />
+        </label>
+      </div>
+      <footer
+        className="pie-pedido"
+        style={{ borderTop: "1px solid #E5E7EB", padding: "10px 16px", paddingBottom: ancho ? 12 : "calc(10px + env(safe-area-inset-bottom, 0px))", display: "flex", flexDirection: "column", gap: 8, background: "#ffffff" }}
+      >
+        <p role="status" style={{ margin: 0, fontSize: 15, fontWeight: 700, color: sinCobertura ? "#B91C1C" : pinSinAjustar ? "#92400E" : "#1F2937" }}>
+          {!pin ? "Marcá tu casa para calcular el envío." : pinSinAjustar ? "Tu ubicación es poco precisa: movela hasta tu puerta." : resumen}
+        </p>
+        <button
+          type="button"
+          aria-disabled={!pin}
+          onClick={() => pin && onVolver()}
+          style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: pin ? "pointer" : "not-allowed", opacity: pin ? 1 : 0.55, fontFamily: "inherit" }}
+        >
+          Confirmar ubicación
+        </button>
+      </footer>
     </div>
   );
 }

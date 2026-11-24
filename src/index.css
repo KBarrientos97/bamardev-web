@@ -200,6 +200,37 @@ button {
   }
 }
 
+/* La hoja del pedido de la página pública (24-nov, el dueño: que se vea que
+   se abre): el velo aparece, la hoja sube desde abajo en el celular y en la
+   compu aparece creciendo apenas. El mapa del pedido entra desde la derecha,
+   como una pantalla nueva. Sin animación si se pidió menos movimiento. */
+.anim-velo {
+  animation: velo-aparece 0.22s ease-out;
+}
+.anim-hoja {
+  animation: hoja-sube 0.36s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.anim-hoja-ancho {
+  animation: hoja-aparece 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.anim-vista {
+  animation: vista-entra 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes hoja-aparece {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-velo,
+  .anim-hoja,
+  .anim-hoja-ancho,
+  .anim-vista {
+    animation: none;
+  }
+}
+
 /* Scrollbar discreta: en el POS hay varias columnas que scrollean a la vez. */
 * {
   scrollbar-width: thin;

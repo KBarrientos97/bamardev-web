@@ -15,7 +15,8 @@ export function teclasDeDialogo(e: TeclaReact<HTMLElement>, cerrar: () => void) 
     return;
   }
   if (e.key !== "Tab") return;
-  const dentro = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(FOCALIZABLE));
+  // Lo que está detrás de otra vista de la misma hoja (`inert`, el mapa del pedido) no cuenta.
+  const dentro = Array.from(e.currentTarget.querySelectorAll<HTMLElement>(FOCALIZABLE)).filter((el) => !el.closest("[inert]"));
   if (!dentro.length) return;
   const primero = dentro[0];
   const ultimo = dentro[dentro.length - 1];

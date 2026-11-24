@@ -458,6 +458,7 @@ export default function PedidoPagina({
       aria-modal="true"
       aria-label="Tu pedido"
       onClick={(e) => e.target === e.currentTarget && setAbierto(false)}
+      className="anim-velo"
       style={{
         position: "fixed",
         inset: 0,
@@ -470,6 +471,7 @@ export default function PedidoPagina({
       }}
     >
       <section
+        className={ancho ? "anim-hoja-ancho" : "anim-hoja"}
         style={{
           background: "#ffffff",
           width: "min(520px, 100%)",
