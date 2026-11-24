@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EstadoCuentaPublico, PagoPublico } from "../../lib/academia/tipos";
 
 /**
@@ -16,7 +16,7 @@ vi.mock("../../lib/pagina/usePaginaPublica", () => ({
 
 vi.mock("../../lib/academia/apiPublica", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiPublica")>();
-  return { ...real, apiAcademiaPublica: { estadoCuenta: vi.fn(), subirComprobante: vi.fn() } };
+  return { ...real, apiAcademiaPublica: { estadoCuenta: vi.fn(), subirComprobante: vi.fn(), pedirQr: vi.fn(), estadoQr: vi.fn(), cancelarQr: vi.fn() } };
 });
 
 // El canvas no existe en jsdom: la foto "achicada" es el mismo archivo.
@@ -240,5 +240,135 @@ describe("M5 · Pagar desde la página", () => {
     expect(screen.getByText("El grupo está lleno, comunicate con la academia")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /QR de/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /WhatsApp/ })[0]).toHaveAttribute("href", "https://wa.me/59170000000");
+  });
+});
+
+
+describe("QR del banco (PLAN-QR-AUTOMATICO): el pago se acredita solo", () => {
+  const AUTOMATIZADO: EstadoCuentaPublico = {
+    ...PREINSCRITO,
+    qr: null,
+    pago: { ...PREINSCRITO.pago, modo: "AUTOMATIZADO", esperando: null },
+  };
+  const QR = { monto: 500, etiqueta: "Primer mes", venceEn: "2099-01-01T00:00:00Z", imagenQr: "data:image/png;base64,AAAA" };
+
+  afterEach(() => vi.useRealTimers());
+
+  async function pedirElPrimerMes() {
+    fireEvent.click(screen.getByRole("radio", { name: /Pagar el primer mes/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Pagar con QR/ }));
+    });
+  }
+
+  it("no ofrece subir comprobante ni muestra un QR fijo: ofrece pagar con el QR del banco", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    await montar();
+    expect(screen.getByRole("button", { name: /Pagar con QR/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Foto o captura del comprobante")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /QR de CCTP Horizonte/ })).not.toBeInTheDocument();
+  });
+
+  it("pide el QR con la opción elegida (el monto no viaja) y lo muestra con su cuenta regresiva", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    vi.mocked(apiAcademiaPublica.pedirQr).mockResolvedValue(QR);
+    await montar();
+    await pedirElPrimerMes();
+    expect(apiAcademiaPublica.pedirQr).toHaveBeenCalledWith("horizonte", "K7Q2abcdef", { opcion: "CUOTA" });
+    expect(screen.getByRole("img", { name: /QR para pagar Bs 500/ })).toHaveAttribute("src", QR.imagenQr);
+    expect(screen.getByRole("status")).toHaveTextContent(/Esperando tu pago/);
+  });
+
+  it("recargar la página con un QR abierto lo vuelve a mostrar sin pedir otro", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({
+      ...AUTOMATIZADO,
+      pago: { ...AUTOMATIZADO.pago, esperando: { opcion: "CUOTA", ...QR } },
+    });
+    await montar();
+    expect(apiAcademiaPublica.pedirQr).not.toHaveBeenCalled();
+    expect(screen.getByRole("img", { name: /QR para pagar Bs 500/ })).toBeInTheDocument();
+  });
+
+  it("cuando el banco avisa, lo dice y deja volver al estado de cuenta", async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    vi.mocked(apiAcademiaPublica.pedirQr).mockResolvedValue(QR);
+    vi.mocked(apiAcademiaPublica.estadoQr).mockResolvedValue({ estado: "ESPERANDO", venceEn: QR.venceEn });
+    await montar();
+    await pedirElPrimerMes();
+
+    // Todavía no pagó: sigue esperando.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(apiAcademiaPublica.estadoQr).toHaveBeenCalledWith("horizonte", "K7Q2abcdef");
+    expect(screen.queryByText("¡Pago recibido!")).not.toBeInTheDocument();
+
+    vi.mocked(apiAcademiaPublica.estadoQr).mockResolvedValue({ estado: "ACREDITADO", monto: 500, etiqueta: "Primer mes" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(screen.getByText("¡Pago recibido!")).toBeInTheDocument();
+    expect(screen.getByText(/Ya se sumó a tu cuenta y tu lugar quedó asegurado/)).toBeInTheDocument();
+
+    const antes = vi.mocked(apiAcademiaPublica.estadoCuenta).mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ver mi estado de cuenta" }));
+    });
+    expect(vi.mocked(apiAcademiaPublica.estadoCuenta).mock.calls.length).toBe(antes + 1);
+  });
+
+  it("si el pago entró pero la academia lo confirma a mano, la página lo dice (no pide pagar de nuevo)", async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    vi.mocked(apiAcademiaPublica.pedirQr).mockResolvedValue(QR);
+    vi.mocked(apiAcademiaPublica.estadoQr).mockResolvedValue({ estado: "EN_REVISION", monto: 500, etiqueta: "Primer mes" });
+    await montar();
+    await pedirElPrimerMes();
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue({
+      ...AUTOMATIZADO,
+      pago: { ...AUTOMATIZADO.pago, enRevision: { monto: 500, etiqueta: "Primer mes", enviadoEn: "2026-11-24T12:00:00Z", viaBanco: true } },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(screen.getByText("Recibimos tu pago")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pagar con QR/ })).not.toBeInTheDocument();
+  });
+
+  it("un QR vencido avisa y deja pedir otro", async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    vi.mocked(apiAcademiaPublica.pedirQr).mockResolvedValue(QR);
+    vi.mocked(apiAcademiaPublica.estadoQr).mockResolvedValue({ estado: "VENCIDO" });
+    await montar();
+    await pedirElPrimerMes();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/El QR venció sin pagarse/);
+    expect(screen.getByRole("button", { name: /Pagar con QR/ })).toBeInTheDocument();
+  });
+
+  it("«Elegir otra cosa» cierra el QR en el banco y vuelve a las opciones", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    vi.mocked(apiAcademiaPublica.pedirQr).mockResolvedValue(QR);
+    vi.mocked(apiAcademiaPublica.cancelarQr).mockResolvedValue({ ok: true });
+    await montar();
+    await pedirElPrimerMes();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Elegir otra cosa para pagar" }));
+    });
+    expect(apiAcademiaPublica.cancelarQr).toHaveBeenCalledWith("horizonte", "K7Q2abcdef");
+    expect(screen.getByRole("button", { name: /Pagar con QR/ })).toBeInTheDocument();
+  });
+
+  it("un rechazo al abrir el QR se muestra y no deja la pantalla trabada", async () => {
+    vi.mocked(apiAcademiaPublica.estadoCuenta).mockResolvedValue(AUTOMATIZADO);
+    vi.mocked(apiAcademiaPublica.pedirQr).mockRejectedValue(new ErrorPublico("No pudimos generar el QR para pagar.", 409, "QR_NO_GENERADO"));
+    await montar();
+    await pedirElPrimerMes();
+    expect(screen.getByRole("alert")).toHaveTextContent("No pudimos generar el QR para pagar.");
+    expect(screen.getByRole("button", { name: /Pagar con QR/ })).toBeEnabled();
   });
 });

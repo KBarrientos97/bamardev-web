@@ -693,6 +693,8 @@ export default function Cobrar() {
             recibidoVacioEsExacto
             // Un solo botón: «Llegó el QR · Confirmar cobro» (D4).
             qrEnUnPaso
+            // Con cuenta del banco, el QR sale por el monto exacto y se confirma solo.
+            qrBanco
             error={error}
             encabezado={ancha ? undefined : detalleCelular}
           />

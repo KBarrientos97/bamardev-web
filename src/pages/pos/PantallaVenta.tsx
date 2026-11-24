@@ -1509,6 +1509,8 @@ function PanelCarrito({
           {cobro && (
             <PantallaCobro
               incrustado
+              // El cobro termina en `POST /ventas`: puede usar el QR del banco.
+              qrBanco
               total={cobro.total}
               formasPago={cobro.formasPago}
               profesionales={cobro.profesionales}

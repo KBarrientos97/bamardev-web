@@ -1874,6 +1874,22 @@ export interface PagoInput {
   recibido?: number;
   /** Belleza: el código del vale con el que se paga esta parte (forma "Gift card"). */
   giftCardCodigo?: string;
+  /**
+   * Cobrado con el QR del banco: el cobro (`/cobros-qr`) que el banco ya
+   * confirmó. El backend comprueba que esté pagado, cubra el monto y no se haya
+   * usado en otra venta.
+   */
+  pagoQrId?: number;
+}
+
+/** Cómo va un cobro por QR del banco en la caja (`/cobros-qr/:id`). */
+export interface CobroQrEstado {
+  id: number;
+  /** PENDIENTE (esperando) · PAGADO · ANULADO · VENCIDO. */
+  estado: "PENDIENTE" | "PAGADO" | "ANULADO" | "VENCIDO";
+  monto: number;
+  venceEn: string;
+  pagadoEn: string | null;
 }
 
 /** Datos del fiado cuando la venta se cobra a crédito. */

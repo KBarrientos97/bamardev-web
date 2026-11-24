@@ -784,7 +784,12 @@ function Enviada({
   const d = estado.d;
   // Con el QR de cobro del instituto se paga acá mismo; si no, como siempre
   // (en la sede, o después con «Pagar mi inscripción»).
-  const pagaAca = !!d && (!!d.pago.enRevision || (d.pago.modo === "FIJO" && !!d.qr && d.pago.opciones.length > 0));
+  const pagaAca =
+    !!d &&
+    (!!d.pago.enRevision ||
+      (d.pago.modo === "FIJO" && !!d.qr && d.pago.opciones.length > 0) ||
+      // El QR del banco no lleva imagen fija: la pantalla pide el suyo.
+      (d.pago.modo === "AUTOMATIZADO" && d.pago.opciones.length > 0));
   return (
     <div className="space-y-5 p-5">
       <div className="text-center">
