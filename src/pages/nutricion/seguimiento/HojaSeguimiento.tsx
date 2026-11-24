@@ -8,18 +8,22 @@ import { conAlt, ctrlEnter, escribiendo, hayDialogoAbierto, useTeclas } from "..
 import { conUnidad, fechaLarga, hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, esNoEncontrado } from "../../../lib/nutricion/seguimiento/api";
 import {
+  escalonesDeLaSemana,
   flechaKg,
+  leerDosis,
   nombreSemana,
-  partesEquivalencias,
+  rachaAntes,
   semanaCorta,
   semanas,
-  textoDosis,
+  textoKg,
+  textoProducto,
   textoFaltaPago,
   textoJeringa,
   textoMgPorUi,
   textoSexo,
   textoVial,
 } from "../../../lib/nutricion/seguimiento/formato";
+import { bajarPdfSeguimiento, documentoSeguimiento, enviarPdfSeguimientoPorWhatsapp } from "../../../lib/nutricion/seguimiento/pdf";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
@@ -35,7 +39,7 @@ import TablaSemanas from "./TablaSemanas";
 
 /** Qué hoja está abierta encima. */
 type Abierta =
-  | { que: "semana"; registro: Registro | null; semana: number; focoPago?: boolean }
+  | { que: "semana"; registro: Registro | null; semana: number; focoPago?: boolean; focoProducto?: boolean }
   | { que: "iniciar" }
   | { que: "editar" }
   | { que: "terminar" }
@@ -55,7 +59,7 @@ export default function HojaSeguimiento() {
   const pacienteId = Number(id);
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { usuario, puede } = useAuth();
+  const { usuario, puede, negocio } = useAuth();
   const edita = editaSeguimiento(usuario);
   const veEvaluacion = puede("nutricion");
   const hoja = useApi(() => apiSeguimiento.hoja(pacienteId), [pacienteId]);
@@ -174,14 +178,20 @@ export default function HojaSeguimiento() {
     hoja.recargar();
   };
 
-  /** Lo que devuelve una escritura: el tratamiento al día. */
-  const alGuardar = (nuevo: Tratamiento, texto: string) => {
+  /**
+   * Lo que devuelve una escritura: el tratamiento al día. Con `releer` (se
+   * puso, corrigió o quitó una marca de producto, §7.1: el servidor recalcula
+   * las semanas siguientes) se vuelve a leer la hoja entera, además.
+   */
+  const alGuardar = (nuevo: Tratamiento, texto: string, releer = false) => {
     desactualizada.current = false;
     if (nuevo.estado === "ACTIVO" && (!mirando || mirando === nuevo.id)) {
       hoja.setDatos({ ...h, tratamiento: nuevo, anteriores: h.anteriores.filter((a) => a.id !== nuevo.id) });
       if (mirando) setParams({}, { replace: true });
+      if (releer) hoja.recargar();
     } else if (mirando === nuevo.id) {
       otro.setDatos(nuevo);
+      if (releer) otro.recargar();
     } else {
       hoja.recargar();
     }
@@ -384,31 +394,31 @@ export default function HojaSeguimiento() {
 
           {enCurso && <AvisosDePago t={t} edita={editable} onAnotar={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana, focoPago: true })} />}
 
-          <Resumen t={t} />
+          <Resumen t={t} catalogo={cat} />
 
           <Tarjeta
             titulo="Semanas"
             bajada={editable ? "Tocá una semana para corregirla." : undefined}
+            acciones={<BotonesPdf t={t} catalogo={cat} paciente={p} negocio={negocio?.nombre ?? null} onAviso={setAviso} onError={setError} />}
             sinRelleno
             barra={
               t.meses.length > 1 ? (
-                <div className="py-3 [&_button]:min-h-11 lg:[&_button]:min-h-9">
-                  <ChipsFiltro<string>
-                    etiqueta="Filtrar por mes"
-                    valor={mes == null ? "todo" : String(mes)}
-                    onChange={(v) => setMesElegido(v === "todo" ? "todo" : Number(v))}
-                    opciones={[{ clave: "todo", label: "Todo" }, ...t.meses.map((m) => ({ clave: String(m.mes), label: `Mes ${m.mes}` }))]}
-                  />
-                </div>
+                <ChipsDeMes
+                  valor={mes == null ? "todo" : String(mes)}
+                  onChange={(v) => setMesElegido(v === "todo" ? "todo" : Number(v))}
+                  opciones={[{ clave: "todo", label: "Todo" }, ...t.meses.map((m) => ({ clave: String(m.mes), label: `Mes ${m.mes}` }))]}
+                />
               ) : undefined
             }
           >
             <TablaSemanas
               tratamiento={t}
+              catalogo={cat}
               mes={mes}
               editable={editable}
               onCorregir={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana })}
               onCargar={(s) => setAbierta({ que: "semana", registro: null, semana: s })}
+              onCorregirProducto={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana, focoProducto: true })}
             />
           </Tarjeta>
 
@@ -429,7 +439,9 @@ export default function HojaSeguimiento() {
           pacienteNombre={p.nombre}
           ultimoControl={h.ultimoControl}
           focoPago={abierta.focoPago}
+          focoProducto={abierta.focoProducto}
           onEditarTratamiento={editable ? () => setAbierta({ que: "editar" }) : undefined}
+          onCorregirMarca={editable ? (r) => setAbierta({ que: "semana", registro: r, semana: r.semana, focoProducto: true }) : undefined}
           onCerrar={cerrarHoja}
           onGuardado={alGuardar}
           onDesactualizada={marcarDesactualizada}
@@ -504,6 +516,13 @@ function RenglonTratamiento({
       {t.presentacion && (
         <p className="text-[13px] text-texto-3">
           {textoVial(t.presentacion.mg, t.presentacion.ml)} · {textoMgPorUi(t.presentacion.mgPorUi)} ({textoJeringa(catalogo.uiPorMl)})
+        </p>
+      )}
+      {/* §7.1: con cambios de producto, `nombre` es el de hoy; con qué empezó, en gris. */}
+      {(t.cambiosDeProducto ?? 0) > 0 && t.productoInicial && (
+        <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
+          <Icon name="swap" size={14} className="shrink-0" />
+          Empezó con {textoProducto(t.productoInicial)} · cambió de producto {t.cambiosDeProducto === 1 ? "una vez" : `${t.cambiosDeProducto} veces`}
         </p>
       )}
       <NotaTratamiento nota={t.nota} edita={edita} onGuardar={onNota} />
@@ -650,10 +669,19 @@ function AvisosDePago({ t, edita, onAnotar }: { t: Tratamiento; edita: boolean; 
 
 // ── Las tarjetas ────────────────────────────────────────────────────────────
 
-function Resumen({ t }: { t: Tratamiento }) {
+function Resumen({ t, catalogo }: { t: Tratamiento; catalogo: CatalogoSeguimiento }) {
   const r = t.resumen;
   const kg = flechaKg(r.kgBajados);
+  const total = textoKg(r.kgBajados);
+  // La última semana con peso anterior: «Última semana: bajó 0,4 kg».
+  const ultimaSemana = textoKg([...t.registros].reverse().find((x) => x.kgSemana != null)?.kgSemana);
   const d = r.dosisActual;
+  // La dosis actual se lee contra los escalones de SU semana (§7.4): «42 UI» y «12,5 mg», no «≈ 12,6 mg».
+  const racha = rachaAntes(t.registros, Infinity, (s) => escalonesDeLaSemana(t, s, catalogo));
+  const deLaDosis = racha?.semana;
+  // Las semanas en esta dosis, por escalón (§7.4): un cambio de vial no corta la cuenta.
+  const enDosis = racha?.aplicaciones ?? r.semanasEnDosis;
+  const leida = d ? leerDosis(d, deLaDosis != null ? escalonesDeLaSemana(t, deLaDosis, catalogo) : null) : null;
   const sinAplicar = r.semanasSinDosis ?? 0;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -665,18 +693,29 @@ function Resumen({ t }: { t: Tratamiento }) {
       />
       <KpiTarjeta
         etiqueta={kg?.subio ? "Subió" : "Bajó"}
-        valor={kg ? (kg.igual ? "0 kg" : `${kg.texto} kg`) : "—"}
+        valor={total ? `${total.cifra} kg` : "—"}
         tono={kg?.subio ? "urgente" : kg && !kg.igual ? "ok" : "normal"}
-        pie={kg ? "desde el inicio" : undefined}
+        pie={
+          total || ultimaSemana ? (
+            <span className="block space-y-0.5">
+              {total && <span className="block">desde el inicio</span>}
+              {ultimaSemana && (
+                <span className="block">
+                  Última semana: {ultimaSemana.tono === "igual" ? "igual" : `${ultimaSemana.texto.toLowerCase()} kg`}
+                </span>
+              )}
+            </span>
+          ) : undefined
+        }
       />
       <KpiTarjeta
         etiqueta="Dosis actual"
-        valor={d ? textoDosis(d).anotado : "—"}
+        valor={leida ? leida.anotado : "—"}
         pie={
           d || sinAplicar > 0 ? (
             <span className="block space-y-0.5">
-              {d && partesEquivalencias(d, d.unidadDosis).length > 0 && <Equivalentes partes={partesEquivalencias(d, d.unidadDosis)} className="block" />}
-              {d && r.semanasEnDosis > 0 && <span className="block">{semanas(r.semanasEnDosis)} en esta dosis</span>}
+              {leida && leida.equivalencias.length > 0 && <Equivalentes partes={leida.equivalencias} aprox={leida.aprox} className="block" />}
+              {d && enDosis > 0 && <span className="block">{semanas(enDosis)} en esta dosis</span>}
               {sinAplicar > 0 && <span className="block font-semibold text-warning-text">{semanas(sinAplicar)} sin aplicar</span>}
             </span>
           ) : undefined
@@ -729,6 +768,102 @@ function PesoPorSemana({ t }: { t: Tratamiento }) {
         <p className="py-8 text-center text-sm text-texto-3">Todavía no hay pesos anotados.</p>
       )}
     </Tarjeta>
+  );
+}
+
+// ── Los chips de mes ────────────────────────────────────────────────────────
+
+/**
+ * «Todo · Mes 1 · Mes 2…». Con muchas semanas (8 o 10 meses) en el teléfono
+ * van en una sola fila que se desliza de costado (antes eran tres renglones de
+ * chips arriba de la tabla), con el mes elegido a la vista; en la tablet y la
+ * PC, como siempre, bajan de renglón si no entran.
+ */
+function ChipsDeMes({ valor, onChange, opciones }: { valor: string; onChange: (v: string) => void; opciones: { clave: string; label: string }[] }) {
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const c = caja.current;
+    const el = c?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!c || !el || c.scrollWidth <= c.clientWidth) return;
+    c.scrollLeft = el.offsetLeft - c.clientWidth / 2 + el.offsetWidth / 2;
+  }, [valor, opciones.length]);
+  return (
+    <div
+      ref={caja}
+      className="relative -mx-4 overflow-x-auto px-4 py-3 [scrollbar-width:none] sm:-mx-5 sm:px-5 md:mx-0 md:overflow-visible md:px-0 [&_button]:min-h-11 [&_button]:shrink-0 lg:[&_button]:min-h-9 max-md:[&>[role=group]]:w-max max-md:[&>[role=group]]:flex-nowrap"
+    >
+      <ChipsFiltro<string> etiqueta="Filtrar por mes" valor={valor} onChange={onChange} opciones={opciones} />
+    </div>
+  );
+}
+
+// ── El PDF ──────────────────────────────────────────────────────────────────
+
+/**
+ * «Descargar PDF» y «Enviar por WhatsApp» (§7.2): con `seguimiento.ver`
+ * alcanza. En el teléfono y la tablet, el diálogo de compartir del equipo; en
+ * la PC, «Guardar como» o la descarga, y para WhatsApp el chat del paciente
+ * con el mensaje y el PDF descargado para adjuntar.
+ */
+function BotonesPdf({
+  t,
+  catalogo,
+  paciente,
+  negocio,
+  onAviso,
+  onError,
+}: {
+  t: Tratamiento;
+  catalogo: CatalogoSeguimiento;
+  paciente: HojaPaciente["paciente"];
+  negocio: string | null;
+  onAviso: (texto: string) => void;
+  onError: (texto: string) => void;
+}) {
+  const [armando, setArmando] = useState<"pdf" | "whatsapp" | null>(null);
+  async function hacer(que: "pdf" | "whatsapp") {
+    if (armando) return;
+    setArmando(que);
+    onError("");
+    try {
+      const doc = documentoSeguimiento({ negocio, paciente, tratamiento: t, catalogo });
+      if (que === "pdf") {
+        const r = await bajarPdfSeguimiento(doc);
+        if (r === "guardado" || r === "descargado") onAviso("PDF del seguimiento listo.");
+      } else {
+        const r = await enviarPdfSeguimientoPorWhatsapp(doc, paciente.telefono);
+        if (r === "descargado") onAviso("Se descargó el PDF: adjuntalo en el chat de WhatsApp.");
+      }
+    } catch {
+      onError("No se pudo armar el PDF. Probá de nuevo.");
+    } finally {
+      setArmando(null);
+    }
+  }
+  // En el teléfono, cortos: los dos entran en un renglón.
+  return (
+    <>
+      <Boton variante="ghost" icono="download" aria-label="Descargar PDF" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("pdf")}>
+        {armando === "pdf" ? (
+          "Armando…"
+        ) : (
+          <>
+            <span className="sm:hidden">PDF</span>
+            <span className="max-sm:hidden">Descargar PDF</span>
+          </>
+        )}
+      </Boton>
+      <Boton variante="ghost" icono="compartir" aria-label="Enviar por WhatsApp" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
+        {armando === "whatsapp" ? (
+          "Armando…"
+        ) : (
+          <>
+            <span className="sm:hidden">WhatsApp</span>
+            <span className="max-sm:hidden">Enviar por WhatsApp</span>
+          </>
+        )}
+      </Boton>
+    </>
   );
 }
 
@@ -804,7 +939,7 @@ function Anteriores({
       {abierta && (
         <ul id="tratamientos-anteriores" className="divide-y divide-borde-soft border-t border-borde-soft">
           {anteriores.map((a) => {
-            const kg = flechaKg(a.kgBajados);
+            const kg = textoKg(a.kgBajados);
             const actual = mirando === a.id;
             return (
               <li key={a.id}>
@@ -819,8 +954,8 @@ function Anteriores({
                       {" "}
                       · {fechaLarga(a.inicio)} al {fechaLarga(a.terminadoEn)} · {semanas(a.semana)}
                     </span>
-                    {kg && !kg.igual && (
-                      <span className={`whitespace-nowrap ${kg.subio ? "text-danger-text" : "text-primary-700"}`}> · {kg.texto}&nbsp;kg</span>
+                    {kg && kg.tono !== "igual" && (
+                      <span className={`whitespace-nowrap ${kg.tono === "subio" ? "text-danger-text" : "text-primary-700"}`}> · {kg.texto.toLowerCase()}&nbsp;kg</span>
                     )}
                   </span>
                   <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4" />

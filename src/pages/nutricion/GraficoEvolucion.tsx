@@ -83,6 +83,8 @@ export default function GraficoEvolucion({
   const marcas = Array.from({ length: Math.round((eje.hasta - eje.desde) / eje.paso) + 1 }, (_, k) => eje.desde + k * eje.paso);
   // Las fechas del eje no se pisan: una de cada `salto`, y siempre la última.
   const salto = Math.max(1, Math.ceil(puntos.length / Math.max(2, Math.floor((w - izq) / 64))));
+  // Muchos puntos juntos (30 semanas en el teléfono): puntos chicos y llenos, que no se monten unos sobre otros.
+  const apretado = puntos.length > 1 && (w - izq - der) / (puntos.length - 1) < 12;
 
   const alMover = (clientX: number) => {
     const el = ref.current;
@@ -98,6 +100,28 @@ export default function GraficoEvolucion({
     ? `${nombre}: ${formato(primero.valor)} el ${fechaLarga(primero.fecha)}${puntos.length > 1 ? `, ${formato(ultimo.valor)} el ${fechaLarga(ultimo.fecha)}${sufijoDelDia(ultimo.vez)}` : ""}`
     : nombre;
   const f = foco != null ? puntos[foco] : null;
+
+  // El globo del último valor: centrado en el último punto (sin salirse), y
+  // arriba del punto MÁS ALTO que quede debajo de él. Antes iba sólo arriba
+  // del último y, con el peso bajando, tapaba los dos o tres de antes. Si
+  // arriba no entra, va debajo del más bajo de esos.
+  const textoUltimo = ultimo ? formato(ultimo.valor) : "";
+  const anchoGlobo = textoUltimo.length * 6.6 + 18;
+  const centroGlobo = ultimo ? Math.min(w - anchoGlobo / 2, Math.max(izq, x(puntos.length - 1))) : 0;
+  // La línea a la altura de cada borde del globo (entre dos puntos, la recta que los une).
+  const lineaEn = (xq: number) => {
+    const j = pts.findIndex(([cx]) => cx >= xq);
+    if (j < 0) return pts[pts.length - 1]?.[1];
+    if (j === 0) return pts[0][1];
+    const [[x0, y0], [x1, y1]] = [pts[j - 1], pts[j]];
+    return x1 === x0 ? y1 : y0 + ((y1 - y0) * (xq - x0)) / (x1 - x0);
+  };
+  const debajoDelGlobo = [
+    ...pts.filter(([cx]) => Math.abs(cx - centroGlobo) <= anchoGlobo / 2 + 6).map(([, cy]) => cy),
+    ...[centroGlobo - anchoGlobo / 2, centroGlobo + anchoGlobo / 2].map(lineaEn).filter((v): v is number => v != null),
+  ];
+  const arribaDeTodos = debajoDelGlobo.length ? Math.min(...debajoDelGlobo) - 30 : 0;
+  const topGlobo = arribaDeTodos >= 0 ? arribaDeTodos : Math.min(alto - abajo - 22, Math.max(...debajoDelGlobo) + 10);
 
   return (
     <div
@@ -123,15 +147,16 @@ export default function GraficoEvolucion({
             key={i}
             cx={cx}
             cy={cy}
-            r={i === foco || puntos.length === 1 ? 5.5 : puntos[i].chico ? 2.75 : 4}
-            fill={puntos[i].chico && i !== foco ? "var(--color-primary-boton)" : "#fff"}
+            r={i === foco || puntos.length === 1 ? 5.5 : puntos[i].chico ? 2.75 : apretado ? 2.5 : 4}
+            fill={(puntos[i].chico || apretado) && i !== foco ? "var(--color-primary-boton)" : "#fff"}
             stroke="var(--color-primary-boton)"
-            strokeWidth={puntos[i].chico ? 1.5 : 2.25}
+            strokeWidth={puntos[i].chico || apretado ? 1.5 : 2.25}
           />
         ))}
         {puntos.map((pt, i) =>
           // La última va siempre; la de la grilla que le queda pegada, no (se pisaban «Sem. 6Sem. 7»).
-          (i % salto === 0 && puntos.length - 1 - i >= salto) || i === puntos.length - 1 ? (
+          // «Pegada» es en píxeles: con 52 semanas en el teléfono se salteaba una que entraba bien.
+          (i % salto === 0 && x(puntos.length - 1) - x(i) >= 56) || i === puntos.length - 1 ? (
             <text key={i} x={x(i)} y={alto - 6} textAnchor="middle" className="fill-slate-500 text-[11px]">
               {pt.etiqueta ?? `${fechaCorta(pt.fecha)}${sufijoDelDia(pt.vez)}`}
             </text>
@@ -142,9 +167,9 @@ export default function GraficoEvolucion({
       {foco == null && ultimo && (
         <span
           className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap rounded-full bg-primary-boton px-2 py-0.5 text-[11px] font-bold tabular-nums text-white"
-          style={{ left: Math.min(w - 44, Math.max(44, x(puntos.length - 1))), top: Math.max(0, y(ultimo.valor) - 28) }}
+          style={{ left: centroGlobo, top: topGlobo }}
         >
-          {formato(ultimo.valor)}
+          {textoUltimo}
         </span>
       )}
       {f && foco != null && (

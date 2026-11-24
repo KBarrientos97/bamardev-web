@@ -94,6 +94,49 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(within(screen.getByRole("table")).getByText("Mes 1 · Inicial a semana 4")).toBeInTheDocument();
   });
 
+  // §7 (Kevin, 23-nov): lo principal es lo de la semana, con palabras; el total, de dato secundario.
+  it("«Kg bajado»: «Bajó 0,6» / «Subió 0,8» contra la semana anterior y, debajo, el total desde el inicio", async () => {
+    await abrirHoja(12);
+    const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+    const fila = (n: number) => sinNb(within(screen.getByRole("table")).getByRole("button", { name: `Corregir la semana ${n}` }).closest("tr")!.cells[2].textContent);
+    expect(fila(5)).toBe("Bajó 0,65,6 desde el inicio");
+    expect(fila(7)).toBe("Subió 0,84,3 desde el inicio");
+    // La tarjeta «Bajó»: el total y la última semana.
+    expect(sinNb(screen.getByText(/^Última semana:/).textContent)).toBe("Última semana: subió 0,8 kg");
+  });
+
+  // §7.4: 17 UI con el vial de 30 mg/ml es el escalón de 5 mg (16,7 redondeado): la tabla y la tarjeta lo dicen así, sin «≈».
+  it("la dosis de un escalón se lee con los valores del escalón: «17 UI» y «5 mg · 0,17 ml», no «≈ 5,1 mg»", async () => {
+    await abrirHoja(12);
+    const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+    const fila = (n: number) => sinNb(within(screen.getByRole("table")).getByRole("button", { name: `Corregir la semana ${n}` }).closest("tr")!.cells[3].textContent);
+    expect(fila(7)).toBe("17 UI5 mg · 0,17 ml");
+    expect(sinNb(screen.getByText("Dosis actual").closest("div")!.parentElement!.textContent)).toContain("17 UI5 mg · 0,17 ml");
+    expect(screen.queryByText(/5,1.mg/)).not.toBeInTheDocument();
+  });
+
+  // §7.1 y §7.2: el renglón de la marca en la tabla, con «Corregir»; y «Editar tratamiento» corrige el del inicio.
+  it("el cambio de producto: su renglón en la tabla abre esa semana con el producto; «Editar tratamiento» es el del inicio", async () => {
+    const lucia = structuredClone(pacientes.find((p) => p.paciente.id === 12)!);
+    lucia.tratamientos[0].semanas = lucia.tratamientos[0].semanas.map((s) => (s.semana === 7 ? { ...s, producto: { nombre: "Tirze", vialMg: 10, vialMl: 0.5 } } : s));
+    vi.mocked(apiSeguimiento.hoja).mockResolvedValueOnce(hojaDe(lucia));
+    await abrirHoja(12);
+    const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+    const tabla = screen.getByRole("table");
+    // En partes que bajan enteras (el «·» de cada una va escrito para el lector de pantalla).
+    expect(sinNb(within(tabla).getByText(/^Desde la semana 7 usa/).parentElement!.textContent)).toBe("Desde la semana 7 usa Tirze · 10 mg en 0,5 ml · antes Tirzepatida");
+    expect(sinNb(screen.getByText(/^Empezó con/).textContent)).toBe("Empezó con Tirzepatida · 15 mg en 0,5 ml · cambió de producto una vez");
+    fireEvent.click(within(tabla).getByRole("button", { name: "Corregir el cambio de producto de la semana 7" }));
+    const hoja = screen.getByRole("dialog", { name: "Semana 7" });
+    expect(within(hoja).getByLabelText("Producto nuevo")).toHaveValue("Tirze");
+    fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del tratamiento" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Editar tratamiento/ }));
+    const editar = screen.getByRole("dialog", { name: "Editar tratamiento" });
+    expect(within(editar).getByLabelText("Producto al empezar")).toHaveValue("Tirzepatida");
+    expect(within(editar).getByLabelText("Miligramos del vial")).toHaveValue("15");
+  });
+
   it("«Anotar pago» abre el último registro de ese mes con el foco en el medicamento", async () => {
     await abrirHoja(12);
     fireEvent.click(screen.getByRole("button", { name: "Anotar pago" }));
@@ -132,7 +175,7 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mes 1" }));
     fireEvent.keyDown(document, { key: "n", code: "KeyN", altKey: true });
     const hoja = screen.getByRole("dialog", { name: "Semana 8" });
-    fireEvent.change(within(hoja).getByLabelText("Peso (kg)"), { target: { value: "123" } });
+    fireEvent.change(within(hoja).getByLabelText("Peso de hoy"), { target: { value: "123" } });
     fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
     fireEvent.click(await within(hoja).findByRole("button", { name: "Ver la hoja" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -151,11 +194,11 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Corregir la semana 6" }));
     const hoja = screen.getByRole("dialog", { name: "Semana 6" });
-    fireEvent.change(within(hoja).getByLabelText("Observaciones"), { target: { value: "Otra cosa" } });
+    fireEvent.change(within(hoja).getByLabelText("Observaciones de la semana"), { target: { value: "Otra cosa" } });
     fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
     expect(await within(hoja).findByText("Esa semana no existe.")).toBeInTheDocument();
     // Lo escrito sigue ahí mientras la hoja está abierta; todavía no se volvió a leer.
-    expect(within(hoja).getByLabelText("Observaciones")).toHaveValue("Otra cosa");
+    expect(within(hoja).getByLabelText("Observaciones de la semana")).toHaveValue("Otra cosa");
     expect(vi.mocked(apiSeguimiento.hoja).mock.calls.length).toBe(lecturas);
     fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sin guardar" }));
@@ -168,7 +211,7 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Corregir la semana 6" }));
     const hoja = screen.getByRole("dialog", { name: "Semana 6" });
-    fireEvent.change(within(hoja).getByLabelText("Observaciones"), { target: { value: "Otra cosa" } });
+    fireEvent.change(within(hoja).getByLabelText("Observaciones de la semana"), { target: { value: "Otra cosa" } });
     fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
     expect(await within(hoja).findByText("Sin conexión")).toBeInTheDocument();
     fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
@@ -208,10 +251,10 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(within(hoja).getByLabelText("Tratamiento")).toHaveValue("");
     expect(within(hoja).getAllByRole("radio").every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
     // El peso del último control se ofrece, no se precarga.
-    expect(within(hoja).getByLabelText("Peso (kg)")).toHaveValue("");
+    expect(within(hoja).getByLabelText("Peso de hoy")).toHaveValue("");
     expect(within(hoja).getByText(/^Último control de la evaluación: 92,4.kg/)).toBeInTheDocument();
     // El inicial es la semana de pago del mes 1.
-    expect(within(hoja).getByText("Hoy toca el pago del mes")).toBeInTheDocument();
+    expect(within(hoja).getByText("Hoy toca el pago del mes 1")).toBeInTheDocument();
   });
 });
 
@@ -242,6 +285,9 @@ describe("sólo lectura (sin `seguimiento.editar`)", () => {
     expect(screen.queryByRole("button", { name: /Agregar una nota/ })).not.toBeInTheDocument();
     // Sin `nutricion.ver`, sin «Ver evaluación».
     expect(screen.queryByRole("link", { name: /Ver evaluación/ })).not.toBeInTheDocument();
+    // El PDF sí: con `seguimiento.ver` alcanza (§7.2).
+    expect(screen.getByRole("button", { name: "Descargar PDF" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar por WhatsApp" })).toBeInTheDocument();
     // `Alt+N` no abre nada.
     fireEvent.keyDown(document, { key: "n", code: "KeyN", altKey: true });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -198,7 +198,9 @@ export default function Evaluacion() {
   const hoy = hoyIso();
   const errores = validar(ficha, control, hoy);
   const sucio = hayCambios(fichaAInput(fichaGuardada), fichaAInput(ficha)) || hayCambios(controlAInput(controlGuardado), controlAInput(control));
-  const salida = useSalidaConCambios(sucio);
+  // En toda la app: el menú lateral, el cajón del celular y el atrás del
+  // navegador también preguntan (antes se perdía lo escrito sin aviso).
+  const salida = useSalidaConCambios(sucio, { todaLaApp: true });
   // El nombre ya es el título: el enlace dice a dónde vuelve.
   const volver = pacienteId != null ? { a: `/evaluacion/${pacienteId}`, texto: "Planilla del paciente" } : { a: "/evaluacion", texto: "Pacientes" };
 

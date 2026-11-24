@@ -1,61 +1,79 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
-import { flechaKg, partesEquivalencias, textoDosis } from "../../../lib/nutricion/seguimiento/formato";
+import { leerDosis, type EscalonesDeLaSemana } from "../../../lib/nutricion/seguimiento/formato";
 import type { DosisAnotada, Equivalencias, UnidadDosis } from "../../../lib/nutricion/seguimiento/tipos";
 
 /**
  * Las piezas chicas del seguimiento: la dosis como se lee en toda la sección
- * (lo anotado y, en gris, sus equivalencias), los kilos con su flecha, los
+ * (lo anotado y, en gris, sus equivalencias), los
  * chips de los avisos de pago, las franjas y los botones de un toque. El marco
  * (tarjetas, encabezado, tablas) es el de la Academia, como en la Evaluación.
  */
 
-/** «17 UI» y, al lado o debajo en gris, «≈ 5,1 mg · 0,17 ml». Cada equivalencia baja de renglón entera. */
+/**
+ * «17 UI» y, al lado o debajo en gris, «≈ 5,1 mg · 0,17 ml». Cada equivalencia
+ * baja de renglón entera. Con los escalones de su semana, la dosis de un
+ * escalón va con sus valores y sin «≈» («8 UI», «2,5 mg · 0,08 ml»; §7.4).
+ */
 export function Dosis({
   dosis,
+  escalones,
   apilada = false,
   className = "",
 }: {
   dosis: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>;
+  escalones?: EscalonesDeLaSemana | null;
   /** Las equivalencias debajo (en la tabla y las tarjetas) en vez de al lado. */
   apilada?: boolean;
   className?: string;
 }) {
-  const { anotado } = textoDosis(dosis);
-  const partes = partesEquivalencias(dosis, dosis.unidadDosis);
+  const { anotado, equivalencias, aprox } = leerDosis(dosis, escalones);
   return (
     <span className={`${apilada ? "block" : "inline-flex flex-wrap items-baseline gap-x-2"} tabular-nums ${className}`}>
       <span className="whitespace-nowrap font-semibold text-texto">{anotado}</span>
-      {partes.length > 0 && <Equivalentes partes={partes} className={apilada ? "mt-0.5 block text-[12px]" : "text-[13px]"} />}
+      {equivalencias.length > 0 && <Equivalentes partes={equivalencias} aprox={aprox} className={apilada ? "mt-0.5 block text-[12px]" : "text-[13px]"} />}
     </span>
   );
 }
 
-/** «≈ 5,1 mg · 0,17 ml», en gris; cada parte entera. */
-export function Equivalentes({ partes, className = "" }: { partes: string[]; className?: string }) {
+/**
+ * «≈ 5,1 mg · 0,17 ml», en gris; cada parte entera. Las de un escalón, sin «≈»
+ * (`aprox` en falso, §7.4). Si no entran en un renglón, baja una parte entera
+ * y sin el «·» colgando (`ConPuntos`): en la tarjeta del teléfono se salían del borde.
+ */
+export function Equivalentes({ partes, aprox = true, className = "" }: { partes: string[]; aprox?: boolean; className?: string }) {
   if (!partes.length) return null;
   return (
     <span className={`text-texto-3 ${className}`}>
-      {partes.map((p, i) => (
-        <span key={p} className="whitespace-nowrap">
-          {i === 0 ? "≈ " : ""}
-          {p}
-          {i < partes.length - 1 ? " · " : ""}
-        </span>
-      ))}
+      <ConPuntos partes={partes.map((p, i) => (i === 0 && aprox ? `≈ ${p}` : p))} />
     </span>
   );
 }
 
-/** «↓ 7,2» (bajó) en verde de la marca, «↑ 0,8» (subió) en tono de alerta. */
-export function Kg({ kg, sufijo = "", className = "" }: { kg: number | null | undefined; sufijo?: string; className?: string }) {
-  const f = flechaKg(kg);
-  if (!f) return <span className="text-texto-4">—</span>;
-  if (f.igual) return <span className={`whitespace-nowrap text-texto-3 ${className}`}>= {sufijo}</span>;
+/**
+ * Partes separadas por «·» que, si no entran en un renglón, bajan enteras y sin
+ * el «·» colgando al final ni al principio: el «·» va dibujado delante de cada
+ * parte y el de la que empieza un renglón queda fuera de la vista (margen
+ * negativo y recorte). Para el lector de pantalla y al copiar, el separador va
+ * escrito y oculto. Con `partir`, una parte más larga que el renglón se parte
+ * adentro (un nombre de producto de 80 letras) en vez de salirse.
+ */
+export function ConPuntos({ partes, partir = false }: { partes: ReactNode[]; partir?: boolean }) {
   return (
-    <span className={`whitespace-nowrap tabular-nums ${f.subio ? "text-danger-text" : "text-primary-700"} ${className}`}>
-      {f.texto}
-      {sufijo ? ` ${sufijo}` : ""}
+    <span className="block overflow-hidden">
+      <span className="-ml-[0.9em] flex flex-wrap">
+        {partes.map((x, i) => (
+          <span
+            key={i}
+            className={`relative pl-[0.9em] before:absolute before:left-0 before:w-[0.9em] before:text-center before:content-['·'] ${
+              partir ? "min-w-0 break-words" : "whitespace-nowrap"
+            }`}
+          >
+            {i > 0 && <span className="sr-only"> · </span>}
+            {x}
+          </span>
+        ))}
+      </span>
     </span>
   );
 }

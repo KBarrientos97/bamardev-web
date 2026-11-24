@@ -8,6 +8,7 @@ import { iniciarTelemetria, reportarError } from "./lib/telemetria";
 import { instalarRecargaPorVersion } from "./lib/recargaPorVersion";
 import { iniciarPwa } from "./lib/pwa/pwa";
 import { ventaSinInternet } from "./lib/offline/modo";
+import { instalarGuardiaDelAtras } from "./lib/useAtrasConCambios";
 
 // La página del negocio pide sus letras a Google Fonts apenas monta (ver
 // `cargarFuentesPagina`), y eso son dos dominios más con su DNS y su TLS.
@@ -37,6 +38,11 @@ void iniciarTelemetria();
 // Una pestaña que quedó abierta durante un deploy pide pedazos de la versión
 // vieja: se recarga una vez en vez de mostrar el error (ver el módulo).
 instalarRecargaPorVersion();
+
+// El atrás del navegador con cambios sin guardar (la evaluación de nutrición y
+// sus hojas): su oyente tiene que quedar antes que el del router, que se
+// registra al montar `BrowserRouter` (ver el módulo).
+instalarGuardiaDelAtras();
 
 // La app instalable (manifest y service worker). Sólo en la app: las páginas
 // públicas de los negocios no se instalan como BamarDev (ver el módulo).
