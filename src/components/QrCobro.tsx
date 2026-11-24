@@ -9,6 +9,7 @@ import {
 } from "../lib/qrPago";
 import { tienePermiso, tieneFeature } from "../lib/permisos";
 import { useSedeDeCobro } from "../lib/useSedeDeCobro";
+import type { CobroBanco } from "../lib/cobroQrBanco";
 import { esBelleza, esBillar } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
 import type { SesionUsuario } from "../types";
@@ -238,10 +239,18 @@ export function QrParaCobrar({
   sinBoton = false,
   compacto = false,
   leyenda,
+  banco,
 }: {
   confirmado: boolean;
   onConfirmar: () => void;
   monto?: string;
+  /**
+   * El QR del banco con monto exacto (PLAN-QR-AUTOMATICO): cuando está
+   * (`banco.manda`), se muestra ESE QR y el pago se confirma solo, en lugar de
+   * la foto fija y el botón «Confirmar pago recibido». Sin esto, o sin cuenta
+   * del banco, es el QR de siempre.
+   */
+  banco?: CobroBanco;
   /**
    * Sin el botón «Confirmar pago recibido»: quien la usa confirma al cobrar
    * con un solo botón («Llegó el QR · Confirmar cobro», Cobrar a estudiante).
@@ -306,6 +315,10 @@ export function QrParaCobrar({
       vivo = false;
     };
   }, [alias, usuario, sede, listo]);
+
+  if (banco?.manda) {
+    return <QrDelBanco banco={banco} monto={monto} compacto={compacto} leyenda={leyenda} />;
+  }
 
   const botonConfirmar = !sinBoton && (
     <button
@@ -413,5 +426,118 @@ export function QrParaCobrar({
 
       {ventanaAmpliada}
     </div>
+  );
+}
+
+const mmss = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/**
+ * El QR del banco en la caja: la imagen que el banco generó para ESTE monto,
+ * el estado de la espera y, cuando entra el pago, el aviso de que ya está. No
+ * hay botón de «confirmar»: confirma el banco (`useCobroQrBanco`).
+ */
+function QrDelBanco({
+  banco,
+  monto,
+  compacto,
+  leyenda,
+}: {
+  banco: CobroBanco;
+  monto?: string;
+  compacto: boolean;
+  leyenda?: ReactNode;
+}) {
+  const [ampliado, setAmpliado] = useState(false);
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    if (banco.estado !== "esperando") return;
+    const id = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [banco.estado]);
+  const restante = banco.venceEn ? new Date(banco.venceEn).getTime() - ahora : 0;
+
+  const imagen = banco.imagen ? (
+    <button
+      type="button"
+      onClick={() => setAmpliado(true)}
+      className={`rounded-xl border border-borde bg-white ${compacto ? "shrink-0 p-1.5" : "mx-auto block p-2"} ${banco.estado === "pagado" ? "opacity-40" : ""}`}
+      title="Ampliar"
+    >
+      <img src={banco.imagen} alt="QR del banco para cobrar" className={compacto ? "h-28 w-28 object-contain" : "h-44 w-44 object-contain"} />
+    </button>
+  ) : (
+    <div
+      className={`flex items-center justify-center rounded-xl border border-dashed border-borde bg-muted text-center text-xs text-texto-3 ${compacto ? "h-28 w-28 shrink-0" : "mx-auto h-44 w-44"}`}
+    >
+      {banco.estado === "vencido" ? "El QR venció" : "Abriendo el QR del banco…"}
+    </div>
+  );
+
+  const estado = (
+    <div className="space-y-2">
+      {banco.estado === "esperando" && (
+        <>
+          <p role="status" className="flex items-center justify-center gap-2 text-sm font-semibold text-texto-2">
+            <Icon name="clock" size={15} />
+            Esperando el pago{restante > 0 ? ` · vence en ${mmss(restante)}` : ""}
+          </p>
+          <button
+            type="button"
+            onClick={() => void banco.verificar()}
+            className="flex w-full items-center justify-center rounded-xl border border-borde bg-white py-2 text-sm font-semibold text-texto hover:bg-muted"
+          >
+            Ya pagó, verificar
+          </button>
+          <p className="text-center text-xs leading-snug text-texto-3">
+            Se confirma solo apenas el banco avisa{monto ? `. Tiene que entrar ${monto}` : ""}.
+          </p>
+        </>
+      )}
+      {banco.estado === "pagado" && (
+        <p role="status" className="flex items-center justify-center gap-2 rounded-xl border border-primary bg-primary-50 py-2.5 text-sm font-bold text-primary-700">
+          <Icon name="check" size={17} />
+          Pago recibido{monto ? ` · ${monto}` : ""}
+        </p>
+      )}
+      {banco.estado === "vencido" && (
+        <button
+          type="button"
+          onClick={banco.reintentar}
+          className="flex w-full items-center justify-center rounded-xl border border-borde bg-white py-2.5 text-sm font-bold text-texto hover:bg-muted"
+        >
+          Abrir otro QR
+        </button>
+      )}
+      {banco.error && <ErrorMsg>{banco.error}</ErrorMsg>}
+    </div>
+  );
+
+  return (
+    <>
+      {compacto ? (
+        <div className="flex items-center gap-3">
+          {imagen}
+          <div className="min-w-0 flex-1 space-y-2">
+            {leyenda}
+            {estado}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {imagen}
+          {estado}
+        </div>
+      )}
+      {ampliado && banco.imagen && (
+        <Modal abierto titulo="QR del banco" onClose={() => setAmpliado(false)} ancho="max-w-sm">
+          <div className="p-4">
+            <img src={banco.imagen} alt="QR del banco para cobrar" className="mx-auto w-full max-w-xs object-contain" />
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

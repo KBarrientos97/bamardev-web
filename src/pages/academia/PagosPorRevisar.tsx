@@ -19,6 +19,14 @@ const MOTIVOS_RECHAZO = [
   "Otro",
 ] as const;
 
+/** Lo que se pagó por el QR del banco ya está cobrado: los motivos son de la deuda, no de la foto. */
+const MOTIVOS_RECHAZO_BANCO = [
+  "El grupo ya no tiene lugar",
+  "Esa cuota ya se pagó en caja",
+  "El monto no coincide con lo que se debe",
+  "Otro",
+] as const;
+
 const ESTADOS: { clave: EstadoPagoEnLinea; label: string }[] = [
   { clave: "POR_REVISAR", label: "Por revisar" },
   { clave: "APROBADO", label: "Aprobados" },
@@ -112,12 +120,16 @@ export default function PagosPorRevisar({ sede }: { sede?: number | null }) {
                   <span className="block text-[12px] text-texto-3">
                     {p.etiqueta} · {tiempoRelativo(p.creadoEn).toLowerCase()}
                     {p.estadoInscripcion === "PREINSCRITA" && p.estado === "POR_REVISAR" ? " · todavía preinscrito" : ""}
+                    {p.viaBanco ? " · pagado por QR del banco" : ""}
                   </span>
+                  {p.viaBanco && p.estado === "POR_REVISAR" && p.errorAutomatico && (
+                    <span className="block truncate text-[12px] font-semibold text-warning-text">No se aplicó solo: {p.errorAutomatico}</span>
+                  )}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   <span className="text-sm font-bold tabular-nums text-texto">{fmtMoney(p.monto)}</span>
                   {p.estado === "POR_REVISAR" ? (
-                    <BotonFila onClick={() => setAbierto(p)} aria-label={`Revisar el comprobante de ${p.alumno}`}>
+                    <BotonFila onClick={() => setAbierto(p)} aria-label={p.viaBanco ? `Revisar el pago de ${p.alumno}` : `Revisar el comprobante de ${p.alumno}`}>
                       Revisar
                     </BotonFila>
                   ) : (
@@ -171,6 +183,8 @@ function PanelPago({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // Un pago del banco no trae foto: no hay nada que pedirle al servidor.
+    if (pago.viaBanco) return;
     let vigente = true;
     let creada: string | null = null;
     apiAcademia
@@ -184,7 +198,7 @@ function PanelPago({
       vigente = false;
       if (creada) URL.revokeObjectURL?.(creada);
     };
-  }, [pago.id]);
+  }, [pago.id, pago.viaBanco]);
 
   async function aprobar(confirmarSobreCupo = false) {
     setOcupado(true);
@@ -238,7 +252,9 @@ function PanelPago({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">{pago.etiqueta}</p>
           <p className="text-2xl font-bold tabular-nums text-texto">{fmtMoney(pago.monto)}</p>
           <p className="mt-1 text-[12px] text-texto-3">
-            Lo calculó el sistema con lo que el estudiante eligió. Compará con el comprobante.
+            {pago.viaBanco
+              ? "Pagó por el QR del banco: la plata ya está en la cuenta del instituto."
+              : "Lo calculó el sistema con lo que el estudiante eligió. Compará con el comprobante."}
           </p>
           {pago.estadoInscripcion === "PREINSCRITA" && !resuelto && (
             <p className="mt-2 text-[13px] text-texto-2">
@@ -254,10 +270,27 @@ function PanelPago({
           >
             {pago.estado === "APROBADO"
               ? "Aprobado: el cobro quedó registrado como «Cobrado en línea» (no entra a ninguna caja)."
-              : `Rechazado: ${pago.motivoRechazo ?? "sin motivo"}. La deuda sigue igual y el estudiante puede subir otro comprobante.`}
+              : pago.viaBanco
+                ? `Rechazado: ${pago.motivoRechazo ?? "sin motivo"}. El banco ya cobró: hay que devolverle ${fmtMoney(pago.monto)} al estudiante.`
+                : `Rechazado: ${pago.motivoRechazo ?? "sin motivo"}. La deuda sigue igual y el estudiante puede subir otro comprobante.`}
           </p>
         )}
 
+        {pago.viaBanco && !resuelto && (
+          <div role="alert" className="space-y-1 rounded-xl border border-warning bg-warning-bg p-3.5 text-sm text-warning-text">
+            <p className="font-semibold">El pago entró pero no se aplicó solo</p>
+            <p>{pago.errorAutomatico ?? "No se pudo acreditar automáticamente."}</p>
+            <p>
+              Si lo aprobás se aplica a sus cuotas. Si lo rechazás, <strong>tenés que devolverle {fmtMoney(pago.monto)}</strong>: el banco ya se lo cobró.
+            </p>
+          </div>
+        )}
+
+        {pago.viaBanco ? (
+          <p className="rounded-xl border border-borde-soft bg-muted px-3.5 py-3 text-[13px] text-texto-2">
+            Pago por QR del banco, {tiempoRelativo(pago.creadoEn).toLowerCase()}. No hay comprobante: el banco avisó que se pagó.
+          </p>
+        ) : (
         <figure>
           {url ? (
             <button
@@ -275,6 +308,7 @@ function PanelPago({
           )}
           <figcaption className="mt-1 text-[12px] text-texto-3">Lo subió el estudiante {tiempoRelativo(pago.creadoEn).toLowerCase()}</figcaption>
         </figure>
+        )}
 
         {sinLugar && (
           <div role="alert" className="space-y-2 rounded-xl border border-warning bg-warning-bg p-3.5 text-sm text-warning-text">
@@ -294,9 +328,13 @@ function PanelPago({
       {grande && <VisorFotos fotos={[{ url, titulo: "Comprobante de pago" }]} titulo={pago.alumno} onCerrar={() => setGrande(false)} />}
       {rechazando && (
         <PedirMotivo
-          titulo="Rechazar el comprobante"
-          texto="El estudiante sigue debiendo lo mismo y puede subir otro. Contale por qué para que no se repita."
-          motivos={MOTIVOS_RECHAZO}
+          titulo={pago.viaBanco ? "Rechazar y devolver el pago" : "Rechazar el comprobante"}
+          texto={
+            pago.viaBanco
+              ? `El banco ya cobró ${fmtMoney(pago.monto)}: al rechazarlo la deuda sigue igual y hay que devolverle el dinero al estudiante. Contale por qué.`
+              : "El estudiante sigue debiendo lo mismo y puede subir otro. Contale por qué para que no se repita."
+          }
+          motivos={pago.viaBanco ? MOTIVOS_RECHAZO_BANCO : MOTIVOS_RECHAZO}
           etiquetaOk="Rechazar"
           peligroso
           faltaMotivo="Elegí el motivo: se lo mostramos al estudiante en su página."

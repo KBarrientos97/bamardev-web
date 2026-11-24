@@ -1574,6 +1574,9 @@ function PuntoDeVenta() {
         // se pierde: viaja en `error`, que vive en el POS. Sin mesa no hay
         // clave: el mostrador sigue como siempre.
         key={mesaCobrando ? `mesa-${mesaCobrando.id}-${aCentavos(totalCobro)}` : undefined}
+        // El QR del banco sólo en la venta de mostrador: el cobro de una mesa
+        // va por otro endpoint, que no valida el `pagoQrId`.
+        qrBanco={!mesaCobrando}
         total={totalCobro}
         subtitulo={
           mesaCobrando
