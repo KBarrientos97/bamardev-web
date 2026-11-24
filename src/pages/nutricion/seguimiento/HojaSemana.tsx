@@ -136,6 +136,8 @@ export default function HojaSemana({
   // Mientras no se toque la dosis, sigue a «Igual que la anterior» (si se cambia el número de la semana).
   const [dosisDeFabrica, setDosisDeFabrica] = useState(!registro && !!antes.dosis);
   const [guardando, setGuardando] = useState(false);
+  // Al toque, sin esperar el dibujo: dos toques seguidos en «Guardar» mandaban la semana dos veces.
+  const enCurso = useRef(false);
   const [error, setError] = useState("");
   const [intento, setIntento] = useState(false);
   const [borrando, setBorrando] = useState(false);
@@ -242,7 +244,7 @@ export default function HojaSemana({
   const soloMarca = !!registro && !semanaConDatos({ ...form, cambioProducto: false });
 
   async function guardar(sinPago = false) {
-    if (guardando) return;
+    if (guardando || enCurso.current) return;
     setIntento(true);
     setRepetida(null);
     if (hayErrores(errores)) {
@@ -266,6 +268,7 @@ export default function HojaSemana({
       return;
     }
     setError("");
+    enCurso.current = true;
     setGuardando(true);
     try {
       const t = registro
@@ -281,12 +284,14 @@ export default function HojaSemana({
       setRepetida(!registro && esCodigo(e, "SEMANA_REPETIDA") ? numero : null);
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
     } finally {
+      enCurso.current = false;
       setGuardando(false);
     }
   }
 
   async function borrar() {
-    if (!registro) return;
+    if (!registro || enCurso.current) return;
+    enCurso.current = true;
     setGuardando(true);
     try {
       const t = await apiSeguimiento.borrarRegistro(registro.id);
@@ -297,6 +302,7 @@ export default function HojaSemana({
       if (hojaDesactualizada(e)) onDesactualizada?.();
       setError(e instanceof Error ? e.message : "No se pudo borrar.");
     } finally {
+      enCurso.current = false;
       setGuardando(false);
     }
   }
@@ -360,7 +366,8 @@ export default function HojaSemana({
     <>
       <HojaGrande
         titulo={nombreSemana(registro ? registro.semana : numero)}
-        onClose={otraPregunta ? sinCerrar : pedirCerrar}
+        // Mientras guarda, `Esc` y la ✕ esperan (como «Cancelar»): preguntaba «se pierde» y la semana se guardaba igual.
+        onClose={otraPregunta || guardando ? sinCerrar : pedirCerrar}
         cabecera={
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4">
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 sm:gap-2.5">

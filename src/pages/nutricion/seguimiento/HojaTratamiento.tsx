@@ -77,6 +77,8 @@ export default function HojaTratamiento({
   const cambiarT = <K extends keyof FormTratamiento>(campo: K, valor: FormTratamiento[K]) => setFormT((f) => ({ ...f, [campo]: valor }));
   const cambiarS = <K extends keyof FormSemana>(campo: K, valor: FormSemana[K]) => setFormS((f) => ({ ...f, [campo]: valor }));
   const [guardando, setGuardando] = useState(false);
+  // Al toque, sin esperar el dibujo: dos toques seguidos en «Iniciar tratamiento» no lo mandan dos veces.
+  const enCurso = useRef(false);
   const [error, setError] = useState("");
   const [yaTiene, setYaTiene] = useState(false);
   const [intento, setIntento] = useState(false);
@@ -102,7 +104,7 @@ export default function HojaTratamiento({
   const tocaPago = iniciar && catalogo.ajustes.avisarPagos;
 
   async function guardar(sinPago = false) {
-    if (guardando) return;
+    if (guardando || enCurso.current) return;
     setIntento(true);
     if (hayErrores(erroresT) || hayErrores(erroresS)) {
       setError("Hay un dato para revisar.");
@@ -118,6 +120,7 @@ export default function HojaTratamiento({
     }
     setError("");
     setYaTiene(false);
+    enCurso.current = true;
     setGuardando(true);
     try {
       if (iniciar) {
@@ -139,6 +142,7 @@ export default function HojaTratamiento({
       setYaTiene(tratamientoQueYaTiene(e) != null);
       setError(e instanceof Error ? e.message : "No se pudo guardar.");
     } finally {
+      enCurso.current = false;
       setGuardando(false);
     }
   }
@@ -171,7 +175,8 @@ export default function HojaTratamiento({
       <HojaGrande
         titulo={titulo}
         ancha={false}
-        onClose={otraPregunta ? sinCerrar : pedirCerrar}
+        // Mientras guarda, `Esc` y la ✕ esperan (como «Cancelar»).
+        onClose={otraPregunta || guardando ? sinCerrar : pedirCerrar}
         cabecera={
           <>
             <h2 className="text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">{titulo}</h2>

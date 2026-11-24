@@ -203,6 +203,25 @@ describe("cargar una semana", () => {
     expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, { semana: 8, fecha: HOY, pesoKg: 123.9, dosis: 25, observaciones: "Sube a 7,5 mg." });
   });
 
+  // Probado el 24-nov: tres toques seguidos mandaban tres veces la semana (una 201 y dos 409); y `Esc` a mitad
+  // de un guardado lento preguntaba «se pierde» mientras la semana se guardaba igual.
+  it("guardando: los toques de más no la mandan otra vez, y `Esc` espera a que termine", async () => {
+    let responder: (t: Tratamiento) => void = () => {};
+    vi.mocked(apiSeguimiento.cargarSemana).mockReturnValue(new Promise<Tratamiento>((r) => (responder = r)));
+    const { onGuardado, onCerrar } = abrir(lucia);
+    fireEvent.change(peso(), { target: { value: "123,9" } });
+    const guardar = boton(/^Guardar/);
+    fireEvent.click(guardar);
+    fireEvent.click(guardar);
+    fireEvent.click(guardar);
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByText("¿Cerrar sin guardar?")).not.toBeInTheDocument();
+    expect(onCerrar).not.toHaveBeenCalled();
+    responder(lucia);
+    await waitFor(() => expect(onGuardado).toHaveBeenCalledTimes(1));
+  });
+
   // Probado el 23-nov: con la respuesta perdida (o dos personas), el reintento dice «Ya hay un registro…» y la
   // tentación es cambiarle el número y duplicarla. Al CARGAR, la ayuda y «Ver la hoja»; al mover una cargada, no.
   it("semana repetida del servidor al cargar: la ayuda y «Ver la hoja», sin tocar lo escrito", async () => {
