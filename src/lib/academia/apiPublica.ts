@@ -2,11 +2,13 @@ import { formularioConFotos } from "./fotos";
 import type {
   CursoPublico,
   EstadoCuentaPublico,
+  EstadoPagoQr,
   FotosInscripcion,
   InscripcionDeMiCuenta,
   OpcionPagoClave,
   PreinscripcionEnviada,
   PreinscripcionInput,
+  QrDelBanco,
 } from "./tipos";
 
 /**
@@ -127,6 +129,22 @@ export const apiAcademiaPublica = {
       { method: "POST", body: f },
     );
   },
+  /**
+   * El QR del banco (modo AUTOMATIZADO): el servidor calcula el monto, abre el
+   * cobro y devuelve la imagen. Mientras haya uno abierto de la misma opción,
+   * pedirlo otra vez devuelve el mismo.
+   */
+  pedirQr: (subdominio: string, token: string, input: { opcion: OpcionPagoClave; monto?: number; captcha?: string }) =>
+    pedir<QrDelBanco>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}/qr`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** La página pregunta cada pocos segundos si ya se pagó. */
+  estadoQr: (subdominio: string, token: string) =>
+    pedir<EstadoPagoQr>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}/qr/estado`),
+  /** El estudiante cierra el QR sin pagar: se inhabilita en el banco. */
+  cancelarQr: (subdominio: string, token: string) =>
+    pedir<{ ok: true }>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}/qr/cancelar`, { method: "POST" }),
   /** P6: el estado de cuenta del enlace que se manda por WhatsApp. */
   estadoCuenta: (subdominio: string, token: string) =>
     pedir<EstadoCuentaPublico>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}`),

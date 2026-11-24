@@ -1,6 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
+import { useCobroQrBanco } from "../../lib/cobroQrBanco";
 import InputMonto from "../../components/InputMonto";
 import { Boton, Campo, ErrorMsg } from "../../components/ui";
 import { atajosDeEfectivo } from "../../lib/billetes";
@@ -35,6 +36,13 @@ function buscarForma(formas: FormaPago[], nombre: string): FormaPago | undefined
 const PROPINA_MESA_MAXIMA = 100_000;
 
 /**
+ * Con el QR del banco cobrando todo, cuánto se deja a la vista el «Pago
+ * recibido» antes de registrar la venta sola (dueño, 24-nov: el cobro se
+ * confirma solo, sin que la cajera toque nada).
+ */
+const ESPERA_VENTA_AUTOMATICA_MS = 1500;
+
+/**
  * Lo que el cliente suele entregar: el total justo y los billetes o monedas de
  * Bolivia que lo cubren solos. Antes se redondeaba a múltiplos (Bs 40, Bs 150…)
  * y salían montos que no son un billete (QA de Kevin, 25-oct).
@@ -67,6 +75,7 @@ export default function PantallaCobro({
   incrustado = false,
   compacto = false,
   alLadoDelFiado,
+  qrBanco = false,
 }: {
   total: number;
   /** Qué se está cobrando ("Mesa 4 · Juan"), para no cobrar la mesa equivocada. */
@@ -118,6 +127,16 @@ export default function PantallaCobro({
    * y billar no lo pasan: siguen con las dos confirmaciones.
    */
   qrEnUnPaso?: boolean;
+  /**
+   * Cobrar el QR con el del banco (PLAN-QR-AUTOMATICO D4): si el negocio tiene
+   * su cuenta del banco, el QR sale por el monto exacto y el cobro se confirma
+   * solo cuando el banco avisa; al vender viaja el `pagoQrId`. Sólo lo piden las
+   * pantallas cuyo cobro termina en `POST /ventas` (el POS y el mostrador de la
+   * academia): la mesa, el billar y las demás siguen con el QR fijo y la
+   * confirmación a mano, porque su endpoint no valida el `pagoQrId`. Sin cuenta
+   * del banco, es el QR de siempre aunque se pase.
+   */
+  qrBanco?: boolean;
   /**
    * Se cobra una mesa del salón: desde la caja, o el mesero que la cobra él
    * mismo. Suma el campo de la propina de la mesa —no entra al cajón: va al
@@ -272,6 +291,21 @@ export default function PantallaCobro({
   /** Lo que tiene que entrar por QR: la parte de la venta más la propina por QR. */
   const qrConPropina = (deLaVenta: number) => Math.round((deLaVenta + extraQr) * 100) / 100;
 
+  // El QR del banco: el monto exacto que tiene que entrar (la parte en QR más la
+  // propina por QR). Con otro método, o sin cuenta del banco, no hace nada.
+  const montoQrBanco = metodo === "QR" ? qrConPropina(aCubrir) : metodo === "MIXTO" && qrNum > 0 ? qrConPropina(qrNum) : 0;
+  const cobroBanco = useCobroQrBanco({ habilitado: qrBanco && permiteQr && !nadaQueCobrar, monto: montoQrBanco });
+  /** El pago por QR está listo: la cajera lo confirmó a mano o el banco ya avisó. */
+  const qrListo = qrConfirmado || cobroBanco.estado === "pagado";
+  /**
+   * Con el QR del banco el cobro espera al banco: ni el «un solo paso» de la
+   * academia deja cobrar antes de que entre el pago. Si el banco no pudo abrir
+   * el QR, no manda y la caja sigue con el QR fijo.
+   */
+  const esperaAlBanco = cobroBanco.manda && !qrListo;
+  /** Lo que se manda al backend para ligar el pago por QR con el cobro del banco. */
+  const ligaBanco = cobroBanco.estado === "pagado" && cobroBanco.id != null ? { pagoQrId: cobroBanco.id } : {};
+
   /**
    * Las propinas viajan sólo si hay: el cobro de siempre llama igual que antes.
    * La de una mesa va en `propinaMesa`, aparte de los pagos.
@@ -311,9 +345,10 @@ export default function PantallaCobro({
 
     if (metodo === "QR") {
       if (!formaQr) return setErrorLocal(formaPagoFaltante(formasPago, "QR"));
-      if (!qrConfirmado && !qrEnUnPaso)
+      if (esperaAlBanco) return setErrorLocal("Esperá a que el banco confirme el pago por QR antes de cobrar.");
+      if (!qrListo && !qrEnUnPaso)
         return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
-      return enviar([...extras.pagosVale, { formaPagoId: formaQr.id, monto: aCubrir }]);
+      return enviar([...extras.pagosVale, { formaPagoId: formaQr.id, monto: aCubrir, ...ligaBanco }]);
     }
 
     // Mixto: se reparte entre QR y efectivo, y la suma tiene que dar el total.
@@ -322,7 +357,8 @@ export default function PantallaCobro({
     if (!esPositivo(qrNum)) return setErrorLocal("Poné cuánto se paga por QR.");
     if (!excede(aCubrir, qrNum))
       return setErrorLocal("Si el QR cubre todo, cobrá con el método QR.");
-    if (!qrConfirmado && !qrEnUnPaso)
+    if (esperaAlBanco) return setErrorLocal("Esperá a que el banco confirme el pago por QR antes de cobrar.");
+    if (!qrListo && !qrEnUnPaso)
       return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
     if (!cubre(recibidoNum, enMano))
       return setErrorLocal("El efectivo recibido no cubre lo que falta.");
@@ -330,7 +366,7 @@ export default function PantallaCobro({
     enviar(
       [
         ...extras.pagosVale,
-        { formaPagoId: formaQr.id, monto: qrNum },
+        { formaPagoId: formaQr.id, monto: qrNum, ...ligaBanco },
         {
           formaPagoId: formaEfectivo.id,
           monto: aCubrirEnEfectivo,
@@ -340,13 +376,37 @@ export default function PantallaCobro({
     );
   }
 
+  // Cobrando TODO por el QR del banco, la venta se registra sola apenas el
+  // banco confirma: ya no hay nada que la cajera tenga que revisar ni teclear.
+  // En mixto no: falta el efectivo, que se recibe y se teclea en mano. Una sola
+  // vez por cobro: si el backend rechaza la venta (sin stock, caja cerrada…),
+  // el error queda a la vista y reintentar es el botón, no un bucle.
+  const confirmarAhora = useRef(confirmar);
+  const estaEnviando = useRef(enviando);
+  useEffect(() => {
+    confirmarAhora.current = confirmar;
+    estaEnviando.current = enviando;
+  });
+  const ventaAutomatica = useRef<number | null>(null);
+  useEffect(() => {
+    const id = cobroBanco.id;
+    if (metodo !== "QR" || cobroBanco.estado !== "pagado" || id == null) return;
+    if (ventaAutomatica.current === id) return;
+    const t = setTimeout(() => {
+      if (ventaAutomatica.current === id || estaEnviando.current) return;
+      ventaAutomatica.current = id;
+      confirmarAhora.current();
+    }, ESPERA_VENTA_AUTOMATICA_MS);
+    return () => clearTimeout(t);
+  }, [metodo, cobroBanco.estado, cobroBanco.id]);
+
   // El total y cómo paga. Con lugar va a la izquierda; si arriba hay un
   // detalle (el del instituto), ése ocupa la izquierda y esto encabeza la
   // derecha, donde se cobra: abajo del detalle el total quedaba fuera de la
   // vista. En una columna el orden es el mismo de siempre.
   const conDetalle = encabezado != null && encabezado !== false;
   /** El botón de abajo hace también de «llegó el QR»: sólo cuando hay un QR que esperar. */
-  const conQrEnUnPaso = qrEnUnPaso && !nadaQueCobrar && (metodo === "QR" || (metodo === "MIXTO" && qrNum > 0));
+  const conQrEnUnPaso = qrEnUnPaso && !cobroBanco.manda && !nadaQueCobrar && (metodo === "QR" || (metodo === "MIXTO" && qrNum > 0));
   // Sin la capacidad no se dibujan botones apagados: el cobro es en
   // efectivo y punto, como en un negocio que no cobra por QR.
   const metodos = permiteQr && !nadaQueCobrar && (
@@ -435,8 +495,9 @@ export default function PantallaCobro({
                     </p>
                   )}
                   <QrParaCobrar
-                    confirmado={qrConfirmado}
+                    confirmado={qrListo}
                     onConfirmar={() => setQrConfirmado(true)}
+                    banco={cobroBanco}
                     sinBoton={qrEnUnPaso}
                     monto={fmtMoney(qrConPropina(qrNum))}
                     // En el carrito, el QR al lado del botón (ver QrParaCobrar).
@@ -558,8 +619,9 @@ export default function PantallaCobro({
               </p>
               )}
               <QrParaCobrar
-                confirmado={qrConfirmado}
+                confirmado={qrListo}
                 onConfirmar={() => setQrConfirmado(true)}
+                banco={cobroBanco}
                 sinBoton={qrEnUnPaso}
                 monto={fmtMoney(qrConPropina(aCubrir))}
                 // En el carrito, el QR al lado del botón y el monto arriba de él:
@@ -635,7 +697,12 @@ export default function PantallaCobro({
             </p>
           )}
           <ErrorMsg>{errorLocal || error}</ErrorMsg>
-          <Boton onClick={confirmar} disabled={enviando || bloqueado} className="w-full py-3 text-base">
+          <Boton
+            onClick={confirmar}
+            // Con el QR del banco, el botón espera: se enciende cuando entra el pago.
+            disabled={enviando || bloqueado || (esperaAlBanco && (metodo === "QR" || (metodo === "MIXTO" && qrNum > 0)))}
+            className="w-full py-3 text-base"
+          >
             {enviando
               ? "Registrando…"
               : `${conQrEnUnPaso ? "Llegó el QR · " : ""}Confirmar cobro · ${fmtMoney(total)}${propinasTotal > 0 ? ` + ${fmtMoney(propinasTotal)} de propina` : ""}`}

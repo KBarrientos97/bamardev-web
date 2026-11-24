@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { useAncho } from "../../lib/agenda/useEsCelular";
 import { fmtNumero, posicionEnMedidor, rangoDe } from "../../lib/nutricion/calculo";
+import { colorDeEscalaImc } from "../../lib/nutricion/tonos";
 import type { Rango } from "../../lib/nutricion/tipos";
 
 /**
@@ -16,18 +17,8 @@ import type { Rango } from "../../lib/nutricion/tipos";
  * queden chicos ni encimados.
  */
 
-/** La escala de la hoja, de la punta izquierda a la derecha (texto con contraste sobre cada uno). */
-const ESCALA = [
-  { fondo: "#7DD3FC", texto: "#0C4A6E" }, // celeste: bajo peso
-  { fondo: "#2563EB", texto: "#FFFFFF" }, // azul: peso normal
-  { fondo: "#FDBA74", texto: "#7C2D12" }, // naranja claro: sobrepeso
-  { fondo: "#FB923C", texto: "#431407" }, // naranja: obesidad grado 1
-  { fondo: "#C2410C", texto: "#FFFFFF" }, // naranja oscuro: grado 2
-  { fondo: "#DC2626", texto: "#FFFFFF" }, // rojo: grado 3
-];
-
-/** El color del sector i de n: con otra cantidad de grados, se reparte la misma escala. */
-const colorDe = (i: number, n: number) => ESCALA[n <= 1 ? 0 : Math.round((i * (ESCALA.length - 1)) / (n - 1))];
+/** El color del sector i de n (la escala de la hoja, `ESCALA_IMC`): con otra cantidad de grados, se reparte la misma escala. */
+const colorDe = colorDeEscalaImc;
 
 // Con lugar a los costados para los números de los cortes.
 const ANCHO = 340;

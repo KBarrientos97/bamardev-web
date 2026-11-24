@@ -75,6 +75,8 @@ export interface SemanaCruda {
   actualizadoPor?: string | null;
   creadoEn?: string;
   actualizadoEn?: string;
+  /** La marca «desde esta semana usa X» (§7.1). Con alguna, el tratamiento trae `productoInicial` y `cambiosDeProducto`. */
+  producto?: { nombre: string; vialMg?: number; vialMl?: number };
 }
 
 export interface TratamientoCrudo {
@@ -124,13 +126,23 @@ export function armarTratamiento(t: TratamientoCrudo, ajustes: AjustesDePrueba =
   for (const s of semanas) s.id ??= siguienteId++;
   const mesDe = (s: number) => Math.floor(s / N) + 1;
   const tocaPago = (s: number) => avisar && s > 0 && s % N === 0;
-  const vialConc = t.vial ? t.vial.mg / t.vial.ml : null;
+  // §7.1: el producto vigente en cada semana (la marca más alta ≤ W, o el del inicio).
+  const inicialP = { nombre: t.nombre, vialMg: t.vial?.mg ?? null, vialMl: t.vial?.ml ?? null };
+  const vigenteEn = (w: number) => {
+    let p = inicialP;
+    for (const s of semanas) if (s.producto && s.semana <= w) p = { nombre: s.producto.nombre, vialMg: s.producto.vialMg ?? null, vialMl: s.producto.vialMl ?? null };
+    return p;
+  };
+  const concDe = (p: { vialMg: number | null; vialMl: number | null }) => (p.vialMg != null && p.vialMl != null ? p.vialMg / p.vialMl : null);
+  const marcas = semanas.filter((s) => s.producto).length;
+  const actualP = vigenteEn(Number.MAX_SAFE_INTEGER);
+  const vialConc = concDe(actualP);
 
   const conPeso = semanas.filter((s) => s.pesoKg != null);
   const primeroConPeso = conPeso[0];
   const registros: Registro[] = semanas.map((s) => {
     const unidad = s.dosis != null && !s.sinDosis ? (s.unidadDosis ?? t.unidadDosis) : null;
-    const conc = s.mgPorMl !== undefined ? s.mgPorMl : vialConc;
+    const conc = s.mgPorMl !== undefined ? s.mgPorMl : concDe(vigenteEn(s.semana));
     const eq = unidad && s.dosis != null ? equivalencias(s.dosis, unidad, conc, uiPorMl) : { dosisMg: null, dosisUi: null, dosisMl: null };
     const anterior = [...conPeso].reverse().find((x) => x.semana < s.semana);
     return {
@@ -156,6 +168,13 @@ export function armarTratamiento(t: TratamientoCrudo, ajustes: AjustesDePrueba =
       actualizadoPor: s.actualizadoPor ?? null,
       creadoEn: s.creadoEn ?? `${s.fecha}T14:32:00.000Z`,
       actualizadoEn: s.actualizadoEn ?? `${s.fecha}T14:32:00.000Z`,
+      ...(marcas
+        ? {
+            producto: s.producto
+              ? { nombre: s.producto.nombre, vialMg: s.producto.vialMg ?? null, vialMl: s.producto.vialMl ?? null, anterior: vigenteEn(s.semana - 1).nombre }
+              : null,
+          }
+        : {}),
     };
   });
 
@@ -197,13 +216,15 @@ export function armarTratamiento(t: TratamientoCrudo, ajustes: AjustesDePrueba =
   const dosisActual: DosisAnotada | null = ultimaDosis
     ? { dosis: ultimaDosis.dosis!, unidadDosis: ultimaDosis.unidadDosis!, dosisMg: ultimaDosis.dosisMg, dosisUi: ultimaDosis.dosisUi, dosisMl: ultimaDosis.dosisMl }
     : null;
-  const delCatalogo = CATALOGO_SEGUIMIENTO.tratamientos.find((c) => normalizar(c.nombre) === normalizar(t.nombre));
+  // Con marcas, `nombre`, `presentacion` y `pasos` son los del producto ACTUAL (§7.1).
+  const delCatalogo = CATALOGO_SEGUIMIENTO.tratamientos.find((c) => normalizar(c.nombre) === normalizar(actualP.nombre));
   return {
     id: t.id,
     pacienteId: t.pacienteId,
-    nombre: t.nombre,
+    nombre: actualP.nombre,
     unidadDosis: t.unidadDosis,
-    presentacion: t.vial ? { mg: t.vial.mg, ml: t.vial.ml, mgPorMl: red(vialConc!, 4), mgPorUi: red(vialConc! / uiPorMl, 4) } : null,
+    presentacion: vialConc ? { mg: actualP.vialMg!, ml: actualP.vialMl!, mgPorMl: red(vialConc, 4), mgPorUi: red(vialConc / uiPorMl, 4) } : null,
+    ...(marcas ? { productoInicial: inicialP, cambiosDeProducto: marcas } : {}),
     pasos: (delCatalogo?.pasosMg ?? []).map((mg) => {
       const eq = equivalencias(mg, "mg", vialConc, uiPorMl);
       return { mg, ui: vialConc ? eq.dosisUi : null, ml: vialConc ? eq.dosisMl : null };
@@ -535,7 +556,15 @@ export function pagosDe(lista: PacienteDePrueba[], ajustes: AjustesDePrueba = {}
     if (!t) continue;
     const conPago = t.registros.filter((r) => (r.pagoMedicamento ?? 0) + (r.pagoControl ?? 0) > 0);
     const u = conPago[conPago.length - 1];
-    const ultimoPago = u ? { fecha: u.fecha, total: red((u.pagoMedicamento ?? 0) + (u.pagoControl ?? 0) + (u.pagoOtro ?? 0), 2) } : null;
+    // §8.1: con el mes de ese pago y lo que pagó ese mes entero (los tres conceptos).
+    const ultimoPago = u
+      ? {
+          fecha: u.fecha,
+          total: red((u.pagoMedicamento ?? 0) + (u.pagoControl ?? 0) + (u.pagoOtro ?? 0), 2),
+          mes: u.mes,
+          pagadoEnElMes: t.meses.find((m) => m.mes === u.mes)?.pagado.total ?? 0,
+        }
+      : null;
     const paciente = { id: p.paciente.id, nombre: p.paciente.nombre, ci: p.paciente.ci, telefono: p.paciente.telefono };
     const tratamiento = { id: t.id, nombre: t.nombre, semana: t.resumen.semana, ultimaFecha: t.resumen.ultimaFecha };
     if (t.resumen.pagosPendientes.length) deben.push({ paciente, tratamiento, pendientes: t.resumen.pagosPendientes, ultimoPago });

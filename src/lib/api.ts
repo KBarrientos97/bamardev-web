@@ -90,6 +90,7 @@ import type {
   PlantillaGastoInput,
   ResumenGastos,
   TipoCostoGasto,
+  CobroQrEstado,
 } from "../types";
 
 import type {
@@ -1033,6 +1034,19 @@ export const api = {
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),
+  // ── QR del banco en la caja (PLAN-QR-AUTOMATICO) ──
+  /** ¿El negocio cobra la caja con el QR del banco? Lo decide su cuenta del banco. */
+  cobroQrDisponible: () => request<{ automatico: boolean }>("/cobros-qr/disponible"),
+  /** Abre un QR por el monto exacto. Vence a los 10 minutos. */
+  crearCobroQr: (monto: number) =>
+    request<{ id: number; monto: number; venceEn: string; imagenQr: string }>("/cobros-qr", {
+      method: "POST",
+      body: JSON.stringify({ monto }),
+    }),
+  estadoCobroQr: (id: number) => request<CobroQrEstado>(`/cobros-qr/${id}`),
+  /** Le pregunta al banco ahora, sin esperar su aviso. */
+  verificarCobroQr: (id: number) => request<CobroQrEstado>(`/cobros-qr/${id}/verificar`, { method: "POST" }),
+  anularCobroQr: (id: number) => request<CobroQrEstado>(`/cobros-qr/${id}/anular`, { method: "POST" }),
   /** Devuelve `{ caja: null }` cuando el usuario no tiene turno abierto. */
   cajaActual: () => request<{ caja: Caja | null }>("/caja/actual"),
   /**

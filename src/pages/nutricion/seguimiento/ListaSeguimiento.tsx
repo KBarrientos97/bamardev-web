@@ -7,7 +7,7 @@ import { useTextoDemorado } from "../../../lib/academia/useBusquedaEstudiante";
 import { escribiendo, hayDialogoAbierto, useTeclas } from "../../../lib/nutricion/atajos";
 import { conUnidad } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
-import { flechaKg, haceDias, nombreSemana, textoDosis } from "../../../lib/nutricion/seguimiento/formato";
+import { haceDias, nombreSemana, textoDosis, textoKg } from "../../../lib/nutricion/seguimiento/formato";
 import type { FilaSeguimiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { usePaginado } from "../../../lib/paginado";
@@ -17,7 +17,7 @@ import { useAuth } from "../../../store/AuthContext";
 import { BotonIcono, ChipsFiltro, EncabezadoPagina, LISTA, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../../academia/piezas";
 import { BuscadorPacientes } from "../piezas";
 import DialogoAjustesSeguimiento from "./AjustesSeguimiento";
-import { ChipPago } from "./piezas";
+import { ChipPago, ConPuntos } from "./piezas";
 
 type Filtro = "en_tratamiento" | "todos";
 
@@ -214,34 +214,36 @@ export default function ListaSeguimiento() {
 /**
  * «Tirzepatida · Semana 6 · 17 UI»; sin tratamiento, «Sin tratamiento» (y los
  * anteriores, si tiene). Cada parte entera: si no entra, baja la parte, no
- * media («Semana» arriba y «6» abajo).
+ * media («Semana» arriba y «6» abajo), sin el «·» colgando (`ConPuntos`): a
+ * 768 quedaba «Tirzepatida · Semana 13 ·» y abajo «10 mg» solo.
  */
 function TextoTratamiento({ p }: { p: FilaSeguimiento }) {
   const t = p.tratamiento;
   const partes = !t
     ? ["Sin tratamiento", ...(p.anteriores ? [`${p.anteriores} ${p.anteriores === 1 ? "anterior" : "anteriores"}`] : [])]
-    : [t.nombre, nombreSemana(t.semana), ...(t.dosisActual ? [textoDosis(t.dosisActual).anotado] : [])];
-  return (
-    <>
-      {partes.map((x, i) => (
-        <span key={i}>
-          <span className="whitespace-nowrap">{x}</span>
-          {i < partes.length - 1 ? " · " : ""}
-        </span>
-      ))}
-    </>
-  );
+    : [
+        // El nombre del producto es texto libre (hasta 80 letras): baja por palabras. Entero, uno largo
+        // ensanchaba la tabla de la tablet y dejaba «Peso» y «Última visita» de TODOS fuera de la pantalla.
+        <span key="nombre" className="whitespace-normal break-words">
+          {t.nombre}
+        </span>,
+        nombreSemana(t.semana),
+        ...(t.dosisActual ? [textoDosis(t.dosisActual).anotado] : []),
+      ];
+  return <ConPuntos partes={partes} />;
 }
 
-/** «121,8 kg · ↓ 7,2 kg». */
+/** «121,8 kg · bajó 7,2 kg» (con palabras, no sólo con la flecha y el color). */
 function Peso({ p }: { p: FilaSeguimiento }) {
   const t = p.tratamiento;
   if (!t || t.pesoActual == null) return <span className="text-texto-4">—</span>;
-  const kg = flechaKg(t.kgBajados);
+  const kg = textoKg(t.kgBajados);
   return (
     <span className="whitespace-nowrap tabular-nums">
       <span className="font-semibold text-texto">{conUnidad(t.pesoActual, "kg", 2)}</span>
-      {kg && !kg.igual && <span className={kg.subio ? "text-danger-text" : "text-primary-700"}> · {kg.texto}&nbsp;kg</span>}
+      {kg && kg.tono !== "igual" && (
+        <span className={kg.tono === "subio" ? "text-danger-text" : "text-primary-700"}> · {kg.texto.toLowerCase()}&nbsp;kg</span>
+      )}
     </span>
   );
 }

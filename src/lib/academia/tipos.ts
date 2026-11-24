@@ -1680,11 +1680,42 @@ export interface PagoPublico {
   /** Sólo el pago cubre el cupo: con el grupo lleno una preinscripción no ofrece pagar. */
   grupoLleno: boolean;
   opciones: OpcionDePago[];
-  /** El comprobante que la recepción todavía no resolvió. */
-  enRevision: { monto: number; etiqueta: string; enviadoEn: string } | null;
+  /**
+   * El pago que la recepción todavía no resolvió: el comprobante del QR fijo o,
+   * con `viaBanco`, un pago del QR del banco que entró pero no se pudo acreditar
+   * solo (la plata ya está en la cuenta del instituto).
+   */
+  enRevision: { monto: number; etiqueta: string; enviadoEn: string; viaBanco?: boolean } | null;
+  /**
+   * El QR del banco abierto y sin pagar (modo AUTOMATIZADO): recargar la página
+   * lo vuelve a mostrar en vez de abrir otro. Un backend anterior no lo manda.
+   */
+  esperando?: { opcion: OpcionPagoClave; etiqueta: string; monto: number; venceEn: string; imagenQr: string } | null;
   /** El último comprobante, si lo rechazaron (la deuda sigue y puede subir otro). */
   rechazado: { motivo: string | null; monto: number; etiqueta: string; en: string | null } | null;
 }
+
+/** El QR del banco que el servidor abrió para pagar (PLAN-QR-AUTOMATICO). */
+export interface QrDelBanco {
+  monto: number;
+  etiqueta: string;
+  /** ISO: hasta cuándo sirve (30 min). */
+  venceEn: string;
+  /** PNG como data URL. */
+  imagenQr: string;
+}
+
+/**
+ * Lo que contesta la consulta del QR abierto: sigue esperando, ya se pagó y
+ * quedó sumado a las cuotas (`ACREDITADO`), se pagó pero la academia lo
+ * confirma a mano (`EN_REVISION`) o el QR ya no sirve (`VENCIDO`).
+ */
+export type EstadoPagoQr =
+  | { estado: "ESPERANDO"; venceEn: string | null }
+  | { estado: "ACREDITADO"; monto: number; etiqueta: string }
+  | { estado: "EN_REVISION"; monto: number; etiqueta: string }
+  | { estado: "VENCIDO" }
+  | { estado: "SIN_PAGO" };
 
 /** `GET /publico/academia/:sub/pagar/:token` (P6): nunca CI, teléfono ni apellidos. */
 export interface EstadoCuentaPublico {
@@ -1692,11 +1723,37 @@ export interface EstadoCuentaPublico {
   alumno: { nombres: string };
   curso: string;
   grupo: { nombre: string; sede: string };
-  cuotas: { concepto: string; monto: number; pagado: number; saldo: number; vence: string; vencida: boolean; estado: EstadoCuota }[];
+  cuotas: {
+    concepto: string;
+    monto: number;
+    pagado: number;
+    saldo: number;
+    vence: string;
+    vencida: boolean;
+    estado: EstadoCuota;
+    /** Qué pagos la cubrieron: posiciones en `pagosHechos`, para su botón «ver comprobante». Un backend anterior no lo manda. */
+    pagos?: number[];
+  }[];
   proxima: { concepto: string; saldo: number; vence: string; vencida: boolean } | null;
   saldoTotal: number;
   qr: { tipo: "FIJO"; imagenUrl: string } | null;
   pago: PagoPublico;
+  /**
+   * Los pagos ya hechos, el más reciente primero: sus comprobantes, que puede
+   * bajar como evidencia (24-nov). Un backend anterior no lo manda.
+   */
+  pagosHechos?: PagoHecho[];
+}
+
+/** Un pago de cuotas ya registrado: lo mismo que lleva el recibo de la caja. */
+export interface PagoHecho {
+  comprobante: string;
+  /** ISO con hora. */
+  fecha: string;
+  total: number;
+  /** Con qué se pagó («Efectivo», «QR»). */
+  formas: string[];
+  conceptos: { concepto: string; monto: number }[];
 }
 
 /**
@@ -1725,6 +1782,14 @@ export interface PagoEnLinea {
   creadoEn: string;
   revisadoEn: string | null;
   motivoRechazo: string | null;
+  /**
+   * Pagó por el QR del banco: la plata YA entró a la cuenta del instituto, aunque
+   * el pago no se haya aplicado (no hay comprobante que mirar). Un backend
+   * anterior no lo manda.
+   */
+  viaBanco?: boolean;
+  /** Por qué un pago del banco no se aplicó solo (grupo lleno, la deuda cambió…). */
+  errorAutomatico?: string | null;
   inscripcionId: number;
   /** PREINSCRITA mientras el pago no se aprobó. */
   estadoInscripcion: string;

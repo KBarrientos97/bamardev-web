@@ -147,8 +147,25 @@ export interface Registro {
   /** El nombre de quien lo cargó y de quien lo corrigió por última vez. */
   registradoPor?: string | null;
   actualizadoPor?: string | null;
+  /**
+   * La marca «desde esta semana usa X» (§7.1): sólo en la semana en que el
+   * producto CAMBIA. Un backend anterior no la manda (= sin marca).
+   */
+  producto?: ProductoDeLaSemana | null;
   creadoEn: string;
   actualizadoEn: string;
+}
+
+/** Un producto: su nombre y, si se cargó, la presentación del vial (las dos o ninguna). */
+export interface Producto {
+  nombre: string;
+  vialMg: number | null;
+  vialMl: number | null;
+}
+
+/** La marca del cambio de producto en una semana; `anterior`, el que se usaba justo antes. */
+export interface ProductoDeLaSemana extends Producto {
+  anterior: string | null;
 }
 
 export type EstadoTratamiento = "ACTIVO" | "TERMINADO";
@@ -171,6 +188,14 @@ export interface Tratamiento {
   meses: MesTratamiento[];
   /** Por semana ascendente. */
   registros: Registro[];
+  /**
+   * Con cambios de producto (§7.1), `nombre` y `presentacion` son los del
+   * producto ACTUAL; éste es el de cuando empezó. Un backend anterior no los
+   * manda (= nunca cambió de producto).
+   */
+  productoInicial?: Producto | null;
+  /** Cuántas semanas tienen la marca de cambio de producto. */
+  cambiosDeProducto?: number;
   creadoEn: string;
   actualizadoEn: string;
 }
@@ -224,6 +249,18 @@ export interface TratamientoAnterior {
   kgBajados: number | null;
 }
 
+/** El último control de la Evaluación que tiene peso. */
+export interface UltimoControl {
+  fecha: string;
+  pesoKg: number;
+  /**
+   * Cuándo se guardó el control (ISO, §8.1): el mismo día, se ofrece en una
+   * semana sólo si se anotó después del último peso del seguimiento. Un
+   * backend anterior no lo manda (= el mismo día no es «después»).
+   */
+  actualizadoEn?: string | null;
+}
+
 /** `GET /nutricion/seguimiento/pacientes/:id`: la hoja del paciente. */
 export interface HojaPaciente {
   paciente: {
@@ -238,7 +275,7 @@ export interface HojaPaciente {
     activo: boolean;
   };
   /** El último control de la Evaluación con peso: se ofrece con «Usar», nunca se precarga. */
-  ultimoControl: { fecha: string; pesoKg: number } | null;
+  ultimoControl: UltimoControl | null;
   /** El ACTIVO, o null. */
   tratamiento: Tratamiento | null;
   /** Los TERMINADOS, del más nuevo al más viejo. */
@@ -262,7 +299,12 @@ export interface TratamientoDeLosPagos {
 /** El último registro con pago de medicamento o control, y lo que sumó. */
 export interface UltimoPago {
   fecha: string;
+  /** Lo que sumó ESE registro (los tres conceptos). */
   total: number;
+  /** El mes del ciclo de ese registro (§8.1; un backend anterior no lo manda). */
+  mes?: number | null;
+  /** Lo que pagó ese mes entero, los tres conceptos: el «Pagado» del encabezado del mes (§8.1). */
+  pagadoEnElMes?: number | null;
 }
 
 /** `GET /nutricion/seguimiento/pagos-pendientes`. */
@@ -301,6 +343,12 @@ export interface RegistroInput {
   pagoControl?: number | null;
   pagoOtro?: number | null;
   pagoNota?: string | null;
+  /**
+   * La marca del cambio de producto (§7.1): el producto desde esta semana, o
+   * `null` (en la corrección, quita la marca). Sin enviar = no se toca: la web
+   * la manda SÓLO si hay un cambio que guardar (un backend anterior la rechaza).
+   */
+  producto?: { nombre: string; vialMg?: number; vialMl?: number } | null;
 }
 
 /** `POST /nutricion/seguimiento/pacientes/:id/tratamientos`. */
@@ -310,7 +358,7 @@ export interface IniciarTratamientoInput {
   /** Las dos o ninguna. */
   vialMg?: number;
   vialMl?: number;
-  inicial?: Omit<RegistroInput, "semana" | "sinDosis" | "motivoSinDosis">;
+  inicial?: Omit<RegistroInput, "semana" | "sinDosis" | "motivoSinDosis" | "producto">;
 }
 
 /** `PATCH /nutricion/tratamientos/:id`. */

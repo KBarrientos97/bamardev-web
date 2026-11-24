@@ -4,7 +4,7 @@ import { Icon } from "../../components/Icon";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
 import { prepararFoto } from "../../lib/academia/fotos";
 import { fechaCorta } from "../../lib/academia/formato";
-import type { EstadoCuentaPublico, OpcionDePago } from "../../lib/academia/tipos";
+import type { EstadoCuentaPublico, OpcionDePago, PagoPublico, QrDelBanco } from "../../lib/academia/tipos";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { siteKeyTurnstile } from "../../lib/turnstile";
 
@@ -17,6 +17,8 @@ const bs = (n: number) => `Bs ${n.toLocaleString("es-BO", { minimumFractionDigit
  *  · un comprobante esperando revisión → «Lo estamos revisando» (no se sube otro);
  *  · una preinscripción con el grupo lleno → «El grupo está lleno, comunicate
  *    con la academia» (sólo el pago cubre el cupo, así que no se ofrece pagar);
+ *  · QR del banco (cobro automatizado) → elegir qué, escanear el QR con el monto
+ *    exacto y esperar: cuando el banco avisa, el pago se acredita solo;
  *  · QR fijo con algo para pagar → elegir qué (el completo, el primer mes o la
  *    próxima cuota), escanear el QR, subir la foto del comprobante;
  *  · sin QR → «Quedaste preinscrito; pagá en la academia» (o «pagá en el
@@ -49,16 +51,19 @@ export default function PagoEnLineaPublico({
   const tarjeta = "space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm";
 
   if (pago.enRevision) {
+    // Pagó por el QR del banco: la plata ya entró y la academia sólo la aplica.
+    const viaBanco = !!pago.enRevision.viaBanco;
     return (
-      <section aria-label="Tu comprobante" className={tarjeta}>
+      <section aria-label={viaBanco ? "Tu pago" : "Tu comprobante"} className={tarjeta}>
         <div className="flex items-start gap-3">
           <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFFBEB] text-[#92400E]">
             <Icon name="clock" size={18} />
           </span>
           <div className="space-y-0.5">
-            <p className="text-sm font-semibold text-[#111827]">Recibimos tu comprobante</p>
+            <p className="text-sm font-semibold text-[#111827]">{viaBanco ? "Recibimos tu pago" : "Recibimos tu comprobante"}</p>
             <p className="text-[13px] text-[#4B5563]">
-              {pago.enRevision.etiqueta} · {bs(pago.enRevision.monto)}. El instituto lo está revisando; apenas lo confirme te avisamos por WhatsApp
+              {pago.enRevision.etiqueta} · {bs(pago.enRevision.monto)}.{" "}
+              {viaBanco ? "El instituto lo está confirmando" : "El instituto lo está revisando"}; apenas lo confirme te avisamos por WhatsApp
               {preinscrita ? " y tu lugar queda asegurado" : ""}.
             </p>
           </div>
@@ -84,6 +89,10 @@ export default function PagoEnLineaPublico({
         {whatsapp && <EnlaceWhatsapp url={whatsapp} color={color} />}
       </section>
     );
+  }
+
+  if (pago.modo === "AUTOMATIZADO" && pago.opciones.length > 0) {
+    return <PagarConQr d={d} sub={sub} token={token} color={color} onCambio={onCambio} />;
   }
 
   if (pago.modo === "FIJO" && pago.opciones.length > 0 && qr) {
@@ -134,6 +143,365 @@ function EnlaceWhatsapp({ url, color }: { url: string; color: string }) {
   );
 }
 
+/**
+ * Lo que el estudiante eligió pagar y cuánto: la opción (el servidor ya
+ * calculó cada monto) y, en el adelanto, el monto dentro del rango. Lo usan el
+ * QR fijo (`SubirComprobante`) y el del banco (`PagarConQr`).
+ */
+function useOpcionElegida(pago: PagoPublico, inicial?: OpcionDePago["clave"]) {
+  const [clave, setClave] = useState<OpcionDePago["clave"]>(inicial ?? pago.opciones[0].clave);
+  // Si el servidor ya no ofrece la que estaba elegida (cambió la deuda), la primera.
+  const opcion = pago.opciones.find((o) => o.clave === clave) ?? pago.opciones[0];
+  // El adelanto lo elige el estudiante (04-nov), como «Otro monto» del
+  // mostrador: arranca en el mínimo y el servidor vuelve a mirar el rango.
+  const elige = opcion.montoMaximo != null && opcion.montoMaximo > opcion.monto;
+  const [elegido, setElegido] = useState("");
+  const montoElegido = elige && elegido.trim() !== "" ? Number(elegido.replace(",", ".")) : opcion.monto;
+  const montoMal =
+    elige && (!Number.isFinite(montoElegido) || montoElegido < opcion.monto || montoElegido > opcion.montoMaximo!)
+      ? `Elegí un monto de ${bs(opcion.monto)} a ${bs(opcion.montoMaximo!)}.`
+      : "";
+  const aPagar = montoMal ? opcion.monto : Math.round(montoElegido * 100) / 100;
+  return { opcion, setClave, elige, elegido, setElegido, montoMal, aPagar };
+}
+
+/** Las opciones de pago (completo, cuota, adelanto) y, en el adelanto, cuánto. */
+function SelectorDeOpcion({
+  pago,
+  opcion,
+  setClave,
+  color,
+  elige,
+  elegido,
+  setElegido,
+  montoMal,
+  onEditar,
+}: {
+  pago: PagoPublico;
+  opcion: OpcionDePago;
+  setClave: (c: OpcionDePago["clave"]) => void;
+  color: string;
+  elige: boolean;
+  elegido: string;
+  setElegido: (v: string) => void;
+  montoMal: string;
+  /** El estudiante tocó el monto: la pantalla borra su aviso de error. */
+  onEditar: () => void;
+}) {
+  return (
+    <>
+      {/* Dos columnas según el ancho de la tarjeta (@container), no el de la pantalla: con `sm:` la página
+          de inscripción, angosta en una compu, partía cada opción en ~200 px y el monto se salía del borde
+          (Drick, 08-nov). */}
+      <div className="@container">
+      <div role="radiogroup" aria-label="Qué vas a pagar" className={`grid gap-2 ${pago.opciones.length > 1 ? "@xl:grid-cols-2" : ""}`}>
+        {pago.opciones.map((o) => {
+          const on = o.clave === opcion.clave;
+          return (
+            <button
+              key={o.clave}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => setClave(o.clave)}
+              className="flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left"
+              style={{ borderColor: on ? color : "#E5E7EB", borderWidth: on ? 2 : 1, background: on ? "#F9FAFB" : "#ffffff" }}
+            >
+              <span aria-hidden="true" className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 bg-white" style={{ borderColor: on ? color : "#D1D5DB" }}>
+                {on && <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <span className="text-sm font-bold text-[#111827]">{o.titulo}</span>
+                  <span className="whitespace-nowrap text-base font-bold tabular-nums text-[#111827]">
+                    {o.montoMaximo != null && o.montoMaximo > o.monto ? `desde ${bs(o.monto)}` : bs(o.monto)}
+                  </span>
+                </span>
+                {o.ahorro != null && o.ahorro > 0 && (
+                  <span className="mt-1 inline-block rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-[12px] font-semibold text-[#047857]">Ahorrás {bs(o.ahorro)}</span>
+                )}
+                {o.detalle && <span className="block text-[13px] text-[#6B7280]">{o.detalle}</span>}
+                {o.vence && <span className="block text-[12px] text-[#6B7280]">Vence el {fechaCorta(o.vence)}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      </div>
+
+      {elige && (
+        <label className="block space-y-1.5">
+          <span className="block text-sm font-bold text-[#111827]">¿Cuánto vas a pagar?</span>
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label="Cuánto vas a pagar"
+            value={elegido}
+            placeholder={String(opcion.monto)}
+            onChange={(e) => {
+              setElegido(e.target.value);
+              onEditar();
+            }}
+            className="w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base font-bold tabular-nums text-[#111827] outline-none sm:max-w-[220px]"
+            style={{ borderColor: montoMal ? "#DC2626" : undefined }}
+          />
+          <span className={`block text-[12px] ${montoMal ? "text-[#B91C1C]" : "text-[#6B7280]"}`}>
+            {montoMal || `De ${bs(opcion.monto)} a ${bs(opcion.montoMaximo!)}. Lo que pagues se descuenta de tus cuotas.`}
+          </span>
+        </label>
+      )}
+    </>
+  );
+}
+
+/** Cada cuánto se pregunta si el banco ya avisó. */
+const CONSULTA_MS = 3000;
+
+const mmss = (ms: number) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+/**
+ * Pagar con el QR del banco (cobro automatizado, PLAN-QR-AUTOMATICO). El
+ * estudiante elige qué paga, el servidor abre un QR con el monto EXACTO y la
+ * pantalla espera: cuando el banco avisa, el pago se acredita solo y esta
+ * misma pantalla lo dice. No hay comprobante que subir.
+ *
+ * Un QR abierto se recupera al recargar (`pago.esperando`). Si venció, la
+ * consulta lo dice y se puede pedir otro.
+ */
+function PagarConQr({
+  d,
+  sub,
+  token,
+  color,
+  onCambio,
+}: {
+  d: EstadoCuentaPublico;
+  sub: string;
+  token: string;
+  color: string;
+  onCambio: () => void;
+}) {
+  const pago = d.pago;
+  const preinscrita = pago.estado === "PREINSCRITA";
+  const abierto = pago.esperando ?? null;
+  const { opcion, setClave, elige, elegido, setElegido, montoMal, aPagar } = useOpcionElegida(pago, abierto?.opcion);
+  const [qr, setQr] = useState<QrDelBanco | null>(
+    abierto ? { monto: abierto.monto, etiqueta: abierto.etiqueta, venceEn: abierto.venceEn, imagenQr: abierto.imagenQr } : null,
+  );
+  const [hecho, setHecho] = useState<{ monto: number; etiqueta: string } | null>(null);
+  const [error, setError] = useState("");
+  const [generando, setGenerando] = useState(false);
+  const siteKey = siteKeyTurnstile();
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
+  const [ahora, setAhora] = useState(() => Date.now());
+
+  // La página que nos contiene cambia de función en cada vuelta: se lee desde una
+  // referencia para que la consulta no se reinicie con cada render.
+  const alCambiar = useRef(onCambio);
+  useEffect(() => {
+    alCambiar.current = onCambio;
+  });
+
+  // La cuenta regresiva: sólo mientras hay un QR a la vista.
+  useEffect(() => {
+    if (!qr || hecho) return;
+    const id = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [qr, hecho]);
+
+  // Mientras espera, se le pregunta al servidor si el banco ya avisó.
+  useEffect(() => {
+    if (!qr || hecho) return;
+    let vivo = true;
+    const consultar = async () => {
+      try {
+        const r = await apiAcademiaPublica.estadoQr(sub, token);
+        if (!vivo) return;
+        if (r.estado === "ACREDITADO") setHecho({ monto: r.monto, etiqueta: r.etiqueta });
+        else if (r.estado === "EN_REVISION") alCambiar.current();
+        else if (r.estado === "VENCIDO") {
+          setQr(null);
+          setError("El QR venció sin pagarse. Si todavía querés pagar, generá uno nuevo.");
+        }
+      } catch {
+        /* sin señal un momento: la próxima consulta lo resuelve */
+      }
+    };
+    const id = setInterval(() => void consultar(), CONSULTA_MS);
+    return () => {
+      vivo = false;
+      clearInterval(id);
+    };
+  }, [qr, hecho, sub, token]);
+
+  async function generar() {
+    if (montoMal) return setError(montoMal);
+    if (siteKey && !captcha) return setError("Completá la verificación anti-robots.");
+    setError("");
+    setGenerando(true);
+    try {
+      setQr(
+        await apiAcademiaPublica.pedirQr(sub, token, {
+          opcion: opcion.clave,
+          ...(elige ? { monto: aPagar } : {}),
+          ...(siteKey && captcha ? { captcha } : {}),
+        }),
+      );
+    } catch (e) {
+      const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
+      setError(e instanceof Error ? e.message : "No se pudo abrir el QR. Probá de nuevo.");
+      // Se avisa lo que cambió: la página se actualiza y muestra el estado real.
+      if (codigo === "COMPROBANTE_EN_REVISION" || codigo === "OPCION_NO_DISPONIBLE" || codigo === "GRUPO_LLENO") onCambio();
+    } finally {
+      setGenerando(false);
+      // El token de Turnstile es de un solo uso: el backend ya lo gastó.
+      if (siteKey) {
+        setCaptcha(null);
+        setVueltaCaptcha((v) => v + 1);
+      }
+    }
+  }
+
+  async function elegirOtra() {
+    try {
+      await apiAcademiaPublica.cancelarQr(sub, token);
+    } catch {
+      /* si no se pudo cerrar, el QR vence solo; el servidor cierra el viejo al pedir otro */
+    }
+    setQr(null);
+    setError("");
+  }
+
+  /**
+   * «Ver mi estado de cuenta» tras el pago (24-nov: no hacía nada). La tarjeta
+   * «¡Pago recibido!» es estado de ESTE componente, que sigue montado mientras
+   * quede algo por pagar: sólo pedir el estado de nuevo no la sacaba. Se cierra,
+   * se pide el estado actualizado (la cuota ya sumada) y se baja a las cuotas.
+   */
+  function verMiEstadoDeCuenta() {
+    setHecho(null);
+    setQr(null);
+    setError("");
+    onCambio();
+    document.getElementById("t-cuenta")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }
+
+  const tarjeta = "space-y-4 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm";
+
+  if (hecho) {
+    return (
+      <section aria-label="Pago recibido" className={tarjeta}>
+        <div className="flex items-start gap-3">
+          <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#047857]">
+            <Icon name="check" size={18} />
+          </span>
+          <div className="space-y-0.5">
+            <p className="text-sm font-semibold text-[#111827]">¡Pago recibido!</p>
+            <p className="text-[13px] text-[#4B5563]">
+              {hecho.etiqueta} · {bs(hecho.monto)}. Ya se sumó a tu cuenta{preinscrita ? " y tu lugar quedó asegurado" : ""}.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={verMiEstadoDeCuenta}
+          className="flex min-h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-white"
+          style={{ background: color }}
+        >
+          Ver mi estado de cuenta
+        </button>
+      </section>
+    );
+  }
+
+  if (qr) {
+    const restante = new Date(qr.venceEn).getTime() - ahora;
+    return (
+      <section aria-label="Pagar con QR" className={tarjeta}>
+        <div>
+          <p className="text-sm font-bold text-[#111827]">
+            Pagá {bs(qr.monto)} · {qr.etiqueta}
+          </p>
+          <p className="text-[13px] text-[#6B7280]">Escaneá el QR con la app de tu banco. El monto ya está puesto: no lo cambies.</p>
+        </div>
+        <img src={qr.imagenQr} alt={`QR para pagar ${bs(qr.monto)}`} className="mx-auto w-full max-w-[260px] rounded-xl border border-[#E5E7EB]" />
+        <p role="status" className="flex items-center justify-center gap-2 text-center text-sm font-semibold text-[#374151]">
+          <Icon name="clock" size={16} />
+          Esperando tu pago… {restante > 0 ? `vence en ${mmss(restante)}` : "venciendo"}
+        </p>
+        <a
+          href={qr.imagenQr}
+          download
+          className="flex min-h-11 items-center justify-center gap-2 rounded-xl border bg-white py-2.5 text-center text-sm font-semibold hover:bg-[#F9FAFB]"
+          style={{ color, borderColor: color }}
+        >
+          <Icon name="download" size={16} />
+          Descargar el QR
+        </a>
+        <p className="text-center text-[12px] text-[#6B7280]">
+          Apenas el banco confirme el pago, esta pantalla lo dice y queda sumado a tu cuenta. No hace falta subir ningún comprobante.
+        </p>
+        <button type="button" onClick={() => void elegirOtra()} className="mx-auto block text-[13px] font-semibold underline" style={{ color }}>
+          Elegir otra cosa para pagar
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="Cómo pagar" className={tarjeta}>
+      {pago.rechazado && (
+        <p role="alert" className="rounded-xl bg-[#FEF2F2] px-3.5 py-2.5 text-[13px] text-[#B91C1C]">
+          <strong>No pudimos aplicar tu último pago</strong> ({bs(pago.rechazado.monto)})
+          {pago.rechazado.motivo ? `: ${pago.rechazado.motivo}` : ""}. Tu deuda sigue igual.
+        </p>
+      )}
+      <div>
+        <p className="text-sm font-bold text-[#111827]">{preinscrita ? "Pagá para asegurar tu lugar" : "¿Qué querés pagar?"}</p>
+        {preinscrita && <p className="text-[13px] text-[#6B7280]">Con tu pago quedás inscrito y tu lugar en el grupo queda asegurado.</p>}
+      </div>
+      <SelectorDeOpcion
+        pago={pago}
+        opcion={opcion}
+        setClave={setClave}
+        color={color}
+        elige={elige}
+        elegido={elegido}
+        setElegido={setElegido}
+        montoMal={montoMal}
+        onEditar={() => setError("")}
+      />
+      {siteKey && <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} />}
+      {error && (
+        <p role="alert" className="rounded-xl bg-[#FEE2E2] px-3.5 py-2.5 text-sm text-[#B91C1C]">
+          {error}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => void generar()}
+        disabled={generando}
+        className="flex min-h-12 w-full flex-col items-center justify-center rounded-xl px-4 py-2.5 text-center leading-tight text-white disabled:opacity-60"
+        style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
+      >
+        {generando ? (
+          <span className="text-[15px] font-semibold">Abriendo el QR…</span>
+        ) : (
+          <>
+            <span className="text-[16px] font-bold">Pagar con QR</span>
+            <span className="mt-0.5 text-[12.5px] font-medium opacity-90">{bs(aPagar)}</span>
+          </>
+        )}
+      </button>
+      <p className="text-center text-[12px] text-[#6B7280]">Pagás desde la app de tu banco y se acredita solo, sin subir comprobante.</p>
+    </section>
+  );
+}
+
 function SubirComprobante({
   d,
   sub,
@@ -150,19 +518,7 @@ function SubirComprobante({
   onCambio: () => void;
 }) {
   const pago = d.pago;
-  const [clave, setClave] = useState<OpcionDePago["clave"]>(pago.opciones[0].clave);
-  // Si el servidor ya no ofrece la que estaba elegida (cambió la deuda), la primera.
-  const opcion = pago.opciones.find((o) => o.clave === clave) ?? pago.opciones[0];
-  // El adelanto lo elige el estudiante (04-nov), como «Otro monto» del
-  // mostrador: arranca en el mínimo y el servidor vuelve a mirar el rango.
-  const elige = opcion.montoMaximo != null && opcion.montoMaximo > opcion.monto;
-  const [elegido, setElegido] = useState("");
-  const montoElegido = elige && elegido.trim() !== "" ? Number(elegido.replace(",", ".")) : opcion.monto;
-  const montoMal =
-    elige && (!Number.isFinite(montoElegido) || montoElegido < opcion.monto || montoElegido > opcion.montoMaximo!)
-      ? `Elegí un monto de ${bs(opcion.monto)} a ${bs(opcion.montoMaximo!)}.`
-      : "";
-  const aPagar = montoMal ? opcion.monto : Math.round(montoElegido * 100) / 100;
+  const { opcion, setClave, elige, elegido, setElegido, montoMal, aPagar } = useOpcionElegida(pago);
   const [foto, setFoto] = useState<Blob | null>(null);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
@@ -236,66 +592,17 @@ function SubirComprobante({
         {preinscrita && <p className="text-[13px] text-[#6B7280]">Con tu pago quedás inscrito y tu lugar en el grupo queda asegurado.</p>}
       </div>
 
-      {/* Dos columnas según el ancho de la tarjeta (@container), no el de la pantalla: con `sm:` la página
-          de inscripción, angosta en una compu, partía cada opción en ~200 px y el monto se salía del borde
-          (Drick, 08-nov). */}
-      <div className="@container">
-      <div role="radiogroup" aria-label="Qué vas a pagar" className={`grid gap-2 ${pago.opciones.length > 1 ? "@xl:grid-cols-2" : ""}`}>
-        {pago.opciones.map((o) => {
-          const on = o.clave === opcion.clave;
-          return (
-            <button
-              key={o.clave}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => setClave(o.clave)}
-              className="flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left"
-              style={{ borderColor: on ? color : "#E5E7EB", borderWidth: on ? 2 : 1, background: on ? "#F9FAFB" : "#ffffff" }}
-            >
-              <span aria-hidden="true" className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 bg-white" style={{ borderColor: on ? color : "#D1D5DB" }}>
-                {on && <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-baseline justify-between gap-x-2">
-                  <span className="text-sm font-bold text-[#111827]">{o.titulo}</span>
-                  <span className="whitespace-nowrap text-base font-bold tabular-nums text-[#111827]">
-                    {o.montoMaximo != null && o.montoMaximo > o.monto ? `desde ${bs(o.monto)}` : bs(o.monto)}
-                  </span>
-                </span>
-                {o.ahorro != null && o.ahorro > 0 && (
-                  <span className="mt-1 inline-block rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-[12px] font-semibold text-[#047857]">Ahorrás {bs(o.ahorro)}</span>
-                )}
-                {o.detalle && <span className="block text-[13px] text-[#6B7280]">{o.detalle}</span>}
-                {o.vence && <span className="block text-[12px] text-[#6B7280]">Vence el {fechaCorta(o.vence)}</span>}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      </div>
-
-      {elige && (
-        <label className="block space-y-1.5">
-          <span className="block text-sm font-bold text-[#111827]">¿Cuánto vas a pagar?</span>
-          <input
-            type="text"
-            inputMode="decimal"
-            aria-label="Cuánto vas a pagar"
-            value={elegido}
-            placeholder={String(opcion.monto)}
-            onChange={(e) => {
-              setElegido(e.target.value);
-              setError("");
-            }}
-            className="w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base font-bold tabular-nums text-[#111827] outline-none sm:max-w-[220px]"
-            style={{ borderColor: montoMal ? "#DC2626" : undefined }}
-          />
-          <span className={`block text-[12px] ${montoMal ? "text-[#B91C1C]" : "text-[#6B7280]"}`}>
-            {montoMal || `De ${bs(opcion.monto)} a ${bs(opcion.montoMaximo!)}. Lo que pagues se descuenta de tus cuotas.`}
-          </span>
-        </label>
-      )}
+      <SelectorDeOpcion
+        pago={pago}
+        opcion={opcion}
+        setClave={setClave}
+        color={color}
+        elige={elige}
+        elegido={elegido}
+        setElegido={setElegido}
+        montoMal={montoMal}
+        onEditar={() => setError("")}
+      />
 
       {/* Con lugar (tablet o compu), el QR a la izquierda y qué hacer a la derecha. */}
       <div className="space-y-3 border-t border-[#F1F5F9] pt-4 sm:flex sm:items-center sm:gap-5 sm:space-y-0">

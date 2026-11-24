@@ -1,10 +1,21 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
 import { fmtPlata } from "../../../lib/format";
 import { fechaLarga, fmtNumero } from "../../../lib/nutricion/calculo";
-import { casilleroAmarillo, dosisDelRegistro, nombreSemana, pagoDelMes, tituloMes } from "../../../lib/nutricion/seguimiento/formato";
-import type { MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
-import { AMARILLO, Dosis, Kg } from "./piezas";
+import {
+  casilleroAmarillo,
+  dosisDelRegistro,
+  escalonesDeLaSemana,
+  nombreSemana,
+  pagoDelMes,
+  textoKg,
+  textoKgTotal,
+  partesMarca,
+  tituloMes,
+  type EscalonesDeLaSemana,
+} from "../../../lib/nutricion/seguimiento/formato";
+import type { CatalogoSeguimiento, MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import { AMARILLO, ConPuntos, Dosis } from "./piezas";
 
 /**
  * La tabla como la hoja de papel (§4.2): un renglón «Inicial» y uno por
@@ -48,36 +59,48 @@ function gruposDe(t: Tratamiento, editable: boolean): Grupo[] {
 
 export default function TablaSemanas({
   tratamiento,
+  catalogo,
   mes,
   editable,
   onCorregir,
   onCargar,
+  onCorregirProducto,
 }: {
   tratamiento: Tratamiento;
+  /** Para leer la dosis de cada semana contra sus escalones (§7.4). */
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null;
   /** El mes elegido en los chips (null = todo). */
   mes: number | null;
   /** Activo y con `seguimiento.editar`: se corrige tocando y se cargan las que faltan. */
   editable: boolean;
   onCorregir: (r: Registro) => void;
   onCargar: (semana: number) => void;
+  /** «Corregir» en el renglón de la marca: abre esa semana con el producto a la vista. */
+  onCorregirProducto: (r: Registro) => void;
 }) {
   const grupos = gruposDe(tratamiento, editable).filter((g) => mes == null || g.mes.mes === mes);
+  const escalones = (r: Registro) => escalonesDeLaSemana(tratamiento, r.semana, catalogo);
   return (
     <>
       {/* La tablet y la PC: la tabla entera, sin desplazarse de costado. */}
       <table className="hidden w-full table-fixed border-separate border-spacing-0 text-[13px] md:table">
         <caption className="sr-only">Las semanas del tratamiento, como la hoja de papel</caption>
+        {/*
+          En la tablet y en la PC con el menú (unos 700 px de tabla) Observaciones, que es la
+          elástica, quedaba de 150 px: Pagos va más angosta (cada concepto en dos renglones) y
+          Kg bajado lo justo para «11,5 desde el inicio» en un renglón. Desde 1280, Pagos ancha.
+        */}
         <colgroup>
-          <col className="w-[5.75rem]" />
-          <col className="w-[4.25rem]" />
-          <col className="w-[7.25rem]" />
-          <col className="w-[7.25rem]" />
+          <col className="w-[6.25rem]" />
+          <col className="w-[3.75rem] xl:w-[4.25rem]" />
+          <col className="w-[7.75rem]" />
+          <col className="w-[7rem] xl:w-[7.25rem]" />
           <col />
-          <col className="w-[9.75rem]" />
+          <col className="w-[7rem] xl:w-[9.75rem]" />
         </colgroup>
         <thead>
           <tr className="bg-muted text-left text-[11px] font-semibold uppercase tracking-wide text-texto-4">
-            <th scope="col" className="px-3 py-2.5 pl-4 sm:pl-5">
+            <th scope="col" className="py-2.5 pl-4 pr-2 sm:pl-5">
               Semana
             </th>
             <th scope="col" className="whitespace-nowrap px-2.5 py-2.5" title="Peso, en kg">
@@ -106,10 +129,19 @@ export default function TablaSemanas({
             </tr>
             {g.renglones.map((r) =>
               r.registro ? (
-                <FilaCargada key={r.semana} r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
+                <Fragment key={r.semana}>
+                  {r.registro.producto && (
+                    <tr data-marca={r.semana}>
+                      <td colSpan={6} className="border-t border-borde-soft bg-info-bg/40 px-4 py-1.5 sm:px-5">
+                        <RenglonMarca registro={r.registro} editable={editable} onCorregir={onCorregirProducto} />
+                      </td>
+                    </tr>
+                  )}
+                  <FilaCargada r={r} registro={r.registro} escalones={escalones(r.registro)} editable={editable} onCorregir={onCorregir} />
+                </Fragment>
               ) : (
                 <tr key={r.semana} className="text-texto-4">
-                  <td className="border-t border-borde-soft px-3 py-2 pl-4 align-middle sm:pl-5">
+                  <td className="border-t border-borde-soft py-2 pl-4 pr-2 align-middle sm:pl-5">
                     {/* Sin partir, como en los cargados: «Semana» / «11» en dos renglones (desde la 10, en todos los tamaños). */}
                     <span className="block whitespace-nowrap font-semibold">{nombreSemana(r.semana)}</span>
                     <span className="block whitespace-nowrap text-[11px]">por cargar</span>
@@ -146,9 +178,15 @@ export default function TablaSemanas({
             </div>
             <ul className="space-y-2">
               {g.renglones.map((r) => (
-                <li key={r.semana} data-semana={r.registro ? r.semana : undefined}>
+                <Fragment key={r.semana}>
+                {r.registro?.producto && (
+                  <li data-marca={r.semana} className="rounded-xl bg-info-bg/50 px-3 py-1.5">
+                    <RenglonMarca registro={r.registro} editable={editable} onCorregir={onCorregirProducto} />
+                  </li>
+                )}
+                <li data-semana={r.registro ? r.semana : undefined}>
                   {r.registro ? (
-                    <TarjetaCargada r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
+                    <TarjetaCargada r={r} registro={r.registro} escalones={escalones(r.registro)} editable={editable} onCorregir={onCorregir} />
                   ) : (
                     <div className="flex items-center gap-3 rounded-xl border border-dashed border-borde px-3 py-2 text-texto-4">
                       <span className="min-w-0 flex-1">
@@ -170,12 +208,42 @@ export default function TablaSemanas({
                     </div>
                   )}
                 </li>
+                </Fragment>
               ))}
             </ul>
           </section>
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * El renglón de la marca del cambio de producto (§7.2), encima de su semana:
+ * «Desde la semana 12 usa Tirze · 15 mg en 0,5 ml · antes Tirzepatida», con
+ * «Corregir» (abre esa semana con el producto a la vista).
+ */
+function RenglonMarca({ registro, editable, onCorregir }: { registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
+  return (
+    <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+      <span className="flex min-w-0 items-start gap-2 py-1 text-[13px] font-semibold text-info-text">
+        <Icon name="swap" size={15} className="mt-0.5 shrink-0" />
+        <span className="min-w-0 flex-1">
+          <ConPuntos partes={partesMarca(registro)} partir />
+        </span>
+      </span>
+      {editable && (
+        <button
+          type="button"
+          onClick={() => onCorregir(registro)}
+          aria-label={`Corregir el cambio de producto de la ${nombreSemana(registro.semana).toLowerCase()}`}
+          className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-info-text transition-colors hover:bg-white/70 lg:min-h-8"
+        >
+          <Icon name="edit" size={14} />
+          Corregir
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -242,7 +310,7 @@ function CeldaPagos({ r }: { r: Renglon }) {
   );
 }
 
-function DosisDeLaSemana({ registro, apilada = true }: { registro: Registro; apilada?: boolean }): ReactNode {
+function DosisDeLaSemana({ registro, escalones, apilada = true }: { registro: Registro; escalones: EscalonesDeLaSemana; apilada?: boolean }): ReactNode {
   if (registro.sinDosis) {
     return (
       <span className="block">
@@ -252,24 +320,43 @@ function DosisDeLaSemana({ registro, apilada = true }: { registro: Registro; api
     );
   }
   const d = dosisDelRegistro(registro);
-  return d ? <Dosis dosis={d} apilada={apilada} /> : <span className="text-texto-4">—</span>;
+  return d ? <Dosis dosis={d} escalones={escalones} apilada={apilada} /> :<span className="text-texto-4">—</span>;
 }
 
-function KgDeLaSemana({ registro }: { registro: Registro }) {
-  if (registro.kgBajados == null && registro.kgSemana == null) return <span className="text-texto-4">—</span>;
+/**
+ * «Kg bajado» (§7, Kevin 23-nov): lo principal es el cambio contra el peso
+ * anterior («Bajó 0,7», «Subió 0,3», «Igual»), con palabras y no sólo con
+ * color; debajo, chico, el total desde el inicio («2,1 desde el inicio»).
+ */
+export function KgDeLaSemana({ registro }: { registro: Pick<Registro, "kgSemana" | "kgBajados"> }) {
+  const semana = textoKg(registro.kgSemana);
+  const total = textoKgTotal(registro.kgBajados);
+  if (!semana && !total) return <span className="text-texto-4">—</span>;
   return (
     <span className="block">
-      {registro.kgBajados != null ? <Kg kg={registro.kgBajados} className="font-semibold" /> : <span className="text-texto-4">—</span>}
-      {registro.kgSemana != null && (
-        <span className="mt-0.5 block text-[11px]">
-          <Kg kg={registro.kgSemana} sufijo="esta semana" />
-        </span>
+      {semana ? (
+        <span className={`block whitespace-nowrap font-semibold tabular-nums ${TONO_KG[semana.tono]}`}>{semana.texto}</span>
+      ) : (
+        <span className="block text-texto-4">—</span>
       )}
+      {total && <span className="mt-0.5 block text-[12px] leading-snug text-texto-3">{total}</span>}
     </span>
   );
 }
 
-function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
+/** Bajó en el verde de la marca, subió en tono de alerta, igual en gris: el color acompaña a la palabra. */
+const TONO_KG = { bajo: "text-primary-700", subio: "text-danger-text", igual: "text-texto-3" } as const;
+
+interface PropsCargada {
+  r: Renglon;
+  registro: Registro;
+  /** Los escalones y el vial de su semana, para leer la dosis (§7.4). */
+  escalones: EscalonesDeLaSemana;
+  editable: boolean;
+  onCorregir: (r: Registro) => void;
+}
+
+function FilaCargada({ r, registro, escalones, editable, onCorregir }: PropsCargada) {
   return (
     <tr
       // Para dejarla a la vista («Ver la hoja» después de una semana repetida).
@@ -277,7 +364,7 @@ function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; regist
       onClick={editable ? () => onCorregir(registro) : undefined}
       className={`transition-colors ${editable ? "cursor-pointer hover:bg-muted" : ""}`}
     >
-      <td className="border-t border-borde-soft px-3 py-2.5 pl-4 align-top sm:pl-5">
+      <td className="border-t border-borde-soft py-2.5 pl-4 pr-2 align-top sm:pl-5">
         {editable ? (
           <button
             type="button"
@@ -301,7 +388,7 @@ function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; regist
         <KgDeLaSemana registro={registro} />
       </td>
       <td className="border-t border-borde-soft px-2.5 py-2.5 align-top">
-        <DosisDeLaSemana registro={registro} />
+        <DosisDeLaSemana registro={registro} escalones={escalones} />
       </td>
       <td className="border-t border-borde-soft px-2.5 py-2.5 align-top text-texto-2">
         {registro.observaciones ? <span className="block whitespace-pre-line break-words">{registro.observaciones}</span> : <span className="text-texto-4">—</span>}
@@ -320,7 +407,7 @@ function NombreYFecha({ registro }: { registro: Registro }) {
   );
 }
 
-function TarjetaCargada({ r, registro, editable, onCorregir }: { r: Renglon; registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
+function TarjetaCargada({ r, registro, escalones, editable, onCorregir }: PropsCargada) {
   const pagos = <Pagos r={registro} />;
   const cuerpo = (
     <>
@@ -335,7 +422,7 @@ function TarjetaCargada({ r, registro, editable, onCorregir }: { r: Renglon; reg
           </span>
         )}
       </span>
-      <span className="mt-2 grid grid-cols-3 gap-2 text-[13px]">
+      <span className="mt-2 grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.15fr)_minmax(0,1.15fr)] gap-x-1.5 gap-y-2 text-[13px]">
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Peso</span>
           <span className="block font-semibold tabular-nums text-texto">{registro.pesoKg != null ? `${fmtNumero(registro.pesoKg, 2)} kg` : "—"}</span>
@@ -346,7 +433,7 @@ function TarjetaCargada({ r, registro, editable, onCorregir }: { r: Renglon; reg
         </span>
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Dosis</span>
-          <DosisDeLaSemana registro={registro} />
+          <DosisDeLaSemana registro={registro} escalones={escalones} />
         </span>
       </span>
       {registro.observaciones && (
