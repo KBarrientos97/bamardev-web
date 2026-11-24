@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Captcha from "../../publico/Captcha";
 import { Icon } from "../../components/Icon";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
@@ -263,6 +264,50 @@ const mmss = (ms: number) => {
 };
 
 /**
+ * La ventana que ocupa la pantalla con el QR (o con «¡Pago recibido!»): en el
+ * celular es de borde a borde y en la compu una ventana grande al centro. Va en
+ * el `body` (un ancestro con `transform` rompería el `fixed`), traba el
+ * scroll de atrás, lleva el foco adentro y Escape la cierra. No se cierra al
+ * tocar afuera: un toque de más no debe esconder el QR a mitad de un pago.
+ */
+function VentanaGrande({ etiqueta, onCerrar, children }: { etiqueta: string; onCerrar: () => void; children: ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null);
+  // El padre cambia de función en cada vuelta de la cuenta regresiva: por referencia, para que
+  // el efecto no vuelva a trabar el scroll ni a robar el foco cada segundo.
+  const cerrar = useRef(onCerrar);
+  useEffect(() => {
+    cerrar.current = onCerrar;
+  });
+  useEffect(() => {
+    const overflowAntes = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panel.current?.focus();
+    const alTecla = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cerrar.current();
+    };
+    document.addEventListener("keydown", alTecla);
+    return () => {
+      document.body.style.overflow = overflowAntes;
+      document.removeEventListener("keydown", alTecla);
+    };
+  }, []);
+
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={etiqueta} className="fixed inset-0 z-[60] flex items-stretch justify-center bg-black/55 sm:items-center sm:p-6">
+      <div
+        ref={panel}
+        tabIndex={-1}
+        className="flex h-full w-full flex-col overflow-y-auto bg-white outline-none sm:h-auto sm:max-h-[94dvh] sm:max-w-lg sm:rounded-2xl sm:shadow-2xl"
+        style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
  * Pagar con el QR del banco (cobro automatizado, PLAN-QR-AUTOMATICO). El
  * estudiante elige qué paga, el servidor abre un QR con el monto EXACTO y la
  * pantalla espera: cuando el banco avisa, el pago se acredita solo y esta
@@ -298,6 +343,10 @@ function PagarConQr({
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
   const [ahora, setAhora] = useState(() => Date.now());
+  // La ventana grande del QR (dueño, 24-nov): el QR de la tarjeta era chico. Se abre sola al
+  // haber QR —al inscribirse y al pagar una cuota por igual— y se puede cerrar para volver a la
+  // tarjeta. Un QR que ya estaba abierto al recargar también se abre grande.
+  const [grande, setGrande] = useState(abierto != null);
 
   // La página que nos contiene cambia de función en cada vuelta: se lee desde una
   // referencia para que la consulta no se reinicie con cada render.
@@ -325,6 +374,7 @@ function PagarConQr({
         else if (r.estado === "EN_REVISION") alCambiar.current();
         else if (r.estado === "VENCIDO") {
           setQr(null);
+          setGrande(false);
           setError("El QR venció sin pagarse. Si todavía querés pagar, generá uno nuevo.");
         }
       } catch {
@@ -351,6 +401,7 @@ function PagarConQr({
           ...(siteKey && captcha ? { captcha } : {}),
         }),
       );
+      setGrande(true);
     } catch (e) {
       const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
       setError(e instanceof Error ? e.message : "No se pudo abrir el QR. Probá de nuevo.");
@@ -373,6 +424,7 @@ function PagarConQr({
       /* si no se pudo cerrar, el QR vence solo; el servidor cierra el viejo al pedir otro */
     }
     setQr(null);
+    setGrande(false);
     setError("");
   }
 
@@ -385,12 +437,39 @@ function PagarConQr({
   function verMiEstadoDeCuenta() {
     setHecho(null);
     setQr(null);
+    setGrande(false);
     setError("");
     onCambio();
     document.getElementById("t-cuenta")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }
 
   const tarjeta = "space-y-4 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm";
+
+  if (hecho && grande) {
+    return (
+      <VentanaGrande etiqueta="Pago recibido" onCerrar={() => setGrande(false)}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+          <span aria-hidden="true" className="flex h-16 w-16 items-center justify-center rounded-full bg-[#ECFDF5] text-[#047857]">
+            <Icon name="check" size={32} />
+          </span>
+          <div className="space-y-1">
+            <p className="text-2xl font-extrabold text-[#111827]">¡Pago recibido!</p>
+            <p className="text-sm text-[#4B5563]">
+              {hecho.etiqueta} · {bs(hecho.monto)}. Ya se sumó a tu cuenta{preinscrita ? " y tu lugar quedó asegurado" : ""}.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={verMiEstadoDeCuenta}
+            className="flex min-h-12 w-full max-w-xs items-center justify-center rounded-xl text-[15px] font-bold text-white"
+            style={{ background: color }}
+          >
+            Ver mi estado de cuenta
+          </button>
+        </div>
+      </VentanaGrande>
+    );
+  }
 
   if (hecho) {
     return (
@@ -420,6 +499,64 @@ function PagarConQr({
 
   if (qr) {
     const restante = new Date(qr.venceEn).getTime() - ahora;
+    const espera = (
+      <p role="status" className="flex items-center justify-center gap-2 text-center text-sm font-semibold text-[#374151]">
+        <Icon name="clock" size={16} />
+        Esperando tu pago… {restante > 0 ? `vence en ${mmss(restante)}` : "venciendo"}
+      </p>
+    );
+    const descargar = (
+      <a
+        href={qr.imagenQr}
+        download
+        className="flex min-h-11 items-center justify-center gap-2 rounded-xl border bg-white py-2.5 text-center text-sm font-semibold hover:bg-[#F9FAFB]"
+        style={{ color, borderColor: color }}
+      >
+        <Icon name="download" size={16} />
+        Descargar el QR
+      </a>
+    );
+    const otraCosa = (
+      <button type="button" onClick={() => void elegirOtra()} className="mx-auto block text-[13px] font-semibold underline" style={{ color }}>
+        Elegir otra cosa para pagar
+      </button>
+    );
+    if (grande) {
+      return (
+        <VentanaGrande etiqueta="Pagar con QR" onCerrar={() => setGrande(false)}>
+          <div className="flex items-start justify-between gap-3 px-5 pt-5">
+            <div>
+              <p className="text-[13px] font-semibold text-[#6B7280]">{qr.etiqueta}</p>
+              <p className="text-3xl font-extrabold text-[#111827]">{bs(qr.monto)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGrande(false)}
+              aria-label="Cerrar"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] text-[#4B5563] hover:bg-[#F9FAFB]"
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col justify-center gap-4 px-5 py-4">
+            <p className="text-center text-[13px] text-[#6B7280]">Escaneá el QR con la app de tu banco. El monto ya está puesto: no lo cambies.</p>
+            <img
+              src={qr.imagenQr}
+              alt={`QR para pagar ${bs(qr.monto)}`}
+              className="mx-auto aspect-square w-[min(82vw,44dvh)] rounded-xl border border-[#E5E7EB] bg-white sm:w-[min(400px,52dvh)]"
+            />
+            {espera}
+            <p className="text-center text-[12px] text-[#6B7280]">
+              Apenas el banco confirme el pago, esta pantalla lo dice sola y queda sumado a tu cuenta. No hace falta subir ningún comprobante.
+            </p>
+          </div>
+          <div className="space-y-3 px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            {descargar}
+            {otraCosa}
+          </div>
+        </VentanaGrande>
+      );
+    }
     return (
       <section aria-label="Pagar con QR" className={tarjeta}>
         <div>
@@ -429,25 +566,20 @@ function PagarConQr({
           <p className="text-[13px] text-[#6B7280]">Escaneá el QR con la app de tu banco. El monto ya está puesto: no lo cambies.</p>
         </div>
         <img src={qr.imagenQr} alt={`QR para pagar ${bs(qr.monto)}`} className="mx-auto w-full max-w-[260px] rounded-xl border border-[#E5E7EB]" />
-        <p role="status" className="flex items-center justify-center gap-2 text-center text-sm font-semibold text-[#374151]">
-          <Icon name="clock" size={16} />
-          Esperando tu pago… {restante > 0 ? `vence en ${mmss(restante)}` : "venciendo"}
-        </p>
-        <a
-          href={qr.imagenQr}
-          download
-          className="flex min-h-11 items-center justify-center gap-2 rounded-xl border bg-white py-2.5 text-center text-sm font-semibold hover:bg-[#F9FAFB]"
-          style={{ color, borderColor: color }}
+        <button
+          type="button"
+          onClick={() => setGrande(true)}
+          className="flex min-h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-white"
+          style={{ background: color }}
         >
-          <Icon name="download" size={16} />
-          Descargar el QR
-        </a>
+          Ver el QR en grande
+        </button>
+        {espera}
+        {descargar}
         <p className="text-center text-[12px] text-[#6B7280]">
           Apenas el banco confirme el pago, esta pantalla lo dice y queda sumado a tu cuenta. No hace falta subir ningún comprobante.
         </p>
-        <button type="button" onClick={() => void elegirOtra()} className="mx-auto block text-[13px] font-semibold underline" style={{ color }}>
-          Elegir otra cosa para pagar
-        </button>
+        {otraCosa}
       </section>
     );
   }
