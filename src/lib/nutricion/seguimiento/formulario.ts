@@ -284,12 +284,6 @@ export function semanaCambio(antes: FormSemana, ahora: FormSemana): boolean {
   });
 }
 
-/** Agrega «Cambio de laboratorio: » al final de las observaciones, en un renglón nuevo si ya había algo. */
-export function conCambioDeLaboratorio(observaciones: string): string {
-  const base = observaciones.replace(/\s+$/, "");
-  return `${base ? `${base}\n` : ""}Cambio de laboratorio: `;
-}
-
 // ── El tratamiento ──────────────────────────────────────────────────────────
 
 export interface FormTratamiento {

@@ -3,7 +3,6 @@ import {
   cambioLaMarca,
   cambiosDeSemana,
   cambiosDeTratamiento,
-  conCambioDeLaboratorio,
   conPagoDelMes,
   errorDeNumero,
   erroresDeSemana,
@@ -240,10 +239,5 @@ describe("el tratamiento", () => {
     expect(cambiosDeTratamiento(antes, { ...antes, unidadDosis: "mg" })).toEqual({ unidadDosis: "mg" });
     expect(cambiosDeTratamiento(antes, { ...antes, vialMg: "", vialMl: "" })).toEqual({ vialMg: null, vialMl: null });
     expect(cambiosDeTratamiento(antes, { ...antes, vialMg: "10" })).toEqual({ vialMg: 10, vialMl: 0.5 });
-  });
-
-  it("«Cambio de laboratorio» se agrega al final, en un renglón nuevo si ya había algo", () => {
-    expect(conCambioDeLaboratorio("")).toBe("Cambio de laboratorio: ");
-    expect(conCambioDeLaboratorio("Sin náuseas.  ")).toBe("Sin náuseas.\nCambio de laboratorio: ");
   });
 });

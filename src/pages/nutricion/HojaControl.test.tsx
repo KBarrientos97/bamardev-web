@@ -76,6 +76,24 @@ describe("hoja de control", () => {
     expect(onCerrar).toHaveBeenCalledTimes(1);
   });
 
+  // Anotado el 23-nov: «Cancelar» cerraba sin preguntar aunque hubiera algo escrito (Esc y la ✕ sí preguntaban).
+  it("«Cancelar» con algo escrito pregunta igual que Esc; sin nada escrito cierra directo", () => {
+    const { onCerrar } = abrir();
+    fireEvent.change(screen.getByLabelText("Peso"), { target: { value: "118" } });
+    const hoja = screen.getByRole("dialog", { name: "Nuevo control" });
+    fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
+    expect(onCerrar).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "¿Cerrar sin guardar?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sin guardar" }));
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("«Cancelar» sin nada escrito cierra directo", () => {
+    const { onCerrar } = abrir({ corregir: true });
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Editar control" })).getByRole("button", { name: "Cancelar" }));
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+
   it("avisa el IMC imposible sin bloquear (talla de la ficha 80 cm, 127 kg → 198,4)", () => {
     abrir({ tallaCm: 80 });
     const peso = screen.getByLabelText("Peso");

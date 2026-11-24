@@ -268,7 +268,8 @@ export default function HojaControl({
                 Borrar control
               </Boton>
             )}
-            <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
+            {/* Pregunta igual que `Esc` y la ✕: antes cerraba callado aunque hubiera algo escrito. */}
+            <Boton variante="ghost" onClick={pedirCerrar} disabled={guardando}>
               Cancelar
             </Boton>
             <Boton onClick={() => void guardar()} disabled={guardando} title="Guardar (Ctrl+Enter)">
