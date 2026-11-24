@@ -162,49 +162,162 @@ export function valorDelPaso(p: Paso, unidad: UnidadDosis): number | null {
   return unidad === "mg" ? p.mg : unidad === "UI" ? p.ui : p.ml;
 }
 
-/** Cómo se lee un escalón en su botón: «8 UI · 2,5 mg»; con la unidad en mg, «2,5 mg · ≈ 8 UI». */
+/**
+ * Cómo se lee un escalón en su botón: «8 UI · 2,5 mg»; con la unidad en mg,
+ * «2,5 mg · 8 UI». Un escalón son sus valores nominales (§7.4): sin «≈».
+ */
 export function textoPaso(p: Paso, unidad: UnidadDosis): string {
-  const mg = `${numeroDeDosis(p.mg, "mg").texto}${NB}mg`;
-  if (unidad === "mg") return p.ui == null ? mg : `${mg} · ≈${NB}${numeroDeDosis(p.ui, "UI").texto}${NB}UI`;
-  const v = valorDelPaso(p, unidad);
-  return v == null ? mg : `${numeroDeDosis(v, unidad).texto}${NB}${unidad} · ${mg}`;
+  const { principal, secundario } = partesPaso(p, unidad);
+  return secundario ? `${principal} · ${secundario}` : principal;
 }
 
 /**
  * Un escalón en su botón grande, en dos renglones: arriba el número en la
  * unidad del tratamiento («8 UI», «2,5 mg», «0,08 ml») y abajo el otro dato
- * («2,5 mg»; con la unidad en mg, «≈ 8 UI»). Sin poder pasarlo, sólo los mg.
+ * («2,5 mg»; con la unidad en mg, «8 UI»). Sin poder pasarlo, sólo los mg.
+ * Sin «≈»: para la doctora, 8 rayitas SON los 2,5 mg (§7.4).
  */
 export function partesPaso(p: Paso, unidad: UnidadDosis): { principal: string; secundario: string | null } {
   const mg = `${numeroDeDosis(p.mg, "mg").texto}${NB}mg`;
-  if (unidad === "mg") return { principal: mg, secundario: p.ui == null ? null : `≈${NB}${numeroDeDosis(p.ui, "UI").texto}${NB}UI` };
+  if (unidad === "mg") return { principal: mg, secundario: p.ui == null ? null : `${numeroDeDosis(p.ui, "UI").texto}${NB}UI` };
   const v = valorDelPaso(p, unidad);
   return v == null ? { principal: mg, secundario: null } : { principal: `${numeroDeDosis(v, unidad).texto}${NB}${unidad}`, secundario: mg };
 }
 
+// ── Cómo se lee una dosis anotada (§7.4) ────────────────────────────────────
+
+/** La jeringa de insulina del contrato (§2): 100 UI por ml, si no llega el catálogo. */
+const UI_POR_ML = 100;
+
 /**
- * Una dosis con su otro dato, en un renglón: «8 UI · 2,5 mg» (lo de la franja
- * «La semana pasada» y los botones grandes). Lo anotado va como se anotó; la
- * equivalencia, sin «≈» (es la misma cuenta del vial de esa semana).
+ * Lo que hace falta para leer una dosis de una semana (§7.4): los escalones
+ * de la droga (en mg) y la concentración del producto vigente esa semana
+ * (`mgPorMl`, una pista: se usa si coincide con la que se guardó en el registro).
  */
-export function dosisConMg(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>): string {
-  const anotado = fmtDosis(d.dosis, d.unidadDosis);
-  const otra = d.unidadDosis === "mg" ? d.dosisUi : d.dosisMg;
-  return otra == null ? anotado : `${anotado} · ${fmtDosisCalculada(otra, d.unidadDosis === "mg" ? "UI" : "mg")}`;
+export interface EscalonesDeLaSemana {
+  pasosMg: number[];
+  mgPorMl?: number | null;
+  uiPorMl?: number;
 }
 
-/** «8 UI (2,4 mg)»: la dosis de la franja «La semana pasada»; en mg, sola. */
-export function dosisYSusMg(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>): string {
-  const anotado = fmtDosis(d.dosis, d.unidadDosis);
-  return d.unidadDosis !== "mg" && d.dosisMg != null ? `${anotado} (${fmtDosisCalculada(d.dosisMg, "mg")})` : anotado;
+/**
+ * La concentración (mg por ml) con que se guardó una dosis: la delatan sus
+ * equivalencias (mg / ml). Si la pista del vial de esa semana es la misma (con
+ * el redondeo de por medio), va la del vial, exacta. null si no se sabe.
+ */
+export function concentracionDeLaDosis(d: Partial<Equivalencias>, pista?: number | null): number | null {
+  const deLaDosis = d.dosisMg != null && d.dosisMl != null && d.dosisMg > 0 && d.dosisMl > 0 ? d.dosisMg / d.dosisMl : null;
+  if (deLaDosis != null && pista != null && pista > 0 && Math.abs(deLaDosis - pista) <= pista * 0.02) return pista;
+  return deLaDosis;
 }
 
-/** «Subir: 25 UI (7,5 mg)»; con la unidad en mg, «Subir: 7,5 mg (≈ 25 UI)». */
+/** Lo que escribe el botón de un escalón, como número (las UI en entero, los ml con 2, los mg tal cual). */
+function escritoDelPaso(n: number, unidad: UnidadDosis): number {
+  // Primero a 6 decimales: 7,5 mg en un vial de 20 mg/ml son 37,5 UI, no 37,4999… (que bajaría a 37).
+  const limpio = redondear(n, 6);
+  return unidad === "UI" ? redondear(limpio, 0) : unidad === "ml" ? redondear(limpio, 2) : redondear(limpio, 3);
+}
+
+/** Una dosis lista para leer (§7.4). */
+export interface DosisLeida {
+  /** Lo anotado, como se anotó: «8 UI». */
+  anotado: string;
+  /** Las equivalencias en gris, cada una entera: «2,5 mg», «0,08 ml». */
+  equivalencias: string[];
+  /** Si las equivalencias son una cuenta (van con «≈»); las de un escalón, no. */
+  aprox: boolean;
+  /** El otro dato de un renglón: los mg (con la dosis en mg, las UI). «12,5 mg», «≈ 8 UI». null si no se sabe. */
+  otra: string | null;
+  /** El mismo, sin «≈» (para el PDF, cuya fuente no lo tiene). */
+  otraSinAprox: string | null;
+}
+
+/**
+ * Cómo se MUESTRA una dosis anotada, en toda la sección y en el PDF (§7.4).
+ * El servidor manda las equivalencias exactas; si lo anotado, en su unidad,
+ * coincide con lo que escribe el botón de un escalón con la concentración de
+ * ESA semana (8 UI con el vial de 30 mg/ml es el escalón de 2,5 mg: 8,3
+ * redondeado), se muestran las del escalón y sin «≈» («8 UI · 2,5 mg», no
+ * «8 UI ≈ 2,4 mg»). En mg es el espejo: 2,5 mg es «2,5 mg · 8 UI». Si no
+ * coincide con ningún escalón (o no hay escalones), las calculadas, con «≈».
+ */
+export function leerDosis(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>, escalones?: EscalonesDeLaSemana | null): DosisLeida {
+  const unidad = d.unidadDosis;
+  const anotado = fmtDosis(d.dosis, unidad);
+  const otraUnidad: UnidadDosis = unidad === "mg" ? "UI" : "mg";
+  const uiPorMl = escalones?.uiPorMl && escalones.uiPorMl > 0 ? escalones.uiPorMl : UI_POR_ML;
+  const c = concentracionDeLaDosis(d, escalones?.mgPorMl);
+  const paso = (escalones?.pasosMg ?? []).find((mg) => {
+    const v = unidad === "mg" ? mg : c ? (unidad === "ml" ? mg / c : (mg / c) * uiPorMl) : null;
+    return v != null && Math.abs(escritoDelPaso(v, unidad) - d.dosis) < 1e-9;
+  });
+  if (paso != null) {
+    const ml = c ? paso / c : null;
+    const eq: Equivalencias = { dosisMg: paso, dosisUi: ml != null ? ml * uiPorMl : null, dosisMl: ml };
+    const v = eq[CAMPO[otraUnidad]];
+    const otra = v == null ? null : `${numeroDeDosis(v, otraUnidad).texto}${NB}${otraUnidad}`;
+    return { anotado, equivalencias: partesEquivalencias(eq, unidad), aprox: false, otra, otraSinAprox: otra };
+  }
+  const v = d[CAMPO[otraUnidad]];
+  return {
+    anotado,
+    equivalencias: partesEquivalencias(d, unidad),
+    aprox: true,
+    otra: v == null ? null : fmtDosisCalculada(v, otraUnidad),
+    otraSinAprox: v == null ? null : `${numeroDeDosis(v, otraUnidad).texto}${NB}${otraUnidad}`,
+  };
+}
+
+/** Los escalones de la droga en mg: los que manda el servidor o, si el producto de hoy no es del catálogo, los de otro que sí (§7.1). */
+export function pasosMgDe(
+  t: Pick<Tratamiento, "pasos" | "nombre" | "presentacion" | "productoInicial" | "registros">,
+  catalogo: Pick<CatalogoSeguimiento, "tratamientos"> | null | undefined,
+  ...otrosNombres: string[]
+): number[] {
+  if (t.pasos.length) return t.pasos.map((p) => p.mg);
+  const nombres = [...otrosNombres, productoInicialDe(t).nombre, ...t.registros.flatMap((r) => (r.producto ? [r.producto.nombre] : []))];
+  for (const n of nombres) {
+    const pasos = delCatalogo(catalogo, n)?.pasosMg;
+    if (pasos?.length) return pasos;
+  }
+  return [];
+}
+
+/** La concentración del vial de un producto (mg por ml), o null sin vial. */
+export function mgPorMlDe(p: Producto): number | null {
+  return p.vialMg != null && p.vialMl != null && p.vialMg > 0 && p.vialMl > 0 ? p.vialMg / p.vialMl : null;
+}
+
+/** Lo que hace falta para leer las dosis de la semana `semana` de un tratamiento (§7.4). */
+export function escalonesDeLaSemana(
+  t: Pick<Tratamiento, "pasos" | "nombre" | "presentacion" | "productoInicial" | "registros">,
+  semana: number,
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null,
+): EscalonesDeLaSemana {
+  const p = productoVigente(t, semana);
+  return { pasosMg: pasosMgDe(t, catalogo, p.nombre), mgPorMl: mgPorMlDe(p), uiPorMl: catalogo?.uiPorMl };
+}
+
+/**
+ * Una dosis con su otro dato, en un renglón: «8 UI · 2,5 mg» (lo del botón
+ * «Igual que la anterior»). Lo anotado va como se anotó; el otro dato, el del
+ * escalón si coincide con uno (§7.4) o la cuenta (con «≈» si se redondeó).
+ */
+export function dosisConMg(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>, escalones?: EscalonesDeLaSemana | null): string {
+  const l = leerDosis(d, escalones);
+  return l.otra ? `${l.anotado} · ${l.otra}` : l.anotado;
+}
+
+/** «8 UI (2,5 mg)»: la dosis de la franja «La semana pasada»; en mg, sola. */
+export function dosisYSusMg(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>, escalones?: EscalonesDeLaSemana | null): string {
+  const l = leerDosis(d, escalones);
+  return d.unidadDosis !== "mg" && l.otra ? `${l.anotado} (${l.otra})` : l.anotado;
+}
+
+/** «Subir: 25 UI (7,5 mg)»; con la unidad en mg, «Subir: 7,5 mg (25 UI)». */
 export function textoSubir(p: Paso, unidad: UnidadDosis): string {
-  const mg = `${numeroDeDosis(p.mg, "mg").texto}${NB}mg`;
-  if (unidad === "mg") return p.ui == null ? `Subir: ${mg}` : `Subir: ${mg} (≈${NB}${numeroDeDosis(p.ui, "UI").texto}${NB}UI)`;
-  const v = valorDelPaso(p, unidad);
-  return v == null ? `Subir: ${mg}` : `Subir: ${numeroDeDosis(v, unidad).texto}${NB}${unidad} (${mg})`;
+  const { principal, secundario } = partesPaso(p, unidad);
+  return secundario ? `Subir: ${principal} (${secundario})` : `Subir: ${principal}`;
 }
 
 /**

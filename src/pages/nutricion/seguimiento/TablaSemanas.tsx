@@ -5,14 +5,16 @@ import { fechaLarga, fmtNumero } from "../../../lib/nutricion/calculo";
 import {
   casilleroAmarillo,
   dosisDelRegistro,
+  escalonesDeLaSemana,
   nombreSemana,
   pagoDelMes,
   textoKg,
   textoKgTotal,
   textoMarca,
   tituloMes,
+  type EscalonesDeLaSemana,
 } from "../../../lib/nutricion/seguimiento/formato";
-import type { MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import type { CatalogoSeguimiento, MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { AMARILLO, Dosis } from "./piezas";
 
 /**
@@ -57,6 +59,7 @@ function gruposDe(t: Tratamiento, editable: boolean): Grupo[] {
 
 export default function TablaSemanas({
   tratamiento,
+  catalogo,
   mes,
   editable,
   onCorregir,
@@ -64,6 +67,8 @@ export default function TablaSemanas({
   onCorregirProducto,
 }: {
   tratamiento: Tratamiento;
+  /** Para leer la dosis de cada semana contra sus escalones (§7.4). */
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null;
   /** El mes elegido en los chips (null = todo). */
   mes: number | null;
   /** Activo y con `seguimiento.editar`: se corrige tocando y se cargan las que faltan. */
@@ -74,6 +79,7 @@ export default function TablaSemanas({
   onCorregirProducto: (r: Registro) => void;
 }) {
   const grupos = gruposDe(tratamiento, editable).filter((g) => mes == null || g.mes.mes === mes);
+  const escalones = (r: Registro) => escalonesDeLaSemana(tratamiento, r.semana, catalogo);
   return (
     <>
       {/* La tablet y la PC: la tabla entera, sin desplazarse de costado. */}
@@ -126,7 +132,7 @@ export default function TablaSemanas({
                       </td>
                     </tr>
                   )}
-                  <FilaCargada r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
+                  <FilaCargada r={r} registro={r.registro} escalones={escalones(r.registro)} editable={editable} onCorregir={onCorregir} />
                 </Fragment>
               ) : (
                 <tr key={r.semana} className="text-texto-4">
@@ -175,7 +181,7 @@ export default function TablaSemanas({
                 )}
                 <li data-semana={r.registro ? r.semana : undefined}>
                   {r.registro ? (
-                    <TarjetaCargada r={r} registro={r.registro} editable={editable} onCorregir={onCorregir} />
+                    <TarjetaCargada r={r} registro={r.registro} escalones={escalones(r.registro)} editable={editable} onCorregir={onCorregir} />
                   ) : (
                     <div className="flex items-center gap-3 rounded-xl border border-dashed border-borde px-3 py-2 text-texto-4">
                       <span className="min-w-0 flex-1">
@@ -297,7 +303,7 @@ function CeldaPagos({ r }: { r: Renglon }) {
   );
 }
 
-function DosisDeLaSemana({ registro, apilada = true }: { registro: Registro; apilada?: boolean }): ReactNode {
+function DosisDeLaSemana({ registro, escalones, apilada = true }: { registro: Registro; escalones: EscalonesDeLaSemana; apilada?: boolean }): ReactNode {
   if (registro.sinDosis) {
     return (
       <span className="block">
@@ -307,7 +313,7 @@ function DosisDeLaSemana({ registro, apilada = true }: { registro: Registro; api
     );
   }
   const d = dosisDelRegistro(registro);
-  return d ? <Dosis dosis={d} apilada={apilada} /> : <span className="text-texto-4">—</span>;
+  return d ? <Dosis dosis={d} escalones={escalones} apilada={apilada} /> :<span className="text-texto-4">—</span>;
 }
 
 /**
@@ -334,7 +340,16 @@ export function KgDeLaSemana({ registro }: { registro: Pick<Registro, "kgSemana"
 /** Bajó en el verde de la marca, subió en tono de alerta, igual en gris: el color acompaña a la palabra. */
 const TONO_KG = { bajo: "text-primary-700", subio: "text-danger-text", igual: "text-texto-3" } as const;
 
-function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
+interface PropsCargada {
+  r: Renglon;
+  registro: Registro;
+  /** Los escalones y el vial de su semana, para leer la dosis (§7.4). */
+  escalones: EscalonesDeLaSemana;
+  editable: boolean;
+  onCorregir: (r: Registro) => void;
+}
+
+function FilaCargada({ r, registro, escalones, editable, onCorregir }: PropsCargada) {
   return (
     <tr
       // Para dejarla a la vista («Ver la hoja» después de una semana repetida).
@@ -366,7 +381,7 @@ function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; regist
         <KgDeLaSemana registro={registro} />
       </td>
       <td className="border-t border-borde-soft px-2.5 py-2.5 align-top">
-        <DosisDeLaSemana registro={registro} />
+        <DosisDeLaSemana registro={registro} escalones={escalones} />
       </td>
       <td className="border-t border-borde-soft px-2.5 py-2.5 align-top text-texto-2">
         {registro.observaciones ? <span className="block whitespace-pre-line break-words">{registro.observaciones}</span> : <span className="text-texto-4">—</span>}
@@ -385,7 +400,7 @@ function NombreYFecha({ registro }: { registro: Registro }) {
   );
 }
 
-function TarjetaCargada({ r, registro, editable, onCorregir }: { r: Renglon; registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
+function TarjetaCargada({ r, registro, escalones, editable, onCorregir }: PropsCargada) {
   const pagos = <Pagos r={registro} />;
   const cuerpo = (
     <>
@@ -411,7 +426,7 @@ function TarjetaCargada({ r, registro, editable, onCorregir }: { r: Renglon; reg
         </span>
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Dosis</span>
-          <DosisDeLaSemana registro={registro} />
+          <DosisDeLaSemana registro={registro} escalones={escalones} />
         </span>
       </span>
       {registro.observaciones && (

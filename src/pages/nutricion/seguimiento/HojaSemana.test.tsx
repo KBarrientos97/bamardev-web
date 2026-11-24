@@ -89,10 +89,10 @@ describe("cargar una semana", () => {
     expect(sinNb(screen.getByText(/^Anterior:/).textContent)).toBe("Anterior: 124,7 kg");
     // La franja de la semana pasada: su peso, su dosis y cuántas aplicaciones lleva (la «No se aplicó» no corta).
     const franja = screen.getByText(/^La semana pasada/).parentElement!;
-    expect(sinNb(franja.textContent)).toContain("124,7 kg · 17 UI (5,1 mg) · lleva 4 aplicaciones con esa dosis");
+    expect(sinNb(franja.textContent)).toContain("124,7 kg · 17 UI (5 mg) · lleva 4 aplicaciones con esa dosis");
     // «Igual que la anterior» viene marcada: es la única dosis elegida (y el escalón de 5 mg, que es la misma).
     expect(igual()).toHaveAttribute("aria-pressed", "true");
-    expect(sinNb(igual().textContent)).toBe("Igual que la anterior17 UI · 5,1 mg");
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior17 UI · 5 mg");
     expect(otra()).toHaveValue("");
     // La semana 8 no es de pago; el pago pendiente del mes 2 deja el bloque abierto.
     expect(screen.queryByText(/^Hoy toca el pago del mes/)).not.toBeInTheDocument();
@@ -167,7 +167,7 @@ describe("cargar una semana", () => {
     expect(sinNb(igual().textContent)).toContain("17 UI");
     const franja = sinNb(screen.getByText(/^La semana pasada/).parentElement!.textContent);
     expect(franja).toContain("no se aplicó (Viaje)");
-    expect(franja).toContain("la última dosis: 17 UI (5,1 mg), 3 aplicaciones");
+    expect(franja).toContain("la última dosis: 17 UI (5 mg), 3 aplicaciones");
   });
 
   it("si eligen otra dosis, ésa es la «anterior» de la semana siguiente", () => {

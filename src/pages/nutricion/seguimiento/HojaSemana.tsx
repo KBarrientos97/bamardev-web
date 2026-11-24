@@ -10,6 +10,7 @@ import {
   delCatalogo,
   diaYMes,
   dosisYSusMg,
+  escalonesDeLaSemana,
   esSemanaDePago,
   igualQueLaAnterior,
   marcaVigente,
@@ -19,6 +20,7 @@ import {
   pagoDelRegistro,
   partesEquivalencias,
   pasosDe,
+  pasosMgDe,
   pesoDeLaEvaluacion,
   productoInicialDe,
   productoVigente,
@@ -27,6 +29,7 @@ import {
   textoPagoAnterior,
   textoPresentacion,
   ultimoPagoAntes,
+  type EscalonesDeLaSemana,
 } from "../../../lib/nutricion/seguimiento/formato";
 import {
   cambioLaMarca,
@@ -221,9 +224,7 @@ export default function HojaSemana({
   // Los escalones son de la droga (en mg): los que manda el servidor o, si el
   // producto de hoy no es del catálogo, los del producto de esta semana o del
   // inicio. Se cuentan con el vial de ESTA semana.
-  const pasosMg = tratamiento.pasos.length
-    ? tratamiento.pasos.map((p) => p.mg)
-    : (delCatalogo(catalogo, productoSemana.nombre) ?? delCatalogo(catalogo, vigente.nombre) ?? delCatalogo(catalogo, productoInicialDe(tratamiento).nombre))?.pasosMg ?? [];
+  const pasosMg = pasosMgDe(tratamiento, catalogo, productoSemana.nombre, vigente.nombre);
   const pasos = pasosDe(pasosMg, mgPorMlSemana, catalogo.uiPorMl);
   const faltaVial = pasos.length > 0 && unidad !== "mg" && !mgPorMlSemana;
   // Las presentaciones del catálogo para el producto nuevo (o, si no es del catálogo, las de la droga).
@@ -408,7 +409,7 @@ export default function HojaSemana({
             )}
           </div>
         }
-        franja={pasada && <FranjaSemanaPasada pasada={pasada} racha={racha} />}
+        franja={pasada && <FranjaSemanaPasada pasada={pasada} racha={racha} escalones={racha ? escalonesDeLaSemana(tratamiento, racha.semana, catalogo) : null} />}
         pie={<PieHoja onCancelar={pedirCerrar} onGuardar={() => void guardar()} guardando={guardando} etiqueta={esInicial ? "Guardar el inicial" : `Guardar la semana ${numero}`} />}
       >
         <div
@@ -562,17 +563,18 @@ const sinCerrar = () => {};
 /**
  * «La semana pasada (4 · 17/11): 123,9 kg · 8 UI (2,4 mg) · lleva 4
  * aplicaciones con esa dosis». Si la pasada no se aplicó, la dice y nombra la
- * última dosis aplicada.
+ * última dosis aplicada. La dosis, leída contra los escalones de su semana:
+ * «8 UI (2,5 mg)», no «(2,4 mg)» (§7.4).
  */
-function FranjaSemanaPasada({ pasada, racha }: { pasada: Registro; racha: ReturnType<typeof rachaAntes> }) {
+function FranjaSemanaPasada({ pasada, racha, escalones }: { pasada: Registro; racha: ReturnType<typeof rachaAntes>; escalones: EscalonesDeLaSemana | null }) {
   const partes: string[] = [];
   if (pasada.pesoKg != null) partes.push(`${fmtNumero(pasada.pesoKg, 2)} kg`);
   const enEsa = racha && racha.semana === pasada.semana;
   if (pasada.sinDosis) partes.push(`no se aplicó${pasada.motivoSinDosis ? ` (${pasada.motivoSinDosis})` : ""}`);
-  else if (enEsa) partes.push(dosisYSusMg(racha.dosis));
+  else if (enEsa) partes.push(dosisYSusMg(racha.dosis, escalones));
   if (racha) {
     const veces = `${racha.aplicaciones} ${racha.aplicaciones === 1 ? "aplicación" : "aplicaciones"}`;
-    partes.push(enEsa ? `lleva ${veces} con esa dosis` : `la última dosis: ${dosisYSusMg(racha.dosis)}, ${veces}`);
+    partes.push(enEsa ? `lleva ${veces} con esa dosis` : `la última dosis: ${dosisYSusMg(racha.dosis, escalones)}, ${veces}`);
   }
   return (
     <div className="flex shrink-0 flex-wrap gap-x-2 gap-y-0.5 border-b border-borde bg-primary-50/60 px-4 py-2.5 text-sm leading-[1.45] text-texto-2 sm:px-6 sm:py-3 lg:py-2.5">

@@ -8,14 +8,15 @@ import { conAlt, ctrlEnter, escribiendo, hayDialogoAbierto, useTeclas } from "..
 import { conUnidad, fechaLarga, hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, esNoEncontrado } from "../../../lib/nutricion/seguimiento/api";
 import {
+  escalonesDeLaSemana,
   flechaKg,
+  leerDosis,
   nombreSemana,
-  partesEquivalencias,
+  rachaAntes,
   semanaCorta,
   semanas,
   textoKg,
   textoProducto,
-  textoDosis,
   textoFaltaPago,
   textoJeringa,
   textoMgPorUi,
@@ -393,12 +394,12 @@ export default function HojaSeguimiento() {
 
           {enCurso && <AvisosDePago t={t} edita={editable} onAnotar={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana, focoPago: true })} />}
 
-          <Resumen t={t} />
+          <Resumen t={t} catalogo={cat} />
 
           <Tarjeta
             titulo="Semanas"
             bajada={editable ? "Tocá una semana para corregirla." : undefined}
-            acciones={<BotonesPdf t={t} paciente={p} negocio={negocio?.nombre ?? null} onAviso={setAviso} onError={setError} />}
+            acciones={<BotonesPdf t={t} catalogo={cat} paciente={p} negocio={negocio?.nombre ?? null} onAviso={setAviso} onError={setError} />}
             sinRelleno
             barra={
               t.meses.length > 1 ? (
@@ -412,6 +413,7 @@ export default function HojaSeguimiento() {
           >
             <TablaSemanas
               tratamiento={t}
+              catalogo={cat}
               mes={mes}
               editable={editable}
               onCorregir={(r) => setAbierta({ que: "semana", registro: r, semana: r.semana })}
@@ -667,13 +669,16 @@ function AvisosDePago({ t, edita, onAnotar }: { t: Tratamiento; edita: boolean; 
 
 // ── Las tarjetas ────────────────────────────────────────────────────────────
 
-function Resumen({ t }: { t: Tratamiento }) {
+function Resumen({ t, catalogo }: { t: Tratamiento; catalogo: CatalogoSeguimiento }) {
   const r = t.resumen;
   const kg = flechaKg(r.kgBajados);
   const total = textoKg(r.kgBajados);
   // La última semana con peso anterior: «Última semana: bajó 0,4 kg».
   const ultimaSemana = textoKg([...t.registros].reverse().find((x) => x.kgSemana != null)?.kgSemana);
   const d = r.dosisActual;
+  // La dosis actual se lee contra los escalones de SU semana (§7.4): «42 UI» y «12,5 mg», no «≈ 12,6 mg».
+  const deLaDosis = rachaAntes(t.registros, Infinity)?.semana;
+  const leida = d ? leerDosis(d, deLaDosis != null ? escalonesDeLaSemana(t, deLaDosis, catalogo) : null) : null;
   const sinAplicar = r.semanasSinDosis ?? 0;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -702,11 +707,11 @@ function Resumen({ t }: { t: Tratamiento }) {
       />
       <KpiTarjeta
         etiqueta="Dosis actual"
-        valor={d ? textoDosis(d).anotado : "—"}
+        valor={leida ? leida.anotado : "—"}
         pie={
           d || sinAplicar > 0 ? (
             <span className="block space-y-0.5">
-              {d && partesEquivalencias(d, d.unidadDosis).length > 0 && <Equivalentes partes={partesEquivalencias(d, d.unidadDosis)} className="block" />}
+              {leida && leida.equivalencias.length > 0 && <Equivalentes partes={leida.equivalencias} aprox={leida.aprox} className="block" />}
               {d && r.semanasEnDosis > 0 && <span className="block">{semanas(r.semanasEnDosis)} en esta dosis</span>}
               {sinAplicar > 0 && <span className="block font-semibold text-warning-text">{semanas(sinAplicar)} sin aplicar</span>}
             </span>
@@ -799,12 +804,14 @@ function ChipsDeMes({ valor, onChange, opciones }: { valor: string; onChange: (v
  */
 function BotonesPdf({
   t,
+  catalogo,
   paciente,
   negocio,
   onAviso,
   onError,
 }: {
   t: Tratamiento;
+  catalogo: CatalogoSeguimiento;
   paciente: HojaPaciente["paciente"];
   negocio: string | null;
   onAviso: (texto: string) => void;
@@ -816,7 +823,7 @@ function BotonesPdf({
     setArmando(que);
     onError("");
     try {
-      const doc = documentoSeguimiento({ negocio, paciente, tratamiento: t });
+      const doc = documentoSeguimiento({ negocio, paciente, tratamiento: t, catalogo });
       if (que === "pdf") {
         const r = await bajarPdfSeguimiento(doc);
         if (r === "guardado" || r === "descargado") onAviso("PDF del seguimiento listo.");

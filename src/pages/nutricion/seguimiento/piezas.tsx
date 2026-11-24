@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
-import { partesEquivalencias, textoDosis } from "../../../lib/nutricion/seguimiento/formato";
+import { leerDosis, type EscalonesDeLaSemana } from "../../../lib/nutricion/seguimiento/formato";
 import type { DosisAnotada, Equivalencias, UnidadDosis } from "../../../lib/nutricion/seguimiento/tipos";
 
 /**
@@ -10,35 +10,40 @@ import type { DosisAnotada, Equivalencias, UnidadDosis } from "../../../lib/nutr
  * (tarjetas, encabezado, tablas) es el de la Academia, como en la Evaluación.
  */
 
-/** «17 UI» y, al lado o debajo en gris, «≈ 5,1 mg · 0,17 ml». Cada equivalencia baja de renglón entera. */
+/**
+ * «17 UI» y, al lado o debajo en gris, «≈ 5,1 mg · 0,17 ml». Cada equivalencia
+ * baja de renglón entera. Con los escalones de su semana, la dosis de un
+ * escalón va con sus valores y sin «≈» («8 UI», «2,5 mg · 0,08 ml»; §7.4).
+ */
 export function Dosis({
   dosis,
+  escalones,
   apilada = false,
   className = "",
 }: {
   dosis: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>;
+  escalones?: EscalonesDeLaSemana | null;
   /** Las equivalencias debajo (en la tabla y las tarjetas) en vez de al lado. */
   apilada?: boolean;
   className?: string;
 }) {
-  const { anotado } = textoDosis(dosis);
-  const partes = partesEquivalencias(dosis, dosis.unidadDosis);
+  const { anotado, equivalencias, aprox } = leerDosis(dosis, escalones);
   return (
     <span className={`${apilada ? "block" : "inline-flex flex-wrap items-baseline gap-x-2"} tabular-nums ${className}`}>
       <span className="whitespace-nowrap font-semibold text-texto">{anotado}</span>
-      {partes.length > 0 && <Equivalentes partes={partes} className={apilada ? "mt-0.5 block text-[12px]" : "text-[13px]"} />}
+      {equivalencias.length > 0 && <Equivalentes partes={equivalencias} aprox={aprox} className={apilada ? "mt-0.5 block text-[12px]" : "text-[13px]"} />}
     </span>
   );
 }
 
-/** «≈ 5,1 mg · 0,17 ml», en gris; cada parte entera. */
-export function Equivalentes({ partes, className = "" }: { partes: string[]; className?: string }) {
+/** «≈ 5,1 mg · 0,17 ml», en gris; cada parte entera. Las de un escalón, sin «≈» (`aprox` en falso, §7.4). */
+export function Equivalentes({ partes, aprox = true, className = "" }: { partes: string[]; aprox?: boolean; className?: string }) {
   if (!partes.length) return null;
   return (
     <span className={`text-texto-3 ${className}`}>
       {partes.map((p, i) => (
         <span key={p} className="whitespace-nowrap">
-          {i === 0 ? "≈ " : ""}
+          {i === 0 && aprox ? "≈ " : ""}
           {p}
           {i < partes.length - 1 ? " · " : ""}
         </span>

@@ -28,7 +28,7 @@ describe("lo que dice el papel", () => {
       TALLA: "1,58 m",
       PRODUCTO: "Tirzepatida · 15 mg en 0,5 ml",
       SEMANAS: "7 de tratamiento",
-      "DOSIS ACTUAL": "17 UI · 5,1 mg",
+      "DOSIS ACTUAL": "17 UI · 5 mg",
     });
     expect(doc.resumen.map((k) => [k.etiqueta, k.valor, k.nota])).toEqual([
       ["PESO INICIAL", "129 kg", "IMC 51,7"],
@@ -40,7 +40,7 @@ describe("lo que dice el papel", () => {
 
   it("una fila por semana: «Bajó/Subió» y el total, la dosis sin «≈», «No se aplicó» con su motivo, las observaciones enteras", () => {
     const s = (n: string) => doc.filas.find((f) => f.semana === n)!;
-    expect(s("Semana 7")).toMatchObject({ peso: "124,7 kg", kg: { texto: "Subió 0,8", tono: "subio" }, kgTotal: "4,3 desde el inicio", dosis: "17 UI · 5,1 mg" });
+    expect(s("Semana 7")).toMatchObject({ peso: "124,7 kg", kg: { texto: "Subió 0,8", tono: "subio" }, kgTotal: "4,3 desde el inicio", dosis: "17 UI · 5 mg" });
     expect(s("Semana 6")).toMatchObject({ dosis: "No se aplicó", dosisDetalle: "Viaje", noSeAplico: true });
     expect(s("Semana 6").observaciones).toMatch(/Retoma la semana que viene con la misma dosis, sin subir\.$/);
     expect(s("Inicial")).toMatchObject({ kg: null, kgTotal: null });
@@ -61,7 +61,13 @@ describe("lo que dice el papel", () => {
     expect(d.negocio).toBeNull();
   });
 
-  it("la dosis para el papel: lo anotado y su otro dato", () => {
+  it("la dosis para el papel: lo anotado y su otro dato; la de un escalón, con los valores del escalón (§7.4)", () => {
+    // 17 UI con el vial de 30 mg/ml es el escalón de 5 mg (16,7 redondeado): «5 mg», no «5,1 mg».
+    const esc = { pasosMg: [2.5, 5, 7.5, 10, 12.5, 15], mgPorMl: 30 };
+    expect(dosisParaPdf({ dosis: 17, unidadDosis: "UI", dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 }, esc)).toBe("17 UI · 5 mg");
+    expect(dosisParaPdf({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, esc)).toBe("8 UI · 2,5 mg");
+    expect(dosisParaPdf({ dosis: 20, unidadDosis: "UI", dosisMg: 6, dosisUi: 20, dosisMl: 0.2 }, esc)).toBe("20 UI · 6 mg");
+    expect(dosisParaPdf({ dosis: 17, unidadDosis: "UI", dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 })).toBe("17 UI · 5,1 mg");
     expect(dosisParaPdf({ dosis: 2.5, unidadDosis: "mg", dosisMg: 2.5, dosisUi: 8.3 })).toBe("2,5 mg · 8 UI");
     expect(dosisParaPdf({ dosis: 10, unidadDosis: "UI", dosisMg: null, dosisUi: 10 })).toBe("10 UI");
     expect(dosisParaPdf({ dosis: null, unidadDosis: null, dosisMg: null, dosisUi: null })).toBe("—");

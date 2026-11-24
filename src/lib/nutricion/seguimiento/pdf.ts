@@ -3,8 +3,8 @@ import { esCelular } from "../../compartirTicket";
 import { entregarPdf, type EntregaPdf } from "../../pdf/tablaPdf";
 import { Telefono } from "../../telefono";
 import { calcularImc, fechaLarga, fmtNumero, hoyIso } from "../calculo";
-import { nombreSemana, numeroDeDosis, productoVigente, textoKg, textoKgTotal, textoProducto } from "./formato";
-import type { HojaPaciente, Registro, Tratamiento } from "./tipos";
+import { escalonesDeLaSemana, leerDosis, nombreSemana, productoVigente, rachaAntes, textoKg, textoKgTotal, textoProducto, type EscalonesDeLaSemana } from "./formato";
+import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento } from "./tipos";
 
 /**
  * El PDF del seguimiento del tratamiento (CONTRATO-nutricion-seguimiento-23nov
@@ -58,12 +58,16 @@ export interface DocumentoSeguimiento {
   filas: FilaPdfSeguimiento[];
 }
 
-/** Una dosis para el papel: lo anotado y su otro dato, sin «≈» («8 UI · 2,4 mg»; en mg, «2,5 mg · 8 UI»). */
-export function dosisParaPdf(r: Pick<Registro, "dosis" | "unidadDosis" | "dosisMg" | "dosisUi">): string {
+/**
+ * Una dosis para el papel: lo anotado y su otro dato, sin «≈» («8 UI · 2,5 mg»;
+ * en mg, «2,5 mg · 8 UI»). Con los escalones de su semana, la de un escalón va
+ * con los valores del escalón, como en la pantalla (§7.4).
+ */
+export function dosisParaPdf(r: Pick<Registro, "dosis" | "unidadDosis" | "dosisMg" | "dosisUi"> & Partial<Pick<Registro, "dosisMl">>, escalones?: EscalonesDeLaSemana | null): string {
   if (r.dosis == null || !r.unidadDosis) return "—";
+  const l = leerDosis({ dosis: r.dosis, unidadDosis: r.unidadDosis, dosisMg: r.dosisMg, dosisUi: r.dosisUi, dosisMl: r.dosisMl ?? null }, escalones);
   const anotado = `${fmtNumero(r.dosis, 3)} ${r.unidadDosis}`;
-  const otro = r.unidadDosis === "mg" ? (r.dosisUi != null ? `${numeroDeDosis(r.dosisUi, "UI").texto} UI` : null) : r.dosisMg != null ? `${numeroDeDosis(r.dosisMg, "mg").texto} mg` : null;
-  return otro ? `${anotado} · ${otro}` : anotado;
+  return sinEspaciosDuros(l.otraSinAprox ? `${anotado} · ${l.otraSinAprox}` : anotado);
 }
 
 const sinEspaciosDuros = (s: string) => s.replace(/[   ]/g, " ");
@@ -73,11 +77,14 @@ export function documentoSeguimiento({
   negocio,
   paciente,
   tratamiento: t,
+  catalogo,
   hoy = hoyIso(),
 }: {
   negocio: string | null | undefined;
   paciente: HojaPaciente["paciente"];
   tratamiento: Tratamiento;
+  /** Para leer cada dosis contra sus escalones (§7.4); sin él, los escalones del tratamiento. */
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null;
   hoy?: string;
 }): DocumentoSeguimiento {
   const r = t.resumen;
@@ -91,6 +98,8 @@ export function documentoSeguimiento({
   };
   const kg = (n: number | null) => (n == null ? "—" : `${fmtNumero(n, 2)} kg`);
   const d = r.dosisActual;
+  const escalones = (semana: number) => escalonesDeLaSemana(t, semana, catalogo);
+  const semanaDeLaDosis = rachaAntes(t.registros, Infinity)?.semana;
 
   const filas: FilaPdfSeguimiento[] = t.registros.map((x) => {
     const k = textoKg(x.kgSemana);
@@ -105,7 +114,7 @@ export function documentoSeguimiento({
       peso: kg(x.pesoKg),
       kg: k ? { texto: k.texto, tono: k.tono } : null,
       kgTotal: textoKgTotal(x.kgBajados),
-      dosis: x.sinDosis ? "No se aplicó" : dosisParaPdf(x),
+      dosis: x.sinDosis ? "No se aplicó" : dosisParaPdf(x, escalones(x.semana)),
       dosisDetalle: x.sinDosis ? x.motivoSinDosis : null,
       noSeAplico: x.sinDosis,
       marca: marca ? sinEspaciosDuros(marca) : null,
@@ -128,7 +137,7 @@ export function documentoSeguimiento({
         etiqueta: "SEMANAS",
         valor: t.estado === "TERMINADO" && t.terminadoEn ? `${r.semana} (terminó el ${fechaLarga(t.terminadoEn)})` : `${r.semana} de tratamiento`,
       },
-      { etiqueta: "DOSIS ACTUAL", valor: d ? dosisParaPdf(d) : "—" },
+      { etiqueta: "DOSIS ACTUAL", valor: d ? dosisParaPdf(d, semanaDeLaDosis != null ? escalones(semanaDeLaDosis) : null) : "—" },
     ],
     resumen: [
       { etiqueta: "PESO INICIAL", valor: kg(r.pesoInicial), nota: imc(r.pesoInicial) },

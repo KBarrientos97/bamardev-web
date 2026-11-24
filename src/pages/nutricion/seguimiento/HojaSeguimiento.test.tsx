@@ -105,6 +105,16 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(sinNb(screen.getByText(/^Última semana:/).textContent)).toBe("Última semana: subió 0,8 kg");
   });
 
+  // §7.4: 17 UI con el vial de 30 mg/ml es el escalón de 5 mg (16,7 redondeado): la tabla y la tarjeta lo dicen así, sin «≈».
+  it("la dosis de un escalón se lee con los valores del escalón: «17 UI» y «5 mg · 0,17 ml», no «≈ 5,1 mg»", async () => {
+    await abrirHoja(12);
+    const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+    const fila = (n: number) => sinNb(within(screen.getByRole("table")).getByRole("button", { name: `Corregir la semana ${n}` }).closest("tr")!.cells[3].textContent);
+    expect(fila(7)).toBe("17 UI5 mg · 0,17 ml");
+    expect(sinNb(screen.getByText("Dosis actual").closest("div")!.parentElement!.textContent)).toContain("17 UI5 mg · 0,17 ml");
+    expect(screen.queryByText(/5,1.mg/)).not.toBeInTheDocument();
+  });
+
   // §7.1 y §7.2: el renglón de la marca en la tabla, con «Corregir»; y «Editar tratamiento» corrige el del inicio.
   it("el cambio de producto: su renglón en la tabla abre esa semana con el producto; «Editar tratamiento» es el del inicio", async () => {
     const lucia = structuredClone(pacientes.find((p) => p.paciente.id === 12)!);

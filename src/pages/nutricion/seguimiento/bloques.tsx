@@ -247,9 +247,14 @@ export function BloqueDosis({
   const equivalencias =
     guardadas ?? (enOtra && n != null && unidad ? partesEquivalencias(equivalenciasDe(n, unidad, mgPorMl, uiPorMl), unidad) : []);
 
-  // «8 UI · 2,5 mg»: lo anotado tal cual; pasado a otro vial, la cuenta con «≈».
+  // «8 UI · 2,5 mg»: si escribe lo mismo que un escalón, lo del escalón (§7.4:
+  // 8 rayitas SON los 2,5 mg, aunque el vial diga 2,4); si no, lo anotado tal
+  // cual y, pasado a otro vial, la cuenta con «≈».
+  const pasoIgual = igual ? visibles.find((p) => delPaso(p) === igual.escribe) : undefined;
   const textoIgual =
-    igual && antes && unidad
+    pasoIgual && unidad
+      ? Object.values(partesPaso(pasoIgual, unidad)).filter(Boolean).join(" · ")
+      : igual && antes && unidad
       ? igual.calculada
         ? [fmtDosisCalculada(igual.valor, unidad), unidad !== "mg" && antes.dosisMg != null ? `${numeroDeDosis(antes.dosisMg, "mg").texto} mg` : null]
             .filter(Boolean)

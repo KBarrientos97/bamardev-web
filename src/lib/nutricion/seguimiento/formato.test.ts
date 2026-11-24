@@ -5,16 +5,19 @@ import {
   diasEntre,
   enUnidad,
   equivalenciasDe,
+  escalonesDeLaSemana,
   esSemanaDePago,
   flechaKg,
   fmtDosis,
   fmtDosisCalculada,
   haceDias,
+  leerDosis,
   mesDeLaSemana,
   mismaDosisEn,
   paraEscribir,
   pasoSiguiente,
   pasosDe,
+  pasosMgDe,
   textoCambioPeso,
   textoDosis,
   textoEquivalencias,
@@ -138,9 +141,9 @@ describe("los botones de un toque de la dosis (§4.2)", () => {
     expect(paraEscribir(12.5, "mg")).toBe("12,5");
   });
 
-  it("cada escalón con sus dos datos: «8 UI · 2,5 mg»; con la unidad en mg, «2,5 mg · ≈ 8 UI»", () => {
+  it("cada escalón con sus dos datos, sin «≈» (§7.4): «8 UI · 2,5 mg»; con la unidad en mg, «2,5 mg · 8 UI»", () => {
     expect(PASOS_15.slice(0, 3).map((p) => sinNb(textoPaso(p, "UI")))).toEqual(["8 UI · 2,5 mg", "17 UI · 5 mg", "25 UI · 7,5 mg"]);
-    expect(sinNb(textoPaso(PASOS_15[0], "mg"))).toBe("2,5 mg · ≈ 8 UI");
+    expect(sinNb(textoPaso(PASOS_15[0], "mg"))).toBe("2,5 mg · 8 UI");
     expect(sinNb(textoPaso({ mg: 2.5, ui: null, ml: null }, "mg"))).toBe("2,5 mg");
     expect(sinNb(textoPaso(PASOS_15[2], "ml"))).toBe("0,25 ml · 7,5 mg");
   });
@@ -155,7 +158,7 @@ describe("los botones de un toque de la dosis (§4.2)", () => {
     expect(pasoSiguiente(PASOS_15, { dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, "UI")?.mg).toBe(5);
     // Una dosis entre dos escalones (6 mg): el primero con más mg.
     expect(pasoSiguiente(PASOS_15, { dosis: 6, unidadDosis: "mg", dosisMg: 6, dosisUi: 20, dosisMl: 0.2 }, "mg")?.mg).toBe(7.5);
-    expect(sinNb(textoSubir(PASOS_15[2], "mg"))).toBe("Subir: 7,5 mg (≈ 25 UI)");
+    expect(sinNb(textoSubir(PASOS_15[2], "mg"))).toBe("Subir: 7,5 mg (25 UI)");
   });
 
   it("sin dosis de antes, en el último escalón o sin poder pasar a mg: no hay «Subir»", () => {
@@ -291,7 +294,7 @@ describe("la semana pasada, la dosis marcada y el pago anterior (§7.2)", () => 
   it("un escalón en su botón: arriba la unidad del tratamiento, abajo el otro dato", () => {
     const p = PASOS_15[0];
     expect(Object.values(partesPaso(p, "UI")).map((t) => sinNb(t ?? ""))).toEqual(["8 UI", "2,5 mg"]);
-    expect(Object.values(partesPaso(p, "mg")).map((t) => sinNb(t ?? ""))).toEqual(["2,5 mg", "≈ 8 UI"]);
+    expect(Object.values(partesPaso(p, "mg")).map((t) => sinNb(t ?? ""))).toEqual(["2,5 mg", "8 UI"]);
     expect(Object.values(partesPaso(p, "ml")).map((t) => sinNb(t ?? ""))).toEqual(["0,08 ml", "2,5 mg"]);
     expect(partesPaso({ mg: 2.5, ui: null, ml: null }, "mg").secundario).toBeNull();
   });
@@ -398,5 +401,60 @@ describe("el catálogo", () => {
     expect(delCatalogo(CATALOGO_SEGUIMIENTO, " RETATRUTIDA ")?.nombre).toBe("Retatrutida");
     expect(delCatalogo(CATALOGO_SEGUIMIENTO, "Otro")).toBeNull();
     expect(delCatalogo(CATALOGO_SEGUIMIENTO, "")).toBeNull();
+  });
+});
+
+describe("cómo se lee una dosis anotada (§7.4): la de un escalón, con sus valores y sin «≈»", () => {
+  const ESC_30 = { pasosMg: [2.5, 5, 7.5, 10, 12.5, 15], mgPorMl: 30, uiPorMl: 100 };
+  const ESC_20 = { pasosMg: [2.5, 5, 7.5, 10, 12.5, 15], mgPorMl: 20, uiPorMl: 100 };
+  const leer = (d: Parameters<typeof leerDosis>[0], e?: Parameters<typeof leerDosis>[1]) => {
+    const l = leerDosis(d, e);
+    return { ...l, anotado: sinNb(l.anotado), equivalencias: l.equivalencias.map(sinNb), otra: l.otra && sinNb(l.otra) };
+  };
+
+  it("8 UI con el vial de 30 mg/ml es el escalón de 2,5 mg: «8 UI · 2,5 mg», no «≈ 2,4 mg»", () => {
+    const l = leer({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, ESC_30);
+    expect(l).toMatchObject({ anotado: "8 UI", equivalencias: ["2,5 mg", "0,08 ml"], aprox: false, otra: "2,5 mg" });
+    // 42 UI es el de 12,5 mg (41,7 redondeado), no «12,6 mg».
+    expect(leer({ dosis: 42, unidadDosis: "UI", dosisMg: 12.6, dosisUi: 42, dosisMl: 0.42 }, ESC_30)).toMatchObject({ equivalencias: ["12,5 mg", "0,42 ml"], aprox: false });
+    expect(sinNb(dosisConMg({ dosis: 42, unidadDosis: "UI", dosisMg: 12.6, dosisUi: 42, dosisMl: 0.42 }, ESC_30))).toBe("42 UI · 12,5 mg");
+    expect(sinNb(dosisYSusMg({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, ESC_30))).toBe("8 UI (2,5 mg)");
+  });
+
+  it("fuera de los escalones (o sin ellos), lo calculado con «≈», como antes", () => {
+    expect(leer({ dosis: 20, unidadDosis: "UI", dosisMg: 6, dosisUi: 20, dosisMl: 0.2 }, ESC_30)).toMatchObject({ equivalencias: ["6 mg", "0,20 ml"], aprox: true, otra: "6 mg" });
+    // 8,3 anotado no es lo que escribe el botón (8): es una dosis «Otra».
+    expect(leer({ dosis: 8.3, unidadDosis: "UI", dosisMg: 2.49, dosisUi: 8.3, dosisMl: 0.083 }, ESC_30).aprox).toBe(true);
+    expect(leer({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }).aprox).toBe(true);
+    expect(leer({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, { pasosMg: [] }).equivalencias).toEqual(["2,4 mg", "0,08 ml"]);
+  });
+
+  it("con otro vial, el escalón es el de ESA semana: 38 UI de 20 mg/ml son 7,5 mg (37,5 redondeado)", () => {
+    expect(leer({ dosis: 38, unidadDosis: "UI", dosisMg: 7.6, dosisUi: 38, dosisMl: 0.38 }, ESC_20)).toMatchObject({ equivalencias: ["7,5 mg", "0,38 ml"], aprox: false });
+    // Sin la pista del vial, la concentración sale de lo guardado (7,6 / 0,38 = 20).
+    expect(leer({ dosis: 38, unidadDosis: "UI", dosisMg: 7.6, dosisUi: 38, dosisMl: 0.38 }, { pasosMg: ESC_20.pasosMg }).aprox).toBe(false);
+    // 8 UI con 20 mg/ml son 1,6 mg: no es ningún escalón.
+    expect(leer({ dosis: 8, unidadDosis: "UI", dosisMg: 1.6, dosisUi: 8, dosisMl: 0.08 }, ESC_20).aprox).toBe(true);
+    // La pista que no coincide con lo guardado (el vial se corrigió después) no manda: va lo guardado.
+    expect(leer({ dosis: 8, unidadDosis: "UI", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, ESC_20)).toMatchObject({ equivalencias: ["2,5 mg", "0,08 ml"], aprox: false });
+  });
+
+  it("en mg, el espejo: «2,5 mg · 8 UI» sin «≈»; y en ml, «0,08 ml · 2,5 mg»", () => {
+    expect(leer({ dosis: 2.5, unidadDosis: "mg", dosisMg: 2.5, dosisUi: 8.3, dosisMl: 0.083 }, ESC_30)).toMatchObject({ equivalencias: ["8 UI", "0,08 ml"], aprox: false, otra: "8 UI" });
+    expect(sinNb(dosisConMg({ dosis: 2.5, unidadDosis: "mg", dosisMg: 2.5, dosisUi: 8.3, dosisMl: 0.083 }, ESC_30))).toBe("2,5 mg · 8 UI");
+    expect(leer({ dosis: 3, unidadDosis: "mg", dosisMg: 3, dosisUi: 10, dosisMl: 0.1 }, ESC_30).aprox).toBe(true);
+    expect(leer({ dosis: 0.08, unidadDosis: "ml", dosisMg: 2.4, dosisUi: 8, dosisMl: 0.08 }, ESC_30)).toMatchObject({ equivalencias: ["2,5 mg", "8 UI"], aprox: false, otra: "2,5 mg" });
+    // En mg sin vial: es el escalón, pero no hay UI ni ml que mostrar.
+    expect(leer({ dosis: 5, unidadDosis: "mg", dosisMg: 5, dosisUi: null, dosisMl: null }, { pasosMg: ESC_30.pasosMg })).toMatchObject({ equivalencias: [], otra: null });
+  });
+
+  it("los escalones de cada semana: los del tratamiento y el vial del producto vigente (§7.1)", () => {
+    const crudo = pacientesDePrueba("2026-11-23").find((p) => p.paciente.id === 12)!.tratamientos[0];
+    const t = armarTratamiento({ ...crudo, semanas: crudo.semanas.map((s) => (s.semana === 3 ? { ...s, producto: { nombre: "TG", vialMg: 10, vialMl: 0.5 } } : s)) });
+    expect(escalonesDeLaSemana(t, 2, CATALOGO_SEGUIMIENTO)).toEqual({ pasosMg: [2.5, 5, 7.5, 10, 12.5, 15], mgPorMl: 30, uiPorMl: 100 });
+    expect(escalonesDeLaSemana(t, 4, CATALOGO_SEGUIMIENTO).mgPorMl).toBe(20);
+    // El producto de hoy no es del catálogo (sin pasos del servidor): los de la droga del inicio.
+    expect(pasosMgDe({ ...t, pasos: [] }, CATALOGO_SEGUIMIENTO, "Tirze")).toEqual([2.5, 5, 7.5, 10, 12.5, 15]);
+    expect(pasosMgDe({ ...t, pasos: [], nombre: "Otra", productoInicial: { nombre: "Otra", vialMg: null, vialMl: null }, registros: [] }, CATALOGO_SEGUIMIENTO)).toEqual([]);
   });
 });
