@@ -451,6 +451,15 @@ describe("el cambio de producto (§7.1 y §7.2)", () => {
     expect(onGuardado.mock.calls[0][2]).toBe(true);
   });
 
+  // Probado el 24-nov: con un producto nuevo sin vial decía «Igual que la anterior 25 UI · 7,5 mg», con los mg del vial viejo.
+  it("un producto nuevo sin vial: «Igual que la anterior» sin los mg (no se sabe cuántos son)", () => {
+    abrir(lucia, { semana: 8 });
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    fireEvent.change(screen.getByLabelText("Producto nuevo"), { target: { value: "Tirze" } });
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior17 UI");
+    expect(igual()).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("abrirlo y cerrarlo sin escribir no deja cambios", () => {
     const { onCerrar } = abrir(lucia);
     fireEvent.click(boton(/^Cambió de producto desde esta semana/));

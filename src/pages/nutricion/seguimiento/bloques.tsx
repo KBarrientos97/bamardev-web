@@ -259,7 +259,10 @@ export function BloqueDosis({
         ? [fmtDosisCalculada(igual.valor, unidad), unidad !== "mg" && antes.dosisMg != null ? `${numeroDeDosis(antes.dosisMg, "mg").texto} mg` : null]
             .filter(Boolean)
             .join(" · ")
-        : dosisConMg(antes)
+        : unidad !== "mg" && !mgPorMl
+          ? // Sin el vial de ESTA semana (un producto nuevo sin presentación) no se sabe cuántos mg son: sin los de antes.
+            fmtDosis(antes.dosis, antes.unidadDosis)
+          : dosisConMg(antes)
       : null;
   const textoSubirPaso = subir && unidad ? Object.values(partesPaso(subir, unidad)).filter(Boolean).join(" · ") : null;
 
