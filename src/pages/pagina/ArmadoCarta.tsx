@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { ICONO_RED } from "../../lib/pagina/aspecto";
+import { atributosEnlace } from "../../lib/pagina/enlaceExterno";
 import { CARTA } from "../../lib/pagina/estilosPagina";
 import { urlTelefono } from "../../lib/pagina/vista";
 import { EstadoSucursal } from "./HorarioSucursal";
@@ -26,7 +27,7 @@ function MosaicoAccion({ a, x }: { a: AccionPagina; x: PiezasArmado }) {
     <a
       href={a.href}
       onClick={a.onClick}
-      rel="noopener noreferrer"
+      {...atributosEnlace(a.href)}
       style={{
         ...pieza.estilo,
         borderRadius: x.radio,

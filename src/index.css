@@ -172,6 +172,34 @@ button {
   }
 }
 
+/* «Ver tu pedido» de la página pública: una franja translúcida la cruza en
+   menos de un segundo y espera el resto de los 4 s, para que se note la barra
+   sin que moleste. Quien pidió menos movimiento no la ve. */
+.barra-pedido-brillo {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.34) 50%, transparent 100%);
+  transform: translateX(-110%);
+  animation: barra-pedido-brillo 4s ease-in-out 1.2s infinite;
+}
+@keyframes barra-pedido-brillo {
+  0% {
+    transform: translateX(-110%);
+  }
+  22%,
+  100% {
+    transform: translateX(260%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .barra-pedido-brillo {
+    display: none;
+  }
+}
+
 /* Scrollbar discreta: en el POS hay varias columnas que scrollean a la vez. */
 * {
   scrollbar-width: thin;

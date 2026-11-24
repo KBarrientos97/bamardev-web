@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { iconoDe } from "../../lib/pagina/aspecto";
+import { atributosEnlace } from "../../lib/pagina/enlaceExterno";
 import { estiloLetra, type Letra } from "../../lib/pagina/estilos";
 import type { ClaveEstilo, TonosPagina } from "../../lib/pagina/estilosPagina";
 import type { EnlacePublico, PaginaPublica, SucursalPublica } from "../../lib/pagina/tipos";
@@ -70,7 +71,7 @@ export function Enlace({
   etiqueta?: string;
 }) {
   return (
-    <a href={href} style={style} onClick={onClick} rel="noopener noreferrer" aria-label={etiqueta}>
+    <a href={href} style={style} onClick={onClick} {...atributosEnlace(href)} aria-label={etiqueta}>
       {children}
     </a>
   );
