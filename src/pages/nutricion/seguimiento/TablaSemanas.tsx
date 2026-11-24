@@ -85,17 +85,22 @@ export default function TablaSemanas({
       {/* La tablet y la PC: la tabla entera, sin desplazarse de costado. */}
       <table className="hidden w-full table-fixed border-separate border-spacing-0 text-[13px] md:table">
         <caption className="sr-only">Las semanas del tratamiento, como la hoja de papel</caption>
+        {/*
+          En la tablet y en la PC con el menú (unos 700 px de tabla) Observaciones, que es la
+          elástica, quedaba de 150 px: Pagos va más angosta (cada concepto en dos renglones) y
+          Kg bajado lo justo para «11,5 desde el inicio» en un renglón. Desde 1280, Pagos ancha.
+        */}
         <colgroup>
-          <col className="w-[5.75rem]" />
-          <col className="w-[4.25rem]" />
-          <col className="w-[7.25rem]" />
-          <col className="w-[7.25rem]" />
+          <col className="w-[6.25rem]" />
+          <col className="w-[3.75rem] xl:w-[4.25rem]" />
+          <col className="w-[7.75rem]" />
+          <col className="w-[7rem] xl:w-[7.25rem]" />
           <col />
-          <col className="w-[9.75rem]" />
+          <col className="w-[7rem] xl:w-[9.75rem]" />
         </colgroup>
         <thead>
           <tr className="bg-muted text-left text-[11px] font-semibold uppercase tracking-wide text-texto-4">
-            <th scope="col" className="px-3 py-2.5 pl-4 sm:pl-5">
+            <th scope="col" className="py-2.5 pl-4 pr-2 sm:pl-5">
               Semana
             </th>
             <th scope="col" className="whitespace-nowrap px-2.5 py-2.5" title="Peso, en kg">
@@ -136,7 +141,7 @@ export default function TablaSemanas({
                 </Fragment>
               ) : (
                 <tr key={r.semana} className="text-texto-4">
-                  <td className="border-t border-borde-soft px-3 py-2 pl-4 align-middle sm:pl-5">
+                  <td className="border-t border-borde-soft py-2 pl-4 pr-2 align-middle sm:pl-5">
                     {/* Sin partir, como en los cargados: «Semana» / «11» en dos renglones (desde la 10, en todos los tamaños). */}
                     <span className="block whitespace-nowrap font-semibold">{nombreSemana(r.semana)}</span>
                     <span className="block whitespace-nowrap text-[11px]">por cargar</span>
@@ -357,7 +362,7 @@ function FilaCargada({ r, registro, escalones, editable, onCorregir }: PropsCarg
       onClick={editable ? () => onCorregir(registro) : undefined}
       className={`transition-colors ${editable ? "cursor-pointer hover:bg-muted" : ""}`}
     >
-      <td className="border-t border-borde-soft px-3 py-2.5 pl-4 align-top sm:pl-5">
+      <td className="border-t border-borde-soft py-2.5 pl-4 pr-2 align-top sm:pl-5">
         {editable ? (
           <button
             type="button"
@@ -415,7 +420,7 @@ function TarjetaCargada({ r, registro, escalones, editable, onCorregir }: PropsC
           </span>
         )}
       </span>
-      <span className="mt-2 grid grid-cols-3 gap-2 text-[13px]">
+      <span className="mt-2 grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.15fr)_minmax(0,1.15fr)] gap-x-1.5 gap-y-2 text-[13px]">
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Peso</span>
           <span className="block font-semibold tabular-nums text-texto">{registro.pesoKg != null ? `${fmtNumero(registro.pesoKg, 2)} kg` : "—"}</span>

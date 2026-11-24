@@ -101,6 +101,17 @@ export default function GraficoEvolucion({
     : nombre;
   const f = foco != null ? puntos[foco] : null;
 
+  // El globo del último valor: centrado en el último punto (sin salirse), y
+  // arriba del punto MÁS ALTO que quede debajo de él. Antes iba sólo arriba
+  // del último y, con el peso bajando, tapaba los dos o tres de antes. Si
+  // arriba no entra, va debajo del más bajo de esos.
+  const textoUltimo = ultimo ? formato(ultimo.valor) : "";
+  const anchoGlobo = textoUltimo.length * 6.6 + 18;
+  const centroGlobo = ultimo ? Math.min(w - anchoGlobo / 2, Math.max(izq, x(puntos.length - 1))) : 0;
+  const debajoDelGlobo = pts.filter(([cx]) => Math.abs(cx - centroGlobo) <= anchoGlobo / 2 + 6).map(([, cy]) => cy);
+  const arribaDeTodos = debajoDelGlobo.length ? Math.min(...debajoDelGlobo) - 30 : 0;
+  const topGlobo = arribaDeTodos >= 0 ? arribaDeTodos : Math.min(alto - abajo - 22, Math.max(...debajoDelGlobo) + 10);
+
   return (
     <div
       ref={ref}
@@ -144,9 +155,9 @@ export default function GraficoEvolucion({
       {foco == null && ultimo && (
         <span
           className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap rounded-full bg-primary-boton px-2 py-0.5 text-[11px] font-bold tabular-nums text-white"
-          style={{ left: Math.min(w - 44, Math.max(44, x(puntos.length - 1))), top: Math.max(0, y(ultimo.valor) - 28) }}
+          style={{ left: centroGlobo, top: topGlobo }}
         >
-          {formato(ultimo.valor)}
+          {textoUltimo}
         </span>
       )}
       {f && foco != null && (

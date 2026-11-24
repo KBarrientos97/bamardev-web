@@ -359,28 +359,35 @@ export default function HojaSemana({
         cabecera={
           <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4">
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 sm:gap-2.5">
-              <h2 className="flex items-center gap-1 whitespace-nowrap text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">
+              <h2 className="flex items-baseline gap-1 whitespace-nowrap text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">
                 {esInicial ? (
                   "Inicial"
                 ) : (
                   <>
                     Semana
-                    <input
-                      id={`${id}-semana`}
-                      aria-label="Semana"
-                      title="El número de la semana (se puede cambiar)"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={form.semana}
-                      aria-invalid={!!errSemana || undefined}
-                      aria-describedby={errSemana ? `${id}-semana-error` : undefined}
-                      onChange={(e) => cambiar("semana", e.target.value)}
-                      style={{ width: `${Math.max(1, form.semana.length) + 0.8}ch` }}
-                      className={`h-11 min-w-[2.2ch] rounded-lg bg-transparent px-[0.15ch] text-center font-bold tabular-nums underline decoration-dashed decoration-2 underline-offset-[6px] outline-none transition-colors hover:bg-muted focus:bg-primary-50 focus:decoration-solid focus:decoration-primary ${
-                        errSemana ? "text-danger-text decoration-danger" : "text-texto decoration-slate-300"
-                      }`}
-                    />
+                    {/*
+                      El número se puede cambiar, discreto: del ancho justo de sus cifras, con el
+                      subrayado punteado entero (un borde: el subrayado del texto, el campo lo
+                      recortaba y en el teléfono no se veía). El toque de 44 px es el del rótulo.
+                    */}
+                    <label htmlFor={`${id}-semana`} className="inline-flex min-h-11 cursor-text items-center">
+                      <input
+                        id={`${id}-semana`}
+                        aria-label="Semana"
+                        title="El número de la semana (se puede cambiar)"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={form.semana}
+                        aria-invalid={!!errSemana || undefined}
+                        aria-describedby={errSemana ? `${id}-semana-error` : undefined}
+                        onChange={(e) => cambiar("semana", e.target.value)}
+                        style={{ width: `${Math.max(1, form.semana.length)}ch` }}
+                        className={`box-content rounded-t-md border-b-2 border-dashed bg-transparent px-[0.12ch] pb-0.5 text-center font-bold leading-tight tabular-nums outline-none transition-colors hover:bg-muted focus:border-solid focus:bg-primary-50 ${
+                          errSemana ? "border-danger text-danger-text" : "border-slate-300 text-texto focus:border-primary"
+                        }`}
+                      />
+                    </label>
                   </>
                 )}
               </h2>

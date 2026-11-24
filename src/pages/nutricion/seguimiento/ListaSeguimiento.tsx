@@ -17,7 +17,7 @@ import { useAuth } from "../../../store/AuthContext";
 import { BotonIcono, ChipsFiltro, EncabezadoPagina, LISTA, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../../academia/piezas";
 import { BuscadorPacientes } from "../piezas";
 import DialogoAjustesSeguimiento from "./AjustesSeguimiento";
-import { ChipPago } from "./piezas";
+import { ChipPago, ConPuntos } from "./piezas";
 
 type Filtro = "en_tratamiento" | "todos";
 
@@ -214,23 +214,15 @@ export default function ListaSeguimiento() {
 /**
  * «Tirzepatida · Semana 6 · 17 UI»; sin tratamiento, «Sin tratamiento» (y los
  * anteriores, si tiene). Cada parte entera: si no entra, baja la parte, no
- * media («Semana» arriba y «6» abajo).
+ * media («Semana» arriba y «6» abajo), sin el «·» colgando (`ConPuntos`): a
+ * 768 quedaba «Tirzepatida · Semana 13 ·» y abajo «10 mg» solo.
  */
 function TextoTratamiento({ p }: { p: FilaSeguimiento }) {
   const t = p.tratamiento;
   const partes = !t
     ? ["Sin tratamiento", ...(p.anteriores ? [`${p.anteriores} ${p.anteriores === 1 ? "anterior" : "anteriores"}`] : [])]
     : [t.nombre, nombreSemana(t.semana), ...(t.dosisActual ? [textoDosis(t.dosisActual).anotado] : [])];
-  return (
-    <>
-      {partes.map((x, i) => (
-        <span key={i}>
-          <span className="whitespace-nowrap">{x}</span>
-          {i < partes.length - 1 ? " · " : ""}
-        </span>
-      ))}
-    </>
-  );
+  return <ConPuntos partes={partes} />;
 }
 
 /** «121,8 kg · bajó 7,2 kg» (con palabras, no sólo con la flecha y el color). */

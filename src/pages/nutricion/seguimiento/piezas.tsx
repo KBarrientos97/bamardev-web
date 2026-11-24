@@ -36,18 +36,41 @@ export function Dosis({
   );
 }
 
-/** «≈ 5,1 mg · 0,17 ml», en gris; cada parte entera. Las de un escalón, sin «≈» (`aprox` en falso, §7.4). */
+/**
+ * «≈ 5,1 mg · 0,17 ml», en gris; cada parte entera. Las de un escalón, sin «≈»
+ * (`aprox` en falso, §7.4). Si no entran en un renglón, baja una parte entera
+ * y sin el «·» colgando (`ConPuntos`): en la tarjeta del teléfono se salían del borde.
+ */
 export function Equivalentes({ partes, aprox = true, className = "" }: { partes: string[]; aprox?: boolean; className?: string }) {
   if (!partes.length) return null;
   return (
     <span className={`text-texto-3 ${className}`}>
-      {partes.map((p, i) => (
-        <span key={p} className="whitespace-nowrap">
-          {i === 0 && aprox ? "≈ " : ""}
-          {p}
-          {i < partes.length - 1 ? " · " : ""}
-        </span>
-      ))}
+      <ConPuntos partes={partes.map((p, i) => (i === 0 && aprox ? `≈ ${p}` : p))} />
+    </span>
+  );
+}
+
+/**
+ * Partes separadas por «·» que, si no entran en un renglón, bajan enteras y sin
+ * el «·» colgando al final ni al principio: el «·» va dibujado delante de cada
+ * parte y el de la que empieza un renglón queda fuera de la vista (margen
+ * negativo y recorte). Para el lector de pantalla y al copiar, el separador va
+ * escrito y oculto.
+ */
+export function ConPuntos({ partes }: { partes: ReactNode[] }) {
+  return (
+    <span className="block overflow-hidden">
+      <span className="-ml-[0.9em] flex flex-wrap">
+        {partes.map((x, i) => (
+          <span
+            key={i}
+            className="relative whitespace-nowrap pl-[0.9em] before:absolute before:left-0 before:w-[0.9em] before:text-center before:content-['·']"
+          >
+            {i > 0 && <span className="sr-only"> · </span>}
+            {x}
+          </span>
+        ))}
+      </span>
     </span>
   );
 }
