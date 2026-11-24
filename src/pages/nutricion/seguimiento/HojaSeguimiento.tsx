@@ -22,6 +22,7 @@ import {
   textoSexo,
   textoVial,
 } from "../../../lib/nutricion/seguimiento/formato";
+import { bajarPdfSeguimiento, documentoSeguimiento, enviarPdfSeguimientoPorWhatsapp } from "../../../lib/nutricion/seguimiento/pdf";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
@@ -57,7 +58,7 @@ export default function HojaSeguimiento() {
   const pacienteId = Number(id);
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { usuario, puede } = useAuth();
+  const { usuario, puede, negocio } = useAuth();
   const edita = editaSeguimiento(usuario);
   const veEvaluacion = puede("nutricion");
   const hoja = useApi(() => apiSeguimiento.hoja(pacienteId), [pacienteId]);
@@ -397,6 +398,7 @@ export default function HojaSeguimiento() {
           <Tarjeta
             titulo="Semanas"
             bajada={editable ? "Tocá una semana para corregirla." : undefined}
+            acciones={<BotonesPdf t={t} paciente={p} negocio={negocio?.nombre ?? null} onAviso={setAviso} onError={setError} />}
             sinRelleno
             barra={
               t.meses.length > 1 ? (
@@ -761,6 +763,59 @@ function PesoPorSemana({ t }: { t: Tratamiento }) {
         <p className="py-8 text-center text-sm text-texto-3">Todavía no hay pesos anotados.</p>
       )}
     </Tarjeta>
+  );
+}
+
+// ── El PDF ──────────────────────────────────────────────────────────────────
+
+/**
+ * «Descargar PDF» y «Enviar por WhatsApp» (§7.2): con `seguimiento.ver`
+ * alcanza. En el teléfono y la tablet, el diálogo de compartir del equipo; en
+ * la PC, «Guardar como» o la descarga, y para WhatsApp el chat del paciente
+ * con el mensaje y el PDF descargado para adjuntar.
+ */
+function BotonesPdf({
+  t,
+  paciente,
+  negocio,
+  onAviso,
+  onError,
+}: {
+  t: Tratamiento;
+  paciente: HojaPaciente["paciente"];
+  negocio: string | null;
+  onAviso: (texto: string) => void;
+  onError: (texto: string) => void;
+}) {
+  const [armando, setArmando] = useState<"pdf" | "whatsapp" | null>(null);
+  async function hacer(que: "pdf" | "whatsapp") {
+    if (armando) return;
+    setArmando(que);
+    onError("");
+    try {
+      const doc = documentoSeguimiento({ negocio, paciente, tratamiento: t });
+      if (que === "pdf") {
+        const r = await bajarPdfSeguimiento(doc);
+        if (r === "guardado" || r === "descargado") onAviso("PDF del seguimiento listo.");
+      } else {
+        const r = await enviarPdfSeguimientoPorWhatsapp(doc, paciente.telefono);
+        if (r === "descargado") onAviso("Se descargó el PDF: adjuntalo en el chat de WhatsApp.");
+      }
+    } catch {
+      onError("No se pudo armar el PDF. Probá de nuevo.");
+    } finally {
+      setArmando(null);
+    }
+  }
+  return (
+    <>
+      <Boton variante="ghost" icono="download" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("pdf")}>
+        {armando === "pdf" ? "Armando…" : "Descargar PDF"}
+      </Boton>
+      <Boton variante="ghost" icono="compartir" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
+        {armando === "whatsapp" ? "Armando…" : "Enviar por WhatsApp"}
+      </Boton>
+    </>
   );
 }
 

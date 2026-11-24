@@ -274,6 +274,9 @@ describe("sólo lectura (sin `seguimiento.editar`)", () => {
     expect(screen.queryByRole("button", { name: /Agregar una nota/ })).not.toBeInTheDocument();
     // Sin `nutricion.ver`, sin «Ver evaluación».
     expect(screen.queryByRole("link", { name: /Ver evaluación/ })).not.toBeInTheDocument();
+    // El PDF sí: con `seguimiento.ver` alcanza (§7.2).
+    expect(screen.getByRole("button", { name: "Descargar PDF" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar por WhatsApp" })).toBeInTheDocument();
     // `Alt+N` no abre nada.
     fireEvent.keyDown(document, { key: "n", code: "KeyN", altKey: true });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
