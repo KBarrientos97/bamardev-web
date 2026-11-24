@@ -421,6 +421,10 @@ describe("las referencias del pago en la hoja «Semana» (§8.2): por MES, no el
     const sinPago: MesTratamiento[] = [{ ...meses()[0], pagado: pagado(0, 0), debe: true }, meses()[1]];
     expect(lineas(referenciasDelPago(sinPago, 5))).toEqual(["El mes 1 sigue sin pago"]);
     expect(referenciasDelPago([{ ...sinPago[0], debe: false }, sinPago[1]], 5)).toEqual([]);
+    // Con sólo «Otro» anotado el mes sigue debiendo: no dice «pagó Bs 20».
+    expect(lineas(referenciasDelPago([{ ...sinPago[0], pagado: pagado(0, 0, 20) }, sinPago[1]], 5))).toEqual(["El mes 1 sigue sin pago"]);
+    // Y con los avisos apagados (no debe), lo anotado en «Otro» se lee como lo que es.
+    expect(lineas(referenciasDelPago([{ ...sinPago[0], pagado: pagado(0, 0, 20), debe: false }, sinPago[1]], 5))).toEqual(["El mes 1 pagó Bs 20 · Otro"]);
   });
 
   it("en el mes 1 no hay mes anterior; fuera de los meses que mandó el servidor, nada", () => {

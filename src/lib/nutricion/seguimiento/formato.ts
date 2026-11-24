@@ -724,9 +724,10 @@ export function detallePagado(p: Pick<Pagado, "medicamento" | "control" | "otro"
  * - «Este mes ya lleva Bs 250»: lo pagado en OTRAS semanas del mes de esta
  *   (los tres conceptos). Si `registro` (la semana que se corrige) es de ese
  *   mes, lo que tiene guardado no cuenta.
- * - «El mes 1 pagó Bs 600»: el mes anterior, con su `pagado.total`; si no
- *   pagó nada y debe, «El mes 1 sigue sin pago»; si no pagó y no debe (avisos
- *   apagados), nada. En el mes 1 no hay mes anterior.
+ * - «El mes 1 pagó Bs 600»: el mes anterior, con su `pagado.total`; si debe
+ *   (no tiene medicamento ni control, aunque tenga «Otro»), «El mes 1 sigue
+ *   sin pago»; si no pagó y no debe (avisos apagados), nada. En el mes 1 no
+ *   hay mes anterior.
  * Primero la de este mes. Vacío si la semana cae fuera de los meses que mandó
  * el servidor (como `tocaPago`).
  */
@@ -750,8 +751,9 @@ export function referenciasDelPago(
   const anterior = meses.find((m) => m.mes === mes.mes - 1);
   if (anterior) {
     const total = redondear(anterior.pagado.total || 0, 2);
-    if (total > 0) refs.push({ texto: `El mes ${anterior.mes} pagó ${plata(total)}`, detalle: detallePagado(anterior.pagado) });
-    else if (anterior.debe) refs.push({ texto: `El mes ${anterior.mes} sigue sin pago`, detalle: null });
+    // Primero si debe: un mes con sólo «Otro» anotado no está pagado (decir «pagó Bs 20» confundiría).
+    if (anterior.debe) refs.push({ texto: `El mes ${anterior.mes} sigue sin pago`, detalle: null });
+    else if (total > 0) refs.push({ texto: `El mes ${anterior.mes} pagó ${plata(total)}`, detalle: detallePagado(anterior.pagado) });
   }
   return refs;
 }

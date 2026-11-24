@@ -442,26 +442,26 @@ describe("el pago", () => {
     const caja = () => screen.getByRole("region", { name: "Pagos" });
     const renglones = () => within(caja()).queryAllByText(/(pagó|lleva|sigue sin pago)/).map((p) => sinNb(p.closest("p")!.textContent));
 
-    it("la semana 5: «Hoy toca el pago del mes 2» con «El mes 1 pagó Bs 600 · Medicamento Bs 450 · Control Bs 150» (no el último pago suelto)", () => {
+    it("la semana 5: «Hoy toca el pago del mes 2» con «El mes 1 pagó Bs 600 (Medicamento Bs 450 · Control Bs 150)» (no el último pago suelto)", () => {
       abrir(dosVisitas, { semana: 5 });
       expect(within(caja()).getByText("Hoy toca el pago del mes 2")).toBeInTheDocument();
-      expect(renglones()).toEqual(["El mes 1 pagó Bs 600 · Medicamento Bs 450 · Control Bs 150"]);
+      expect(renglones()).toEqual(["El mes 1 pagó Bs 600 (Medicamento Bs 450 · Control Bs 150)"]);
       expect(caja().textContent).not.toMatch(/350/);
       // Nada se precarga.
       for (const c of [/^Medicamento/, /^Control/, /^Otro/]) expect(screen.getByLabelText(c)).toHaveValue("");
     });
 
-    it("corregir la semana 1: «Este mes ya lleva Bs 250 · Medicamento Bs 100 · Control Bs 150» (sin lo suyo)", () => {
+    it("corregir la semana 1: «Este mes ya lleva Bs 250 (Medicamento Bs 100 · Control Bs 150)» (sin lo suyo)", () => {
       abrir(dosVisitas, { registro: 1 });
-      expect(renglones()).toEqual(["Este mes ya lleva Bs 250 · Medicamento Bs 100 · Control Bs 150"]);
+      expect(renglones()).toEqual(["Este mes ya lleva Bs 250 (Medicamento Bs 100 · Control Bs 150)"]);
     });
 
-    it("el detalle va entero en su propio bloque (si no entra, baja entero)", () => {
+    it("el detalle va entero en su propio bloque, entre paréntesis (si no entra, baja entero y no deja un punto suelto)", () => {
       abrir(dosVisitas, { semana: 5 });
-      const detalle = within(caja()).getByText(/^Medicamento.Bs.450/);
+      const detalle = within(caja()).getByText(/^\(Medicamento.Bs.450/);
       expect(detalle.tagName).toBe("SPAN");
       expect(detalle).toHaveClass("inline-block");
-      expect(sinNb(detalle.textContent)).toBe("Medicamento Bs 450 · Control Bs 150");
+      expect(sinNb(detalle.textContent)).toBe("(Medicamento Bs 450 · Control Bs 150)");
     });
   });
 });

@@ -815,8 +815,8 @@ export function BloquePagos({
   /** «Hoy toca el pago del mes 2», «Falta el pago de la semana 5…», «Pago de esta semana». */
   titulo: string;
   /**
-   * Lo pagado por MES (§8.2): «Este mes ya lleva Bs 250 · Medicamento Bs 100 ·
-   * Control Bs 150» y «El mes 1 pagó Bs 600 · …». Primero la de este mes.
+   * Lo pagado por MES (§8.2): «Este mes ya lleva Bs 250 (Medicamento Bs 100 ·
+   * Control Bs 150)» y «El mes 1 pagó Bs 600 (…)». Primero la de este mes.
    */
   referencias?: ReferenciaPago[];
   /** Abierta al entrar: toca pagar, hay un pago pendiente o la semana ya tiene un pago. */
@@ -884,13 +884,18 @@ export function BloquePagos({
           {tocaPago && <Icon name="coins" size={17} className="shrink-0" />}
           {titulo}
         </span>
-        {/* Un renglón por referencia: el texto y, tras « · », el detalle, que no se parte (si no entra, baja entero). */}
+        {/*
+          Un renglón por referencia: el texto y, entre paréntesis, el detalle, que no se parte (si no
+          entra, baja entero). Entre paréntesis y no tras un punto medio: al bajar, el punto quedaba
+          suelto al final del renglón de arriba.
+        */}
         {referencias.map((r) => (
           <p key={r.texto} className="text-[13px] sm:text-sm lg:text-[13px]">
             <span className="font-semibold">{r.texto}</span>
             {r.detalle && (
               <>
-                {" ·"} <span className="inline-block max-w-full">{r.detalle}</span>
+                {" "}
+                <span className="inline-block max-w-full">({r.detalle})</span>
               </>
             )}
           </p>
