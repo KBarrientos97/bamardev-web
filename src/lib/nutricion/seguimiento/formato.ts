@@ -6,6 +6,7 @@ import type {
   Equivalencias,
   MesTratamiento,
   Paso,
+  Pagado,
   PagoPendiente,
   Producto,
   Registro,
@@ -129,23 +130,6 @@ export function rachaAntes(
     aplicaciones++;
   }
   return ultima ? { ...ultima, aplicaciones } : null;
-}
-
-/** El último pago anotado antes de esa semana: «El anterior: Bs 600 el 20/10 (450 + 150)». */
-export function ultimoPagoAntes(registros: Registro[], semana: number): { fecha: string; total: number; partes: number[] } | null {
-  const conPago = registros
-    .filter((r) => r.semana < semana && pagoDelRegistro(r) > 0)
-    .sort((a, b) => a.semana - b.semana);
-  const r = conPago[conPago.length - 1];
-  if (!r) return null;
-  const partes = [r.pagoMedicamento, r.pagoControl, r.pagoOtro].filter((n): n is number => n != null && n > 0);
-  return { fecha: r.fecha, total: redondear(pagoDelRegistro(r), 2), partes };
-}
-
-/** «El anterior: Bs 600 el 20/10 (450 + 150)»; con un solo concepto, sin el paréntesis. */
-export function textoPagoAnterior(p: { fecha: string; total: number; partes: number[] }): string {
-  const detalle = p.partes.length > 1 ? ` (${p.partes.map((n) => fmtNumero(n, 2)).join(" + ")})` : "";
-  return `El anterior: ${fmtPlata(p.total)} el${NB}${diaYMes(p.fecha)}${detalle}`;
 }
 
 /** La dosis de un registro, o null si no se anotó (o no se aplicó). */
@@ -700,6 +684,80 @@ export const pagoDelMes = (p: { medicamento: number; control: number }) => (p.me
 export const pagoDelRegistro = (r: Pick<Registro, "pagoMedicamento" | "pagoControl" | "pagoOtro">) =>
   (r.pagoMedicamento ?? 0) + (r.pagoControl ?? 0) + (r.pagoOtro ?? 0);
 
+/** La plata sin partirse: «Bs 600», con el espacio duro (sin «.00», regla del producto). */
+const plata = (n: number) => fmtPlata(n).replace(/ /g, NB);
+
+/**
+ * Una referencia del pago en la hoja «Semana» (§8.2): lo que lleva pagado el
+ * mes, con palabras («El mes 1 pagó Bs 600») y aparte su detalle
+ * («Medicamento Bs 450 · Control Bs 150»), que se muestra entero o baja entero.
+ */
+export interface ReferenciaPago {
+  texto: string;
+  /** Los conceptos mayores que cero; con uno solo, sólo su nombre («Medicamento»). null si no hay. */
+  detalle: string | null;
+}
+
+/**
+ * «Medicamento Bs 450 · Control Bs 150 · Otro Bs 20»: sólo los conceptos
+ * mayores que cero y en ese orden; con uno solo, sólo su nombre (la plata ya
+ * está en el texto). Cada concepto con espacios duros, y el «·» pegado al de
+ * antes: si no entra, se corta sólo entre un concepto y otro.
+ */
+export function detallePagado(p: Pick<Pagado, "medicamento" | "control" | "otro">): string | null {
+  const conceptos = (
+    [
+      ["Medicamento", p.medicamento],
+      ["Control", p.control],
+      ["Otro", p.otro],
+    ] as const
+  ).filter(([, n]) => redondear(n || 0, 2) > 0);
+  if (!conceptos.length) return null;
+  if (conceptos.length === 1) return conceptos[0][0];
+  return conceptos.map(([nombre, n]) => `${nombre}${NB}${plata(n)}`).join(`${NB}· `);
+}
+
+/**
+ * Las referencias del pago para la semana `semana` (§8.2), por MES y con lo
+ * que ya manda el servidor en `meses` (un mes se puede pagar en varias
+ * visitas: lo que se lee es el mes entero, no el último pago suelto):
+ * - «Este mes ya lleva Bs 250»: lo pagado en OTRAS semanas del mes de esta
+ *   (los tres conceptos). Si `registro` (la semana que se corrige) es de ese
+ *   mes, lo que tiene guardado no cuenta.
+ * - «El mes 1 pagó Bs 600»: el mes anterior, con su `pagado.total`; si debe
+ *   (no tiene medicamento ni control, aunque tenga «Otro»), «El mes 1 sigue
+ *   sin pago»; si no pagó y no debe (avisos apagados), nada. En el mes 1 no
+ *   hay mes anterior.
+ * Primero la de este mes. Vacío si la semana cae fuera de los meses que mandó
+ * el servidor (como `tocaPago`).
+ */
+export function referenciasDelPago(
+  meses: MesTratamiento[],
+  semana: number,
+  registro?: Pick<Registro, "mes" | "pagoMedicamento" | "pagoControl" | "pagoOtro"> | null,
+): ReferenciaPago[] {
+  const mes = mesDeLaSemana(meses, semana);
+  if (!mes) return [];
+  const refs: ReferenciaPago[] = [];
+  const propio = registro && registro.mes === mes.mes ? registro : null;
+  const resto = (pagado: number, suyo: number | null | undefined) => Math.max(0, redondear((pagado || 0) - (suyo ?? 0), 2));
+  const sinEsta = {
+    medicamento: resto(mes.pagado.medicamento, propio?.pagoMedicamento),
+    control: resto(mes.pagado.control, propio?.pagoControl),
+    otro: resto(mes.pagado.otro, propio?.pagoOtro),
+  };
+  const llevado = redondear(sinEsta.medicamento + sinEsta.control + sinEsta.otro, 2);
+  if (llevado > 0) refs.push({ texto: `Este mes ya lleva ${plata(llevado)}`, detalle: detallePagado(sinEsta) });
+  const anterior = meses.find((m) => m.mes === mes.mes - 1);
+  if (anterior) {
+    const total = redondear(anterior.pagado.total || 0, 2);
+    // Primero si debe: un mes con sólo «Otro» anotado no está pagado (decir «pagó Bs 20» confundiría).
+    if (anterior.debe) refs.push({ texto: `El mes ${anterior.mes} sigue sin pago`, detalle: null });
+    else if (total > 0) refs.push({ texto: `El mes ${anterior.mes} pagó ${plata(total)}`, detalle: detallePagado(anterior.pagado) });
+  }
+  return refs;
+}
+
 /** «Falta el pago de la semana 5 (desde el 07/12/2026)», o «Falta el pago inicial». */
 export function textoFaltaPago(p: PagoPendiente): string {
   return p.semana === 0 ? "Falta el pago inicial" : `Falta el pago de la semana ${p.semana} (desde el ${fechaLarga(p.desde)})`;
@@ -713,12 +771,19 @@ export function textoPendiente(p: PagoPendiente, hoy = hoyIso()): string {
 }
 
 /**
- * «Último pago: Bs 630 el 02/11/2026», o «Todavía no pagó nada». «el» va
- * pegado a la fecha: en la columna angosta de «Pagos pendientes» quedaba «…Bs
+ * El último pago en «Pagos pendientes», un renglón por elemento (§8.2): con el
+ * mes de ese pago y lo que pagó ese mes entero, «El mes 1 pagó Bs 600» y
+ * «Último pago: el 21/11/2026» (un mes se puede pagar en dos visitas: lo que
+ * se lee primero es el mes, no el último pago suelto). Un backend anterior no
+ * manda el mes: «Último pago: Bs 350 el 21/11/2026». Sin pago, «Todavía no
+ * pagó nada». «el» va pegado a la fecha: en la columna angosta quedaba «…Bs
  * 630 el» en un renglón y la fecha sola en el otro.
  */
-export function textoUltimoPago(u: UltimoPago | null | undefined): string {
-  return u ? `Último pago: ${fmtPlata(u.total)} el${NB}${fechaLarga(u.fecha)}` : "Todavía no pagó nada";
+export function textoUltimoPago(u: UltimoPago | null | undefined): string[] {
+  if (!u) return ["Todavía no pagó nada"];
+  const fecha = `el${NB}${fechaLarga(u.fecha)}`;
+  if (u.mes != null && u.pagadoEnElMes != null) return [`El mes ${u.mes} pagó ${plata(u.pagadoEnElMes)}`, `Último pago: ${fecha}`];
+  return [`Último pago: ${plata(u.total)} ${fecha}`];
 }
 
 /** Lo que se ofrece del peso de la Evaluación: «La evaluación de hoy anotó 121,8 kg» con «Usar ese». */
@@ -728,18 +793,61 @@ export interface PesoDeLaEvaluacion {
 }
 
 /**
+ * Cuándo se anotó un peso, para ordenarlo como la serie única del §4.4: por
+ * su día y, el mismo día, por cuándo se guardó (`actualizadoEn`, ISO).
+ */
+export interface MomentoDelPeso {
+  fecha: string;
+  actualizadoEn?: string | null;
+}
+
+/**
+ * ¿`a` se anotó DESPUÉS que `b`? Un día mayor, o el mismo día con un
+ * `actualizadoEn` estrictamente mayor. Si alguno no trae su `actualizadoEn`
+ * (un backend anterior), el mismo día no es «después».
+ */
+export function anotadoDespues(a: MomentoDelPeso, b: MomentoDelPeso): boolean {
+  if (a.fecha !== b.fecha) return a.fecha > b.fecha;
+  const ta = a.actualizadoEn ? Date.parse(a.actualizadoEn) : NaN;
+  const tb = b.actualizadoEn ? Date.parse(b.actualizadoEn) : NaN;
+  return Number.isFinite(ta) && Number.isFinite(tb) && ta > tb;
+}
+
+/**
+ * El último peso del seguimiento (§8.2): el más reciente de TODAS las semanas
+ * con peso (por fecha y, el mismo día, por `actualizadoEn`; no por número de
+ * semana). null si ninguna tiene peso.
+ */
+export function ultimoPesoDelSeguimiento<R extends Pick<Registro, "fecha" | "pesoKg" | "actualizadoEn">>(registros: readonly R[]): R | null {
+  let ultimo: R | null = null;
+  for (const r of registros) if (r.pesoKg != null && (!ultimo || anotadoDespues(r, ultimo))) ultimo = r;
+  return ultimo;
+}
+
+/** ¿Es un día escrito como «AAAA-MM-DD»? (el campo de fecha vacío o a medio escribir, no). */
+export const esDia = (s: string | null | undefined): s is string => !!s && DIA.test(s);
+
+/**
  * El peso del último control de la Evaluación, para ofrecerlo con «Usar»
- * (nunca se precarga, §4.4): al iniciar, siempre; en una semana, si es del
- * mismo día o posterior al último peso del seguimiento (`desde`).
+ * (nunca se precarga, §4.4 y §8.2). Al iniciar (y en el registro inicial),
+ * siempre. En una semana, sólo si el control se anotó DESPUÉS del último peso
+ * del seguimiento (`ultimoPeso`, ver `ultimoPesoDelSeguimiento`; sin ningún
+ * peso, sí) y no es de un día posterior al de la hoja (`fechaHoja`; sin una
+ * fecha válida, el de hoy). Así dice lo mismo que la Evaluación: se ofrece
+ * cuando el peso al día del paciente es el de un control.
  */
 export function pesoDeLaEvaluacion(
-  ultimoControl: { fecha: string; pesoKg: number } | null,
-  desde: string | null,
+  ultimoControl: (MomentoDelPeso & { pesoKg: number }) | null,
+  ultimoPeso: MomentoDelPeso | null,
   rotulo: "semana" | "inicio",
   hoy = hoyIso(),
+  fechaHoja?: string | null,
 ): PesoDeLaEvaluacion | null {
   if (!ultimoControl) return null;
-  if (rotulo === "semana" && desde && ultimoControl.fecha < desde) return null;
+  if (rotulo === "semana") {
+    if (ultimoPeso && !anotadoDespues(ultimoControl, ultimoPeso)) return null;
+    if (ultimoControl.fecha > (esDia(fechaHoja) ? fechaHoja : hoy)) return null;
+  }
   const kg = `${fmtNumero(ultimoControl.pesoKg, 2)}${NB}kg`;
   return {
     pesoKg: ultimoControl.pesoKg,

@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
 import { isoDia } from "../../../lib/format";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
-import type { Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import type { HojaPaciente, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { avisaAlCerrar, historialDePrueba } from "../../../test/historial";
-import { armarTratamiento, CATALOGO_SEGUIMIENTO, pacientesDePrueba, type TratamientoCrudo } from "../../../test/seguimientoFixtures";
+import { armarTratamiento, CATALOGO_SEGUIMIENTO, diasAntes, pacientesDePrueba, type TratamientoCrudo } from "../../../test/seguimientoFixtures";
 import HojaSemana from "./HojaSemana";
 
 /**
@@ -40,9 +40,27 @@ const delPaciente = (id: number, cambiar?: (t: TratamientoCrudo) => TratamientoC
 const lucia = delPaciente(12);
 /** Carla: semana 4 (con 25 UI); la próxima (5) le toca pagar. */
 const carla = delPaciente(22);
+/**
+ * El caso de Kevin (24-nov): el mes 1 pagado en dos visitas (Inicial:
+ * Medicamento 100 + Control 150; semana 1: Medicamento 350), hasta la semana 4.
+ */
+const dosVisitas = armarTratamiento({
+  id: 40,
+  pacienteId: 40,
+  nombre: "Tirzepatida",
+  unidadDosis: "UI",
+  vial: { mg: 15, ml: 0.5 },
+  semanas: [0, 1, 2, 3, 4].map((s) => ({
+    semana: s,
+    fecha: diasAntes(HOY, 28 - 7 * s),
+    pesoKg: [126, 125, 125.5, 124.95, 124.4][s],
+    dosis: 8,
+    ...(s === 0 ? { pagoMedicamento: 100, pagoControl: 150 } : s === 1 ? { pagoMedicamento: 350 } : {}),
+  })),
+});
 const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
 
-function abrir(t: Tratamiento, opciones: { semana?: number; registro?: number; ultimoControl?: { fecha: string; pesoKg: number } | null } = {}) {
+function abrir(t: Tratamiento, opciones: { semana?: number; registro?: number; ultimoControl?: HojaPaciente["ultimoControl"] } = {}) {
   const onGuardado = vi.fn();
   const onCerrar = vi.fn();
   const registro = opciones.registro != null ? t.registros.find((r) => r.semana === opciones.registro)! : null;
@@ -312,23 +330,56 @@ describe("cargar una semana", () => {
     expect(sinNb(boton(/^Cambió de producto desde esta semana/).textContent)).toContain("Hoy usa: Tirzepatida · 15 mg en 0,5 ml");
   });
 
-  it("ofrece el peso de la Evaluación si es del mismo día o posterior, con «Usar ese» (no se precarga)", () => {
+  describe("el peso de la Evaluación (§8.2): sólo si el control se anotó DESPUÉS del último peso del seguimiento", () => {
+    /** La semana 7 de Lucía es su último peso: guardada a las 14:32 de ese día. */
     const ultima = lucia.registros[lucia.registros.length - 1].fecha;
-    abrir(lucia, { ultimoControl: { fecha: ultima, pesoKg: 124.5 } });
-    expect(peso()).toHaveValue("");
-    expect(sinNb(screen.getByText(/^La evaluación del/).textContent)).toContain(" anotó 124,5 kg");
-    fireEvent.click(boton("Usar ese"));
-    expect(peso()).toHaveValue("124,5");
-  });
+    const aLas = (hora: string) => `${ultima}T${hora}:00.000Z`;
 
-  it("la evaluación de hoy se dice así", () => {
-    abrir(lucia, { ultimoControl: { fecha: HOY, pesoKg: 124.5 } });
-    expect(sinNb(screen.getByText(/^La evaluación de hoy/).textContent)).toBe("La evaluación de hoy anotó 124,5 kg ·");
-  });
+    it("el mismo día y guardado después de la última semana: lo ofrece con «Usar ese» (no se precarga)", () => {
+      abrir(lucia, { ultimoControl: { fecha: ultima, pesoKg: 124.5, actualizadoEn: aLas("18:00") } });
+      expect(peso()).toHaveValue("");
+      expect(sinNb(screen.getByText(/^La evaluación del/).textContent)).toContain(" anotó 124,5 kg");
+      fireEvent.click(boton("Usar ese"));
+      expect(peso()).toHaveValue("124,5");
+    });
 
-  it("con un control de la Evaluación más viejo que el último peso, no lo ofrece", () => {
-    abrir(lucia, { ultimoControl: { fecha: "2020-01-01", pesoKg: 130 } });
-    expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+    it("el mismo día pero guardado ANTES de la última semana con peso (el caso de Kevin), o sin saber cuándo: no lo ofrece", () => {
+      abrir(lucia, { ultimoControl: { fecha: ultima, pesoKg: 127, actualizadoEn: aLas("10:00") } });
+      expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Usar ese" })).not.toBeInTheDocument();
+    });
+
+    it("sin el `actualizadoEn` del control (un backend anterior), el mismo día no es «después»", () => {
+      abrir(lucia, { ultimoControl: { fecha: ultima, pesoKg: 127 } });
+      expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+    });
+
+    it("la evaluación de hoy se dice así", () => {
+      abrir(lucia, { ultimoControl: { fecha: HOY, pesoKg: 124.5 } });
+      expect(sinNb(screen.getByText(/^La evaluación de hoy/).textContent)).toBe("La evaluación de hoy anotó 124,5 kg ·");
+    });
+
+    it("con un control de la Evaluación más viejo que el último peso, no lo ofrece", () => {
+      abrir(lucia, { ultimoControl: { fecha: "2020-01-01", pesoKg: 130 } });
+      expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+    });
+
+    it("al corregir una semana vieja, el último peso es el de TODAS las semanas (también las de después)", () => {
+      abrir(lucia, { registro: 5, ultimoControl: { fecha: ultima, pesoKg: 127, actualizadoEn: aLas("10:00") } });
+      expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+    });
+
+    it("al corregir la última semana, cuenta como está guardada: un control posterior a ella sí", () => {
+      abrir(lucia, { registro: 7, ultimoControl: { fecha: ultima, pesoKg: 124.5, actualizadoEn: aLas("18:00") } });
+      expect(screen.getByText(/^La evaluación del/)).toBeInTheDocument();
+    });
+
+    it("no ofrece un control de un día posterior a la fecha de la hoja", () => {
+      abrir(lucia, { ultimoControl: { fecha: HOY, pesoKg: 124.5 } });
+      expect(screen.getByText(/^La evaluación de hoy/)).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: ultima } });
+      expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+    });
   });
 
   it("los números se escriben con el teclado numérico", () => {
@@ -377,12 +428,41 @@ describe("el pago", () => {
     expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(7, { semana: 5, fecha: HOY, dosis: 25, pagoMedicamento: 480 });
   });
 
-  it("una semana común sin pagos pendientes: el pago va cerrado en «Anotar un pago», que lo abre", async () => {
+  it("una semana común sin pagos pendientes: el pago va cerrado en «Anotar un pago» (con la referencia corta), que lo abre", async () => {
     abrir(carla, { semana: 6 });
     expect(screen.queryByLabelText(/^Medicamento/)).not.toBeInTheDocument();
+    // A la derecha, sólo el texto de la primera referencia, sin el detalle.
+    expect(sinNb(boton(/^Anotar un pago/).textContent)).toBe("Anotar un pago El mes 1 pagó Bs 630");
     fireEvent.click(boton(/^Anotar un pago/));
     await waitFor(() => expect(screen.getByLabelText(/^Medicamento/)).toHaveFocus());
     expect(screen.getByText("Pago de esta semana")).toBeInTheDocument();
+  });
+
+  describe("lo que ya se pagó, por MES (§8.2): un mes pagado en dos visitas", () => {
+    const caja = () => screen.getByRole("region", { name: "Pagos" });
+    const renglones = () => within(caja()).queryAllByText(/(pagó|lleva|sigue sin pago)/).map((p) => sinNb(p.closest("p")!.textContent));
+
+    it("la semana 5: «Hoy toca el pago del mes 2» con «El mes 1 pagó Bs 600 (Medicamento Bs 450 · Control Bs 150)» (no el último pago suelto)", () => {
+      abrir(dosVisitas, { semana: 5 });
+      expect(within(caja()).getByText("Hoy toca el pago del mes 2")).toBeInTheDocument();
+      expect(renglones()).toEqual(["El mes 1 pagó Bs 600 (Medicamento Bs 450 · Control Bs 150)"]);
+      expect(caja().textContent).not.toMatch(/350/);
+      // Nada se precarga.
+      for (const c of [/^Medicamento/, /^Control/, /^Otro/]) expect(screen.getByLabelText(c)).toHaveValue("");
+    });
+
+    it("corregir la semana 1: «Este mes ya lleva Bs 250 (Medicamento Bs 100 · Control Bs 150)» (sin lo suyo)", () => {
+      abrir(dosVisitas, { registro: 1 });
+      expect(renglones()).toEqual(["Este mes ya lleva Bs 250 (Medicamento Bs 100 · Control Bs 150)"]);
+    });
+
+    it("el detalle va entero en su propio bloque, entre paréntesis (si no entra, baja entero y no deja un punto suelto)", () => {
+      abrir(dosVisitas, { semana: 5 });
+      const detalle = within(caja()).getByText(/^\(Medicamento.Bs.450/);
+      expect(detalle.tagName).toBe("SPAN");
+      expect(detalle).toHaveClass("inline-block");
+      expect(sinNb(detalle.textContent)).toBe("(Medicamento Bs 450 · Control Bs 150)");
+    });
   });
 });
 

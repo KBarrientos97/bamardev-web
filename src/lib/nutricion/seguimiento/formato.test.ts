@@ -37,8 +37,10 @@ import {
   resultadoDelPeso,
   textoKg,
   textoKgTotal,
-  textoPagoAnterior,
-  ultimoPagoAntes,
+  anotadoDespues,
+  detallePagado,
+  referenciasDelPago,
+  ultimoPesoDelSeguimiento,
   marcaVigente,
   productoInicialDe,
   productoVigente,
@@ -328,21 +330,113 @@ describe("la semana pasada, la dosis marcada y el pago anterior (§7.2)", () => 
     expect(partesPaso({ mg: 2.5, ui: null, ml: null }, "mg").secundario).toBeNull();
   });
 
-  it("el pago anterior: «El anterior: Bs 630 el 02/11 (480 + 150)»", () => {
-    const p = ultimoPagoAntes(lucia.registros, 8)!;
-    // La semana 4 sólo tiene «Otro» (jeringas): también es un pago anotado.
-    expect(p).toMatchObject({ total: 50, partes: [50] });
-    expect(sinNb(textoPagoAnterior(p))).toMatch(/^El anterior: Bs 50 el \d\d\/\d\d$/);
-    const inicial = ultimoPagoAntes(lucia.registros, 4)!;
-    expect(sinNb(textoPagoAnterior(inicial))).toMatch(/^El anterior: Bs 630 el \d\d\/\d\d \(480 \+ 150\)$/);
-    expect(ultimoPagoAntes(lucia.registros, 0)).toBeNull();
+  describe("el peso de la Evaluación en una semana (§8.2): sólo si el control se anotó DESPUÉS del último peso del seguimiento", () => {
+    // El caso de Kevin (24-nov): el control de 127 kg y, el mismo día y después, la semana 3 con 124,95.
+    const control = { fecha: "2026-11-23", pesoKg: 127, actualizadoEn: "2026-11-23T15:00:00.000Z" };
+    const semanaDespues = { fecha: "2026-11-23", actualizadoEn: "2026-11-23T16:10:00.000Z" };
+    const semanaAntes = { fecha: "2026-11-23", actualizadoEn: "2026-11-23T14:20:00.000Z" };
+
+    it("el mismo día, una semana guardada después del control: no lo ofrece (sigue la serie)", () => {
+      expect(pesoDeLaEvaluacion(control, semanaDespues, "semana", "2026-11-24")).toBeNull();
+    });
+
+    it("el mismo día, el control guardado después de la última semana: sí, «La evaluación de hoy anotó…»", () => {
+      expect(sinNb(pesoDeLaEvaluacion(control, semanaAntes, "semana", "2026-11-23")!.texto)).toBe("La evaluación de hoy anotó 127 kg");
+      expect(sinNb(pesoDeLaEvaluacion(control, semanaAntes, "semana", "2026-11-25")!.texto)).toBe("La evaluación del 23/11/2026 anotó 127 kg");
+    });
+
+    it("el mismo día sin el `actualizadoEn` del control (un backend anterior) no es «después»", () => {
+      expect(pesoDeLaEvaluacion({ fecha: "2026-11-23", pesoKg: 127 }, semanaAntes, "semana", "2026-11-23")).toBeNull();
+      expect(pesoDeLaEvaluacion({ ...control, actualizadoEn: null }, semanaAntes, "semana", "2026-11-23")).toBeNull();
+    });
+
+    it("un control de un día posterior al último peso, sí (aunque no traiga su `actualizadoEn`); uno anterior, no", () => {
+      expect(pesoDeLaEvaluacion({ fecha: "2026-11-23", pesoKg: 127 }, { fecha: "2026-11-16", actualizadoEn: "2026-11-16T20:00:00.000Z" }, "semana", "2026-11-23")).not.toBeNull();
+      expect(pesoDeLaEvaluacion(control, { fecha: "2026-11-24", actualizadoEn: "2026-11-24T08:00:00.000Z" }, "semana", "2026-11-25")).toBeNull();
+    });
+
+    it("sin ningún peso en el seguimiento, lo ofrece", () => {
+      expect(pesoDeLaEvaluacion(control, null, "semana", "2026-11-23")).not.toBeNull();
+    });
+
+    it("no ofrece un control de un día posterior a la fecha de la hoja (sin fecha válida, cuenta la de hoy)", () => {
+      const viejo = { fecha: "2026-11-16", actualizadoEn: "2026-11-16T10:00:00.000Z" };
+      expect(pesoDeLaEvaluacion(control, viejo, "semana", "2026-11-25", "2026-11-20")).toBeNull();
+      expect(pesoDeLaEvaluacion(control, viejo, "semana", "2026-11-25", "2026-11-23")).not.toBeNull();
+      expect(pesoDeLaEvaluacion(control, viejo, "semana", "2026-11-25", "")).not.toBeNull();
+      expect(pesoDeLaEvaluacion(control, viejo, "semana", "2026-11-22", "2026-11-2")).toBeNull();
+    });
+
+    it("al iniciar (y en el inicial), siempre: «Último control de la evaluación: 127 kg (23/11/2026)»", () => {
+      expect(sinNb(pesoDeLaEvaluacion(control, semanaDespues, "inicio", "2026-11-24")!.texto)).toBe("Último control de la evaluación: 127 kg (23/11/2026)");
+      expect(pesoDeLaEvaluacion(null, null, "inicio")).toBeNull();
+    });
+
+    it("el último peso del seguimiento: el más reciente por fecha y, el mismo día, por cuándo se guardó (no por número de semana)", () => {
+      const r = (semana: number, fecha: string, hora: string, pesoKg: number | null) => ({ semana, fecha, pesoKg, actualizadoEn: `${fecha}T${hora}:00.000Z` });
+      const registros = [r(0, "2026-11-09", "10:00", 126), r(1, "2026-11-16", "10:00", 125), r(3, "2026-11-23", "16:10", 124.95), r(2, "2026-11-23", "11:00", 125.5), r(4, "2026-11-30", "09:00", null)];
+      expect(ultimoPesoDelSeguimiento(registros)?.semana).toBe(3);
+      expect(ultimoPesoDelSeguimiento(registros.filter((x) => x.pesoKg == null))).toBeNull();
+      expect(anotadoDespues({ fecha: "2026-11-23", actualizadoEn: "2026-11-23T16:10:00.000Z" }, { fecha: "2026-11-23", actualizadoEn: "2026-11-23T16:10:00.000Z" })).toBe(false);
+    });
+  });
+});
+
+describe("las referencias del pago en la hoja «Semana» (§8.2): por MES, no el último pago suelto", () => {
+  /** El caso de Kevin: el mes 1 se pagó en dos visitas (Inicial 100 + 150; semana 1, 350). */
+  const pagado = (medicamento: number, control: number, otro = 0) => ({ medicamento, control, otro, total: medicamento + control + otro });
+  const meses = (mes2 = pagado(0, 0), debe1 = false): MesTratamiento[] => [
+    { mes: 1, desdeSemana: 0, hastaSemana: 4, semanaDePago: 0, debe: debe1, pagado: pagado(450, 150) },
+    { mes: 2, desdeSemana: 5, hastaSemana: 9, semanaDePago: 5, debe: mes2.medicamento + mes2.control === 0, pagado: mes2 },
+  ];
+  const semana1 = { mes: 1, pagoMedicamento: 350, pagoControl: null, pagoOtro: null };
+  const lineas = (refs: { texto: string; detalle: string | null }[]) => refs.map((r) => sinNb(r.detalle ? `${r.texto} · ${r.detalle}` : r.texto));
+
+  it("la semana 5 nueva: «El mes 1 pagó Bs 600 · Medicamento Bs 450 · Control Bs 150» (no «Bs 350»)", () => {
+    expect(lineas(referenciasDelPago(meses(), 5))).toEqual(["El mes 1 pagó Bs 600 · Medicamento Bs 450 · Control Bs 150"]);
   });
 
-  it("el peso de la evaluación en una semana: «La evaluación de hoy anotó…» o con su fecha", () => {
-    const control = { fecha: "2026-11-23", pesoKg: 123.4 };
-    expect(sinNb(pesoDeLaEvaluacion(control, "2026-11-16", "semana", "2026-11-23")!.texto)).toBe("La evaluación de hoy anotó 123,4 kg");
-    expect(sinNb(pesoDeLaEvaluacion(control, "2026-11-16", "semana", "2026-11-25")!.texto)).toBe("La evaluación del 23/11/2026 anotó 123,4 kg");
-    expect(pesoDeLaEvaluacion(control, "2026-11-24", "semana", "2026-11-25")).toBeNull();
+  it("corregir la semana 1: lo suyo no cuenta, «Este mes ya lleva Bs 250 · Medicamento Bs 100 · Control Bs 150»", () => {
+    expect(lineas(referenciasDelPago(meses(), 1, semana1))).toEqual(["Este mes ya lleva Bs 250 · Medicamento Bs 100 · Control Bs 150"]);
+    // Una semana nueva del mes 1: el mes entero.
+    expect(lineas(referenciasDelPago(meses(), 3))).toEqual(["Este mes ya lleva Bs 600 · Medicamento Bs 450 · Control Bs 150"]);
+    // La semana que se corrige es de OTRO mes (se le cambió el número): lo suyo no se resta de éste.
+    expect(lineas(referenciasDelPago(meses(), 3, { ...semana1, mes: 2 }))).toEqual(["Este mes ya lleva Bs 600 · Medicamento Bs 450 · Control Bs 150"]);
+  });
+
+  it("primero este mes y después el anterior; con un solo concepto, sólo su nombre", () => {
+    expect(lineas(referenciasDelPago(meses(pagado(480, 0)), 6))).toEqual(["Este mes ya lleva Bs 480 · Medicamento", "El mes 1 pagó Bs 600 · Medicamento Bs 450 · Control Bs 150"]);
+    // Corregir la semana que tiene ese único pago: este mes queda en cero, sólo va el anterior.
+    expect(lineas(referenciasDelPago(meses(pagado(480, 0)), 5, { mes: 2, pagoMedicamento: 480, pagoControl: null, pagoOtro: null }))).toEqual([
+      "El mes 1 pagó Bs 600 · Medicamento Bs 450 · Control Bs 150",
+    ]);
+  });
+
+  it("el «Otro» también suma (los tres conceptos), en su orden; los miles con punto", () => {
+    const m: MesTratamiento[] = [{ ...meses()[0], pagado: pagado(1110, 150, 20) }, meses()[1]];
+    expect(lineas(referenciasDelPago(m, 5))).toEqual(["El mes 1 pagó Bs 1.280 · Medicamento Bs 1.110 · Control Bs 150 · Otro Bs 20"]);
+  });
+
+  it("el mes anterior sin pago: «sigue sin pago» si debe; si no debe (avisos apagados), nada", () => {
+    const sinPago: MesTratamiento[] = [{ ...meses()[0], pagado: pagado(0, 0), debe: true }, meses()[1]];
+    expect(lineas(referenciasDelPago(sinPago, 5))).toEqual(["El mes 1 sigue sin pago"]);
+    expect(referenciasDelPago([{ ...sinPago[0], debe: false }, sinPago[1]], 5)).toEqual([]);
+    // Con sólo «Otro» anotado el mes sigue debiendo: no dice «pagó Bs 20».
+    expect(lineas(referenciasDelPago([{ ...sinPago[0], pagado: pagado(0, 0, 20) }, sinPago[1]], 5))).toEqual(["El mes 1 sigue sin pago"]);
+    // Y con los avisos apagados (no debe), lo anotado en «Otro» se lee como lo que es.
+    expect(lineas(referenciasDelPago([{ ...sinPago[0], pagado: pagado(0, 0, 20), debe: false }, sinPago[1]], 5))).toEqual(["El mes 1 pagó Bs 20 · Otro"]);
+  });
+
+  it("en el mes 1 no hay mes anterior; fuera de los meses que mandó el servidor, nada", () => {
+    expect(referenciasDelPago([{ ...meses()[0], pagado: pagado(0, 0) }], 2)).toEqual([]);
+    expect(referenciasDelPago(meses(), 14)).toEqual([]);
+  });
+
+  it("la plata y cada concepto no se parten: espacios duros, y el «·» pegado al concepto de antes", () => {
+    const [r] = referenciasDelPago(meses(), 5);
+    expect(r.texto).toBe(`El mes 1 pagó Bs${NB}600`);
+    expect(r.detalle).toBe(`Medicamento${NB}Bs${NB}450${NB}· Control${NB}Bs${NB}150`);
+    expect(detallePagado(pagado(0, 0))).toBeNull();
   });
 });
 
@@ -385,11 +479,16 @@ describe("los meses y los pagos (sin la cuenta: la hace el servidor)", () => {
     expect(textoFaltaPago({ mes: 1, semana: 0, desde: "2026-11-02" })).toBe("Falta el pago inicial");
     expect(sinNb(textoPendiente(pp, "2026-12-16"))).toBe("Pago de la semana 5 · desde el 07/12/2026 (hace 9 días)");
     expect(textoPendiente({ mes: 1, semana: 0, desde: "2026-11-02" }, "2026-11-02")).toBe("Pago inicial · desde el 02/11/2026 (hoy)");
-    expect(sinNb(textoUltimoPago({ fecha: "2026-11-02", total: 630 }))).toBe("Último pago: Bs 630 el 02/11/2026");
-    expect(sinNb(textoUltimoPago({ fecha: "2026-11-02", total: 1260 }))).toBe("Último pago: Bs 1.260 el 02/11/2026");
-    expect(textoUltimoPago(null)).toBe("Todavía no pagó nada");
+    // §8.2: con el mes del pago, dos renglones — lo del MES entero y cuándo fue el último pago.
+    expect(textoUltimoPago({ fecha: "2026-11-21", total: 350, mes: 1, pagadoEnElMes: 600 }).map(sinNb)).toEqual(["El mes 1 pagó Bs 600", "Último pago: el 21/11/2026"]);
+    expect(textoUltimoPago({ fecha: "2026-11-02", total: 1260, mes: 3, pagadoEnElMes: 1260 }).map(sinNb)).toEqual(["El mes 3 pagó Bs 1.260", "Último pago: el 02/11/2026"]);
+    // Un backend anterior (sin el mes): el renglón de antes.
+    expect(textoUltimoPago({ fecha: "2026-11-02", total: 630 }).map(sinNb)).toEqual(["Último pago: Bs 630 el 02/11/2026"]);
+    expect(textoUltimoPago({ fecha: "2026-11-02", total: 1260 }).map(sinNb)).toEqual(["Último pago: Bs 1.260 el 02/11/2026"]);
+    expect(textoUltimoPago(null)).toEqual(["Todavía no pagó nada"]);
     // «el» y la fecha no se separan (en la tablet, la fecha quedaba sola en otro renglón).
-    expect(textoUltimoPago({ fecha: "2026-11-02", total: 630 })).toContain(`el${NB}02/11/2026`);
+    expect(textoUltimoPago({ fecha: "2026-11-02", total: 630 })[0]).toContain(`el${NB}02/11/2026`);
+    expect(textoUltimoPago({ fecha: "2026-11-21", total: 350, mes: 1, pagadoEnElMes: 600 })[1]).toContain(`el${NB}21/11/2026`);
   });
 });
 

@@ -301,7 +301,6 @@ export default function HojaTratamiento({
                   cambiar={cambiarS}
                   tocaPago={tocaPago}
                   titulo={tocaPago ? "Hoy toca el pago del mes 1" : "Pago de esta semana"}
-                  anterior={null}
                   abiertaDeEntrada={tocaPago}
                   refMedicamento={medicamento}
                 />

@@ -7,6 +7,7 @@ import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
 import { CATALOGO_SEGUIMIENTO, filaDe, hojaDe, pacientesDePrueba, pagosDe } from "../../../test/seguimientoFixtures";
 import HojaSeguimiento from "./HojaSeguimiento";
 import ListaSeguimiento from "./ListaSeguimiento";
+import PagosPendientes from "./PagosPendientes";
 
 /**
  * La hoja del paciente y la lista (CONTRATO-nutricion-seguimiento-23nov §4.1,
@@ -326,5 +327,26 @@ describe("la lista", () => {
     expect((await within(await screen.findByRole("table")).findAllByText("Sin tratamiento")).length).toBeGreaterThan(0);
     // El Médico no registra pacientes: sin el engranaje si no puede cambiar los ajustes… (aquí sí puede, por el catálogo de prueba).
     expect(screen.getByRole("button", { name: "Ajustes del seguimiento" })).toBeInTheDocument();
+  });
+});
+
+describe("«Pagos pendientes» (§8.2)", () => {
+  const renglonDe = async (nombre: string) => (await screen.findByRole("link", { name: nombre })).closest("li")!;
+  const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+
+  it("el último pago en dos renglones: lo que pagó el MES entero y cuándo fue; sin pago, «Todavía no pagó nada»", async () => {
+    render(
+      <MemoryRouter>
+        <PagosPendientes />
+      </MemoryRouter>,
+    );
+    // Lucía pagó el mes 1 en dos visitas: 480 + 150 el inicial y 50 de «Otro» en la semana 4.
+    const lucia = await renglonDe("Lucía Paredes Soria");
+    expect(sinNb(within(lucia).getByText(/^El mes 1 pagó/).textContent)).toBe("El mes 1 pagó Bs 680");
+    expect(sinNb(within(lucia).getByText(/^Último pago:/).textContent)).toMatch(/^Último pago: el \d\d\/\d\d\/\d{4}$/);
+    // En «les toca pagar» también.
+    const carla = await renglonDe("Carla Méndez Ruiz");
+    expect(sinNb(within(carla).getByText(/^El mes 1 pagó/).textContent)).toBe("El mes 1 pagó Bs 630");
+    expect(within(await renglonDe("Pedro Gutiérrez Cuéllar")).getByText("Todavía no pagó nada")).toBeInTheDocument();
   });
 });
