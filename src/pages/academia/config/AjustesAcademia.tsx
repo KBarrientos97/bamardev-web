@@ -372,19 +372,19 @@ export default function AjustesAcademia() {
           {/* 23-nov (Derick): la fecha tope de cobro. Sólo si el backend ya la conoce. */}
           {a.diaTopeCobroDocente !== undefined && (
             <Campo
-              label={`Último día de cobro para pagarle al ${p.docente} (día de cada mes)`}
+              label={`Último día de cobro para pagarle al ${p.docente} (día de cada mes, 0 = sin tope)`}
               hint={
-                a.diaTopeCobroDocente != null
-                  ? `El día ${a.diaTopeCobroDocente} todavía cuenta. Lo que un ${p.alumno} no pagó hasta ese día ya no se le paga al ${p.docente}, aunque pague después: queda en «Fuera de plazo» de su planilla. ${a.topeCobroDocenteDesde ? `Vale desde ${tituloMes(a.topeCobroDocenteDesde).toLowerCase()}. ` : ""}Vacío = sin fecha tope.`
-                  : `Vacío = sin fecha tope: lo que se cobra tarde se le suma al ${p.docente} como atrasado en la planilla siguiente.`
+                a.diaTopeCobroDocente
+                  ? `El día ${a.diaTopeCobroDocente} todavía cuenta. Lo que un ${p.alumno} no pagó hasta ese día ya no se le paga al ${p.docente}, aunque pague después: queda en «Fuera de plazo» de su planilla. ${a.topeCobroDocenteDesde ? `Vale desde ${tituloMes(a.topeCobroDocenteDesde).toLowerCase()}. ` : ""}Con 0 no hay fecha tope.`
+                  : `0 = sin fecha tope: lo que se cobra tarde se le suma al ${p.docente} como atrasado en la planilla siguiente.`
               }
             >
               <Input
                 type="number"
                 inputMode="numeric"
-                placeholder="Sin tope"
+                placeholder="0"
                 className="sm:max-w-[140px]"
-                {...numero("diaTopeCobroDocente", 1, 31, true)}
+                {...numero("diaTopeCobroDocente", 0, 31, true)}
               />
             </Campo>
           )}
