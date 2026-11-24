@@ -543,7 +543,7 @@ function PagarConQr({
             <img
               src={qr.imagenQr}
               alt={`QR para pagar ${bs(qr.monto)}`}
-              className="mx-auto aspect-square w-[min(82vw,44dvh)] rounded-xl border border-[#E5E7EB] bg-white sm:w-[min(400px,52dvh)]"
+              className="mx-auto aspect-square w-[min(100%,46dvh)] rounded-xl border border-[#E5E7EB] bg-white sm:w-[min(400px,46dvh)]"
             />
             {espera}
             <p className="text-center text-[12px] text-[#6B7280]">
