@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import { describe, expect, it, vi } from "vitest";
 import { armarTratamiento, hojaDe, pacientesDePrueba, type SemanaCruda } from "../../../test/seguimientoFixtures";
-import { dibujarSeguimiento, documentoSeguimiento, dosisParaPdf, enviarPdfSeguimientoPorWhatsapp, nombreDelPdf, paginarFilas, type FilaMedida } from "./pdf";
+import { conUnidadesPegadas, dibujarSeguimiento, documentoSeguimiento, dosisParaPdf, enviarPdfSeguimientoPorWhatsapp, nombreDelPdf, paginarFilas, type FilaMedida } from "./pdf";
 
 /**
  * El PDF del seguimiento (CONTRATO-nutricion-seguimiento-23nov §7.2, maqueta
@@ -162,5 +162,24 @@ describe("la talla y el envío", () => {
       vi.unstubAllGlobals();
       Object.assign(navigator, { share: undefined, canShare: undefined });
     }
+  });
+});
+
+describe("los cortes de renglón", () => {
+  it("el número no se separa de su unidad ni el vial se parte («10» / «mg en 0,5 ml»)", () => {
+    expect(conUnidadesPegadas("usa TG · 10 mg en 0,5 ml (antes X). Sube a 7,5 mg y 25 UI, bajó 2 kg.")).toBe(
+      "usa TG · 10 mg en 0,5 ml (antes X). Sube a 7,5 mg y 25 UI, bajó 2 kg.",
+    );
+    // Probado el 24-nov: la marca de la semana 12 salía «Desde esta semana usa TG · 10» y abajo «mg en 0,5 ml».
+    const conMarca = structuredClone(lucia);
+    conMarca.tratamientos[0].semanas = conMarca.tratamientos[0].semanas.map((x) => (x.semana === 5 ? { ...x, producto: { nombre: "TG", vialMg: 10, vialMl: 0.5 } } : x));
+    const hm = hojaDe(conMarca);
+    const d = documentoSeguimiento({ negocio: null, paciente: hm.paciente, tratamiento: hm.tratamiento!, hoy: HOY });
+    const pdf = new jsPDF({ unit: "pt", format: "a4" });
+    dibujarSeguimiento(pdf, d);
+    const crudo = pdf.output();
+    expect(crudo).toMatch(/\(10 mg en 0,5 ml/);
+    expect(crudo).not.toMatch(/ 10\) Tj/);
+    expect(crudo).not.toContain(" ");
   });
 });

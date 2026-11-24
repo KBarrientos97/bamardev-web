@@ -278,9 +278,20 @@ function usar(pdf: jsPDF, f: Fuente) {
   pdf.setFontSize(f.tam);
   pdf.setTextColor(f.color ?? TEXTO);
 }
-function partir(pdf: jsPDF, texto: string, ancho: number, f: Fuente): string[] {
+function partir(pdf: jsPDF, texto: string, ancho: number, f: Fuente, pegarUnidades = false): string[] {
   usar(pdf, f);
-  return (pdf.splitTextToSize(texto, ancho) as string[]).filter((l, i, a) => l.length > 0 || i < a.length - 1);
+  // Con `pegarUnidades` (las observaciones y la marca), un número no queda separado de su
+  // unidad ni el vial partido («10» / «mg en 0,5 ml»): se pegan con espacios duros para
+  // cortar y se vuelven espacios comunes para dibujar. (jsPDF mide el espacio duro un poco
+  // más ancho: en las columnas angostas de los datos cortaría antes de tiempo.)
+  return (pdf.splitTextToSize(pegarUnidades ? conUnidadesPegadas(texto) : texto, ancho) as string[])
+    .map((l) => l.replace(/ /g, " "))
+    .filter((l, i, a) => l.length > 0 || i < a.length - 1);
+}
+
+/** «10 mg en 0,5 ml», «17 UI», «7,5 kg»: el número con su unidad (y el vial entero) no se cortan. */
+export function conUnidadesPegadas(texto: string): string {
+  return texto.replace(/(\d) (mg|ml|UI|kg)(?![\p{L}])/gu, "$1 $2").replace(/mg en (\d)/g, "mg en $1");
 }
 
 /**
@@ -324,7 +335,10 @@ function medirFila(pdf: jsPDF, f: FilaPdfSeguimiento): FilaMedida<{ f: FilaPdfSe
     dosis: partirPorPartes(pdf, f.dosis, COLUMNAS[4].ancho, f.noSeAplico ? { ...F.celda, negrita: true } : F.celda),
     dosisDetalle: f.dosisDetalle ? partir(pdf, f.dosisDetalle, COLUMNAS[4].ancho, F.chico) : [],
   };
-  const lineas = [...(f.marca ? partir(pdf, f.marca, ANCHO_OBS, F.marca).map((l) => `\u0001${l}`) : []), ...(f.observaciones ? partir(pdf, f.observaciones, ANCHO_OBS, F.obs) : [])];
+  const lineas = [
+    ...(f.marca ? partir(pdf, f.marca, ANCHO_OBS, F.marca, true).map((l) => `\u0001${l}`) : []),
+    ...(f.observaciones ? partir(pdf, f.observaciones, ANCHO_OBS, F.obs, true) : []),
+  ];
   const altoKg = 12 + partes.kgTotal.length * 10;
   const altoDosis = partes.dosis.length * 12 + partes.dosisDetalle.length * 10;
   return { fila: { f, partes }, altoBase: Math.max(30, RELLENO_Y * 2 + Math.max(24, altoKg, altoDosis)), lineas };
