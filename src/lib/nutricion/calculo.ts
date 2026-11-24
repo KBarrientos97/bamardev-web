@@ -133,13 +133,45 @@ export const TOPES: Record<CampoNumerico, Tope> = {
  */
 export const TALLA_EN_METROS_HASTA = 3;
 
-/** El número leído en la unidad del campo: la talla en metros pasa a centímetros. */
+/**
+ * La talla se GUARDA en centímetros (`tallaCm`, lo que espera el servidor) y
+ * se ESCRIBE y se MUESTRA en metros, como se dice acá: «1,73» (QA, 24-nov).
+ * Escrita en centímetros («173») también vale: al salir del campo queda «1,73».
+ */
+export const UNIDAD_TALLA = "m";
+
+/**
+ * La talla en metros, como se dice: «1,73», «1,80» (dos decimales siempre) y
+ * «1,755» si se guardó con medio centímetro. Vacío sin dato. La cuenta va con
+ * enteros para que lo mostrado se vuelva a leer igual (175,5 cm ↔ «1,755»).
+ */
+export function tallaEnMetros(cm: number | null | undefined): string {
+  if (cm == null || !Number.isFinite(cm) || cm <= 0) return "";
+  const mm = Math.round(redondear(cm, 1) * 10);
+  const resto = String(mm % 1000).padStart(3, "0");
+  return `${Math.floor(mm / 1000)},${resto.endsWith("0") ? resto.slice(0, 2) : resto}`;
+}
+
+/** «1,73 m»; «—» sin dato. El espacio es duro, como en `conUnidad`: la unidad no baja sola. */
+export function tallaConUnidad(cm: number | null | undefined): string {
+  const t = tallaEnMetros(cm);
+  return t ? `${t} ${UNIDAD_TALLA}` : "—";
+}
+
+/** El número leído en la unidad en que se guarda: la talla en metros pasa a centímetros. */
 function enSuUnidad(campo: CampoNumerico, n: number): number {
   return campo === "tallaCm" && n > 0 && n < TALLA_EN_METROS_HASTA ? n * 100 : n;
 }
 
-/** Las unidades que se pueden escribir pegadas al número: «180cm», «82,4 kg», «75 %». */
+/** Las unidades que se pueden escribir pegadas al número: «92 cm», «82,4 kg», «75 %». */
 const UNIDADES_AL_FINAL = ["cm", "kg", "%"];
+
+/** Las de ESE campo. La talla acepta las dos, «1,73 m» y «173 cm» («cm» va primero: también termina en «m»). */
+function unidadesDe(campo: CampoNumerico): string[] {
+  if (campo === "tallaCm") return ["cm", UNIDAD_TALLA];
+  const u = TOPES[campo].unidad;
+  return UNIDADES_AL_FINAL.includes(u) ? [u] : [];
+}
 
 /**
  * Lo escrito sin la unidad de ESE campo al final (con o sin espacio, en
@@ -148,9 +180,8 @@ const UNIDADES_AL_FINAL = ["cm", "kg", "%"];
  */
 function sinSuUnidad(campo: CampoNumerico, texto: string): string {
   const t = texto.trim();
-  const u = TOPES[campo].unidad;
-  if (!UNIDADES_AL_FINAL.includes(u) || !t.toLowerCase().endsWith(u)) return t;
-  return t.slice(0, t.length - u.length).trimEnd();
+  const u = unidadesDe(campo).find((x) => t.toLowerCase().endsWith(x));
+  return u ? t.slice(0, t.length - u.length).trimEnd() : t;
 }
 
 /** Lo que está mal en lo escrito, o null si está bien (o vacío). */
@@ -164,13 +195,16 @@ export function errorDeTope(campo: CampoNumerico, texto: string): string | null 
   if (t.paso && Math.abs(n / t.paso - Math.round(n / t.paso)) > 1e-9) {
     return `Va de ${fmtNumero(t.paso)} en ${fmtNumero(t.paso)}`;
   }
+  // La talla, en la unidad en que se escribe: «Entre 0,80 y 2,50 m».
+  if (campo === "tallaCm" && (n < t.min || n > t.max)) return `Entre ${tallaEnMetros(t.min)} y ${tallaConUnidad(t.max)}`;
   if (n < t.min || n > t.max) return `Entre ${fmtNumero(t.min)} y ${fmtNumero(t.max)}${t.unidad ? ` ${t.unidad}` : ""}`;
   return null;
 }
 
 /**
  * El número escrito, redondeado a lo que se guarda; null vacío o inválido. La
- * talla en metros, en centímetros; la unidad del campo pegada al final, fuera.
+ * talla sale siempre en centímetros (se escriba «1,73» o «173»); la unidad del
+ * campo pegada al final, fuera.
  */
 export function valorDe(campo: CampoNumerico, texto: string): number | null {
   const n = leerNumero(sinSuUnidad(campo, texto));
@@ -178,15 +212,17 @@ export function valorDe(campo: CampoNumerico, texto: string): number | null {
   return redondear(enSuUnidad(campo, n), TOPES[campo].decimales);
 }
 
-/** Cómo se ve un valor del campo: con coma y sin ceros de más («82,4»). */
+/** Cómo se ve un valor del campo: con coma y sin ceros de más («82,4»); la talla, en metros («1,73»). */
 export function textoDe(campo: CampoNumerico, n: number | null | undefined): string {
+  if (campo === "tallaCm") return tallaEnMetros(n);
   return fmtNumero(n, TOPES[campo].decimales);
 }
 
 /**
  * Lo que queda escrito al salir del campo: el número con coma y sin ceros de
- * más («82.40» → «82,4», la talla «1,80» → «180»). Lo que está mal queda tal
- * cual, con su error a la vista: «2,5» hijos no se vuelve «3» en silencio.
+ * más («82.40» → «82,4»); la talla, en metros se haya escrito como se haya
+ * escrito («173» → «1,73», «1.8» → «1,80»). Lo que está mal queda tal cual,
+ * con su error a la vista: «2,5» hijos no se vuelve «3» en silencio.
  */
 export function textoAlSalir(campo: CampoNumerico, texto: string): string {
   const n = valorDe(campo, texto);

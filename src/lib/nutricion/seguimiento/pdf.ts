@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { entregarPdf, type EntregaPdf } from "../../pdf/tablaPdf";
-import { calcularImc, fechaLarga, fmtNumero, hoyIso } from "../calculo";
+import { calcularImc, fechaLarga, fmtNumero, hoyIso, tallaEnMetros } from "../calculo";
 import {
   AMBAR,
   BORDE,
@@ -151,8 +151,8 @@ export function documentoSeguimiento({
       { etiqueta: "PACIENTE", valor: paciente.nombre },
       { etiqueta: "CARNET", valor: paciente.ci ? `${paciente.ci}${paciente.ciExpedido ? ` ${paciente.ciExpedido}` : ""}` : "—" },
       { etiqueta: "EDAD", valor: paciente.edad != null ? `${paciente.edad} años` : "—" },
-      // En metros con dos decimales, como se dice una talla: «1,60 m» (no «1,6 m»).
-      { etiqueta: "TALLA", valor: paciente.tallaCm ? `${(paciente.tallaCm / 100).toFixed(2).replace(".", ",")} m` : "—" },
+      // En metros con dos decimales, como se dice una talla y como se ve en la pantalla: «1,60 m» (no «1,6 m»).
+      { etiqueta: "TALLA", valor: paciente.tallaCm ? `${tallaEnMetros(paciente.tallaCm)} m` : "—" },
       { etiqueta: "PRODUCTO", valor: textoProducto(actual) },
       { etiqueta: "INICIO", valor: fechaLarga(t.inicio) },
       {

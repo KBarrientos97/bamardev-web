@@ -7,7 +7,7 @@ import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Vacio, useAviso } from "
 import { iniciales } from "../../lib/format";
 import { apiNutricion, esNoEncontrado } from "../../lib/nutricion/api";
 import { conAlt, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
-import { conUnidad, fechaLarga, fmtCambio, sufijoDelDia, vecesDelDia, type CampoControl } from "../../lib/nutricion/calculo";
+import { fechaLarga, fmtCambio, sufijoDelDia, tallaConUnidad, vecesDelDia, type CampoControl } from "../../lib/nutricion/calculo";
 import { bajarPdfEvaluacion, documentoEvaluacion, enviarPdfEvaluacionPorWhatsapp } from "../../lib/nutricion/pdfEvaluacion";
 import { celdaDe, DEL_GRAFICO, evolucionDe, FILAS, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "../../lib/nutricion/planilla";
 import type { Catalogo, Control, Paciente } from "../../lib/nutricion/tipos";
@@ -533,7 +533,7 @@ function FichaLectura({ paciente: p, catalogo, edita }: { paciente: Paciente; ca
   const nombreEnf = (codigo: string) => catalogo.enfermedades.find((e) => e.codigo === codigo)?.nombre ?? codigo;
   const conSi = Object.entries(p.enfermedades ?? {}).filter(([, e]) => e.tiene);
   const filasDatos: [string, string | null][] = [
-    ["Talla", p.tallaCm != null ? conUnidad(p.tallaCm, "cm") : null],
+    ["Talla", p.tallaCm != null ? tallaConUnidad(p.tallaCm) : null],
     ["Fecha de nacimiento", p.fechaNacimiento ? fechaLarga(p.fechaNacimiento) : null],
     ["Hijos", p.hijos != null ? String(p.hijos) : null],
     ["Teléfono", p.telefono],
