@@ -849,11 +849,14 @@ export function BloquePagos({
           setAbierta(true);
           setTimeout(() => medicamento.current?.focus(), 0);
         }}
-        className="flex h-[52px] items-center gap-2.5 rounded-2xl border border-borde bg-white px-4 text-left text-[15px] font-medium text-texto transition-colors hover:bg-muted sm:h-14 sm:px-[18px] sm:text-base lg:h-12 lg:rounded-[14px] lg:px-4 lg:text-[15px]"
+        className="flex min-h-[52px] items-center gap-2.5 rounded-2xl border border-borde bg-white px-4 py-2 text-left text-[15px] font-medium text-texto transition-colors hover:bg-muted sm:min-h-14 sm:px-[18px] sm:text-base lg:min-h-12 lg:rounded-[14px] lg:px-4 lg:text-[15px]"
       >
         <Icon name="plus" size={20} strokeWidth={2.4} className="shrink-0 text-primary-boton" />
-        Anotar un pago
-        {anterior && <span className="ml-auto truncate pl-2 text-sm font-normal text-texto-3 max-sm:hidden">{anterior}</span>}
+        {/* En la columna angosta de la PC, «El anterior…» baja entero (se cortaba con «…» y partía «Anotar un / pago»). */}
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <span className="whitespace-nowrap">Anotar un pago</span>
+          {anterior && <span className="text-sm font-normal text-texto-3 max-sm:hidden">{anterior}</span>}
+        </span>
       </button>
     );
   }
