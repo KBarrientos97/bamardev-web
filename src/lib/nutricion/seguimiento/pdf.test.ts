@@ -135,3 +135,12 @@ describe("con 34 semanas", () => {
     expect(crudo.split("(OBSERVACIONES)").length - 1).toBe(paginas);
   });
 });
+
+describe("la talla", () => {
+  it("la talla en metros con dos decimales: «1,60 m», no «1,6 m»", () => {
+    const h = hojaDe(lucia);
+    const doc = documentoSeguimiento({ negocio: null, paciente: { ...h.paciente, tallaCm: 160 }, tratamiento: h.tratamiento!, hoy: HOY });
+    expect(doc.datos.find((d) => d.etiqueta === "TALLA")!.valor).toBe("1,60 m");
+  });
+
+});

@@ -130,7 +130,8 @@ export function documentoSeguimiento({
       { etiqueta: "PACIENTE", valor: paciente.nombre },
       { etiqueta: "CARNET", valor: paciente.ci ? `${paciente.ci}${paciente.ciExpedido ? ` ${paciente.ciExpedido}` : ""}` : "—" },
       { etiqueta: "EDAD", valor: paciente.edad != null ? `${paciente.edad} años` : "—" },
-      { etiqueta: "TALLA", valor: paciente.tallaCm ? `${fmtNumero(paciente.tallaCm / 100, 2)} m` : "—" },
+      // En metros con dos decimales, como se dice una talla: «1,60 m» (no «1,6 m»).
+      { etiqueta: "TALLA", valor: paciente.tallaCm ? `${(paciente.tallaCm / 100).toFixed(2).replace(".", ",")} m` : "—" },
       { etiqueta: "PRODUCTO", valor: textoProducto(actual) },
       { etiqueta: "INICIO", valor: fechaLarga(t.inicio) },
       {
