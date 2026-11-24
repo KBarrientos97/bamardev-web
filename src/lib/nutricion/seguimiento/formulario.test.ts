@@ -16,6 +16,7 @@ import {
   soloLoEscrito,
   tratamientoDesde,
   tratamientoVacio,
+  valorLimitado,
 } from "./formulario";
 import { armarTratamiento, pacientesDePrueba } from "../../../test/seguimientoFixtures";
 
@@ -107,6 +108,20 @@ describe("los topes (§3.3)", () => {
     expect(errorDeNumero("pago", "100001")).toBe("Entre Bs 0 y Bs 100.000");
     expect(errorDeNumero("pago", "10,555")).toBe("Hasta 2 decimales");
     expect(errorDeNumero("pago", "0")).toBeNull();
+  });
+
+  // Probado el 24-nov: «1.500» (como se lee «Bs 1.260» en la pantalla) decía «Hasta 2 decimales».
+  it("la plata con punto de miles: «1.500» son mil quinientos; «1.500,50», con centavos; «1,5» sigue siendo 1,5", () => {
+    expect(errorDeNumero("pago", "1.500")).toBeNull();
+    expect(valorLimitado("pago", "1.500")).toBe(1500);
+    expect(valorLimitado("pago", "Bs 12.000")).toBe(12000);
+    expect(valorLimitado("pago", "1.500,50")).toBe(1500.5);
+    expect(valorLimitado("pago", "1,5")).toBe(1.5);
+    expect(valorLimitado("pago", "1.50")).toBe(1.5);
+    expect(errorDeNumero("pago", "150.000")).toBe("Entre Bs 0 y Bs 100.000");
+    // Sólo en la plata: una dosis «1.500» es otra cosa.
+    expect(errorDeNumero("dosis", "1.500")).toBeNull();
+    expect(valorLimitado("dosis", "1.500")).toBe(1.5);
   });
 
   it("el vial: mayor que 0, hasta 1000 mg y 100 ml; las dos o ninguna", () => {

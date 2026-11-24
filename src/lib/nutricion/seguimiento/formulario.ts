@@ -100,13 +100,19 @@ export const LIMITES = {
 
 export type CampoLimitado = keyof typeof LIMITES;
 
-/** Lo escrito sin la unidad al final (o «Bs» adelante) y sin espacios. */
+/**
+ * Lo escrito sin la unidad al final (o «Bs» adelante) y sin espacios. En la
+ * plata, el punto de miles como se lee en la pantalla («Bs 1.260»): «1.500»
+ * son mil quinientos (decía «Hasta 2 decimales»); «1.50» o «1,5» siguen
+ * siendo uno con cincuenta.
+ */
 function limpio(campo: CampoLimitado, texto: string): string {
   const t = texto.trim();
   const u = (LIMITES[campo] as Limite).unidad;
   if (!u) return t;
   const sinAdelante = t.replace(new RegExp(`^${u}\\.?\\s*`, "i"), "");
-  return sinAdelante.toLowerCase().endsWith(u.toLowerCase()) ? sinAdelante.slice(0, -u.length).trimEnd() : sinAdelante;
+  const sinUnidad = sinAdelante.toLowerCase().endsWith(u.toLowerCase()) ? sinAdelante.slice(0, -u.length).trimEnd() : sinAdelante;
+  return campo === "pago" && /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(sinUnidad) ? sinUnidad.replace(/\./g, "") : sinUnidad;
 }
 
 /** El número escrito (con coma o punto), o null si está vacío o no es un número. */
