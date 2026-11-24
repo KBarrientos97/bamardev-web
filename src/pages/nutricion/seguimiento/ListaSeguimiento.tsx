@@ -7,7 +7,7 @@ import { useTextoDemorado } from "../../../lib/academia/useBusquedaEstudiante";
 import { escribiendo, hayDialogoAbierto, useTeclas } from "../../../lib/nutricion/atajos";
 import { conUnidad } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
-import { flechaKg, haceDias, nombreSemana, textoDosis } from "../../../lib/nutricion/seguimiento/formato";
+import { haceDias, nombreSemana, textoDosis, textoKg } from "../../../lib/nutricion/seguimiento/formato";
 import type { FilaSeguimiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { usePaginado } from "../../../lib/paginado";
@@ -233,15 +233,17 @@ function TextoTratamiento({ p }: { p: FilaSeguimiento }) {
   );
 }
 
-/** «121,8 kg · ↓ 7,2 kg». */
+/** «121,8 kg · bajó 7,2 kg» (con palabras, no sólo con la flecha y el color). */
 function Peso({ p }: { p: FilaSeguimiento }) {
   const t = p.tratamiento;
   if (!t || t.pesoActual == null) return <span className="text-texto-4">—</span>;
-  const kg = flechaKg(t.kgBajados);
+  const kg = textoKg(t.kgBajados);
   return (
     <span className="whitespace-nowrap tabular-nums">
       <span className="font-semibold text-texto">{conUnidad(t.pesoActual, "kg", 2)}</span>
-      {kg && !kg.igual && <span className={kg.subio ? "text-danger-text" : "text-primary-700"}> · {kg.texto}&nbsp;kg</span>}
+      {kg && kg.tono !== "igual" && (
+        <span className={kg.tono === "subio" ? "text-danger-text" : "text-primary-700"}> · {kg.texto.toLowerCase()}&nbsp;kg</span>
+      )}
     </span>
   );
 }

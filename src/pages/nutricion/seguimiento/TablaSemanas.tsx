@@ -2,9 +2,17 @@ import type { ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
 import { fmtPlata } from "../../../lib/format";
 import { fechaLarga, fmtNumero } from "../../../lib/nutricion/calculo";
-import { casilleroAmarillo, dosisDelRegistro, nombreSemana, pagoDelMes, tituloMes } from "../../../lib/nutricion/seguimiento/formato";
+import {
+  casilleroAmarillo,
+  dosisDelRegistro,
+  nombreSemana,
+  pagoDelMes,
+  textoKg,
+  textoKgTotal,
+  tituloMes,
+} from "../../../lib/nutricion/seguimiento/formato";
 import type { MesTratamiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
-import { AMARILLO, Dosis, Kg } from "./piezas";
+import { AMARILLO, Dosis } from "./piezas";
 
 /**
  * La tabla como la hoja de papel (§4.2): un renglón «Inicial» y uno por
@@ -255,19 +263,29 @@ function DosisDeLaSemana({ registro, apilada = true }: { registro: Registro; api
   return d ? <Dosis dosis={d} apilada={apilada} /> : <span className="text-texto-4">—</span>;
 }
 
-function KgDeLaSemana({ registro }: { registro: Registro }) {
-  if (registro.kgBajados == null && registro.kgSemana == null) return <span className="text-texto-4">—</span>;
+/**
+ * «Kg bajado» (§7, Kevin 23-nov): lo principal es el cambio contra el peso
+ * anterior («Bajó 0,7», «Subió 0,3», «Igual»), con palabras y no sólo con
+ * color; debajo, chico, el total desde el inicio («2,1 desde el inicio»).
+ */
+export function KgDeLaSemana({ registro }: { registro: Pick<Registro, "kgSemana" | "kgBajados"> }) {
+  const semana = textoKg(registro.kgSemana);
+  const total = textoKgTotal(registro.kgBajados);
+  if (!semana && !total) return <span className="text-texto-4">—</span>;
   return (
     <span className="block">
-      {registro.kgBajados != null ? <Kg kg={registro.kgBajados} className="font-semibold" /> : <span className="text-texto-4">—</span>}
-      {registro.kgSemana != null && (
-        <span className="mt-0.5 block text-[11px]">
-          <Kg kg={registro.kgSemana} sufijo="esta semana" />
-        </span>
+      {semana ? (
+        <span className={`block whitespace-nowrap font-semibold tabular-nums ${TONO_KG[semana.tono]}`}>{semana.texto}</span>
+      ) : (
+        <span className="block text-texto-4">—</span>
       )}
+      {total && <span className="mt-0.5 block text-[12px] leading-snug text-texto-3">{total}</span>}
     </span>
   );
 }
+
+/** Bajó en el verde de la marca, subió en tono de alerta, igual en gris: el color acompaña a la palabra. */
+const TONO_KG = { bajo: "text-primary-700", subio: "text-danger-text", igual: "text-texto-3" } as const;
 
 function FilaCargada({ r, registro, editable, onCorregir }: { r: Renglon; registro: Registro; editable: boolean; onCorregir: (r: Registro) => void }) {
   return (

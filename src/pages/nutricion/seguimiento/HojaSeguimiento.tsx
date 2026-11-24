@@ -13,6 +13,7 @@ import {
   partesEquivalencias,
   semanaCorta,
   semanas,
+  textoKg,
   textoDosis,
   textoFaltaPago,
   textoJeringa,
@@ -653,6 +654,9 @@ function AvisosDePago({ t, edita, onAnotar }: { t: Tratamiento; edita: boolean; 
 function Resumen({ t }: { t: Tratamiento }) {
   const r = t.resumen;
   const kg = flechaKg(r.kgBajados);
+  const total = textoKg(r.kgBajados);
+  // La última semana con peso anterior: «Última semana: bajó 0,4 kg».
+  const ultimaSemana = textoKg([...t.registros].reverse().find((x) => x.kgSemana != null)?.kgSemana);
   const d = r.dosisActual;
   const sinAplicar = r.semanasSinDosis ?? 0;
   return (
@@ -665,9 +669,20 @@ function Resumen({ t }: { t: Tratamiento }) {
       />
       <KpiTarjeta
         etiqueta={kg?.subio ? "Subió" : "Bajó"}
-        valor={kg ? (kg.igual ? "0 kg" : `${kg.texto} kg`) : "—"}
+        valor={total ? `${total.cifra} kg` : "—"}
         tono={kg?.subio ? "urgente" : kg && !kg.igual ? "ok" : "normal"}
-        pie={kg ? "desde el inicio" : undefined}
+        pie={
+          total || ultimaSemana ? (
+            <span className="block space-y-0.5">
+              {total && <span className="block">desde el inicio</span>}
+              {ultimaSemana && (
+                <span className="block">
+                  Última semana: {ultimaSemana.tono === "igual" ? "igual" : `${ultimaSemana.texto.toLowerCase()} kg`}
+                </span>
+              )}
+            </span>
+          ) : undefined
+        }
       />
       <KpiTarjeta
         etiqueta="Dosis actual"
@@ -804,7 +819,7 @@ function Anteriores({
       {abierta && (
         <ul id="tratamientos-anteriores" className="divide-y divide-borde-soft border-t border-borde-soft">
           {anteriores.map((a) => {
-            const kg = flechaKg(a.kgBajados);
+            const kg = textoKg(a.kgBajados);
             const actual = mirando === a.id;
             return (
               <li key={a.id}>
@@ -819,8 +834,8 @@ function Anteriores({
                       {" "}
                       · {fechaLarga(a.inicio)} al {fechaLarga(a.terminadoEn)} · {semanas(a.semana)}
                     </span>
-                    {kg && !kg.igual && (
-                      <span className={`whitespace-nowrap ${kg.subio ? "text-danger-text" : "text-primary-700"}`}> · {kg.texto}&nbsp;kg</span>
+                    {kg && kg.tono !== "igual" && (
+                      <span className={`whitespace-nowrap ${kg.tono === "subio" ? "text-danger-text" : "text-primary-700"}`}> · {kg.texto.toLowerCase()}&nbsp;kg</span>
                     )}
                   </span>
                   <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4" />

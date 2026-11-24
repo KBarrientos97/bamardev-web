@@ -1,11 +1,11 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
-import { flechaKg, partesEquivalencias, textoDosis } from "../../../lib/nutricion/seguimiento/formato";
+import { partesEquivalencias, textoDosis } from "../../../lib/nutricion/seguimiento/formato";
 import type { DosisAnotada, Equivalencias, UnidadDosis } from "../../../lib/nutricion/seguimiento/tipos";
 
 /**
  * Las piezas chicas del seguimiento: la dosis como se lee en toda la sección
- * (lo anotado y, en gris, sus equivalencias), los kilos con su flecha, los
+ * (lo anotado y, en gris, sus equivalencias), los
  * chips de los avisos de pago, las franjas y los botones de un toque. El marco
  * (tarjetas, encabezado, tablas) es el de la Academia, como en la Evaluación.
  */
@@ -43,19 +43,6 @@ export function Equivalentes({ partes, className = "" }: { partes: string[]; cla
           {i < partes.length - 1 ? " · " : ""}
         </span>
       ))}
-    </span>
-  );
-}
-
-/** «↓ 7,2» (bajó) en verde de la marca, «↑ 0,8» (subió) en tono de alerta. */
-export function Kg({ kg, sufijo = "", className = "" }: { kg: number | null | undefined; sufijo?: string; className?: string }) {
-  const f = flechaKg(kg);
-  if (!f) return <span className="text-texto-4">—</span>;
-  if (f.igual) return <span className={`whitespace-nowrap text-texto-3 ${className}`}>= {sufijo}</span>;
-  return (
-    <span className={`whitespace-nowrap tabular-nums ${f.subio ? "text-danger-text" : "text-primary-700"} ${className}`}>
-      {f.texto}
-      {sufijo ? ` ${sufijo}` : ""}
     </span>
   );
 }

@@ -94,6 +94,17 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(within(screen.getByRole("table")).getByText("Mes 1 · Inicial a semana 4")).toBeInTheDocument();
   });
 
+  // §7 (Kevin, 23-nov): lo principal es lo de la semana, con palabras; el total, de dato secundario.
+  it("«Kg bajado»: «Bajó 0,6» / «Subió 0,8» contra la semana anterior y, debajo, el total desde el inicio", async () => {
+    await abrirHoja(12);
+    const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+    const fila = (n: number) => sinNb(within(screen.getByRole("table")).getByRole("button", { name: `Corregir la semana ${n}` }).closest("tr")!.cells[2].textContent);
+    expect(fila(5)).toBe("Bajó 0,65,6 desde el inicio");
+    expect(fila(7)).toBe("Subió 0,84,3 desde el inicio");
+    // La tarjeta «Bajó»: el total y la última semana.
+    expect(sinNb(screen.getByText(/^Última semana:/).textContent)).toBe("Última semana: subió 0,8 kg");
+  });
+
   it("«Anotar pago» abre el último registro de ese mes con el foco en el medicamento", async () => {
     await abrirHoja(12);
     fireEvent.click(screen.getByRole("button", { name: "Anotar pago" }));
