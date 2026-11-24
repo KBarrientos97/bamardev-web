@@ -83,6 +83,8 @@ export default function GraficoEvolucion({
   const marcas = Array.from({ length: Math.round((eje.hasta - eje.desde) / eje.paso) + 1 }, (_, k) => eje.desde + k * eje.paso);
   // Las fechas del eje no se pisan: una de cada `salto`, y siempre la última.
   const salto = Math.max(1, Math.ceil(puntos.length / Math.max(2, Math.floor((w - izq) / 64))));
+  // Muchos puntos juntos (30 semanas en el teléfono): puntos chicos y llenos, que no se monten unos sobre otros.
+  const apretado = puntos.length > 1 && (w - izq - der) / (puntos.length - 1) < 12;
 
   const alMover = (clientX: number) => {
     const el = ref.current;
@@ -123,10 +125,10 @@ export default function GraficoEvolucion({
             key={i}
             cx={cx}
             cy={cy}
-            r={i === foco || puntos.length === 1 ? 5.5 : puntos[i].chico ? 2.75 : 4}
-            fill={puntos[i].chico && i !== foco ? "var(--color-primary-boton)" : "#fff"}
+            r={i === foco || puntos.length === 1 ? 5.5 : puntos[i].chico ? 2.75 : apretado ? 2.5 : 4}
+            fill={(puntos[i].chico || apretado) && i !== foco ? "var(--color-primary-boton)" : "#fff"}
             stroke="var(--color-primary-boton)"
-            strokeWidth={puntos[i].chico ? 1.5 : 2.25}
+            strokeWidth={puntos[i].chico || apretado ? 1.5 : 2.25}
           />
         ))}
         {puntos.map((pt, i) =>

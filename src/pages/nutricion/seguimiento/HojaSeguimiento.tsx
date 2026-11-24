@@ -402,14 +402,11 @@ export default function HojaSeguimiento() {
             sinRelleno
             barra={
               t.meses.length > 1 ? (
-                <div className="py-3 [&_button]:min-h-11 lg:[&_button]:min-h-9">
-                  <ChipsFiltro<string>
-                    etiqueta="Filtrar por mes"
-                    valor={mes == null ? "todo" : String(mes)}
-                    onChange={(v) => setMesElegido(v === "todo" ? "todo" : Number(v))}
-                    opciones={[{ clave: "todo", label: "Todo" }, ...t.meses.map((m) => ({ clave: String(m.mes), label: `Mes ${m.mes}` }))]}
-                  />
-                </div>
+                <ChipsDeMes
+                  valor={mes == null ? "todo" : String(mes)}
+                  onChange={(v) => setMesElegido(v === "todo" ? "todo" : Number(v))}
+                  opciones={[{ clave: "todo", label: "Todo" }, ...t.meses.map((m) => ({ clave: String(m.mes), label: `Mes ${m.mes}` }))]}
+                />
               ) : undefined
             }
           >
@@ -766,6 +763,32 @@ function PesoPorSemana({ t }: { t: Tratamiento }) {
   );
 }
 
+// ── Los chips de mes ────────────────────────────────────────────────────────
+
+/**
+ * «Todo · Mes 1 · Mes 2…». Con muchas semanas (8 o 10 meses) en el teléfono
+ * van en una sola fila que se desliza de costado (antes eran tres renglones de
+ * chips arriba de la tabla), con el mes elegido a la vista; en la tablet y la
+ * PC, como siempre, bajan de renglón si no entran.
+ */
+function ChipsDeMes({ valor, onChange, opciones }: { valor: string; onChange: (v: string) => void; opciones: { clave: string; label: string }[] }) {
+  const caja = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const c = caja.current;
+    const el = c?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!c || !el || c.scrollWidth <= c.clientWidth) return;
+    c.scrollLeft = el.offsetLeft - c.clientWidth / 2 + el.offsetWidth / 2;
+  }, [valor, opciones.length]);
+  return (
+    <div
+      ref={caja}
+      className="relative -mx-4 overflow-x-auto px-4 py-3 [scrollbar-width:none] sm:-mx-5 sm:px-5 md:mx-0 md:overflow-visible md:px-0 [&_button]:min-h-11 [&_button]:shrink-0 lg:[&_button]:min-h-9 max-md:[&>[role=group]]:w-max max-md:[&>[role=group]]:flex-nowrap"
+    >
+      <ChipsFiltro<string> etiqueta="Filtrar por mes" valor={valor} onChange={onChange} opciones={opciones} />
+    </div>
+  );
+}
+
 // ── El PDF ──────────────────────────────────────────────────────────────────
 
 /**
@@ -807,13 +830,28 @@ function BotonesPdf({
       setArmando(null);
     }
   }
+  // En el teléfono, cortos: los dos entran en un renglón.
   return (
     <>
-      <Boton variante="ghost" icono="download" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("pdf")}>
-        {armando === "pdf" ? "Armando…" : "Descargar PDF"}
+      <Boton variante="ghost" icono="download" aria-label="Descargar PDF" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("pdf")}>
+        {armando === "pdf" ? (
+          "Armando…"
+        ) : (
+          <>
+            <span className="sm:hidden">PDF</span>
+            <span className="max-sm:hidden">Descargar PDF</span>
+          </>
+        )}
       </Boton>
-      <Boton variante="ghost" icono="compartir" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
-        {armando === "whatsapp" ? "Armando…" : "Enviar por WhatsApp"}
+      <Boton variante="ghost" icono="compartir" aria-label="Enviar por WhatsApp" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
+        {armando === "whatsapp" ? (
+          "Armando…"
+        ) : (
+          <>
+            <span className="sm:hidden">WhatsApp</span>
+            <span className="max-sm:hidden">Enviar por WhatsApp</span>
+          </>
+        )}
       </Boton>
     </>
   );
