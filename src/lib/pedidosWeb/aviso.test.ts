@@ -34,11 +34,12 @@ describe("avisoSinPedidos", () => {
     expect(avisoSinPedidos(info(false), { horarios: [tarde], ahora: bolivia("10:00") })).toBe("Cerrado ahora · Abrimos mañana a la 1:00.");
   });
 
-  it("en horario sin caja abierta: en un ratito, salvo que ya esté por cerrar", () => {
+  it("en horario sin caja abierta: en un ratito, también cerca del cierre", () => {
     expect(avisoSinPedidos(info(false), { horarios: [OMAR], ahora: bolivia("12:05"), enLaCarta: true })).toBe(
       "En un ratito empezamos a tomar pedidos. Mirá la carta mientras tanto.",
     );
-    expect(avisoSinPedidos(info(false), { horarios: [OMAR], ahora: bolivia("01:30") })).toBe("Por hoy ya no estamos tomando pedidos.");
+    // A media hora de cerrar igual: el local puede abrir la caja y vender hasta el final.
+    expect(avisoSinPedidos(info(false), { horarios: [OMAR], ahora: bolivia("01:30") })).toBe("En un ratito empezamos a tomar pedidos.");
   });
 
   it("sin horario cargado, el texto general", () => {
