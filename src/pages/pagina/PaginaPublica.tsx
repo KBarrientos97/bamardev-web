@@ -224,7 +224,10 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   const conSistema = !!pagina?.pedidosSistema && !conPedidos;
   const carrito = conPedidos || conSistema;
   const infoPedidos = useInfoPedidos(subdominio, conSistema);
-  const sinPedidos = conSistema ? avisoSinPedidos(infoPedidos.info) : null;
+  // El texto sale del horario de la página: «Cerrado ahora · Abrimos hoy a las 12:00» (24-nov).
+  const sinPedidos = conSistema
+    ? avisoSinPedidos(infoPedidos.info, { horarios: pagina?.sucursales.map((s) => s.horarioSemanal), enLaCarta: true })
+    : null;
   // Lo que el local elegido en el catálogo no puede servir hoy (agotado a mano o sin stock). La info trae las
   // sucursales en el mismo orden que el catálogo (QA R1, N3).
   const agotadosCarta = useMemo(() => {
