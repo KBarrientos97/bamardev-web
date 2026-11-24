@@ -112,7 +112,8 @@ function limpio(campo: CampoLimitado, texto: string): string {
   if (!u) return t;
   const sinAdelante = t.replace(new RegExp(`^${u}\\.?\\s*`, "i"), "");
   const sinUnidad = sinAdelante.toLowerCase().endsWith(u.toLowerCase()) ? sinAdelante.slice(0, -u.length).trimEnd() : sinAdelante;
-  return campo === "pago" && /^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(sinUnidad) ? sinUnidad.replace(/\./g, "") : sinUnidad;
+  // Sin cero adelante: «0.500» no es un quinientos, sigue siendo un número con decimales de más.
+  return campo === "pago" && /^[1-9]\d{0,2}(\.\d{3})+(,\d{1,2})?$/.test(sinUnidad) ? sinUnidad.replace(/\./g, "") : sinUnidad;
 }
 
 /** El número escrito (con coma o punto), o null si está vacío o no es un número. */

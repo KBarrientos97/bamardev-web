@@ -276,6 +276,34 @@ describe("la semana pasada, la dosis marcada y el pago anterior (§7.2)", () => 
     expect(rachaAntes(lucia.registros, 0)).toBeNull();
   });
 
+  // Probado el 24-nov: tras cambiar de vial, la tabla mostraba «5 mg» todas las semanas y la franja decía «lleva 1 aplicación con esa dosis».
+  it("la racha por escalón: tras un cambio de vial, 25 UI del de 20 mg/ml siguen la de 17 UI del de 30 (las dos son los 5 mg)", () => {
+    const crudo = pacientesDePrueba("2026-11-23").find((p) => p.paciente.id === 32)!.tratamientos[0];
+    const conCambio = (dosisDesdeLa8: number) =>
+      armarTratamiento({
+        ...crudo,
+        semanas: crudo.semanas.map((s) =>
+          s.semana < 6
+            ? s
+            : { ...s, dosis: s.semana >= 8 ? dosisDesdeLa8 : 25, mgPorMl: 20, ...(s.semana === 6 ? { producto: { nombre: "TG", vialMg: 10, vialMl: 0.5 } } : {}) },
+        ),
+      });
+    const t = conCambio(25);
+    const aplicadas = t.registros.filter((r) => r.dosis != null && !r.sinDosis).length;
+    const escalones = (s: number) => escalonesDeLaSemana(t, s, CATALOGO_SEGUIMIENTO);
+    // Con la cuenta exacta (5,1 mg contra 5 mg) la racha se cortaba en el cambio.
+    expect(rachaAntes(t.registros, Infinity)).toMatchObject({ semana: 9, aplicaciones: 4 });
+    expect(rachaAntes(t.registros, Infinity, escalones)).toMatchObject({ semana: 9, aplicaciones: aplicadas });
+    expect(aplicadas).toBeGreaterThan(4);
+    // La dosis que devuelve es la anotada, sin tocar.
+    expect(rachaAntes(t.registros, Infinity, escalones)!.dosis).toMatchObject({ dosis: 25, unidadDosis: "UI", dosisMg: 5 });
+    expect(rachaAntes(t.registros, 7, escalones)!.dosis).toMatchObject({ dosis: 25, unidadDosis: "UI" });
+    expect(rachaAntes(t.registros, 6, escalones)!.dosis).toMatchObject({ dosis: 17, dosisMg: 5.1 });
+    // Subir de escalón sí la corta: 38 UI del vial nuevo son los 7,5 mg.
+    const subio = conCambio(38);
+    expect(rachaAntes(subio.registros, Infinity, (s) => escalonesDeLaSemana(subio, s, CATALOGO_SEGUIMIENTO))).toMatchObject({ semana: 9, aplicaciones: 2 });
+  });
+
   it("«Igual que la anterior»: lo anotado tal cual; con otro vial, los mismos mg (con «≈»)", () => {
     const antes = { dosis: 17, unidadDosis: "UI" as const, dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 };
     expect(igualQueLaAnterior(antes, "UI", 30, 100)).toEqual({ escribe: "17", valor: 17, calculada: false });

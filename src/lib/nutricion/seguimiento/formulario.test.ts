@@ -119,6 +119,8 @@ describe("los topes (§3.3)", () => {
     expect(valorLimitado("pago", "1,5")).toBe(1.5);
     expect(valorLimitado("pago", "1.50")).toBe(1.5);
     expect(errorDeNumero("pago", "150.000")).toBe("Entre Bs 0 y Bs 100.000");
+    // Con un cero adelante no hay miles: «0.500» no pasa a ser quinientos.
+    expect(errorDeNumero("pago", "0.500")).not.toBeNull();
     // Sólo en la plata: una dosis «1.500» es otra cosa.
     expect(errorDeNumero("dosis", "1.500")).toBeNull();
     expect(valorLimitado("dosis", "1.500")).toBe(1.5);

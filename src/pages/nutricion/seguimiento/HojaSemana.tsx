@@ -125,7 +125,7 @@ export default function HojaSemana({
   // sin tocar nada no pregunta; y viaja al guardar como cualquier dato.
   const [antes] = useState<FormSemana>(() => {
     if (registro) return semanaDesde(registro);
-    const r = rachaAntes(otros, semana);
+    const r = rachaAntes(otros, semana, (s) => escalonesDeLaSemana(tratamiento, s, catalogo));
     const deAntes = r ? conMgDelEscalon(r.dosis, escalonesDeLaSemana(tratamiento, r.semana, catalogo)) : null;
     const igual = deAntes ? igualQueLaAnterior(deAntes, unidad, concDe(productoVigente(tratamiento, semana)), catalogo.uiPorMl) : null;
     return { ...semanaVacia(semana), dosis: igual?.escribe ?? "" };
@@ -182,7 +182,7 @@ export default function HojaSemana({
   const conPeso = previos.filter((r) => r.pesoKg != null);
   const pesoAntes = conPeso[conPeso.length - 1] ?? null;
   const primerPeso = otros.find((r) => r.pesoKg != null && r.semana < numero) ?? null;
-  const racha = rachaAntes(otros, numero);
+  const racha = rachaAntes(otros, numero, (s) => escalonesDeLaSemana(tratamiento, s, catalogo));
   const pasada = previos[previos.length - 1] ?? null;
   // La dosis de antes, con los mg de su escalón si es uno (§7.4): con otro vial, «Igual» son esos mismos mg.
   const escalonesDeAntes = racha ? escalonesDeLaSemana(tratamiento, racha.semana, catalogo) : null;

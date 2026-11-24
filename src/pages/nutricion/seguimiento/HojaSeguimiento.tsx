@@ -677,7 +677,10 @@ function Resumen({ t, catalogo }: { t: Tratamiento; catalogo: CatalogoSeguimient
   const ultimaSemana = textoKg([...t.registros].reverse().find((x) => x.kgSemana != null)?.kgSemana);
   const d = r.dosisActual;
   // La dosis actual se lee contra los escalones de SU semana (§7.4): «42 UI» y «12,5 mg», no «≈ 12,6 mg».
-  const deLaDosis = rachaAntes(t.registros, Infinity)?.semana;
+  const racha = rachaAntes(t.registros, Infinity, (s) => escalonesDeLaSemana(t, s, catalogo));
+  const deLaDosis = racha?.semana;
+  // Las semanas en esta dosis, por escalón (§7.4): un cambio de vial no corta la cuenta.
+  const enDosis = racha?.aplicaciones ?? r.semanasEnDosis;
   const leida = d ? leerDosis(d, deLaDosis != null ? escalonesDeLaSemana(t, deLaDosis, catalogo) : null) : null;
   const sinAplicar = r.semanasSinDosis ?? 0;
   return (
@@ -712,7 +715,7 @@ function Resumen({ t, catalogo }: { t: Tratamiento; catalogo: CatalogoSeguimient
           d || sinAplicar > 0 ? (
             <span className="block space-y-0.5">
               {leida && leida.equivalencias.length > 0 && <Equivalentes partes={leida.equivalencias} aprox={leida.aprox} className="block" />}
-              {d && r.semanasEnDosis > 0 && <span className="block">{semanas(r.semanasEnDosis)} en esta dosis</span>}
+              {d && enDosis > 0 && <span className="block">{semanas(enDosis)} en esta dosis</span>}
               {sinAplicar > 0 && <span className="block font-semibold text-warning-text">{semanas(sinAplicar)} sin aplicar</span>}
             </span>
           ) : undefined

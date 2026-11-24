@@ -102,15 +102,30 @@ export function mismaDosis(a: Pick<DosisAnotada, "dosis" | "unidadDosis" | "dosi
  * semanas sin dosis no cortan la racha ni suman). Es lo de la franja «La
  * semana pasada» y la que viene marcada en una semana nueva. null si no hay.
  */
-export function rachaAntes(registros: Registro[], semana: number): { dosis: DosisAnotada; aplicaciones: number; semana: number } | null {
+export function rachaAntes(
+  registros: Registro[],
+  semana: number,
+  /**
+   * Los escalones de cada semana (§7.4). Con ellos, una dosis que es un
+   * escalón cuenta con los mg del escalón: tras un cambio de vial, 25 UI del
+   * de 20 mg/ml siguen la racha de 17 UI del de 30 (las dos son los 5 mg), en
+   * vez de empezar de 1 por los 5,1 mg de la cuenta exacta.
+   */
+  escalonesDe?: (semana: number) => EscalonesDeLaSemana | null,
+): { dosis: DosisAnotada; aplicaciones: number; semana: number } | null {
   const antes = registros.filter((r) => r.semana < semana).sort((a, b) => a.semana - b.semana);
+  const nominal = (d: DosisAnotada, s: number) => (escalonesDe ? conMgDelEscalon(d, escalonesDe(s)) : d);
   let ultima: { dosis: DosisAnotada; semana: number } | null = null;
+  let referencia: DosisAnotada | null = null;
   let aplicaciones = 0;
   for (let i = antes.length - 1; i >= 0; i--) {
     const d = dosisDelRegistro(antes[i]);
     if (!d) continue;
-    if (!ultima) ultima = { dosis: d, semana: antes[i].semana };
-    else if (!mismaDosis(d, ultima.dosis)) break;
+    const n = nominal(d, antes[i].semana);
+    if (!ultima || !referencia) {
+      ultima = { dosis: d, semana: antes[i].semana };
+      referencia = n;
+    } else if (!mismaDosis(n, referencia)) break;
     aplicaciones++;
   }
   return ultima ? { ...ultima, aplicaciones } : null;
