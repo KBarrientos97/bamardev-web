@@ -99,13 +99,25 @@ async function abrirPedido() {
 }
 
 /** Dirección, referencia y nota van plegadas (modo pedir, 20-nov): se abren antes de escribirlas. */
-const PLEGADOS = new Set(["Dirección", "Referencia", "Nota para el negocio"]);
+/** Los datos que van en la pantalla del mapa (24-nov): se abre, se escribe y se vuelve a la hoja. */
+const DEL_MAPA = new Set(["Dirección", "Referencia"]);
 const escribir = (etiqueta: string, valor: string) => {
-  if (PLEGADOS.has(etiqueta) && !screen.queryByLabelText(etiqueta)) {
-    fireEvent.click(screen.getByRole("button", { name: /^Agregar (dirección, referencia o nota|una nota)$/ }));
+  if (DEL_MAPA.has(etiqueta) && !screen.queryByRole("button", { name: "Volver al pedido" })) {
+    fireEvent.click(screen.getByRole("button", { name: /^(Marcar mi ubicación|Cambiar ubicación)$/ }));
+    fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+    fireEvent.click(screen.getByRole("button", { name: "Volver al pedido" }));
+    return;
   }
   fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 };
+/** El mapa va en su propia pantalla (24-nov): abrirlo desde la tarjeta de la ubicación. */
+const abrirMapa = async () => fireEvent.click(await screen.findByRole("button", { name: /^(Marcar mi ubicación|Cambiar ubicación)$/ }));
+/** Abre el mapa, pone el pin (el mapa de mentira lo pone al tocarlo) y confirma. */
+async function marcarCasa() {
+  await abrirMapa();
+  fireEvent.click(await screen.findByRole("button", { name: /^(Marcar mi casa|Pin puesto)$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar ubicación" }));
+}
 
 /** Cloudflare de juguete: guarda las opciones de cada widget para poder dispararle los avisos. */
 function turnstileDeJuguete() {
@@ -134,7 +146,7 @@ afterEach(() => {
 
 /** Un pedido de delivery con todos los datos puestos: lo único que puede faltar es lo que cada prueba quiera romper. */
 async function llenarDelivery() {
-  fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+  await marcarCasa();
   escribir("Tu nombre", "Lucía");
   escribir("Tu WhatsApp", "71234567");
   escribir("Dirección", "Calle Los Tajibos 23");
@@ -158,7 +170,7 @@ describe("M2: el aviso de agotado del pie no se queda pegado", () => {
     await montar();
     fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido/ }));
     await screen.findByRole("dialog", { name: "Tu pedido" });
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");

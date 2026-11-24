@@ -105,13 +105,25 @@ async function abrirPedido() {
 }
 
 /** Dirección, referencia y nota van plegadas (modo pedir, 20-nov): se abren antes de escribirlas. */
-const PLEGADOS = new Set(["Dirección", "Referencia", "Nota para el negocio"]);
+/** Los datos que van en la pantalla del mapa (24-nov): se abre, se escribe y se vuelve a la hoja. */
+const DEL_MAPA = new Set(["Dirección", "Referencia"]);
 const escribir = (etiqueta: string, valor: string) => {
-  if (PLEGADOS.has(etiqueta) && !screen.queryByLabelText(etiqueta)) {
-    fireEvent.click(screen.getByRole("button", { name: /^Agregar (dirección, referencia o nota|una nota)$/ }));
+  if (DEL_MAPA.has(etiqueta) && !screen.queryByRole("button", { name: "Volver al pedido" })) {
+    fireEvent.click(screen.getByRole("button", { name: /^(Marcar mi ubicación|Cambiar ubicación)$/ }));
+    fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+    fireEvent.click(screen.getByRole("button", { name: "Volver al pedido" }));
+    return;
   }
   fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 };
+/** El mapa va en su propia pantalla (24-nov): abrirlo desde la tarjeta de la ubicación. */
+const abrirMapa = async () => fireEvent.click(await screen.findByRole("button", { name: /^(Marcar mi ubicación|Cambiar ubicación)$/ }));
+/** Abre el mapa, pone el pin (el mapa de mentira lo pone al tocarlo) y confirma. */
+async function marcarCasa() {
+  await abrirMapa();
+  fireEvent.click(await screen.findByRole("button", { name: /^(Marcar mi casa|Pin puesto)$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar ubicación" }));
+}
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -160,7 +172,7 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -173,7 +185,7 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "712 34567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -217,9 +229,9 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
-    expect(screen.queryByRole("button", { name: "Marcar mi casa" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar mi ubicación" })).not.toBeInTheDocument();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "61234567");
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
@@ -235,8 +247,7 @@ describe("el carrito con pedidos en el sistema", () => {
       servidor();
       await montar();
       await abrirPedido();
-      await screen.findByRole("button", { name: "Marcar mi casa" });
-      fireEvent.click(screen.getByRole("button", { name: "Agregar dirección, referencia o nota" }));
+      await abrirMapa();
       expect(screen.getByText("Dirección (opcional)")).toBeInTheDocument();
     });
 
@@ -244,7 +255,7 @@ describe("el carrito con pedidos en el sistema", () => {
       servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
       await montar();
       await abrirPedido();
-      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      await marcarCasa();
       expect(await screen.findByText("Sale desde")).toBeInTheDocument();
     });
 
@@ -252,7 +263,7 @@ describe("el carrito con pedidos en el sistema", () => {
       servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
       await montar();
       await abrirPedido();
-      await screen.findByRole("button", { name: "Marcar mi casa" });
+      await screen.findByRole("button", { name: "Marcar mi ubicación" });
       expect(screen.queryByText("Sale desde")).not.toBeInTheDocument();
     });
 
@@ -260,7 +271,7 @@ describe("el carrito con pedidos en el sistema", () => {
       const srv = servidor();
       await montar();
       await abrirPedido();
-      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      await marcarCasa();
       expect(screen.queryByText("¿Con cuánto pagás?")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Justo" })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "¿Necesitás cambio?" }));
@@ -279,7 +290,7 @@ describe("el carrito con pedidos en el sistema", () => {
       const srv = servidor({ info: { ...INFO, sucursales: [{ ...BRISAS, pagoAntes: "AUTOMATICO" }] } });
       await montar();
       await abrirPedido();
-      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      await marcarCasa();
       fireEvent.click(screen.getByRole("radio", { name: "QR" }));
       expect(screen.getByText("Pagás los productos ahora con QR; el envío, al recibir")).toBeInTheDocument();
       expect(screen.getByText(/te mostramos el QR para pagar/)).toBeInTheDocument();
@@ -292,19 +303,37 @@ describe("el carrito con pedidos en el sistema", () => {
       expect(JSON.parse(String(srv.posteos()[0].init?.body))).toMatchObject({ formaPago: "QR", pagarAntes: true });
     });
 
-    // Modo pedir (20-nov): a la vista sólo lo obligatorio; lo opcional, plegado.
-    it("dirección, referencia y nota empiezan plegadas", async () => {
+    // 24-nov: la nota es del pedido y está a la vista; dirección y referencia van con el mapa.
+    it("la nota está a la vista; la dirección y la referencia, en la pantalla del mapa", async () => {
       servidor();
       await montar();
       await abrirPedido();
-      await screen.findByRole("button", { name: "Marcar mi casa" });
+      await screen.findByRole("button", { name: "Marcar mi ubicación" });
+      expect(screen.getByLabelText("Nota para el negocio")).toBeInTheDocument();
       expect(screen.queryByLabelText("Dirección")).not.toBeInTheDocument();
       expect(screen.queryByLabelText("Referencia")).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Nota para el negocio")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Agregar dirección, referencia o nota" }));
+      await abrirMapa();
       expect(screen.getByLabelText("Dirección")).toBeInTheDocument();
       expect(screen.getByLabelText("Referencia")).toBeInTheDocument();
-      expect(screen.getByLabelText("Nota para el negocio")).toBeInTheDocument();
+      // Volver no pierde nada y deja el foco en la tarjeta de la ubicación.
+      fireEvent.change(screen.getByLabelText("Dirección"), { target: { value: "Calle 5" } });
+      fireEvent.click(screen.getByRole("button", { name: "Volver al pedido" }));
+      expect(screen.getByRole("button", { name: "Marcar mi ubicación" })).toHaveFocus();
+      await abrirMapa();
+      expect(screen.getByLabelText("Dirección")).toHaveValue("Calle 5");
+    });
+
+    it("el mapa muestra el envío calculado y «Confirmar» vuelve con el resumen en la tarjeta", async () => {
+      servidor();
+      await montar();
+      await abrirPedido();
+      await abrirMapa();
+      expect(screen.getByText("Marcá tu casa para calcular el envío.")).toBeInTheDocument();
+      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      expect(screen.getAllByText(/km de Las Brisas · Envío ≈ Bs \d+/).length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar ubicación" }));
+      const tarjeta = screen.getByRole("button", { name: "Cambiar ubicación" });
+      expect(tarjeta.textContent).toMatch(/Ubicación marcada.*km de Las Brisas · Envío ≈ Bs \d+/);
     });
 
     it.each([
@@ -315,7 +344,7 @@ describe("el carrito con pedidos en el sistema", () => {
       const s = servidor();
       await montar();
       await abrirPedido();
-      fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+      await marcarCasa();
       escribir("Tu nombre", "Lucía");
       escribir("Tu WhatsApp", "71234567");
       escribir("Dirección", dir);
@@ -333,7 +362,7 @@ describe("el carrito con pedidos en el sistema", () => {
       const s = servidor();
       await montar();
       await abrirPedido();
-      await screen.findByRole("button", { name: "Marcar mi casa" });
+      await screen.findByRole("button", { name: "Marcar mi ubicación" });
       escribir("Tu nombre", "Lucía");
       escribir("Tu WhatsApp", "71234567");
       fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
@@ -347,7 +376,7 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "31234567");
@@ -360,7 +389,7 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor({ info: { ...INFO, sucursales: [BRISAS, CENTRO] } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     expect(screen.getByRole("radio", { name: /Centro/ })).toBeChecked();
     fireEvent.click(screen.getByRole("radio", { name: /Las Brisas/ }));
     escribir("Tu nombre", "Lucía");
@@ -375,7 +404,7 @@ describe("el carrito con pedidos en el sistema", () => {
     servidor({ info: { ...INFO, sucursales: [BRISAS, { ...CENTRO, abierta: false }] } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     expect(screen.getByRole("radio", { name: /Centro/ })).toBeDisabled();
     expect(screen.getByText("No está recibiendo pedidos ahora")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Las Brisas/ })).toBeChecked();
@@ -386,8 +415,9 @@ describe("el carrito con pedidos en el sistema", () => {
     servidor({ info: { ...INFO, sucursales: [lejos] } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
-    expect(await screen.findByText(/queda fuera de la zona de entrega/)).toBeInTheDocument();
+    await marcarCasa();
+    // Lo dice la tarjeta de la ubicación (antes, un renglón rojo aparte).
+    expect(screen.getByRole("button", { name: "Cambiar ubicación" }).textContent).toMatch(/queda fuera de la zona de entrega/);
   });
 
   it("si el negocio no recibe pedidos, se dice antes de armar todo y no se manda", async () => {
@@ -411,7 +441,7 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor({ respuestaCrear: { status: 400, cuerpo: { message: "se cayó" } } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -433,7 +463,7 @@ describe("el carrito con pedidos en el sistema", () => {
     servidor({ respuestaCrear: { status: 400, cuerpo: { message: "Esa dirección queda fuera de la zona de entrega" } } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -452,7 +482,7 @@ describe("el carrito con pedidos en el sistema", () => {
     servidor({ respuestaCrear: { status: 409, cuerpo: { statusCode: 409, message: "texto técnico", codigo } } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -468,7 +498,7 @@ describe("el carrito con pedidos en el sistema", () => {
     servidor({ respuestaCrear: { status: 409, cuerpo: { statusCode: 409, message: mensaje, codigo: "TOPE_PEDIDOS" } } });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -484,19 +514,23 @@ describe("el carrito con pedidos en el sistema", () => {
     Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition: pedirPosicion }, configurable: true });
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
+    await abrirMapa();
     fireEvent.click(screen.getByRole("button", { name: /Usar mi ubicación/ }));
     expect(await screen.findByText(/poco precisa \(±250 m\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ubicación" }));
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
     // Lo que falta, dicho al lado del botón.
     expect(screen.getAllByText(/movela en el mapa hasta tu puerta/).length).toBeGreaterThan(0);
     expect(s.posteos()).toHaveLength(0);
     // Moverlo en el mapa lo confirma.
-    fireEvent.click(screen.getByRole("button", { name: "Pin puesto" }));
+    await abrirMapa();
+    fireEvent.click(await screen.findByRole("button", { name: "Pin puesto" }));
     await waitFor(() => expect(screen.queryByText(/poco precisa/)).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ubicación" }));
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
     await screen.findByText("Seguimiento del pedido");
     expect(JSON.parse(String(s.posteos()[0].init?.body))).not.toHaveProperty("precisionM");
@@ -508,10 +542,10 @@ describe("el carrito con pedidos en el sistema", () => {
     Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition: rechazar }, configurable: true });
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await abrirMapa();
     fireEvent.click(screen.getByRole("button", { name: /Usar mi ubicación/ }));
     expect(await screen.findByText(/No pudimos leer tu ubicación/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Marcar mi casa" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
     await waitFor(() => expect(screen.queryByText(/No pudimos leer tu ubicación/)).not.toBeInTheDocument());
   });
 
@@ -522,6 +556,7 @@ describe("el carrito con pedidos en el sistema", () => {
     await abrirPedido();
     expect(await screen.findByLabelText("Tu nombre")).toHaveValue("Lucía");
     expect(screen.getByLabelText("Tu WhatsApp")).toHaveValue("71234567");
+    await abrirMapa();
     expect(screen.getByLabelText("Dirección")).toHaveValue("Calle 5");
   });
 
@@ -529,7 +564,7 @@ describe("el carrito con pedidos en el sistema", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");
@@ -591,7 +626,7 @@ describe("la hoja del pedido con delivery por un servicio externo (PLAN-DELIVERY
     const s = servidor({ info: INFO_EXT });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     expect(screen.getByText("Se paga por QR antes de que salga")).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Efectivo" })).not.toBeInTheDocument();
     expect(screen.queryByText("¿Con cuánto pagás?")).not.toBeInTheDocument();
@@ -612,7 +647,7 @@ describe("la hoja del pedido con delivery por un servicio externo (PLAN-DELIVERY
     servidor({ info: { ...INFO_EXT, entrega: { modo: "EXTERNO", servicio: "PedidosYa" } } });
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     expect(screen.getByText("Te lo confirma el local")).toBeInTheDocument();
     expect(screen.queryByText(/PedidosYa|Yango/)).not.toBeInTheDocument();
   });
@@ -621,7 +656,7 @@ describe("la hoja del pedido con delivery por un servicio externo (PLAN-DELIVERY
     servidor({ info: INFO_EXT });
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
     expect(screen.getByRole("radio", { name: "Efectivo" })).toBeInTheDocument();
     expect(screen.queryByText("Se paga por QR antes de que salga")).not.toBeInTheDocument();
@@ -649,7 +684,7 @@ describe("la hoja del pedido en un negocio sin delivery o en «sólo recoger»",
     await abrirPedido();
     await screen.findByRole("radio", { name: "Paso a recoger" });
     expect(screen.queryByRole("radio", { name: "Delivery" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Marcar mi casa" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Marcar mi ubicación" })).not.toBeInTheDocument();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));

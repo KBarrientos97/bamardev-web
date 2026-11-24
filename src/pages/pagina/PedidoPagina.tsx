@@ -308,6 +308,7 @@ export default function PedidoPagina({
         ref={barra}
         type="button"
         data-testid="barra-pedido"
+        className="toque"
         onClick={() => {
           setIntento(false);
           setAbierto(true);
@@ -458,6 +459,7 @@ export default function PedidoPagina({
       aria-modal="true"
       aria-label="Tu pedido"
       onClick={(e) => e.target === e.currentTarget && setAbierto(false)}
+      className="anim-velo"
       style={{
         position: "fixed",
         inset: 0,
@@ -470,6 +472,7 @@ export default function PedidoPagina({
       }}
     >
       <section
+        className={ancho ? "anim-hoja-ancho" : "anim-hoja"}
         style={{
           background: "#ffffff",
           width: "min(520px, 100%)",
@@ -754,6 +757,7 @@ export default function PedidoPagina({
             </p>
           )}
           <a
+            className="toque"
             href={bloqueado ? undefined : url}
             // Sin href sigue siendo «el enlace de enviar»: se toca y dice qué falta.
             role="link"
@@ -922,6 +926,7 @@ export function LineaCarrito({
           // Un servicio va una vez: sólo se puede quitar.
           <button
             type="button"
+            className="toque"
             aria-label={`Quitar ${l.titulo} del pedido`}
             onClick={() => pedido.cambiar(clave, -1)}
             style={{ ...redondo, background: tinte, flex: "none" }}
@@ -942,6 +947,7 @@ export function LineaCarrito({
           >
             <button
               type="button"
+              className="toque"
               aria-label={`Quitar uno de ${l.titulo}`}
               onClick={() => pedido.cambiar(clave, -1)}
               style={{ ...redondo, background: "#ffffff" }}
@@ -966,6 +972,7 @@ export function LineaCarrito({
             </span>
             <button
               type="button"
+              className="toque"
               aria-label={`Sumar uno de ${l.titulo}`}
               onClick={() => pedido.cambiar(clave, 1)}
               style={{ ...redondo, background: fuerte }}

@@ -98,6 +98,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       href={accionPrincipal.href}
       onClick={accionPrincipal.onClick}
       {...atributosEnlace(accionPrincipal.href)}
+      className="toque"
       style={{
         ...bloque,
         background: k.principal.fondo,
@@ -123,6 +124,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       href={href}
       onClick={onClick}
       {...atributosEnlace(href)}
+      className="toque"
       style={{
         ...bloque,
         background: colores.fondo,

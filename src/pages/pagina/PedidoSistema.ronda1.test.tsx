@@ -100,13 +100,25 @@ async function abrirPedido() {
 }
 
 /** Dirección, referencia y nota van plegadas (modo pedir, 20-nov): se abren antes de escribirlas. */
-const PLEGADOS = new Set(["Dirección", "Referencia", "Nota para el negocio"]);
+/** Los datos que van en la pantalla del mapa (24-nov): se abre, se escribe y se vuelve a la hoja. */
+const DEL_MAPA = new Set(["Dirección", "Referencia"]);
 const escribir = (etiqueta: string, valor: string) => {
-  if (PLEGADOS.has(etiqueta) && !screen.queryByLabelText(etiqueta)) {
-    fireEvent.click(screen.getByRole("button", { name: /^Agregar (dirección, referencia o nota|una nota)$/ }));
+  if (DEL_MAPA.has(etiqueta) && !screen.queryByRole("button", { name: "Volver al pedido" })) {
+    fireEvent.click(screen.getByRole("button", { name: /^(Marcar mi ubicación|Cambiar ubicación)$/ }));
+    fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+    fireEvent.click(screen.getByRole("button", { name: "Volver al pedido" }));
+    return;
   }
   fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 };
+/** El mapa va en su propia pantalla (24-nov): abrirlo desde la tarjeta de la ubicación. */
+const abrirMapa = async () => fireEvent.click(await screen.findByRole("button", { name: /^(Marcar mi ubicación|Cambiar ubicación)$/ }));
+/** Abre el mapa, pone el pin (el mapa de mentira lo pone al tocarlo) y confirma. */
+async function marcarCasa() {
+  await abrirMapa();
+  fireEvent.click(await screen.findByRole("button", { name: /^(Marcar mi casa|Pin puesto)$/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar ubicación" }));
+}
 
 /** Cloudflare de juguete: guarda las opciones de cada widget para poder dispararle los avisos. */
 function turnstileDeJuguete() {
@@ -135,7 +147,7 @@ afterEach(() => {
 
 /** Un pedido de delivery con todos los datos puestos: lo único que puede faltar es lo que cada prueba quiera romper. */
 async function llenarDelivery() {
-  fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+  await marcarCasa();
   escribir("Tu nombre", "Lucía");
   escribir("Tu WhatsApp", "71234567");
   escribir("Dirección", "Calle Los Tajibos 23");
@@ -148,7 +160,7 @@ describe("N1: el captcha en la hoja del pedido", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     await waitFor(() => expect(ts.render).toHaveBeenCalled());
     return { ts, s };
   }
@@ -166,7 +178,8 @@ describe("N1: el captcha en la hoja del pedido", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
     expect(screen.getAllByText(/Tildá el recuadro de verificación/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Esperá un segundo/)).not.toBeInTheDocument();
-  });
+    // Más margen: con el mapa en su propia pantalla (24-nov) el armado tiene más pasos y con la suite entera pasaba los 5 s.
+  }, 15_000);
 
   it("si la verificación falla, lo dice y ofrece reintentar (monta otro widget)", async () => {
     const { ts } = await conCaptcha();
@@ -209,7 +222,7 @@ describe("N4, N5: el campo con error", () => {
     servidor();
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
   }
 
   it("un nombre de una letra dice «nombre completo (mínimo 2 letras)», no «Escribí tu nombre»", async () => {
@@ -242,8 +255,7 @@ describe("N4, N5: el campo con error", () => {
     escribir("Dirección", "Calle Los Tajibos 23");
     fireEvent.click(screen.getByRole("button", { name: "Hacer pedido" }));
     expect(await screen.findByText("Marcá en el mapa dónde te lo llevamos.", { selector: "p" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Dirección")).not.toHaveAttribute("aria-invalid", "true");
-    expect(document.activeElement?.textContent).toMatch(/Marcá dónde te lo llevamos|Marcar mi casa/);
+    expect(document.activeElement?.textContent).toMatch(/Marcá dónde te lo llevamos/);
   });
 });
 
@@ -253,7 +265,7 @@ describe("N2: un local sin caja abierta no «está cerrado»", () => {
     servidor({ info });
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     expect(screen.getByText("No está recibiendo pedidos ahora")).toBeInTheDocument();
     expect(screen.queryByText(/Cerrado ahora/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
@@ -265,7 +277,7 @@ describe("N2: un local sin caja abierta no «está cerrado»", () => {
     servidor({ info });
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
     expect(screen.getByText("Av. Las Brisas 123")).toBeInTheDocument();
     expect(screen.getByText("Calle Comercio 45")).toBeInTheDocument();
@@ -275,12 +287,12 @@ describe("N2: un local sin caja abierta no «está cerrado»", () => {
     servidor();
     await montar();
     await abrirPedido();
-    await screen.findByRole("button", { name: "Marcar mi casa" });
-    // Cada forma de pago dice cuándo se paga (20-nov: tarjetas como en las apps de delivery).
-    expect(screen.getByText("Pagás al recibir el pedido")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Marcar mi ubicación" });
+    // Cada forma de pago dice cuándo se paga (24-nov: una fila, dos columnas, el texto corto).
+    expect(screen.getByText("Al recibir")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Paso a recoger" }));
-    expect(screen.getByText("Pagás al retirarlo en el local")).toBeInTheDocument();
-    expect(screen.queryByText(/al recibir/)).not.toBeInTheDocument();
+    expect(screen.getByText("Al retirar")).toBeInTheDocument();
+    expect(screen.queryByText(/al recibir/i)).not.toBeInTheDocument();
     // Sin QR para pagar antes en el local (PLAN-PEDIDOS-QR), sólo efectivo.
     expect(screen.queryByRole("radio", { name: "QR" })).not.toBeInTheDocument();
   });
@@ -351,7 +363,7 @@ describe("A5: el campo trampa", () => {
     const s = servidor();
     await montar();
     await abrirPedido();
-    fireEvent.click(await screen.findByRole("button", { name: "Marcar mi casa" }));
+    await marcarCasa();
     escribir("Tu nombre", "Lucía");
     escribir("Tu WhatsApp", "71234567");
     escribir("Dirección", "Calle Los Tajibos 23");

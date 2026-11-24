@@ -71,7 +71,7 @@ export function Enlace({
   etiqueta?: string;
 }) {
   return (
-    <a href={href} style={style} onClick={onClick} {...atributosEnlace(href)} aria-label={etiqueta}>
+    <a href={href} style={style} onClick={onClick} {...atributosEnlace(href)} aria-label={etiqueta} className="toque">
       {children}
     </a>
   );
