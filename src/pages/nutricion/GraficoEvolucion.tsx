@@ -108,7 +108,18 @@ export default function GraficoEvolucion({
   const textoUltimo = ultimo ? formato(ultimo.valor) : "";
   const anchoGlobo = textoUltimo.length * 6.6 + 18;
   const centroGlobo = ultimo ? Math.min(w - anchoGlobo / 2, Math.max(izq, x(puntos.length - 1))) : 0;
-  const debajoDelGlobo = pts.filter(([cx]) => Math.abs(cx - centroGlobo) <= anchoGlobo / 2 + 6).map(([, cy]) => cy);
+  // La línea a la altura de cada borde del globo (entre dos puntos, la recta que los une).
+  const lineaEn = (xq: number) => {
+    const j = pts.findIndex(([cx]) => cx >= xq);
+    if (j < 0) return pts[pts.length - 1]?.[1];
+    if (j === 0) return pts[0][1];
+    const [[x0, y0], [x1, y1]] = [pts[j - 1], pts[j]];
+    return x1 === x0 ? y1 : y0 + ((y1 - y0) * (xq - x0)) / (x1 - x0);
+  };
+  const debajoDelGlobo = [
+    ...pts.filter(([cx]) => Math.abs(cx - centroGlobo) <= anchoGlobo / 2 + 6).map(([, cy]) => cy),
+    ...[centroGlobo - anchoGlobo / 2, centroGlobo + anchoGlobo / 2].map(lineaEn).filter((v): v is number => v != null),
+  ];
   const arribaDeTodos = debajoDelGlobo.length ? Math.min(...debajoDelGlobo) - 30 : 0;
   const topGlobo = arribaDeTodos >= 0 ? arribaDeTodos : Math.min(alto - abajo - 22, Math.max(...debajoDelGlobo) + 10);
 
@@ -144,7 +155,8 @@ export default function GraficoEvolucion({
         ))}
         {puntos.map((pt, i) =>
           // La última va siempre; la de la grilla que le queda pegada, no (se pisaban «Sem. 6Sem. 7»).
-          (i % salto === 0 && puntos.length - 1 - i >= salto) || i === puntos.length - 1 ? (
+          // «Pegada» es en píxeles: con 52 semanas en el teléfono se salteaba una que entraba bien.
+          (i % salto === 0 && x(puntos.length - 1) - x(i) >= 56) || i === puntos.length - 1 ? (
             <text key={i} x={x(i)} y={alto - 6} textAnchor="middle" className="fill-slate-500 text-[11px]">
               {pt.etiqueta ?? `${fechaCorta(pt.fecha)}${sufijoDelDia(pt.vez)}`}
             </text>
