@@ -171,6 +171,7 @@ function BotonAgregar({
         alAgregar();
         setHecho(true);
       }}
+      className="toque"
       style={estilo}
     >
       <Icono d={hecho ? "M5 12l5 5L20 7" : icono} color={colorIcono} />

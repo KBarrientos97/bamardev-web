@@ -671,6 +671,7 @@ function AgregarUnaVez({ it, agregado, ...b }: Base & { it: ItemCatalogoPublico;
     <button
       type="button"
       aria-label={`Quitar ${it.titulo} del pedido`}
+      className="toque"
       onClick={() => pedido.cambiar?.(it.id, -1)}
       style={{
         height: 44,
@@ -696,6 +697,7 @@ function AgregarUnaVez({ it, agregado, ...b }: Base & { it: ItemCatalogoPublico;
     <button
       type="button"
       aria-label={`Agregar ${it.titulo} al pedido`}
+      className="toque"
       onClick={() => pedido.agregar?.(it)}
       style={{ ...b.lleno, height: 44, padding: "0 14px", borderRadius: 10, fontWeight: 700, fontSize: 14, fontFamily: "inherit", cursor: "pointer", flex: "none", border: "none" }}
     >
@@ -752,6 +754,7 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
       <button
         type="button"
         aria-label={`Agregar ${it.titulo} al pedido`}
+        className="toque"
         onClick={() => pedido.agregar?.(it)}
         style={
           forma === "cuadrado"
@@ -807,6 +810,7 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
       <button
         type="button"
         aria-label={cantidad === 1 ? `Quitar ${it.titulo} del pedido` : `Quitar uno de ${it.titulo}`}
+        className="toque"
         onClick={() => pedido.cambiar?.(it.id, -1)}
         style={{ ...redondo, background: "#ffffff" }}
       >
@@ -815,7 +819,7 @@ function Sumar({ it, cantidad, forma, ...b }: Base & { it: ItemCatalogoPublico; 
       <span aria-hidden="true" style={{ minWidth: 22, textAlign: "center", fontWeight: 800, fontSize: 16, color: c.oscuro }}>
         {cantidad}
       </span>
-      <button type="button" aria-label={`Sumar uno de ${it.titulo}`} onClick={() => pedido.agregar?.(it)} style={{ ...redondo, background: c.oscuro }}>
+      <button type="button" className="toque" aria-label={`Sumar uno de ${it.titulo}`} onClick={() => pedido.agregar?.(it)} style={{ ...redondo, background: c.oscuro }}>
         <Trazo d={ICONO_MAS} color="#ffffff" size={16} />
       </button>
       {/* Para el lector de pantalla: el número cambia sin mover el foco. */}

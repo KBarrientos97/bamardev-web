@@ -200,6 +200,27 @@ button {
   }
 }
 
+/* Los botones principales de la página pública se hunden un poco al tocarlos,
+   como un botón nativo (dueño, 24-nov): se siente que se presionó. Sin el
+   gris que pinta el navegador del celular al tocar. */
+.toque {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+.toque:active {
+  transform: scale(0.97);
+  filter: brightness(0.94);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toque {
+    transition: none;
+  }
+  .toque:active {
+    transform: none;
+  }
+}
+
 /* La hoja del pedido de la página pública (24-nov, el dueño: que se vea que
    se abre): el velo aparece, la hoja sube desde abajo en el celular y en la
    compu aparece creciendo apenas. El mapa del pedido entra desde la derecha,

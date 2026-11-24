@@ -28,6 +28,7 @@ function MosaicoAccion({ a, x }: { a: AccionPagina; x: PiezasArmado }) {
       href={a.href}
       onClick={a.onClick}
       {...atributosEnlace(a.href)}
+      className="toque"
       style={{
         ...pieza.estilo,
         borderRadius: x.radio,

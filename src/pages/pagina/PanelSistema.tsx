@@ -786,6 +786,7 @@ export default function PanelSistema({
                     type="button"
                     aria-label={pin ? "Cambiar ubicación" : "Marcar mi ubicación"}
                     onClick={() => setViendoMapa(true)}
+                    className="toque"
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1023,21 +1024,22 @@ export default function PanelSistema({
             background: "#ffffff",
           }}
         >
-          {/* Productos y envío en un solo renglón: el pie fijo se comía el 30 % del alto del celular (QA R1, N7). */}
-          <dl style={{ margin: 0, display: "flex", flexWrap: "wrap", columnGap: 14, rowGap: 0, fontSize: 13, color: "#4B5563" }}>
-            <div style={{ display: "flex", gap: 6 }}>
+          {/* Un renglón por concepto, el monto a la derecha, como una boleta (dueño, 24-nov). Letra
+              y espacio justos: el pie fijo no puede comerse el alto del celular (QA R1, N7). */}
+          <dl style={{ margin: 0, display: "flex", flexDirection: "column", gap: 2, fontSize: 14, lineHeight: 1.35, color: "#4B5563" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <dt>Productos</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(subtotal)}</dd>
             </div>
             {tipoReal === "DELIVERY" && (
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <dt>Envío</dt>
                 <dd style={{ margin: 0 }}>
                   {externoEntrega ? "Te lo confirma el local" : envio != null ? `≈ ${formatoPrecio(envio)}` : "Marcá tu ubicación"}
                 </dd>
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", flexBasis: "100%", fontWeight: 800, fontSize: 18, color: "#1F2937" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontWeight: 800, fontSize: 18, color: "#1F2937", borderTop: "1px dashed #E5E7EB", paddingTop: 4, marginTop: 2 }}>
               <dt>{externoEntrega ? "Total (sin el envío)" : "Total"}</dt>
               <dd style={{ margin: 0 }}>{formatoPrecio(total)}</dd>
             </div>
@@ -1067,8 +1069,11 @@ export default function PanelSistema({
             type="button"
             aria-disabled={bloqueado}
             onClick={hacerPedido}
-            style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: enviando ? "wait" : "pointer", opacity: bloqueado ? 0.55 : 1, fontFamily: "inherit" }}
+            className="toque"
+            style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: enviando ? "wait" : "pointer", opacity: bloqueado ? 0.55 : 1, fontFamily: "inherit", position: "relative", overflow: "hidden" }}
           >
+            {/* El mismo brillo de «Ver tu pedido», cuando ya está todo para mandar: avisa que se puede (dueño, 24-nov). */}
+            {!bloqueado && !enviando && <span aria-hidden="true" className="barra-pedido-brillo" />}
             {enviando ? (
               "Enviando tu pedido…"
             ) : enviarAlVerificar ? (
@@ -1200,6 +1205,7 @@ function VistaMapa({
           type="button"
           aria-disabled={!pin}
           onClick={() => pin && onVolver()}
+          className="toque"
           style={{ border: "none", borderRadius: 14, background: fuerte, color: "#ffffff", fontWeight: 800, fontSize: 16, minHeight: 50, cursor: pin ? "pointer" : "not-allowed", opacity: pin ? 1 : 0.55, fontFamily: "inherit" }}
         >
           Confirmar ubicación
