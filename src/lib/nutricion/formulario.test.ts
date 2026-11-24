@@ -3,11 +3,13 @@ import { CATALOGO, control, paciente } from "../../test/nutricionFixtures";
 import {
   cambios,
   cambiosDeControl,
+  conLoDelServidor,
   controlAInput,
   controlConDatos,
   controlDesde,
   controlVacio,
   edadDeFicha,
+  edadDelControl,
   fichaAInput,
   fichaDesde,
   fichaVacia,
@@ -76,6 +78,32 @@ describe("la edición manda sólo lo que cambió", () => {
     expect(f.edad).toBe("37");
     expect(fichaDesde(paciente()).edad).toBe("");
     expect(fichaDesde(paciente()).tallaCm).toBe("158");
+  });
+
+  it("la tabla de un control usa la edad del servidor: la anotada con su día, o la escrita hoy si se cambió", () => {
+    // 21 anotado el 1-mar-2026; hoy (5-mar-2027) tiene 22. El control del 10-mar-2026: 21.
+    const f = fichaDesde(paciente({ fechaNacimiento: null, edad: 22, edadDeclarada: 21, edadDeclaradaEn: "2026-03-01" }));
+    expect(f.edad).toBe("22");
+    expect(f.edadAnotada).toEqual({ edad: 21, en: "2026-03-01" });
+    expect(edadDelControl(f, "2026-03-10", "2027-03-05")).toBe(21);
+    // Si la doctora escribe otra edad, el servidor la anota hoy: 30 hoy → 29 un año antes.
+    expect(edadDelControl({ ...f, edad: "30" }, "2026-03-05", "2027-03-05")).toBe(29);
+    expect(edadDelControl({ ...f, edad: "30" }, "2026-03-10", "2027-03-05")).toBe(30);
+    // Sin lo anotado (un alta nueva), la escrita vale hoy.
+    expect(edadDelControl({ ...fichaVacia(), edad: "40" }, "2026-11-22", "2026-11-23")).toBe(40);
+    expect(edadDelControl({ ...fichaVacia(), edad: "40" }, "2025-11-23", "2026-11-23")).toBe(39);
+    // Con fecha de nacimiento no hay nada anotado.
+    expect(fichaDesde(paciente()).edadAnotada).toBeNull();
+  });
+
+  it("después de guardar, el carnet y la expedición quedan como los devolvió el servidor", () => {
+    const escrita = { ...fichaVacia(), nombre: "Lucía", ci: "8958703 SC", ciExpedido: "" };
+    const guardada = conLoDelServidor(escrita, paciente({ ci: "8958703", ciExpedido: "SC" }));
+    expect(guardada.ci).toBe("8958703");
+    expect(guardada.ciExpedido).toBe("SC");
+    expect(guardada.nombre).toBe("Lucía");
+    // Sin carnet, sin expedición.
+    expect(conLoDelServidor(escrita, paciente({ ci: null, ciExpedido: "SC" }))).toMatchObject({ ci: "", ciExpedido: "" });
   });
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fechaCorta, fechaLarga, fmtNumero } from "../../lib/nutricion/calculo";
+import { fechaCorta, fechaLarga, fmtNumero, sufijoDelDia } from "../../lib/nutricion/calculo";
 import { caminoSuave } from "../reportes/trazos";
 
 /**
@@ -51,7 +51,13 @@ export default function GraficoEvolucion({
   nombre,
   alto = 220,
 }: {
-  puntos: { fecha: string; valor: number }[];
+  /**
+   * `vez`: el segundo control del mismo día lleva «(2)» en el eje. `chico`: un
+   * peso del seguimiento semanal, con un punto más chico (§4.4 del
+   * seguimiento). `etiqueta`: lo que va en el eje en vez de la fecha
+   * («Sem. 6» en la hoja de seguimiento); la fecha sigue en el globo.
+   */
+  puntos: { fecha: string; valor: number; vez?: number; chico?: boolean; etiqueta?: string }[];
   /** «82,4 kg». */
   formato: (n: number) => string;
   /** «Peso», para el lector de pantalla. */
@@ -89,7 +95,7 @@ export default function GraficoEvolucion({
   const primero = puntos[0];
   const ultimo = puntos[puntos.length - 1];
   const resumen = puntos.length
-    ? `${nombre}: ${formato(primero.valor)} el ${fechaLarga(primero.fecha)}${puntos.length > 1 ? `, ${formato(ultimo.valor)} el ${fechaLarga(ultimo.fecha)}` : ""}`
+    ? `${nombre}: ${formato(primero.valor)} el ${fechaLarga(primero.fecha)}${puntos.length > 1 ? `, ${formato(ultimo.valor)} el ${fechaLarga(ultimo.fecha)}${sufijoDelDia(ultimo.vez)}` : ""}`
     : nombre;
   const f = foco != null ? puntos[foco] : null;
 
@@ -117,16 +123,17 @@ export default function GraficoEvolucion({
             key={i}
             cx={cx}
             cy={cy}
-            r={i === foco || puntos.length === 1 ? 5.5 : 4}
-            fill="#fff"
+            r={i === foco || puntos.length === 1 ? 5.5 : puntos[i].chico ? 2.75 : 4}
+            fill={puntos[i].chico && i !== foco ? "var(--color-primary-boton)" : "#fff"}
             stroke="var(--color-primary-boton)"
-            strokeWidth={2.25}
+            strokeWidth={puntos[i].chico ? 1.5 : 2.25}
           />
         ))}
         {puntos.map((pt, i) =>
-          i % salto === 0 || i === puntos.length - 1 ? (
+          // La última va siempre; la de la grilla que le queda pegada, no (se pisaban «Sem. 6Sem. 7»).
+          (i % salto === 0 && puntos.length - 1 - i >= salto) || i === puntos.length - 1 ? (
             <text key={i} x={x(i)} y={alto - 6} textAnchor="middle" className="fill-slate-500 text-[11px]">
-              {fechaCorta(pt.fecha)}
+              {pt.etiqueta ?? `${fechaCorta(pt.fecha)}${sufijoDelDia(pt.vez)}`}
             </text>
           ) : null,
         )}
@@ -145,7 +152,11 @@ export default function GraficoEvolucion({
           className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-xl border border-borde bg-white px-3 py-2 text-[12px] shadow-lg"
           style={{ left: Math.min(w - 80, Math.max(80, x(foco))), top: 0 }}
         >
-          <p className="font-bold text-texto">{fechaLarga(f.fecha)}</p>
+          <p className="font-bold text-texto">
+            {f.etiqueta && <>{f.etiqueta} · </>}
+            {fechaLarga(f.fecha)}
+            {sufijoDelDia(f.vez)}
+          </p>
           <p className="tabular-nums text-texto-2">{formato(f.valor)}</p>
         </div>
       )}

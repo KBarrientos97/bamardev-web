@@ -6,14 +6,14 @@ import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { useTextoDemorado } from "../../lib/academia/useBusquedaEstudiante";
 import { apiNutricion } from "../../lib/nutricion/api";
 import { conAlt, escribiendo, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
-import { cambio, conUnidad, esSoloDigitos, fechaLarga, fmtCambio, grado } from "../../lib/nutricion/calculo";
+import { cambio, conUnidad, empiezaConDigito, fechaLarga, fmtCambio, grado } from "../../lib/nutricion/calculo";
 import type { PacienteFila } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
 import { usePaginado } from "../../lib/paginado";
 import { editaNutricion } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import { EncabezadoPagina, LISTA, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../academia/piezas";
-import { ChipGrado, Tecla } from "./piezas";
+import { BuscadorPacientes, ChipGrado, Tecla } from "./piezas";
 
 /**
  * Evaluación · la lista de pacientes (CONTRATO-nutricion-evaluacion-22nov
@@ -46,7 +46,8 @@ export default function Pacientes() {
   const abrir = (p: PacienteFila) => navigate(`/evaluacion/${p.id}`);
   const nuevo = (texto = "") => {
     const t = texto.trim();
-    const qs = !t ? "" : esSoloDigitos(t) ? `?ci=${encodeURIComponent(t)}` : `?nombre=${encodeURIComponent(t)}`;
+    // Lo que empieza con un número es un carnet («1112223 LP»): va al Carnet, no al Nombre.
+    const qs = !t ? "" : empiezaConDigito(t) ? `?ci=${encodeURIComponent(t)}` : `?nombre=${encodeURIComponent(t)}`;
     navigate(`/evaluacion/nuevo${qs}`);
   };
 
@@ -106,7 +107,7 @@ export default function Pacientes() {
     <Pagina>
       <EncabezadoPagina
         titulo={archivados ? "Pacientes archivados" : "Evaluación"}
-        bajada={archivados ? "No salen en la lista; sus evaluaciones siguen guardadas." : "Pacientes y su seguimiento"}
+        bajada={archivados ? "No salen en la lista; sus evaluaciones siguen guardadas." : "Pacientes, su evaluación y sus controles"}
         volver={archivados ? { a: "/evaluacion", texto: "Pacientes" } : undefined}
         acciones={
           edita && !archivados ? (
@@ -119,37 +120,7 @@ export default function Pacientes() {
       />
 
       {/* El buscador grande, con el foco puesto al entrar. */}
-      <label className="relative block">
-        <span className="sr-only">Buscar por carnet o nombre</span>
-        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-texto-4">
-          <Icon name="search" size={20} />
-        </span>
-        <input
-          ref={buscador}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por carnet o nombre…"
-          autoFocus
-          autoComplete="off"
-          spellCheck={false}
-          className="h-14 w-full rounded-2xl border border-borde bg-white pl-12 pr-12 text-base text-texto shadow-sm outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-4 focus:ring-primary-100"
-        />
-        {q ? (
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              buscador.current?.focus();
-            }}
-            aria-label="Limpiar búsqueda"
-            className="absolute inset-y-0 right-2 my-auto flex h-10 w-10 items-center justify-center rounded-xl text-texto-4 hover:bg-muted hover:text-texto-2"
-          >
-            <Icon name="close" size={17} />
-          </button>
-        ) : (
-          <Tecla className="pointer-events-none absolute inset-y-0 right-4 my-auto">/</Tecla>
-        )}
-      </label>
+      <BuscadorPacientes ref={buscador} valor={q} onCambiar={setQ} />
 
       <Tarjeta
         etiqueta={archivados ? "Pacientes archivados" : "Lista de pacientes"}

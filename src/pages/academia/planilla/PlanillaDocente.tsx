@@ -53,7 +53,7 @@ import {
 } from "../piezas";
 import ComprobantePago from "./ComprobantePago";
 
-type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar" | "ajustes";
+type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar" | "fueraDePlazo" | "ajustes";
 
 /** En curso en gris, cerrada (falta pagarla) en ámbar, pagada en verde. */
 const CHIP_ESTADO: Record<EstadoPlanilla, TonoChip> = {
@@ -203,7 +203,9 @@ export default function PlanillaDocente() {
   const sinPago = monto <= 0;
   // Bug 4: los ajustes (cobros anulados o repuestos de módulos ya liquidados) son una lista más, sólo si los hay.
   const ajustes = d.ajustes ?? [];
-  const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar, ajustes };
+  // 23-nov (Derick): lo que no se le paga por la fecha tope, en su propia lista.
+  const fuera = d.fueraDePlazo ?? [];
+  const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar, fueraDePlazo: fuera, ajustes };
   const elegidas = listas[lista];
   const porGrupo = agrupar(elegidas);
   // También el mes que viene (QA 23-oct): sus líneas sólo se veían escribiendo `?mes=`.
@@ -214,9 +216,9 @@ export default function PlanillaDocente() {
     .reverse();
   const cobro = textoCobroPlanilla(d.pct.defecto, cursosDePlanilla(d, carreras.datos ?? null));
   // La sede en cada grupo, sólo si las líneas del mes son de 2+ sedes.
-  const variasSedes = hayVariasEntre([...d.cuentan, ...d.postergados, ...d.atrasados, ...d.sinPagar, ...ajustes], (l) => l.sede?.id);
+  const variasSedes = hayVariasEntre([...d.cuentan, ...d.postergados, ...d.atrasados, ...d.sinPagar, ...fuera, ...ajustes], (l) => l.sede?.id);
   const sedeDeGrupo = (lineas: LineaPlanilla[]) => (variasSedes ? (lineas[0]?.sede?.nombre ?? "") : "");
-  const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : "Cobrado del módulo";
+  const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : lista === "fueraDePlazo" ? "Pagó del módulo" : "Cobrado del módulo";
   const cuenta = lista === "cuentan" || lista === "atrasados" || lista === "ajustes";
   const esAjustes = lista === "ajustes";
   /** Las listas que no le suman al docente llevan el motivo (A6). */
@@ -373,6 +375,29 @@ export default function PlanillaDocente() {
           />
         </div>
       </section>
+      {fuera.length > 0 && (
+        // 23-nov (Derick): queda escrito lo que no se le paga por la fecha tope.
+        <p role="note" aria-label="Fuera de plazo" className="card flex flex-wrap items-center gap-x-2 gap-y-1 bg-warning-bg px-4 py-3 text-[13px] text-warning-text">
+          <b>
+            {fuera.length} {fuera.length === 1 ? p.alumno : p.alumnos} fuera de plazo · {fmtMoney(r.noSePaga ?? fuera.reduce((s, l) => s + (l.montoPotencial ?? 0), 0))} que no se le pagan
+          </b>
+          <span>
+            Pagaron después de la fecha tope o no pagaron a tiempo.
+            {d.estado === "EN_CURSO" ? " Al cerrar la planilla queda guardado." : " Quedó guardado al cerrar la planilla."}
+          </span>
+          {lista !== "fueraDePlazo" && (
+            <BotonFila
+              variante="ghost"
+              onClick={() => {
+                setLista("fueraDePlazo");
+                elegir(null);
+              }}
+            >
+              Ver la lista
+            </BotonFila>
+          )}
+        </p>
+      )}
       {reparto && (
         // Cómo cae el pago en cada sede: son los gastos de sueldos que se crean al pagar.
         <section aria-label="El pago por sede" className="card px-4 py-3 text-[13px] text-texto-2">
@@ -410,6 +435,7 @@ export default function PlanillaDocente() {
               { clave: "postergados", label: "Postergados", n: r.postergados },
               { clave: "atrasados", label: "Atrasados", n: r.atrasados },
               { clave: "sinPagar", label: "Sin pagar", n: r.sinPagar },
+              ...(fuera.length ? [{ clave: "fueraDePlazo" as const, label: "Fuera de plazo", n: fuera.length }] : []),
               ...(ajustes.length ? [{ clave: "ajustes" as const, label: "Ajustes", n: ajustes.length }] : []),
             ]}
           />
@@ -459,6 +485,10 @@ export default function PlanillaDocente() {
                         <span className="min-w-0 max-lg:order-1">
                           <span className="block truncate text-sm font-medium text-texto">{l.alumno.nombre}</span>
                           {esAjustes && <span className="block truncate text-[12px] text-texto-3">{textoMotivoAjuste(l)}</span>}
+                          {/* 23-nov (Derick): pagó después de la fecha tope, o no pagó a tiempo: ya no se le paga al docente. */}
+                          {l.fueraDePlazo && (
+                            <span className="block truncate text-[12px] font-semibold text-warning-text">Fuera de plazo · tope {fechaCorta(l.fueraDePlazo)}</span>
+                          )}
                         </span>
                         <span className="hidden truncate text-sm text-texto-2 lg:block">
                           M{l.materia.orden} {l.materia.nombre}
@@ -476,7 +506,7 @@ export default function PlanillaDocente() {
                           {esAjustes ? montoConSigno(l.monto) : fmtMoney(cuenta ? l.monto : 0)}
                           {!cuenta && (l.montoPotencial ?? 0) > 0 && (
                             <span className="block text-[11px] font-normal text-texto-4">
-                              {fmtMoney(l.montoPotencial ?? 0)} {lista === "postergados" ? "si completa" : "si paga"}
+                              {fmtMoney(l.montoPotencial ?? 0)} {lista === "postergados" ? "si completa" : lista === "fueraDePlazo" ? "no se le paga" : "si paga"}
                             </span>
                           )}
                         </span>

@@ -126,6 +126,8 @@ const ConfiguracionRapida = lazy(() => import("./pages/academia/PrimerosPasos"))
 const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m) => ({ default: m.SedesConfig })));
 // Nutrición (22-nov): la evaluación de pacientes, sólo se baja en un consultorio.
 const RutasNutricion = lazy(() => import("./pages/nutricion/RutasNutricion"));
+// El seguimiento del tratamiento (23-nov), en su propio paquete: el Médico no baja la evaluación.
+const RutasSeguimiento = lazy(() => import("./pages/nutricion/seguimiento/RutasSeguimiento"));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
 function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
@@ -1163,6 +1165,19 @@ function Rutas() {
             <Protegida seccion="nutricion">
               <Suspense fallback={null}>
                 <RutasNutricion />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        {/* El seguimiento del tratamiento (CONTRATO-nutricion-seguimiento-23nov):
+            la lista, los pagos pendientes y la hoja de cada paciente. Mismo
+            encierro: la feature `nutricion` y el rubro. */}
+        <Route
+          path="/seguimiento/*"
+          element={
+            <Protegida seccion="seguimiento">
+              <Suspense fallback={null}>
+                <RutasSeguimiento />
               </Suspense>
             </Protegida>
           }

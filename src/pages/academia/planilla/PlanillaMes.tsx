@@ -493,6 +493,12 @@ function gruposDeTarjeta(det: PlanillaDocente): string[] {
 
 /** "+ 2 de meses anteriores", "1 ajuste", "3 postergados", "todos pagaron". */
 function extraDocente(x: TPlanillaMes["docentes"][number]): string {
+  // 23-nov (Derick): lo que no se le paga por la fecha tope se ve desde la lista.
+  const fuera = x.fueraDePlazo ? `${x.fueraDePlazo} fuera de plazo (${fmtMoney(x.noSePaga ?? 0)} no se le pagan)` : "";
+  return [fuera, otroExtra(x)].filter(Boolean).join(" · ");
+}
+
+function otroExtra(x: TPlanillaMes["docentes"][number]): string {
   // Bug 4: un cobro anulado o repuesto de un módulo ya liquidado cambia el bruto; se avisa desde la lista.
   if (x.ajustes) return `${x.ajustes} ${x.ajustes === 1 ? "ajuste" : "ajustes"} de cobros anulados o repuestos`;
   if (x.atrasados) return `+ ${x.atrasados} de meses anteriores`;

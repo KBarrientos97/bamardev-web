@@ -6,10 +6,11 @@ import ModalSalida from "../../components/ModalSalida";
 import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { apiNutricion, esNoEncontrado, pacienteDelCarnet } from "../../lib/nutricion/api";
 import { altNumero, ctrlEnter, hayDialogoAbierto, pasarAlSiguiente, useTeclas } from "../../lib/nutricion/atajos";
-import { edadEn, errorDeTope, esSoloDigitos, hoyIso } from "../../lib/nutricion/calculo";
+import { avisoImc, edadEn, empiezaConDigito, errorDeTope, hoyIso, imcDeLoEscrito } from "../../lib/nutricion/calculo";
 import {
   cambios,
   cambiosDeControl,
+  conLoDelServidor,
   controlAInput,
   controlConDatos,
   controlDesde,
@@ -107,7 +108,8 @@ export default function Evaluacion() {
     const f = fichaVacia();
     const nombre = params.get("nombre")?.trim();
     const ci = params.get("ci")?.trim();
-    if (ci && esSoloDigitos(ci)) f.ci = ci;
+    // Lo que empieza con un número es el carnet («1112223 LP»); lo demás, el nombre.
+    if (ci && empiezaConDigito(ci)) f.ci = ci;
     else if (nombre) f.nombre = nombre;
     return f;
   });
@@ -136,7 +138,16 @@ export default function Evaluacion() {
   const hidratar = useCallback((p: Paciente, cat: Catalogo | null) => {
     const f = fichaDesde(p);
     const inicial = p.controles.find((c) => c.inicial) ?? p.controles[0] ?? null;
-    const c = inicial ? controlDesde(inicial, { catalogo: cat, sexo: p.sexo, edad: p.edad, fechaNacimiento: p.fechaNacimiento }) : controlVacio();
+    const c = inicial
+      ? controlDesde(inicial, {
+          catalogo: cat,
+          sexo: p.sexo,
+          edad: p.edad,
+          fechaNacimiento: p.fechaNacimiento,
+          edadDeclarada: p.edadDeclarada,
+          edadDeclaradaEn: p.edadDeclaradaEn,
+        })
+      : controlVacio();
     setFicha(f);
     setFichaGuardada(f);
     setControl(c);
@@ -193,7 +204,11 @@ export default function Evaluacion() {
 
   const cambiarFicha: PropsEtapa["cambiarFicha"] = (campo, valor) => {
     setFicha((f) => ({ ...f, [campo]: valor }));
-    if (campo === "ci") setCarnet(null);
+    if (campo === "ci") {
+      setCarnet(null);
+      // «Ese carnet ya es de…» del último guardado ya no vale para el carnet nuevo.
+      if (carnet) setError((e) => (e === carnet.texto ? "" : e));
+    }
   };
   const cambiarEnfermedad: PropsEtapa["cambiarEnfermedad"] = (codigo, siguiente) =>
     setFicha((f) => {
@@ -212,6 +227,10 @@ export default function Evaluacion() {
     setEtapa(n);
     setCinta(null);
     contenido.current?.closest("main")?.scrollTo({ top: 0 });
+    // La dirección sigue a la etapa: un F5 vuelve a la misma, no a la del primer guardado.
+    if (pacienteId != null && params.get("etapa") !== String(n)) {
+      navigate(`/evaluacion/${pacienteId}/editar?etapa=${n}`, { replace: true });
+    }
   };
 
   /**
@@ -233,13 +252,10 @@ export default function Evaluacion() {
         return ya.encontrado;
       }
       try {
-        const [activos, archivados] = await Promise.all([
-          apiNutricion.pacientes({ q: t, page: 1, pageSize: 20 }),
-          apiNutricion.pacientes({ q: t, archivados: true, page: 1, pageSize: 20 }),
-        ]);
-        const mismo = [...activos.items, ...archivados.items].find(
-          (x) => (x.ci ?? "").trim().toUpperCase() === t.toUpperCase() && x.id !== pacienteId,
-        );
+        // Si es el mismo carnet lo decide el servidor (puntos, espacios, el guion
+        // del complemento, la expedición pegada), entre activos y archivados.
+        const delCarnet = await apiNutricion.delCarnet(t);
+        const mismo = delCarnet.items.find((x) => x.id !== pacienteId);
         const encontrado = mismo ? { id: mismo.id, texto: `Ya está registrado: ${mismo.nombre}` } : null;
         carnetRevisado.current = { ci: t, encontrado };
         if (sigueIgual()) setCarnet(encontrado);
@@ -300,6 +316,18 @@ export default function Evaluacion() {
     const fi = fichaAInput(fichaEnviada);
     const ci = controlAInput(controlEnviado);
     let idPaciente = pacienteId;
+    // Lo guardado, como lo dejó el servidor: el carnet «8958703 SC» queda
+    // «8958703» con «SC» en Exp. Si mientras guardaba se cambió el carnet, lo
+    // escrito no se pisa (y queda «Sin guardar»).
+    const fichaGuardadaDe = (p: Paciente) => {
+      const guardada = conLoDelServidor(fichaEnviada, p);
+      setFichaGuardada(guardada);
+      setFicha((f) =>
+        f.ci === fichaEnviada.ci && f.ciExpedido === fichaEnviada.ciExpedido
+          ? { ...f, ci: guardada.ci, ciExpedido: guardada.ciExpedido, edadAnotada: guardada.edadAnotada }
+          : { ...f, edadAnotada: guardada.edadAnotada },
+      );
+    };
     try {
       let detalle: Paciente | null = null;
       if (idPaciente == null) {
@@ -309,7 +337,7 @@ export default function Evaluacion() {
         idPaciente = detalle.id;
         hidratado.current = detalle.id;
         setPacienteId(detalle.id);
-        setFichaGuardada(fichaEnviada);
+        fichaGuardadaDe(detalle);
         if (alta.control) {
           setControlGuardado(controlEnviado);
           setInicialId(detalle.controles.find((c) => c.inicial)?.id ?? detalle.controles[0]?.id ?? null);
@@ -318,7 +346,7 @@ export default function Evaluacion() {
         const cf = cambios(fichaAInput(fichaGuardada), fi);
         if (Object.keys(cf).length) {
           detalle = await apiNutricion.editar(idPaciente, cf);
-          setFichaGuardada(fichaEnviada);
+          fichaGuardadaDe(detalle);
         }
         if (inicialId != null) {
           const cc = cambiosDeControl(controlGuardado, controlEnviado);
@@ -418,6 +446,14 @@ export default function Evaluacion() {
     );
   }
 
+  // El IMC imposible se avisa al salir de la talla o del peso (no a mitad de
+  // escribirlos: «1» de «170» con 127 kg daría 127), o enseguida si ya venía
+  // guardado así (el de QA: 127 kg con 80 cm de talla, IMC 198,4).
+  const verAvisoImc =
+    intento ||
+    tocados.has("tallaCm") ||
+    tocados.has("pesoKg") ||
+    (ficha.tallaCm === fichaGuardada.tallaCm && control.pesoKg === controlGuardado.pesoKg);
   const props: PropsEtapa = {
     ficha,
     control,
@@ -429,6 +465,7 @@ export default function Evaluacion() {
     error: mostrarError,
     tocar,
     irAFicha: () => irA(1),
+    avisoImc: verAvisoImc ? avisoImc(imcDeLoEscrito(control.pesoKg, ficha.tallaCm)) : null,
   };
 
   // Al abrir el alta, el foco en el carnet (lo primero); si el carnet ya vino

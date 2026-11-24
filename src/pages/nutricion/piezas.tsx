@@ -1,6 +1,51 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
+import { Icon } from "../../components/Icon";
 import { TONO } from "../../lib/nutricion/tonos";
 import type { Rango } from "../../lib/nutricion/tipos";
+
+/**
+ * El buscador grande de pacientes (Evaluación y Seguimiento): con el foco
+ * puesto al entrar, la lupa a la izquierda y, a la derecha, la tecla «/» o la
+ * ✕ para limpiar (que devuelve el foco al campo).
+ */
+export const BuscadorPacientes = forwardRef<
+  HTMLInputElement,
+  { valor: string; onCambiar: (v: string) => void; placeholder?: string; etiqueta?: string }
+>(function BuscadorPacientes({ valor, onCambiar, placeholder = "Buscar por carnet o nombre…", etiqueta = "Buscar por carnet o nombre" }, ref) {
+  return (
+    <label className="relative block">
+      <span className="sr-only">{etiqueta}</span>
+      <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-texto-4">
+        <Icon name="search" size={20} />
+      </span>
+      <input
+        ref={ref}
+        value={valor}
+        onChange={(e) => onCambiar(e.target.value)}
+        placeholder={placeholder}
+        autoFocus
+        autoComplete="off"
+        spellCheck={false}
+        className="h-14 w-full rounded-2xl border border-borde bg-white pl-12 pr-12 text-base text-texto shadow-sm outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-4 focus:ring-primary-100"
+      />
+      {valor ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            onCambiar("");
+            (e.currentTarget.parentElement?.querySelector("input") as HTMLInputElement | null)?.focus();
+          }}
+          aria-label="Limpiar búsqueda"
+          className="absolute inset-y-0 right-2 my-auto flex h-10 w-10 items-center justify-center rounded-xl text-texto-4 hover:bg-muted hover:text-texto-2"
+        >
+          <Icon name="close" size={17} />
+        </button>
+      ) : (
+        <Tecla className="pointer-events-none absolute inset-y-0 right-4 my-auto">/</Tecla>
+      )}
+    </label>
+  );
+});
 
 /**
  * Las piezas chicas de la evaluación de pacientes: los colores de los grados,
@@ -124,7 +169,7 @@ export const CampoTexto = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLI
 });
 
 /** Un texto de varias líneas que se estira a mano. */
-export function AreaTexto({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function AreaTexto({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { ref?: Ref<HTMLTextAreaElement> }) {
   return <textarea {...props} className={`${CLASE_CAMPO} resize-y leading-relaxed ${className}`} />;
 }
 
@@ -173,6 +218,16 @@ export function BotonesSexo({
         );
       })}
     </div>
+  );
+}
+
+/** Un bloque de una hoja (control, semana): título chico en mayúsculas, con una línea arriba. */
+export function SeccionHoja({ titulo, children, className = "" }: { titulo: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={`space-y-3 border-t border-borde-soft pt-4 ${className}`}>
+      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">{titulo}</h3>
+      {children}
+    </section>
   );
 }
 

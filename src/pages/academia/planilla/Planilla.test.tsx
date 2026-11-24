@@ -448,6 +448,21 @@ describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago
     expect(screen.queryByText("Tiene beca")).not.toBeInTheDocument();
   });
 
+  it("23-nov (Derick): lo que pagó después de la fecha tope va en «Fuera de plazo», con lo que no se le paga", async () => {
+    const explicacion = "Pagó Bs 500 el 26-oct, después de la fecha tope (25-oct): no se le paga al docente (le tocaban Bs 100)";
+    await montarCon({
+      resumen: { ...PLANILLA.resumen, fueraDePlazo: 1, noSePaga: 100 },
+      fueraDePlazo: [{ ...SIN_PAGAR, monto: 0, montoPotencial: 100, cobradoModulo: 500, fueraDePlazo: "2026-10-25", explicacion }],
+    });
+    // El aviso de arriba deja escrito cuánto no se le paga.
+    expect(screen.getByRole("note", { name: "Fuera de plazo" })).toHaveTextContent(/1 estudiante fuera de plazo · Bs\s?100,00 que no se le pagan/);
+    fireEvent.click(screen.getByRole("button", { name: "Ver la lista" }));
+    expect(screen.getByRole("tab", { name: /Fuera de plazo/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Fuera de plazo · tope 25-oct")).toBeInTheDocument();
+    expect(screen.getByText(/no se le paga$/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver el detalle de Rivero Gil, Matías" })).toHaveAttribute("title", explicacion);
+  });
+
   it("cancelar el motivo vuelve al panel sin guardar; otra línea abre sin el editor", async () => {
     await montarCon({
       sinPagar: [SIN_PAGAR, { ...SIN_PAGAR, inscripcionId: 106, alumno: { id: 56, nombre: "Soria Paz, Ana" } }],

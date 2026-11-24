@@ -13,12 +13,16 @@ import {
   fechaLarga,
   fmtCambio,
   grado,
+  gradoDelResumen,
   resumenDe,
+  sufijoDelDia,
+  vecesDelDia,
   type CampoControl,
 } from "../../lib/nutricion/calculo";
 import type { Catalogo, Control, MedidaConTabla, Paciente } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
-import { editaNutricion } from "../../lib/permisos";
+import { hayDeLosDos, puntosDeLaSerie, resumenDeLaSerie, ultimoImcDeLaSerie } from "../../lib/nutricion/pesos";
+import { editaNutricion, RUTA_SEGUIMIENTO } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { EncabezadoPagina, PaginaAcademia as Pagina, Tarjeta } from "../academia/piezas";
@@ -74,14 +78,10 @@ const DEL_RESUMEN: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", 
 
 const valorCon = (m: Medida, n: number | null | undefined) => conUnidad(n, m.unidad, m.decimales);
 
-/** El grado guardado en el último control que tiene esa medida. */
+/** El grado del valor que muestra la tarjeta: el del mismo control (ver `gradoDelResumen`). */
 function gradoActual(controles: Control[], m: Medida, catalogo: Catalogo | null) {
   if (!m.grado) return null;
-  for (let i = controles.length - 1; i >= 0; i--) {
-    const c = controles[i];
-    if (c[m.campo] != null || c[m.grado.campo]) return grado(catalogo, m.grado.medida, c[m.grado.campo]);
-  }
-  return null;
+  return grado(catalogo, m.grado.medida, gradoDelResumen(controles, m.campo, m.grado.campo));
 }
 
 /**
@@ -94,8 +94,10 @@ function gradoActual(controles: Control[], m: Medida, catalogo: Catalogo | null)
 export default function PlanillaPaciente() {
   const { id } = useParams();
   const pacienteId = Number(id);
-  const { usuario } = useAuth();
+  const { usuario, puede } = useAuth();
   const edita = editaNutricion(usuario);
+  // El seguimiento del tratamiento (23-nov): quien lo ve tiene el atajo a la hoja.
+  const veSeguimiento = puede("seguimiento");
   const ficha = useApi(() => apiNutricion.paciente(pacienteId), [pacienteId]);
   const catalogo = useCatalogo();
   const [hoja, setHoja] = useState<{ control: Control | null } | null>(null);
@@ -145,6 +147,7 @@ export default function PlanillaPaciente() {
   if (!p || !catalogo.datos) return <Cargando texto="Cargando el paciente…" />;
   const cat = catalogo.datos;
   const controles = p.controles;
+  const conPesoSemanal = !!p.pesos?.some((x) => x.origen === "SEGUIMIENTO");
 
   async function archivar(volverALaLista: boolean) {
     setProcesando(true);
@@ -184,6 +187,15 @@ export default function PlanillaPaciente() {
         }
         acciones={
           <>
+            {veSeguimiento && (
+              <Link
+                to={`${RUTA_SEGUIMIENTO}/${p.id}`}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted"
+              >
+                <Icon name="seguimiento" size={16} />
+                Seguimiento
+              </Link>
+            )}
             {edita && (
               <Link
                 to={`/evaluacion/${p.id}/editar`}
@@ -224,7 +236,7 @@ export default function PlanillaPaciente() {
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
 
-      {controles.length === 0 ? (
+      {controles.length === 0 && !p.pesos?.length ? (
         <Tarjeta etiqueta="Controles">
           <Vacio
             icono="evaluacion"
@@ -241,29 +253,65 @@ export default function PlanillaPaciente() {
         </Tarjeta>
       ) : (
         <>
-          <Resumen controles={controles} catalogo={cat} />
+          <Resumen paciente={p} catalogo={cat} />
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-6">
             <Tarjeta
               titulo="Evolución"
               barra={
-                <div className="py-3">
+                // 44 px para el dedo hasta `lg` (en la tablet medían 34); en la PC, como siempre.
+                <div className="py-3 [&_button]:min-h-11 lg:[&_button]:min-h-0">
                   <Chips<CampoControl> envolver valor={medida} onChange={setMedida} opciones={DEL_GRAFICO.map((c) => [c, MEDIDAS[c].corto] as const)} />
                 </div>
               }
             >
-              <Evolucion controles={controles} medida={MEDIDAS[medida]} />
+              <Evolucion paciente={p} medida={MEDIDAS[medida]} />
             </Tarjeta>
-            <ImcDeHoy controles={controles} catalogo={cat} />
+            <ImcDeHoy paciente={p} catalogo={cat} />
           </div>
 
           <Tarjeta
             titulo="Controles"
             contador={controles.length}
-            bajada={edita ? "Tocá una fecha para corregir ese control." : undefined}
+            bajada={
+              // Sin pesos del seguimiento, la bajada de siempre.
+              conPesoSemanal ? (
+                <>
+                  {edita && controles.length > 0 && <span className="block">Tocá una fecha para corregir ese control.</span>}
+                  <span className="block">
+                    El peso de cada semana se anota en{" "}
+                    {veSeguimiento ? (
+                      <Link to={`${RUTA_SEGUIMIENTO}/${p.id}`} className="font-semibold text-primary-700 hover:underline">
+                        Seguimiento
+                      </Link>
+                    ) : (
+                      "Seguimiento"
+                    )}{" "}
+                    y se ve en el gráfico.
+                  </span>
+                </>
+              ) : edita ? (
+                "Tocá una fecha para corregir ese control."
+              ) : undefined
+            }
             sinRelleno
           >
-            <Planilla controles={controles} catalogo={cat} onAbrir={edita ? (c) => setHoja({ control: c }) : undefined} />
+            {controles.length ? (
+              <Planilla controles={controles} catalogo={cat} onAbrir={edita ? (c) => setHoja({ control: c }) : undefined} />
+            ) : (
+              <Vacio
+                icono="evaluacion"
+                titulo="Todavía no hay controles"
+                texto="El primer control es el de la evaluación inicial: el peso, las medidas y la composición."
+                accion={
+                  edita ? (
+                    <Boton icono="plus" onClick={() => setHoja({ control: null })}>
+                      Registrar el primer control
+                    </Boton>
+                  ) : undefined
+                }
+              />
+            )}
           </Tarjeta>
         </>
       )}
@@ -299,17 +347,26 @@ export default function PlanillaPaciente() {
 
 // ── Las tarjetas de arriba ──────────────────────────────────────────────────
 
-function Resumen({ controles, catalogo }: { controles: Control[]; catalogo: Catalogo }) {
+/** ¿Esta medida sale de la serie de pesos al día (§4.4 del seguimiento)? Sólo Peso e IMC, y si la respuesta la trae. */
+const deLaSerie = (p: Paciente, campo: CampoControl): campo is "pesoKg" | "imc" => !!p.pesos && (campo === "pesoKg" || campo === "imc");
+
+function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
+  const controles = paciente.controles;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {DEL_RESUMEN.map((campo) => {
         const m = MEDIDAS[campo];
-        const r = resumenDe(controles, campo);
-        const g = gradoActual(controles, m, catalogo);
+        const serie = deLaSerie(paciente, campo) ? puntosDeLaSerie(paciente, campo) : null;
+        const r = serie ? resumenDeLaSerie(serie) : resumenDe(controles, campo);
+        // El grado del IMC de la serie es el del último peso con IMC (el del seguimiento sale de la tabla).
+        const g =
+          serie && campo === "imc" ? grado(catalogo, "imc", ultimoImcDeLaSerie(paciente.pesos)?.imcGrado) : gradoActual(controles, m, catalogo);
+        const cuantos = serie ? serie.length : controles.length;
+        const delSeguimiento = !!r && "delSeguimiento" in r && r.delSeguimiento;
         const pies: string[] = [];
         // Espacios duros: «desde el anterior» baja entero, no queda «anterior» solo abajo.
         if (r?.desdeInicio != null) pies.push(`${fmtCambio(r.desdeInicio, m.decimales)}${m.unidad ? ` ${m.unidad}` : ""} desde el inicio`);
-        if (campo === "pesoKg" && r?.desdeAnterior != null && controles.length > 2) {
+        if (campo === "pesoKg" && r?.desdeAnterior != null && cuantos > 2) {
           pies.push(`${fmtCambio(r.desdeAnterior, m.decimales)} kg desde el anterior`);
         }
         return (
@@ -322,6 +379,12 @@ function Resumen({ controles, catalogo }: { controles: Control[]; catalogo: Cata
                 {t}
               </p>
             ))}
+            {/* La fecha entera, en su renglón si no entra: «·» al final de un renglón se leía suelto. */}
+            {delSeguimiento && r && (
+              <p className="mt-1 text-xs tabular-nums text-texto-4">
+                del seguimiento <span className="whitespace-nowrap">({fechaLarga(r.fecha)})</span>
+              </p>
+            )}
           </div>
         );
       })}
@@ -332,8 +395,12 @@ function Resumen({ controles, catalogo }: { controles: Control[]; catalogo: Cata
 // ── El medidor del IMC ──────────────────────────────────────────────────────
 
 /** El medidor de la hoja con el último IMC (sólo para mirar: el grado se corrige en el control). */
-function ImcDeHoy({ controles, catalogo }: { controles: Control[]; catalogo: Catalogo }) {
-  const ultimo = [...controles].reverse().find((c) => c.imc != null || c.imcGrado);
+function ImcDeHoy({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
+  // Con la serie de pesos al día, el último IMC de la serie (puede ser de una
+  // semana del seguimiento); sin ella, el del último control, como siempre.
+  const ultimo: { fecha: string; imc: number | null; imcGrado: string | null } | undefined = paciente.pesos
+    ? (ultimoImcDeLaSerie(paciente.pesos) ?? undefined)
+    : [...paciente.controles].reverse().find((c) => c.imc != null || c.imcGrado);
   const rangos = catalogo.tablas.imc?.find((t) => t.sexo == null && t.edadDesde == null && t.edadHasta == null)?.rangos ?? catalogo.tablas.imc?.[0]?.rangos;
   const g = grado(catalogo, "imc", ultimo?.imcGrado);
   return (
@@ -353,8 +420,10 @@ function ImcDeHoy({ controles, catalogo }: { controles: Control[]; catalogo: Cat
 
 // ── El gráfico ──────────────────────────────────────────────────────────────
 
-function Evolucion({ controles, medida }: { controles: Control[]; medida: Medida }) {
-  const puntos = evolucion(controles, medida.campo);
+function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Medida }) {
+  // Peso e IMC: todos los puntos de la serie al día; los del seguimiento, más chicos.
+  const serie = deLaSerie(paciente, medida.campo) ? puntosDeLaSerie(paciente, medida.campo) : null;
+  const puntos = serie ? serie.map((x) => ({ ...x, chico: x.delSeguimiento })) : evolucion(paciente.controles, medida.campo);
   if (!puntos.length) {
     return <p className="py-8 text-center text-sm text-texto-3">Todavía no hay datos de {medida.nombre.toLowerCase()}.</p>;
   }
@@ -362,6 +431,18 @@ function Evolucion({ controles, medida }: { controles: Control[]; medida: Medida
     <div className="space-y-2">
       <GraficoEvolucion puntos={puntos} nombre={medida.nombre} formato={(n) => valorCon(medida, n)} />
       {puntos.length === 1 && <p className="text-center text-[13px] text-texto-3">Con el próximo control vas a ver la evolución.</p>}
+      {serie && hayDeLosDos(serie) && (
+        <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[12px] text-texto-3" aria-hidden="true">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full border-2 border-primary-boton bg-white" />
+            Control
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-boton" />
+            Seguimiento semanal
+          </span>
+        </p>
+      )}
     </div>
   );
 }
@@ -390,22 +471,29 @@ function Planilla({
 
   const celdaFija =
     "sticky left-0 z-10 border-r border-borde-soft bg-white px-4 py-2.5 text-left shadow-[4px_0_8px_-6px_rgba(15,23,42,0.18)] max-sm:px-3 sm:px-5";
+  // El segundo control del mismo día lleva «(2)»: si no, las dos columnas se llaman igual.
+  const veces = vecesDelDia(controles.map((c) => c.fecha));
 
-  // En el celular cada control ocupa justo la mitad de lo que queda al lado de
-  // la columna fija, y el carril encaja de a una columna: nunca asoma medio
-  // control (con su nota cortada) detrás de los nombres de las medidas.
+  // Cada control ocupa justo 1/N de lo que queda al lado de la columna fija
+  // (N = cuántos entran: 2 en el celular, de 3 a 7 según el ancho) y el carril
+  // encaja de a una columna: nunca asoma medio control detrás de los nombres
+  // de las medidas («besidad grado 1»). Con menos controles que N, llenan el ancho.
+  const anchoControl = "calc((100cqw - var(--fija)) / min(var(--columnas), var(--visibles)))";
   return (
     <div className="@container">
       {/* scroll-lateral-ok: la planilla de controles se lee como la hoja, con la primera columna fija (contrato §4.3). */}
-      <div ref={carril} className="overflow-x-auto max-sm:snap-x max-sm:snap-mandatory max-sm:scroll-pl-[8.75rem]">
+      <div
+        ref={carril}
+        className="overflow-x-auto snap-x snap-mandatory scroll-pl-(--fija) [--fija:8.75rem] [--visibles:2] sm:[--fija:12.5rem] sm:[--visibles:3] sm:@3xl:[--visibles:4] sm:@4xl:[--visibles:5] sm:@5xl:[--visibles:6] sm:@6xl:[--visibles:7]"
+      >
         <table
-          className="w-max min-w-full border-separate border-spacing-0 text-sm max-sm:table-fixed max-sm:w-[calc(8.75rem_+_var(--columnas)_*_(100cqw_-_8.75rem)_/_2)]"
-          style={{ "--columnas": controles.length } as React.CSSProperties}
+          className="min-w-full table-fixed border-separate border-spacing-0 text-sm"
+          style={{ "--columnas": controles.length, width: `calc(var(--fija) + var(--columnas) * ${anchoControl})` } as React.CSSProperties}
         >
           <colgroup>
-            <col className="max-sm:w-[8.75rem]" />
+            <col style={{ width: "var(--fija)" }} />
             {controles.map((c) => (
-              <col key={c.id} className="max-sm:w-[calc((100cqw_-_8.75rem)_/_2)]" />
+              <col key={c.id} style={{ width: anchoControl }} />
             ))}
           </colgroup>
         <thead>
@@ -413,20 +501,20 @@ function Planilla({
             <th scope="col" className={`${celdaFija} bg-muted`}>
               Medida
             </th>
-            {controles.map((c) => (
-              <th scope="col" key={c.id} className="min-w-[7.5rem] snap-start border-b border-borde-soft bg-muted px-2 py-1.5 text-center align-bottom max-sm:min-w-0">
+            {controles.map((c, i) => (
+              <th scope="col" key={c.id} className="min-w-0 snap-start border-b border-borde-soft bg-muted px-2 py-1.5 text-center align-bottom">
                 {onAbrir ? (
                   <button
                     type="button"
                     onClick={() => onAbrir(c)}
-                    aria-label={`Corregir el control del ${fechaLarga(c.fecha)}`}
+                    aria-label={`Corregir el control del ${fechaLarga(c.fecha)}${sufijoDelDia(veces[i])}`}
                     className="inline-flex w-full flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-colors hover:bg-white hover:text-primary-700 focus-visible:bg-white"
                   >
-                    <Encabezado c={c} />
+                    <Encabezado c={c} vez={veces[i]} />
                   </button>
                 ) : (
                   <span className="inline-flex flex-col items-center gap-0.5 px-2 py-1">
-                    <Encabezado c={c} />
+                    <Encabezado c={c} vez={veces[i]} />
                   </span>
                 )}
               </th>
@@ -457,7 +545,12 @@ function Planilla({
                         <span className="text-texto-4">—</span>
                       ) : (
                         <span className={`inline-flex w-full max-w-[7.5rem] flex-col items-center rounded-lg px-1.5 py-1 ${t ? `${t.suave} ${t.texto}` : "text-texto"}`}>
-                          <span className="font-semibold tabular-nums">{v != null ? valorCon({ ...m, unidad: "" }, v) : "—"}</span>
+                          {v != null ? (
+                            <span className="font-semibold tabular-nums">{valorCon({ ...m, unidad: "" }, v)}</span>
+                          ) : (
+                            // El grado se eligió sin escribir el valor: «—» parecía un dato que falta.
+                            <span className="text-[12px] font-medium">sin medir</span>
+                          )}
                           {g && <span className="text-[11px] font-medium leading-tight">{g.nombre}</span>}
                         </span>
                       )}
@@ -488,10 +581,13 @@ function Planilla({
   );
 }
 
-function Encabezado({ c }: { c: Control }) {
+function Encabezado({ c, vez }: { c: Control; vez: number }) {
   return (
     <>
-      <span className="text-[13px] font-bold normal-case tracking-normal text-texto tabular-nums">{fechaLarga(c.fecha)}</span>
+      <span className="whitespace-nowrap text-[13px] font-bold normal-case tracking-normal text-texto tabular-nums">
+        {fechaLarga(c.fecha)}
+        {sufijoDelDia(vez)}
+      </span>
       {c.inicial ? (
         <span className="rounded-full bg-primary-100 px-2 py-px text-[10px] font-bold uppercase tracking-wide text-primary-700">Inicial</span>
       ) : (
