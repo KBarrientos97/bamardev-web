@@ -24,9 +24,20 @@ import {
   textoSubir,
   textoUltimoPago,
   tituloMes,
+  dosisConMg,
+  dosisYSusMg,
+  igualQueLaAnterior,
+  partesPaso,
+  pesoDeLaEvaluacion,
+  rachaAntes,
+  resultadoDelPeso,
+  textoKg,
+  textoKgTotal,
+  textoPagoAnterior,
+  ultimoPagoAntes,
 } from "./formato";
 import type { MesTratamiento, Paso } from "./tipos";
-import { CATALOGO_SEGUIMIENTO } from "../../../test/seguimientoFixtures";
+import { armarTratamiento, CATALOGO_SEGUIMIENTO, pacientesDePrueba } from "../../../test/seguimientoFixtures";
 
 /**
  * Cómo se leen los números del seguimiento (CONTRATO-nutricion-seguimiento-23nov
@@ -211,6 +222,90 @@ describe("los kilos", () => {
     expect(sinNb(textoCambioPeso(124.7, 123.9, 129))).toBe("↑ 0,8 esta semana · ↓ 4,3 en total");
     expect(textoCambioPeso(123, null, null)).toBe("");
     expect(textoCambioPeso(null, 123, 129)).toBe("");
+  });
+
+  // §7 (Kevin, 23-nov): lo de la semana es lo principal, con palabras; el total, de dato secundario.
+  it("con palabras: «Bajó 0,7», «Subió 0,3», «Igual»; y el total «2,1 desde el inicio»", () => {
+    expect(sinNb(textoKg(0.7)!.texto)).toBe("Bajó 0,7");
+    expect(textoKg(0.7)!.tono).toBe("bajo");
+    expect(sinNb(textoKg(-0.3)!.texto)).toBe("Subió 0,3");
+    expect(textoKg(-0.3)!.tono).toBe("subio");
+    expect(textoKg(0.001)).toEqual({ texto: "Igual", tono: "igual", cifra: "0" });
+    expect(textoKg(null)).toBeNull();
+    expect(textoKgTotal(2.1)).toBe("2,1 desde el inicio");
+    expect(textoKgTotal(-0.8)).toBe("Subió 0,8 desde el inicio");
+    expect(textoKgTotal(0)).toBe("Igual que al inicio");
+    expect(textoKgTotal(undefined)).toBeNull();
+  });
+
+  it("el resultado en vivo del peso: contra el último peso cargado antes de esa semana, y el total", () => {
+    const r = resultadoDelPeso(123.2, { pesoKg: 123.9, semana: 4 }, { pesoKg: 126, semana: 0 }, 5)!;
+    expect(sinNb(r.semana!.texto)).toBe("Bajó 0,7 kg");
+    expect(r.semana!.desde).toBe("desde la semana pasada");
+    expect(sinNb(r.total!)).toBe("Bajó 2,8 kg desde el inicio (126 kg)");
+    // El último peso es de otra semana (la pasada no tuvo peso), o es el inicial.
+    expect(resultadoDelPeso(124, { pesoKg: 123.9, semana: 3 }, null, 5)!.semana!.desde).toBe("desde la semana 3");
+    const desdeInicial = resultadoDelPeso(125, { pesoKg: 126, semana: 0 }, { pesoKg: 126, semana: 0 }, 1)!;
+    expect(desdeInicial.semana!.desde).toBe("desde el inicial");
+    expect(desdeInicial.total).toBeNull();
+    // Igual: «Igual que la semana pasada».
+    const igual = resultadoDelPeso(123.9, { pesoKg: 123.9, semana: 4 }, { pesoKg: 126, semana: 0 }, 5)!;
+    expect([igual.semana!.texto, igual.semana!.desde, igual.semana!.tono]).toEqual(["Igual", "que la semana pasada", "igual"]);
+    expect(resultadoDelPeso(null, { pesoKg: 123.9, semana: 4 }, null, 5)).toBeNull();
+  });
+});
+
+describe("la semana pasada, la dosis marcada y el pago anterior (§7.2)", () => {
+  const lucia = armarTratamiento(pacientesDePrueba("2026-11-23").find((p) => p.paciente.id === 12)!.tratamientos[0]);
+
+  it("la última dosis aplicada antes de la semana y cuántas aplicaciones lleva (la «No se aplicó» no corta ni suma)", () => {
+    const r = rachaAntes(lucia.registros, 8)!;
+    expect([r.dosis.dosis, r.dosis.unidadDosis, r.semana, r.aplicaciones]).toEqual([17, "UI", 7, 4]);
+    // Antes de la semana 7: la última aplicada es la 5 (la 6 no se aplicó).
+    expect(rachaAntes(lucia.registros, 7)).toMatchObject({ semana: 5, aplicaciones: 3 });
+    expect(rachaAntes(lucia.registros, 3)).toMatchObject({ semana: 2, aplicaciones: 3 });
+    expect(rachaAntes(lucia.registros, 0)).toBeNull();
+  });
+
+  it("«Igual que la anterior»: lo anotado tal cual; con otro vial, los mismos mg (con «≈»)", () => {
+    const antes = { dosis: 17, unidadDosis: "UI" as const, dosisMg: 5.1, dosisUi: 17, dosisMl: 0.17 };
+    expect(igualQueLaAnterior(antes, "UI", 30, 100)).toEqual({ escribe: "17", valor: 17, calculada: false });
+    expect(igualQueLaAnterior(antes, "UI", 20, 100)).toEqual({ escribe: "26", valor: 25.5, calculada: true });
+    expect(igualQueLaAnterior({ ...antes, dosis: 7.5, dosisMg: 2.25 }, "UI", 30, 100)!.escribe).toBe("7,5");
+    expect(igualQueLaAnterior(null, "UI", 30, 100)).toBeNull();
+  });
+
+  it("una dosis con su otro dato: «17 UI · 5,1 mg», «2,5 mg · ≈ 8 UI», «17 UI (5,1 mg)»", () => {
+    expect(sinNb(dosisConMg({ dosis: 17, unidadDosis: "UI", dosisMg: 5.1 }))).toBe("17 UI · 5,1 mg");
+    expect(sinNb(dosisConMg({ dosis: 2.5, unidadDosis: "mg", dosisUi: 8.3 }))).toBe("2,5 mg · ≈ 8 UI");
+    expect(sinNb(dosisConMg({ dosis: 10, unidadDosis: "UI", dosisMg: null }))).toBe("10 UI");
+    expect(sinNb(dosisYSusMg({ dosis: 17, unidadDosis: "UI", dosisMg: 5.1 }))).toBe("17 UI (5,1 mg)");
+    expect(sinNb(dosisYSusMg({ dosis: 2.5, unidadDosis: "mg", dosisUi: 8.3 }))).toBe("2,5 mg");
+  });
+
+  it("un escalón en su botón: arriba la unidad del tratamiento, abajo el otro dato", () => {
+    const p = PASOS_15[0];
+    expect(Object.values(partesPaso(p, "UI")).map((t) => sinNb(t ?? ""))).toEqual(["8 UI", "2,5 mg"]);
+    expect(Object.values(partesPaso(p, "mg")).map((t) => sinNb(t ?? ""))).toEqual(["2,5 mg", "≈ 8 UI"]);
+    expect(Object.values(partesPaso(p, "ml")).map((t) => sinNb(t ?? ""))).toEqual(["0,08 ml", "2,5 mg"]);
+    expect(partesPaso({ mg: 2.5, ui: null, ml: null }, "mg").secundario).toBeNull();
+  });
+
+  it("el pago anterior: «El anterior: Bs 630 el 02/11 (480 + 150)»", () => {
+    const p = ultimoPagoAntes(lucia.registros, 8)!;
+    // La semana 4 sólo tiene «Otro» (jeringas): también es un pago anotado.
+    expect(p).toMatchObject({ total: 50, partes: [50] });
+    expect(sinNb(textoPagoAnterior(p))).toMatch(/^El anterior: Bs 50 el \d\d\/\d\d$/);
+    const inicial = ultimoPagoAntes(lucia.registros, 4)!;
+    expect(sinNb(textoPagoAnterior(inicial))).toMatch(/^El anterior: Bs 630 el \d\d\/\d\d \(480 \+ 150\)$/);
+    expect(ultimoPagoAntes(lucia.registros, 0)).toBeNull();
+  });
+
+  it("el peso de la evaluación en una semana: «La evaluación de hoy anotó…» o con su fecha", () => {
+    const control = { fecha: "2026-11-23", pesoKg: 123.4 };
+    expect(sinNb(pesoDeLaEvaluacion(control, "2026-11-16", "semana", "2026-11-23")!.texto)).toBe("La evaluación de hoy anotó 123,4 kg");
+    expect(sinNb(pesoDeLaEvaluacion(control, "2026-11-16", "semana", "2026-11-25")!.texto)).toBe("La evaluación del 23/11/2026 anotó 123,4 kg");
+    expect(pesoDeLaEvaluacion(control, "2026-11-24", "semana", "2026-11-25")).toBeNull();
   });
 });
 

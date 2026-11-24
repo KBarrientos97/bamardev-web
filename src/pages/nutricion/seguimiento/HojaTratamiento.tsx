@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Boton, Confirmar, Modal } from "../../../components/ui";
+import { Boton, Confirmar } from "../../../components/ui";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
 import { fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, hojaDesactualizada, tratamientoQueYaTiene } from "../../../lib/nutricion/seguimiento/api";
@@ -32,8 +32,9 @@ import {
 import type { CatalogoSeguimiento, HojaPaciente, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
-import { CampoNumero, CampoTexto, Rotulo, SeccionHoja, Tecla } from "../piezas";
-import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PreguntaSinPago } from "./bloques";
+import { CampoNumero, CampoTexto, Rotulo, SeccionHoja } from "../piezas";
+import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PieHoja, PreguntaSinPago } from "./bloques";
+import HojaGrande from "./HojaGrande";
 import { BotonesUnidad, BotonToque } from "./piezas";
 
 /**
@@ -163,29 +164,23 @@ export default function HojaTratamiento({
   const errMl = intento || formT.vialMl ? erroresT.vialMl : null;
   const primerPaso = delCat?.pasosMg[0];
 
+  const titulo = iniciar ? "Iniciar tratamiento" : "Editar tratamiento";
   return (
     <>
-      <Modal
-        abierto
-        titulo={iniciar ? "Iniciar tratamiento" : "Editar tratamiento"}
-        subtitulo={pacienteNombre}
+      <HojaGrande
+        titulo={titulo}
+        ancha={false}
         onClose={otraPregunta ? sinCerrar : pedirCerrar}
-        ancho="max-w-2xl"
-        cerrarAlClicAfuera={false}
-        acciones={
+        cabecera={
           <>
-            <Boton variante="ghost" onClick={pedirCerrar} disabled={guardando}>
-              Cancelar
-            </Boton>
-            <Boton onClick={() => void guardar()} disabled={guardando} title="Guardar (Ctrl+Enter)">
-              {guardando ? "Guardando…" : iniciar ? "Iniciar tratamiento" : "Guardar"}
-              <Tecla sobreColor>Ctrl+Enter</Tecla>
-            </Boton>
+            <h2 className="text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">{titulo}</h2>
+            <p className="mt-1 text-sm text-texto-2">{pacienteNombre}</p>
           </>
         }
+        pie={<PieHoja onCancelar={pedirCerrar} onGuardar={() => void guardar()} guardando={guardando} etiqueta={iniciar ? "Iniciar tratamiento" : "Guardar"} />}
       >
         <div
-          className="space-y-5"
+          className="space-y-5 px-4 py-4 sm:px-6 sm:py-[18px]"
           onKeyDown={(e) => {
             const el = e.target as HTMLElement;
             if (e.key !== "Enter" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || el.tagName !== "INPUT") return;
@@ -202,6 +197,7 @@ export default function HojaTratamiento({
               autoComplete="off"
               invalido={intento && !!erroresT.nombre}
               onChange={(e) => cambiarT("nombre", e.target.value)}
+              className="min-h-12 text-base"
             />
             {catalogo.tratamientos.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -228,6 +224,7 @@ export default function HojaTratamiento({
                   unidad="mg"
                   invalido={!!(errMg || errVial)}
                   onChange={(v) => cambiarT("vialMg", v)}
+                  className="min-h-12 text-base"
                 />
               </div>
               <span>en</span>
@@ -239,6 +236,7 @@ export default function HojaTratamiento({
                   unidad="ml"
                   invalido={!!(errMl || errVial)}
                   onChange={(v) => cambiarT("vialMl", v)}
+                  className="min-h-12 text-base"
                 />
               </div>
             </div>
@@ -286,7 +284,7 @@ export default function HojaTratamiento({
 
           {iniciar && (
             <SeccionHoja titulo="Registro inicial">
-              <div className="space-y-5">
+              <div className="flex flex-col gap-4 sm:gap-3.5">
                 <Rotulo htmlFor={`${id}-fecha`} label="Fecha" error={intento ? erroresS.fecha : null} className="max-w-[13.75rem]">
                   <CampoTexto
                     id={`${id}-fecha`}
@@ -295,37 +293,49 @@ export default function HojaTratamiento({
                     max={hoy}
                     invalido={intento && !!erroresS.fecha}
                     onChange={(e) => cambiarS("fecha", e.target.value)}
+                    className="min-h-12 text-base"
                   />
                 </Rotulo>
-                <div className="max-w-md">
-                  <BloquePeso
-                    id={id}
-                    form={formS}
-                    errores={erroresS}
-                    intento={intento}
-                    cambiar={cambiarS}
-                    anterior={null}
-                    inicial={null}
-                    evaluacion={pesoDeLaEvaluacion(ultimoControl, null, "inicio")}
-                  />
-                </div>
+                <BloquePeso
+                  id={id}
+                  form={formS}
+                  errores={erroresS}
+                  intento={intento}
+                  cambiar={cambiarS}
+                  etiqueta={formS.fecha === hoy ? "Peso de hoy" : "Peso"}
+                  semana={0}
+                  antes={null}
+                  inicial={null}
+                  evaluacion={pesoDeLaEvaluacion(ultimoControl, null, "inicio")}
+                />
                 <BloqueDosis
                   id={id}
                   form={formS}
                   errores={erroresS}
                   intento={intento}
                   cambiar={cambiarS}
+                  etiqueta={formS.fecha === hoy ? "Dosis de hoy" : "Dosis"}
                   unidad={unidad}
                   mgPorMl={conc?.mgPorMl ?? null}
                   uiPorMl={catalogo.uiPorMl}
                   pasos={pasos}
                   sinPresentacion={pasos.length > 0 && unidad && unidad !== "mg" && !conc ? `Cargá la presentación del vial (arriba) para ver las dosis en ${unidad}.` : null}
                   antes={null}
-                  racha={null}
                   ofrecerSinDosis={false}
                 />
-                <BloqueObservaciones id={id} form={formS} cambiar={cambiarS} />
-                <BloquePagos id={id} form={formS} errores={erroresS} intento={intento} cambiar={cambiarS} tocaPago={tocaPago} refMedicamento={medicamento} />
+                <BloqueObservaciones id={id} form={formS} cambiar={cambiarS} etiqueta="Observaciones" />
+                <BloquePagos
+                  id={id}
+                  form={formS}
+                  errores={erroresS}
+                  intento={intento}
+                  cambiar={cambiarS}
+                  tocaPago={tocaPago}
+                  titulo={tocaPago ? "Hoy toca el pago del mes 1" : "Pago de esta semana"}
+                  anterior={null}
+                  abiertaDeEntrada={tocaPago}
+                  refMedicamento={medicamento}
+                />
               </div>
             </SeccionHoja>
           )}
@@ -341,7 +351,7 @@ export default function HojaTratamiento({
             </div>
           )}
         </div>
-      </Modal>
+      </HojaGrande>
       <Confirmar
         abierto={preguntaCerrar}
         titulo="¿Cerrar sin guardar?"

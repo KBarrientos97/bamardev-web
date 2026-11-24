@@ -10,11 +10,12 @@ import { armarTratamiento, CATALOGO_SEGUIMIENTO, pacientesDePrueba, type Tratami
 import HojaSemana from "./HojaSemana";
 
 /**
- * La hoja «Semana N» (CONTRATO-nutricion-seguimiento-23nov §4.2 y §5): se
- * carga una semana con lo escrito; los botones de la dosis escriben recién al
- * tocarlos (ninguno viene marcado); «No se aplicó» apaga la dosis y pide el
- * motivo; en la semana de pago sin pago, el bloque va en amarillo y guardar
- * sin pago pregunta (no bloquea).
+ * La hoja «Semana N» de la maqueta A (CONTRATO-nutricion-seguimiento-23nov
+ * §4.2, §5 y §7.2): una semana nueva viene con «Igual que la anterior»
+ * marcada (sin contar como cambio), el peso dice en vivo cuánto bajó, los
+ * escalones y «Otra» escriben la dosis, «No se aplicó» apaga la dosis y pide
+ * el motivo, y en la semana de pago sin pago el bloque va en amarillo y
+ * guardar sin pago pregunta (no bloquea).
  */
 
 // La hoja entera es pesada: con la máquina cargada (Vite, otra suite) pasaba los 5 s de fábrica.
@@ -37,7 +38,7 @@ const delPaciente = (id: number, cambiar?: (t: TratamientoCrudo) => TratamientoC
 };
 /** Lucía: semana 7, en UI con el vial de 15 mg en 0,5 ml, debe el pago de la semana 5. */
 const lucia = delPaciente(12);
-/** Carla: semana 4; la próxima (5) le toca pagar. */
+/** Carla: semana 4 (con 25 UI); la próxima (5) le toca pagar. */
 const carla = delPaciente(22);
 const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
 
@@ -65,6 +66,11 @@ function abrir(t: Tratamiento, opciones: { semana?: number; registro?: number; u
 const boton = (nombre: string | RegExp) => screen.getByRole("button", { name: nombre });
 /** El nombre exacto de un botón, con los espacios duros («25 UI») como cualquier espacio. */
 const exacto = (texto: string) => new RegExp(`^${texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s")}$`);
+const igual = () => boton(/^Igual que la anterior/);
+const subir = () => boton(/Subir un escalón/);
+const otra = () => screen.getByLabelText(/^Otra dosis/);
+const peso = () => screen.getByLabelText("Peso de hoy");
+const marcados = () => screen.queryAllByRole("button", { pressed: true }).map((b) => sinNb(b.textContent));
 
 beforeEach(() => {
   vi.mocked(apiSeguimiento.cargarSemana).mockReset().mockResolvedValue(lucia);
@@ -72,65 +78,128 @@ beforeEach(() => {
 });
 
 describe("cargar una semana", () => {
-  it("abre vacía salvo el número y la fecha, con lo anterior en gris", () => {
-    abrir(lucia);
-    expect(screen.getByRole("dialog", { name: "Semana 8" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Semana")).toHaveValue("8");
-    expect(screen.getByLabelText("Fecha")).toHaveValue(HOY);
-    expect(screen.getByLabelText("Peso (kg)")).toHaveValue("");
-    expect(screen.getByLabelText("Dosis")).toHaveValue("");
-    expect(screen.getByLabelText("Observaciones")).toHaveValue("");
-    expect(screen.getByLabelText("Medicamento (Bs)")).toHaveValue("");
-    expect(screen.getByText("anterior: 124,7")).toBeInTheDocument();
-    expect(sinNb(screen.getByText(/^Lleva/).textContent)).toBe("Lleva 4 semanas con 17 UI");
-    // La semana 8 no es de pago: sin amarillo.
-    expect(screen.queryByText("Hoy toca el pago del mes")).not.toBeInTheDocument();
+  it("abre con el número, la fecha y la dosis de la anterior marcada; lo demás vacío, con lo anterior en gris", () => {
+    const { onCerrar } = abrir(lucia);
+    const hoja = screen.getByRole("dialog", { name: "Semana 8" });
+    expect(within(hoja).getByLabelText("Semana")).toHaveValue("8");
+    expect(within(hoja).getByLabelText("Fecha")).toHaveValue(HOY);
+    expect(peso()).toHaveValue("");
+    expect(screen.getByLabelText("Observaciones de la semana")).toHaveValue("");
+    expect(screen.getByLabelText(/^Medicamento/)).toHaveValue("");
+    expect(sinNb(screen.getByText(/^Anterior:/).textContent)).toBe("Anterior: 124,7 kg");
+    // La franja de la semana pasada: su peso, su dosis y cuántas aplicaciones lleva (la «No se aplicó» no corta).
+    const franja = screen.getByText(/^La semana pasada/).parentElement!;
+    expect(sinNb(franja.textContent)).toContain("124,7 kg · 17 UI (5,1 mg) · lleva 4 aplicaciones con esa dosis");
+    // «Igual que la anterior» viene marcada: es la única dosis elegida (y el escalón de 5 mg, que es la misma).
+    expect(igual()).toHaveAttribute("aria-pressed", "true");
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior17 UI · 5,1 mg");
+    expect(otra()).toHaveValue("");
+    // La semana 8 no es de pago; el pago pendiente del mes 2 deja el bloque abierto.
+    expect(screen.queryByText(/^Hoy toca el pago del mes/)).not.toBeInTheDocument();
+    expect(screen.getByText("Falta el pago de la semana 5")).toBeInTheDocument();
+    // La dosis marcada de fábrica no es un cambio: cerrar no pregunta.
+    fireEvent.click(boton("Cancelar"));
+    expect(onCerrar).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
   });
 
-  it("al escribir el peso dice lo que bajó o subió; al escribir la dosis, sus equivalencias", () => {
-    abrir(lucia);
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,5" } });
-    expect(sinNb(screen.getByText(/en total/).textContent)).toBe("↓ 1,2 esta semana · ↓ 5,5 en total");
-    fireEvent.change(screen.getByLabelText("Dosis"), { target: { value: "17" } });
-    expect(sinNb(screen.getByText(/≈/).closest("span[class*='text-texto-3']")?.textContent ?? "")).toBe("≈ 5,1 mg · 0,17 ml");
+  it("tocar sólo el peso y guardar manda también la dosis marcada", async () => {
+    const { onGuardado } = abrir(lucia);
+    fireEvent.change(peso(), { target: { value: "123,9" } });
+    fireEvent.click(boton(/^Guardar la semana 8/));
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled());
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, { semana: 8, fecha: HOY, pesoKg: 123.9, dosis: 17 });
+    expect(onGuardado.mock.calls[0][1]).toBe("Semana 8 guardada.");
   });
 
-  it("los botones de la dosis escriben el número en la unidad del tratamiento, y sólo al tocarlos", () => {
+  it("al escribir el peso dice en vivo lo que bajó desde la semana pasada y desde el inicio", () => {
     abrir(lucia);
-    const dosis = screen.getByLabelText("Dosis");
-    expect(screen.queryByRole("button", { pressed: true })).not.toBeInTheDocument();
-    fireEvent.click(boton(/Igual que la anterior/));
-    expect(dosis).toHaveValue("17");
-    fireEvent.click(boton(exacto("Subir: 25 UI (7,5 mg)")));
-    expect(dosis).toHaveValue("25");
+    fireEvent.change(peso(), { target: { value: "123,5" } });
+    expect(sinNb(screen.getByText(/^Bajó\s1,2\skg$/).parentElement!.textContent)).toBe("Bajó 1,2 kg desde la semana pasada");
+    expect(sinNb(screen.getByText(/desde el inicio/).textContent)).toBe("Bajó 5,5 kg desde el inicio (129 kg)");
+    fireEvent.change(peso(), { target: { value: "125" } });
+    expect(sinNb(screen.getByText(/^Subió\s0,3\skg$/).textContent)).toBe("Subió 0,3 kg");
+  });
+
+  it("los botones de la dosis escriben en la unidad del tratamiento y quedan marcados; «Otra» se escribe a mano", async () => {
+    const { onGuardado } = abrir(lucia);
+    fireEvent.click(subir());
+    expect(sinNb(subir().textContent)).toContain("25 UI · 7,5 mg");
+    expect(subir()).toHaveAttribute("aria-pressed", "true");
+    expect(igual()).toHaveAttribute("aria-pressed", "false");
     // Cada escalón con sus dos datos.
     fireEvent.click(boton(exacto("8 UI · 2,5 mg")));
-    expect(dosis).toHaveValue("8");
+    expect(boton(exacto("8 UI · 2,5 mg"))).toHaveAttribute("aria-pressed", "true");
     expect(boton(exacto("50 UI · 15 mg"))).toBeInTheDocument();
+    // A mano: «Otra» queda elegida aunque el número coincida con un botón, y muestra sus equivalencias.
+    fireEvent.change(otra(), { target: { value: "20" } });
+    expect(marcados()).toEqual([]);
+    expect(sinNb(screen.getByText(/^≈/).closest("span[class*='text-texto-3']")!.textContent)).toBe("≈ 6 mg · 0,20 ml");
+    fireEvent.change(otra(), { target: { value: "17" } });
+    expect(otra()).toHaveValue("17");
+    fireEvent.change(peso(), { target: { value: "124" } });
+    fireEvent.click(boton(/^Guardar/));
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled());
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, { semana: 8, fecha: HOY, pesoKg: 124, dosis: 17 });
   });
 
   // Kevin (23-nov): «7,5» anotado en UI se leía «≈ 8 UI» y el botón escribía 8.
-  it("«Igual que la anterior» con una dosis anotada con decimales: la muestra y la escribe como se anotó", () => {
+  it("«Igual que la anterior» con una dosis anotada con decimales: la muestra y la guarda como se anotó", async () => {
     const conDecimal = delPaciente(12, (t) => {
       const ultima = t.semanas.reduce((a, s) => (s.semana > a.semana ? s : a));
       ultima.dosis = 7.5;
       return t;
     });
-    abrir(conDecimal);
-    fireEvent.click(boton(exacto("Igual que la anterior: 7,5 UI")));
-    expect(screen.getByLabelText("Dosis")).toHaveValue("7,5");
-    expect(sinNb(screen.getByText(/^Lleva/).textContent)).toBe("Lleva 1 semana con 7,5 UI");
+    const { onGuardado } = abrir(conDecimal);
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior7,5 UI · 2,25 mg");
+    expect(sinNb(screen.getByText(/^La semana pasada/).parentElement!.textContent)).toContain("lleva 1 aplicación con esa dosis");
+    fireEvent.change(peso(), { target: { value: "123,9" } });
+    fireEvent.click(boton(/^Guardar/));
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled());
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, expect.objectContaining({ dosis: 7.5 }));
+  });
+
+  it("la marcada es la última dosis APLICADA: saltea las semanas «No se aplicó»", () => {
+    // Sin la semana 7, la anterior es la 6 (no se aplicó): vale la de la 5.
+    const sinLa7 = delPaciente(12, (t) => ({ ...t, semanas: t.semanas.filter((s) => s.semana !== 7) }));
+    abrir(sinLa7);
+    expect(igual()).toHaveAttribute("aria-pressed", "true");
+    expect(sinNb(igual().textContent)).toContain("17 UI");
+    const franja = sinNb(screen.getByText(/^La semana pasada/).parentElement!.textContent);
+    expect(franja).toContain("no se aplicó (Viaje)");
+    expect(franja).toContain("la última dosis: 17 UI (5,1 mg), 3 aplicaciones");
+  });
+
+  it("si eligen otra dosis, ésa es la «anterior» de la semana siguiente", () => {
+    const subio = delPaciente(12, (t) => {
+      t.semanas.push({ semana: 8, fecha: HOY, pesoKg: 124, dosis: 25 });
+      return t;
+    });
+    abrir(subio);
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior25 UI · 7,5 mg");
+    expect(igual()).toHaveAttribute("aria-pressed", "true");
+    expect(sinNb(subir().textContent)).toContain("33 UI · 10 mg");
+  });
+
+  it("con otro vial, la marcada son los mismos mg en el vial de hoy (≈ 26 UI de 20 mg/ml)", async () => {
+    // Las semanas se anotaron con 30 mg/ml; el tratamiento hoy tiene el vial de 10 mg en 0,5 ml.
+    const otroVial = delPaciente(12, (t) => ({ ...t, vial: { mg: 10, ml: 0.5 }, semanas: t.semanas.map((s) => ({ ...s, mgPorMl: 30 })) }));
+    const { onGuardado } = abrir(otroVial);
+    expect(sinNb(igual().textContent)).toBe("Igual que la anterior≈ 26 UI · 5,1 mg");
+    fireEvent.change(peso(), { target: { value: "124" } });
+    fireEvent.click(boton(/^Guardar/));
+    await waitFor(() => expect(onGuardado).toHaveBeenCalled());
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, expect.objectContaining({ dosis: 26 }));
   });
 
   it("guarda lo escrito y avisa", async () => {
     const { onGuardado } = abrir(lucia);
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,9" } });
-    fireEvent.click(boton(/^Subir/));
-    fireEvent.change(screen.getByLabelText("Observaciones"), { target: { value: "Sube a 7,5 mg." } });
+    fireEvent.change(peso(), { target: { value: "123,9" } });
+    fireEvent.click(subir());
+    fireEvent.change(screen.getByLabelText("Observaciones de la semana"), { target: { value: "Sube a 7,5 mg." } });
     fireEvent.click(boton(/^Guardar/));
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
     expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(5, { semana: 8, fecha: HOY, pesoKg: 123.9, dosis: 25, observaciones: "Sube a 7,5 mg." });
-    expect(onGuardado.mock.calls[0][1]).toBe("Semana 8 guardada.");
   });
 
   // Probado el 23-nov: con la respuesta perdida (o dos personas), el reintento dice «Ya hay un registro…» y la
@@ -154,12 +223,11 @@ describe("cargar una semana", () => {
         />
       </MemoryRouter>,
     );
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,9" } });
+    fireEvent.change(peso(), { target: { value: "123,9" } });
     fireEvent.click(boton(/^Guardar/));
-    const alerta = await screen.findByRole("alert");
-    expect(alerta).toHaveTextContent("Ya hay un registro de la semana 8.");
-    expect(alerta).toHaveTextContent("Puede que ya esté guardada. Mirá la hoja antes de cargarla de nuevo.");
-    expect(screen.getByLabelText("Peso (kg)")).toHaveValue("123,9");
+    const alerta = await screen.findByText("Ya hay un registro de la semana 8.");
+    expect(alerta.parentElement).toHaveTextContent("Puede que ya esté guardada. Mirá la hoja antes de cargarla de nuevo.");
+    expect(peso()).toHaveValue("123,9");
     fireEvent.click(boton("Ver la hoja"));
     expect(onVerSemana).toHaveBeenCalledWith(8);
     expect(onCerrar).not.toHaveBeenCalled();
@@ -185,16 +253,18 @@ describe("cargar una semana", () => {
     );
     fireEvent.change(screen.getByLabelText("Semana"), { target: { value: "8" } });
     fireEvent.click(boton(/^Guardar/));
-    const alerta = await screen.findByRole("alert");
-    expect(alerta).toHaveTextContent("Ya hay un registro de la semana 8.");
-    expect(alerta).not.toHaveTextContent("Puede que ya esté guardada");
+    const alerta = await screen.findByText("Ya hay un registro de la semana 8.");
+    expect(alerta.parentElement).not.toHaveTextContent("Puede que ya esté guardada");
     expect(screen.queryByRole("button", { name: "Ver la hoja" })).not.toBeInTheDocument();
   });
 
   it("vacía no se guarda; una semana repetida se avisa antes de mandarla", () => {
-    abrir(lucia);
+    // Sin ninguna dosis antes, no hay nada marcado de fábrica.
+    const sinDosis = delPaciente(12, (t) => ({ ...t, semanas: t.semanas.map((s) => ({ ...s, dosis: null })) }));
+    abrir(sinDosis);
+    expect(marcados()).toEqual([]);
     fireEvent.click(boton(/^Guardar/));
-    expect(screen.getByRole("alert")).toHaveTextContent("Escribí al menos el peso, la dosis, una observación o un pago");
+    expect(screen.getByText(/^Escribí al menos el peso, la dosis, una observación o un pago/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Semana"), { target: { value: "7" } });
     expect(screen.getByText("Ya hay un registro de la semana 7.")).toBeInTheDocument();
     expect(apiSeguimiento.cargarSemana).not.toHaveBeenCalled();
@@ -202,11 +272,12 @@ describe("cargar una semana", () => {
 
   it("«No se aplicó»: apaga la dosis, pide el motivo (con botones que lo escriben) y se guarda sólo con eso", async () => {
     const { onGuardado } = abrir(lucia);
-    fireEvent.change(screen.getByLabelText("Dosis"), { target: { value: "17" } });
-    fireEvent.click(boton("No se aplicó esta semana"));
-    expect(boton("No se aplicó esta semana")).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("Dosis")).toBeDisabled();
-    expect(screen.queryByRole("button", { name: /^Subir/ })).not.toBeInTheDocument();
+    const casilla = screen.getByRole("checkbox", { name: "No se aplicó esta semana" });
+    fireEvent.click(casilla);
+    expect(casilla).toBeChecked();
+    expect(igual()).toBeDisabled();
+    expect(boton(exacto("8 UI · 2,5 mg"))).toBeDisabled();
+    expect(otra()).toBeDisabled();
     expect(screen.getByLabelText("Motivo")).toHaveValue("");
     fireEvent.click(boton("Viaje"));
     expect(screen.getByLabelText("Motivo")).toHaveValue("Viaje");
@@ -218,53 +289,72 @@ describe("cargar una semana", () => {
   it("«Cambio de laboratorio» agrega el texto para completar", () => {
     abrir(lucia);
     fireEvent.click(boton("Cambio de laboratorio"));
-    expect(screen.getByLabelText("Observaciones")).toHaveValue("Cambio de laboratorio: ");
+    expect(screen.getByLabelText("Observaciones de la semana")).toHaveValue("Cambio de laboratorio: ");
   });
 
-  it("ofrece el peso de la Evaluación si es del mismo día o posterior, con «Usar» (no se precarga)", () => {
+  it("ofrece el peso de la Evaluación si es del mismo día o posterior, con «Usar ese» (no se precarga)", () => {
     const ultima = lucia.registros[lucia.registros.length - 1].fecha;
     abrir(lucia, { ultimoControl: { fecha: ultima, pesoKg: 124.5 } });
-    const peso = screen.getByLabelText("Peso (kg)");
-    expect(peso).toHaveValue("");
-    expect(sinNb(screen.getByText(/^Evaluación del/).textContent)).toContain(": 124,5 kg");
-    fireEvent.click(boton("Usar"));
-    expect(peso).toHaveValue("124,5");
+    expect(peso()).toHaveValue("");
+    expect(sinNb(screen.getByText(/^La evaluación del/).textContent)).toContain(" anotó 124,5 kg");
+    fireEvent.click(boton("Usar ese"));
+    expect(peso()).toHaveValue("124,5");
+  });
+
+  it("la evaluación de hoy se dice así", () => {
+    abrir(lucia, { ultimoControl: { fecha: HOY, pesoKg: 124.5 } });
+    expect(sinNb(screen.getByText(/^La evaluación de hoy/).textContent)).toBe("La evaluación de hoy anotó 124,5 kg ·");
   });
 
   it("con un control de la Evaluación más viejo que el último peso, no lo ofrece", () => {
     abrir(lucia, { ultimoControl: { fecha: "2020-01-01", pesoKg: 130 } });
-    expect(screen.queryByText(/^Evaluación del/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^La evaluación/)).not.toBeInTheDocument();
+  });
+
+  it("los números se escriben con el teclado numérico", () => {
+    abrir(lucia);
+    for (const campo of [peso(), otra(), screen.getByLabelText(/^Medicamento/), screen.getByLabelText(/^Control/), screen.getByLabelText(/^Otro/)]) {
+      expect(campo).toHaveAttribute("inputmode", "decimal");
+    }
   });
 });
 
-describe("la semana de pago", () => {
-  it("«Hoy toca el pago del mes» y, al guardar sin pago, pregunta: «Anotar el pago» vuelve al campo", async () => {
+describe("el pago", () => {
+  it("«Hoy toca el pago del mes 2» y, al guardar sin pago, pregunta: «Anotar el pago» vuelve al campo", async () => {
     abrir(carla, { semana: 5 });
-    expect(screen.getByText("Hoy toca el pago del mes")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "84,6" } });
+    expect(screen.getByText("Hoy toca el pago del mes 2")).toBeInTheDocument();
+    fireEvent.change(peso(), { target: { value: "84,6" } });
     fireEvent.click(boton(/^Guardar/));
     expect(screen.getByRole("dialog", { name: "¿Guardar sin el pago?" })).toBeInTheDocument();
     fireEvent.click(boton("Anotar el pago"));
     expect(screen.queryByRole("dialog", { name: "¿Guardar sin el pago?" })).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByLabelText("Medicamento (Bs)")).toHaveFocus());
+    await waitFor(() => expect(screen.getByLabelText(/^Medicamento/)).toHaveFocus());
     expect(apiSeguimiento.cargarSemana).not.toHaveBeenCalled();
   });
 
-  it("«Guardar sin pago» guarda igual (no bloquea)", async () => {
+  it("«Guardar sin pago» guarda igual (no bloquea), con la dosis marcada", async () => {
     const { onGuardado } = abrir(carla, { semana: 5 });
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "84,6" } });
+    fireEvent.change(peso(), { target: { value: "84,6" } });
     fireEvent.click(boton(/^Guardar/));
     fireEvent.click(boton("Guardar sin pago"));
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
-    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(7, { semana: 5, fecha: HOY, pesoKg: 84.6 });
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(7, { semana: 5, fecha: HOY, pesoKg: 84.6, dosis: 25 });
   });
 
   it("con el pago anotado no pregunta", async () => {
     const { onGuardado } = abrir(carla, { semana: 5 });
-    fireEvent.change(screen.getByLabelText("Medicamento (Bs)"), { target: { value: "480" } });
+    fireEvent.change(screen.getByLabelText(/^Medicamento/), { target: { value: "480" } });
     fireEvent.click(boton(/^Guardar/));
     await waitFor(() => expect(onGuardado).toHaveBeenCalled());
-    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(7, { semana: 5, fecha: HOY, pagoMedicamento: 480 });
+    expect(apiSeguimiento.cargarSemana).toHaveBeenCalledWith(7, { semana: 5, fecha: HOY, dosis: 25, pagoMedicamento: 480 });
+  });
+
+  it("una semana común sin pagos pendientes: el pago va cerrado en «Anotar un pago», que lo abre", async () => {
+    abrir(carla, { semana: 6 });
+    expect(screen.queryByLabelText(/^Medicamento/)).not.toBeInTheDocument();
+    fireEvent.click(boton(/^Anotar un pago/));
+    await waitFor(() => expect(screen.getByLabelText(/^Medicamento/)).toHaveFocus());
+    expect(screen.getByText("Pago de esta semana")).toBeInTheDocument();
   });
 });
 
@@ -272,11 +362,17 @@ describe("corregir una semana", () => {
   it("abre con lo guardado y dice quién la cargó y quién la corrigió", () => {
     abrir(lucia, { registro: 5 });
     expect(screen.getByRole("dialog", { name: "Semana 5" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Peso (kg)")).toHaveValue("123,4");
+    expect(screen.getByLabelText("Peso")).toHaveValue("123,4");
     expect(screen.getByText(/^Cargó: Dra\. Prueba, /)).toBeInTheDocument();
     expect(screen.getByText(/^Corrigió: Administración, /)).toBeInTheDocument();
     // La semana 5 debe el pago: el bloque va en amarillo.
-    expect(screen.getByText("Hoy toca el pago del mes")).toBeInTheDocument();
+    expect(screen.getByText("Hoy toca el pago del mes 2")).toBeInTheDocument();
+  });
+
+  it("no marca nada de más: la dosis es la que tenía (una «No se aplicó» no tiene ninguna)", () => {
+    abrir(lucia, { registro: 6 });
+    expect(marcados()).toEqual([]);
+    expect(screen.getByRole("checkbox", { name: "No se aplicó esta semana" })).toBeChecked();
   });
 
   it("«Borrar semana» con un pago anotado lo dice en la confirmación", () => {
@@ -285,12 +381,13 @@ describe("corregir una semana", () => {
     expect(screen.getByText("Esta semana tiene un pago anotado de Bs 50. Si la borrás, se pierde.")).toBeInTheDocument();
   });
 
-  it("el inicial no tiene número de semana ni «Borrar semana» ni «No se aplicó»", () => {
+  it("el inicial no tiene número de semana ni «Borrar semana» ni «No se aplicó», y no marca ninguna dosis de más", () => {
     abrir(lucia, { registro: 0 });
     expect(screen.getByRole("dialog", { name: "Inicial" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Semana")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Borrar semana" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "No se aplicó esta semana" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "No se aplicó esta semana" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Igual que la anterior/ })).not.toBeInTheDocument();
   });
 
   it("manda sólo lo que cambió", async () => {
@@ -303,19 +400,21 @@ describe("corregir una semana", () => {
 });
 
 describe("sin la presentación del vial", () => {
-  it("con la dosis en UI, los escalones no se pueden pasar: no se muestran y se avisa", () => {
+  it("con la dosis en UI, los escalones no se pueden pasar: no se muestran y se avisa; «Otra» queda", () => {
     const sinVial = delPaciente(12, (t) => ({ ...t, vial: null }));
     abrir(sinVial);
     expect(screen.getByText(/Cargá la presentación del vial para ver las dosis en UI/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^8\sUI/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Subir/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Subir un escalón/ })).not.toBeInTheDocument();
+    expect(otra()).toBeInTheDocument();
   });
 
-  it("con la dosis en mg, los escalones se ven igual (sin UI)", () => {
+  it("con la dosis en mg, los escalones se ven igual (primero los mg)", () => {
     const daniel = delPaciente(21);
     abrir(daniel);
     expect(boton(exacto("2,5 mg"))).toBeInTheDocument();
-    expect(boton(exacto("Subir: 5 mg"))).toBeInTheDocument();
+    expect(sinNb(subir().textContent)).toContain("5 mg");
+    expect(otra()).toHaveAccessibleName("Otra dosis en mg");
   });
 });
 
@@ -329,7 +428,7 @@ describe("el atrás del navegador", () => {
 
   it("con algo escrito se queda y pregunta; «Cancelar» conserva lo escrito y «Cerrar sin guardar» cierra la hoja", () => {
     const { onCerrar } = abrir(lucia);
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "123,9" } });
+    fireEvent.change(peso(), { target: { value: "123,9" } });
 
     h.viajar(4);
     expect(h.go).toHaveBeenCalledWith(1);
@@ -337,7 +436,7 @@ describe("el atrás del navegador", () => {
     expect(h.router).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole("dialog", { name: "¿Cerrar sin guardar?" })).getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Peso (kg)")).toHaveValue("123,9");
+    expect(peso()).toHaveValue("123,9");
     expect(onCerrar).not.toHaveBeenCalled();
 
     h.viajar(4);
@@ -347,7 +446,7 @@ describe("el atrás del navegador", () => {
     expect(h.router).not.toHaveBeenCalled();
   });
 
-  it("sin nada escrito el atrás hace lo de siempre", () => {
+  it("sin nada escrito (con la dosis marcada de fábrica) el atrás hace lo de siempre", () => {
     const { onCerrar } = abrir(lucia);
     h.viajar(4);
     expect(h.router).toHaveBeenCalledTimes(1);
@@ -357,7 +456,7 @@ describe("el atrás del navegador", () => {
 
   it("con «¿Guardar sin el pago?» abierta no abre otra pregunta encima", () => {
     abrir(carla, { semana: 5 });
-    fireEvent.change(screen.getByLabelText("Peso (kg)"), { target: { value: "84,6" } });
+    fireEvent.change(peso(), { target: { value: "84,6" } });
     fireEvent.click(boton(/^Guardar/));
     h.viajar(4);
     h.viajar(5);
@@ -369,7 +468,13 @@ describe("el atrás del navegador", () => {
   it("cerrar o recargar la pestaña avisa sólo con algo escrito", () => {
     abrir(lucia);
     expect(avisaAlCerrar()).toBe(false);
-    fireEvent.change(screen.getByLabelText("Observaciones"), { target: { value: "Una nota" } });
+    fireEvent.change(screen.getByLabelText("Observaciones de la semana"), { target: { value: "Una nota" } });
     expect(avisaAlCerrar()).toBe(true);
+  });
+
+  it("`Esc` sin cambios cierra; con cambios, pregunta", () => {
+    const { onCerrar } = abrir(lucia);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCerrar).toHaveBeenCalledTimes(1);
   });
 });

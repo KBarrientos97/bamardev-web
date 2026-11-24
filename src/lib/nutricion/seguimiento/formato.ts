@@ -88,6 +88,49 @@ export function textoDosis(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Part
   return { anotado: fmtDosis(d.dosis, d.unidadDosis), equivalencias: textoEquivalencias(d, d.unidadDosis) };
 }
 
+/** Dos dosis son la misma si coinciden en mg (cuando las dos los tienen) o, si no, en número y unidad (§2 «Misma dosis»). */
+export function mismaDosis(a: Pick<DosisAnotada, "dosis" | "unidadDosis" | "dosisMg">, b: Pick<DosisAnotada, "dosis" | "unidadDosis" | "dosisMg">): boolean {
+  if (a.dosisMg != null && b.dosisMg != null) return Math.abs(a.dosisMg - b.dosisMg) < 1e-9;
+  return a.unidadDosis === b.unidadDosis && Math.abs(a.dosis - b.dosis) < 1e-9;
+}
+
+/**
+ * La última dosis aplicada ANTES de la semana `semana` y cuántas aplicaciones
+ * seguidas lleva con ella, contando hacia atrás (§2: las «No se aplicó» y las
+ * semanas sin dosis no cortan la racha ni suman). Es lo de la franja «La
+ * semana pasada» y la que viene marcada en una semana nueva. null si no hay.
+ */
+export function rachaAntes(registros: Registro[], semana: number): { dosis: DosisAnotada; aplicaciones: number; semana: number } | null {
+  const antes = registros.filter((r) => r.semana < semana).sort((a, b) => a.semana - b.semana);
+  let ultima: { dosis: DosisAnotada; semana: number } | null = null;
+  let aplicaciones = 0;
+  for (let i = antes.length - 1; i >= 0; i--) {
+    const d = dosisDelRegistro(antes[i]);
+    if (!d) continue;
+    if (!ultima) ultima = { dosis: d, semana: antes[i].semana };
+    else if (!mismaDosis(d, ultima.dosis)) break;
+    aplicaciones++;
+  }
+  return ultima ? { ...ultima, aplicaciones } : null;
+}
+
+/** El último pago anotado antes de esa semana: «El anterior: Bs 600 el 20/10 (450 + 150)». */
+export function ultimoPagoAntes(registros: Registro[], semana: number): { fecha: string; total: number; partes: number[] } | null {
+  const conPago = registros
+    .filter((r) => r.semana < semana && pagoDelRegistro(r) > 0)
+    .sort((a, b) => a.semana - b.semana);
+  const r = conPago[conPago.length - 1];
+  if (!r) return null;
+  const partes = [r.pagoMedicamento, r.pagoControl, r.pagoOtro].filter((n): n is number => n != null && n > 0);
+  return { fecha: r.fecha, total: redondear(pagoDelRegistro(r), 2), partes };
+}
+
+/** «El anterior: Bs 600 el 20/10 (450 + 150)»; con un solo concepto, sin el paréntesis. */
+export function textoPagoAnterior(p: { fecha: string; total: number; partes: number[] }): string {
+  const detalle = p.partes.length > 1 ? ` (${p.partes.map((n) => fmtNumero(n, 2)).join(" + ")})` : "";
+  return `El anterior: ${fmtPlata(p.total)} el${NB}${diaYMes(p.fecha)}${detalle}`;
+}
+
 /** La dosis de un registro, o null si no se anotó (o no se aplicó). */
 export function dosisDelRegistro(r: Registro): DosisAnotada | null {
   if (r.sinDosis || r.dosis == null || !r.unidadDosis) return null;
@@ -125,6 +168,35 @@ export function textoPaso(p: Paso, unidad: UnidadDosis): string {
   return v == null ? mg : `${numeroDeDosis(v, unidad).texto}${NB}${unidad} · ${mg}`;
 }
 
+/**
+ * Un escalón en su botón grande, en dos renglones: arriba el número en la
+ * unidad del tratamiento («8 UI», «2,5 mg», «0,08 ml») y abajo el otro dato
+ * («2,5 mg»; con la unidad en mg, «≈ 8 UI»). Sin poder pasarlo, sólo los mg.
+ */
+export function partesPaso(p: Paso, unidad: UnidadDosis): { principal: string; secundario: string | null } {
+  const mg = `${numeroDeDosis(p.mg, "mg").texto}${NB}mg`;
+  if (unidad === "mg") return { principal: mg, secundario: p.ui == null ? null : `≈${NB}${numeroDeDosis(p.ui, "UI").texto}${NB}UI` };
+  const v = valorDelPaso(p, unidad);
+  return v == null ? { principal: mg, secundario: null } : { principal: `${numeroDeDosis(v, unidad).texto}${NB}${unidad}`, secundario: mg };
+}
+
+/**
+ * Una dosis con su otro dato, en un renglón: «8 UI · 2,5 mg» (lo de la franja
+ * «La semana pasada» y los botones grandes). Lo anotado va como se anotó; la
+ * equivalencia, sin «≈» (es la misma cuenta del vial de esa semana).
+ */
+export function dosisConMg(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>): string {
+  const anotado = fmtDosis(d.dosis, d.unidadDosis);
+  const otra = d.unidadDosis === "mg" ? d.dosisUi : d.dosisMg;
+  return otra == null ? anotado : `${anotado} · ${fmtDosisCalculada(otra, d.unidadDosis === "mg" ? "UI" : "mg")}`;
+}
+
+/** «8 UI (2,4 mg)»: la dosis de la franja «La semana pasada»; en mg, sola. */
+export function dosisYSusMg(d: Pick<DosisAnotada, "dosis" | "unidadDosis"> & Partial<Equivalencias>): string {
+  const anotado = fmtDosis(d.dosis, d.unidadDosis);
+  return d.unidadDosis !== "mg" && d.dosisMg != null ? `${anotado} (${fmtDosisCalculada(d.dosisMg, "mg")})` : anotado;
+}
+
 /** «Subir: 25 UI (7,5 mg)»; con la unidad en mg, «Subir: 7,5 mg (≈ 25 UI)». */
 export function textoSubir(p: Paso, unidad: UnidadDosis): string {
   const mg = `${numeroDeDosis(p.mg, "mg").texto}${NB}mg`;
@@ -158,6 +230,24 @@ export function mismaDosisEn(
     }
   }
   return enUnidad(antes, unidad);
+}
+
+/**
+ * «Igual que la anterior», listo para el botón y el campo: el número que
+ * escribe (la misma que se anotó va tal cual, «7,5»; pasada a otro vial o a
+ * otra unidad es una cuenta, en entero las UI), si es una cuenta (`calculada`)
+ * y el número. null sin dosis de antes o si no se puede pasar a la unidad de hoy.
+ */
+export function igualQueLaAnterior(
+  antes: Partial<DosisAnotada> | null | undefined,
+  unidad: UnidadDosis,
+  mgPorMl: number | null | undefined,
+  uiPorMl: number,
+): { escribe: string; valor: number; calculada: boolean } | null {
+  const igual = antes ? mismaDosisEn(antes, unidad, mgPorMl, uiPorMl) : null;
+  if (igual == null || !antes) return null;
+  const calculada = antes.unidadDosis !== unidad || antes.dosis == null || paraEscribir(igual, unidad) !== paraEscribir(antes.dosis, unidad);
+  return { escribe: calculada ? paraEscribir(igual, unidad) : fmtNumero(igual, 3), valor: igual, calculada };
 }
 
 /**
@@ -230,7 +320,12 @@ export function pasosDe(pasosMg: number[], mgPorMl: number | null | undefined, u
 
 /** «Vial de 15 mg en 0,5 ml». */
 export function textoVial(mg: number, ml: number): string {
-  return `Vial de ${fmtNumero(mg, 2)}${NB}mg en ${fmtNumero(ml, 2)}${NB}ml`;
+  return `Vial de ${textoPresentacion(mg, ml)}`;
+}
+
+/** «15 mg en 0,5 ml». */
+export function textoPresentacion(mg: number, ml: number): string {
+  return `${fmtNumero(mg, 2)}${NB}mg en ${fmtNumero(ml, 2)}${NB}ml`;
 }
 
 /** «1 UI = 0,3 mg». */
@@ -287,6 +382,57 @@ export function textoCambioPeso(peso: number | null, anterior: number | null, in
   const total = inicial != null ? flechaKg(inicial - peso) : null;
   if (total && !total.igual) partes.push(`${total.texto} en total`);
   return partes.join(" · ");
+}
+
+/** Hacia dónde fue el peso: bajó, subió o quedó igual (con palabras, no sólo con color ni flechas). */
+export type TonoKg = "bajo" | "subio" | "igual";
+
+/**
+ * Lo que bajó (positivo) o subió (negativo), con palabras: «Bajó 0,7»,
+ * «Subió 0,3», «Igual». `kg` es lo de antes menos lo de ahora. null sin dato.
+ */
+export function textoKg(kg: number | null | undefined): { texto: string; tono: TonoKg; cifra: string } | null {
+  if (kg == null || !Number.isFinite(kg)) return null;
+  const r = redondear(kg, 2);
+  if (r === 0) return { texto: "Igual", tono: "igual", cifra: "0" };
+  const cifra = fmtNumero(Math.abs(r), 2);
+  return r > 0 ? { texto: `Bajó${NB}${cifra}`, tono: "bajo", cifra } : { texto: `Subió${NB}${cifra}`, tono: "subio", cifra };
+}
+
+/**
+ * El total desde el inicio, de dato secundario al lado del de la semana (§7):
+ * «2,1 desde el inicio» (bajó), «Subió 0,8 desde el inicio», «Igual que al
+ * inicio». null sin dato.
+ */
+export function textoKgTotal(kg: number | null | undefined): string | null {
+  const k = textoKg(kg);
+  if (!k) return null;
+  if (k.tono === "igual") return "Igual que al inicio";
+  return k.tono === "bajo" ? `${k.cifra} desde el inicio` : `Subió ${k.cifra} desde el inicio`;
+}
+
+/**
+ * El resultado en vivo mientras se escribe el peso (§7.2): contra el último
+ * peso cargado antes de esa semana («Bajó 0,7 kg» · «desde la semana
+ * pasada»; si ese peso es de otra semana, «desde la semana 4» o «desde el
+ * inicial») y, debajo, el total («Bajó 2,8 kg desde el inicio (126 kg)»).
+ */
+export function resultadoDelPeso(
+  peso: number | null,
+  antes: { pesoKg: number; semana: number } | null,
+  inicial: { pesoKg: number; semana: number } | null,
+  semana: number,
+): { semana: { texto: string; desde: string; tono: TonoKg } | null; total: string | null } | null {
+  if (peso == null) return null;
+  const s = antes ? textoKg(antes.pesoKg - peso) : null;
+  const desde = !antes ? "" : antes.semana === 0 ? "desde el inicial" : antes.semana === semana - 1 ? "desde la semana pasada" : `desde la semana ${antes.semana}`;
+  // Si el de antes ES el primer peso, el total diría lo mismo: no va.
+  const t = inicial && inicial.semana !== antes?.semana ? textoKg(inicial.pesoKg - peso) : null;
+  const deInicio = inicial ? ` (${fmtNumero(inicial.pesoKg, 2)}${NB}kg)` : "";
+  return {
+    semana: s ? (s.tono === "igual" ? { texto: "Igual", desde: desde.replace(/^desde /, "que "), tono: s.tono } : { texto: `${s.texto}${NB}kg`, desde, tono: s.tono }) : null,
+    total: !t ? null : t.tono === "igual" ? `Igual que al inicio${deInicio}` : `${t.texto}${NB}kg desde el inicio${deInicio}`,
+  };
 }
 
 // ── Fechas y semanas ────────────────────────────────────────────────────────
@@ -386,7 +532,7 @@ export function textoUltimoPago(u: UltimoPago | null | undefined): string {
   return u ? `Último pago: ${fmtPlata(u.total)} el${NB}${fechaLarga(u.fecha)}` : "Todavía no pagó nada";
 }
 
-/** Lo que se ofrece del peso de la Evaluación: «Evaluación del 14/12/2026: 121,8 kg» con «Usar». */
+/** Lo que se ofrece del peso de la Evaluación: «La evaluación de hoy anotó 121,8 kg» con «Usar ese». */
 export interface PesoDeLaEvaluacion {
   texto: string;
   pesoKg: number;
@@ -401,6 +547,7 @@ export function pesoDeLaEvaluacion(
   ultimoControl: { fecha: string; pesoKg: number } | null,
   desde: string | null,
   rotulo: "semana" | "inicio",
+  hoy = hoyIso(),
 ): PesoDeLaEvaluacion | null {
   if (!ultimoControl) return null;
   if (rotulo === "semana" && desde && ultimoControl.fecha < desde) return null;
@@ -410,7 +557,9 @@ export function pesoDeLaEvaluacion(
     texto:
       rotulo === "inicio"
         ? `Último control de la evaluación: ${kg} (${fechaLarga(ultimoControl.fecha)})`
-        : `Evaluación del ${fechaLarga(ultimoControl.fecha)}: ${kg}`,
+        : ultimoControl.fecha === hoy
+          ? `La evaluación de hoy anotó ${kg}`
+          : `La evaluación del ${fechaLarga(ultimoControl.fecha)} anotó ${kg}`,
   };
 }
 

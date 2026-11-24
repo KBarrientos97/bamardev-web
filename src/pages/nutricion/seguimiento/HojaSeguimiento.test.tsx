@@ -132,7 +132,7 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mes 1" }));
     fireEvent.keyDown(document, { key: "n", code: "KeyN", altKey: true });
     const hoja = screen.getByRole("dialog", { name: "Semana 8" });
-    fireEvent.change(within(hoja).getByLabelText("Peso (kg)"), { target: { value: "123" } });
+    fireEvent.change(within(hoja).getByLabelText("Peso de hoy"), { target: { value: "123" } });
     fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
     fireEvent.click(await within(hoja).findByRole("button", { name: "Ver la hoja" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -151,11 +151,11 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Corregir la semana 6" }));
     const hoja = screen.getByRole("dialog", { name: "Semana 6" });
-    fireEvent.change(within(hoja).getByLabelText("Observaciones"), { target: { value: "Otra cosa" } });
+    fireEvent.change(within(hoja).getByLabelText("Observaciones de la semana"), { target: { value: "Otra cosa" } });
     fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
     expect(await within(hoja).findByText("Esa semana no existe.")).toBeInTheDocument();
     // Lo escrito sigue ahí mientras la hoja está abierta; todavía no se volvió a leer.
-    expect(within(hoja).getByLabelText("Observaciones")).toHaveValue("Otra cosa");
+    expect(within(hoja).getByLabelText("Observaciones de la semana")).toHaveValue("Otra cosa");
     expect(vi.mocked(apiSeguimiento.hoja).mock.calls.length).toBe(lecturas);
     fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sin guardar" }));
@@ -168,7 +168,7 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     const lecturas = vi.mocked(apiSeguimiento.hoja).mock.calls.length;
     fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "Corregir la semana 6" }));
     const hoja = screen.getByRole("dialog", { name: "Semana 6" });
-    fireEvent.change(within(hoja).getByLabelText("Observaciones"), { target: { value: "Otra cosa" } });
+    fireEvent.change(within(hoja).getByLabelText("Observaciones de la semana"), { target: { value: "Otra cosa" } });
     fireEvent.click(within(hoja).getByRole("button", { name: /^Guardar/ }));
     expect(await within(hoja).findByText("Sin conexión")).toBeInTheDocument();
     fireEvent.click(within(hoja).getByRole("button", { name: "Cancelar" }));
@@ -208,10 +208,10 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(within(hoja).getByLabelText("Tratamiento")).toHaveValue("");
     expect(within(hoja).getAllByRole("radio").every((r) => r.getAttribute("aria-checked") === "false")).toBe(true);
     // El peso del último control se ofrece, no se precarga.
-    expect(within(hoja).getByLabelText("Peso (kg)")).toHaveValue("");
+    expect(within(hoja).getByLabelText("Peso de hoy")).toHaveValue("");
     expect(within(hoja).getByText(/^Último control de la evaluación: 92,4.kg/)).toBeInTheDocument();
     // El inicial es la semana de pago del mes 1.
-    expect(within(hoja).getByText("Hoy toca el pago del mes")).toBeInTheDocument();
+    expect(within(hoja).getByText("Hoy toca el pago del mes 1")).toBeInTheDocument();
   });
 });
 
