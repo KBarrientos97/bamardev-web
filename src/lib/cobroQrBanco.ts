@@ -35,7 +35,7 @@ export interface CobroBanco {
   venceEn: string | null;
   /** Por qué no se pudo abrir o verificar. */
   error: string;
-  /** «Ya pagó, verificar»: le pregunta al banco sin esperar su aviso. */
+  /** «Verificar manualmente»: le pregunta al banco sin esperar su aviso. */
   verificar: () => Promise<void>;
   /** Abre otro QR (uno vencido, o tras un error). */
   reintentar: () => void;
