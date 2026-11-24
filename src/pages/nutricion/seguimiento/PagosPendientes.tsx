@@ -152,7 +152,8 @@ function Renglon({
 }: {
   paciente: PacienteDeLosPagos;
   medio: ReactNode;
-  ultimoPago: string;
+  /** Uno o dos renglones: «El mes 1 pagó Bs 600» y «Último pago: el 21/11/2026» (§8.2). */
+  ultimoPago: string[];
   sinPago: boolean;
   onAbrir: () => void;
 }) {
@@ -182,7 +183,13 @@ function Renglon({
           </span>
         </div>
         <div className="min-w-0">{medio}</div>
-        <div className={`min-w-0 md:text-right ${sinPago ? "font-semibold text-texto-3" : "text-texto-3"}`}>{ultimoPago}</div>
+        <div className={`min-w-0 md:text-right ${sinPago ? "font-semibold text-texto-3" : "text-texto-3"}`}>
+          {ultimoPago.map((renglon, i) => (
+            <span key={i} className={`block ${i === 0 && ultimoPago.length > 1 ? "font-semibold text-texto-2" : ""}`}>
+              {renglon}
+            </span>
+          ))}
+        </div>
       </div>
     </li>
   );

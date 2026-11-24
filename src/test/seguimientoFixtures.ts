@@ -556,7 +556,15 @@ export function pagosDe(lista: PacienteDePrueba[], ajustes: AjustesDePrueba = {}
     if (!t) continue;
     const conPago = t.registros.filter((r) => (r.pagoMedicamento ?? 0) + (r.pagoControl ?? 0) > 0);
     const u = conPago[conPago.length - 1];
-    const ultimoPago = u ? { fecha: u.fecha, total: red((u.pagoMedicamento ?? 0) + (u.pagoControl ?? 0) + (u.pagoOtro ?? 0), 2) } : null;
+    // §8.1: con el mes de ese pago y lo que pagó ese mes entero (los tres conceptos).
+    const ultimoPago = u
+      ? {
+          fecha: u.fecha,
+          total: red((u.pagoMedicamento ?? 0) + (u.pagoControl ?? 0) + (u.pagoOtro ?? 0), 2),
+          mes: u.mes,
+          pagadoEnElMes: t.meses.find((m) => m.mes === u.mes)?.pagado.total ?? 0,
+        }
+      : null;
     const paciente = { id: p.paciente.id, nombre: p.paciente.nombre, ci: p.paciente.ci, telefono: p.paciente.telefono };
     const tratamiento = { id: t.id, nombre: t.nombre, semana: t.resumen.semana, ultimaFecha: t.resumen.ultimaFecha };
     if (t.resumen.pagosPendientes.length) deben.push({ paciente, tratamiento, pendientes: t.resumen.pagosPendientes, ultimoPago });

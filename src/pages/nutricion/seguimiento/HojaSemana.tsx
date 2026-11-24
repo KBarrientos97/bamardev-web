@@ -12,6 +12,7 @@ import {
   diaYMes,
   dosisYSusMg,
   escalonesDeLaSemana,
+  esDia,
   esSemanaDePago,
   igualQueLaAnterior,
   marcaVigente,
@@ -26,10 +27,10 @@ import {
   productoInicialDe,
   productoVigente,
   rachaAntes,
+  referenciasDelPago,
   textoFaltaPago,
-  textoPagoAnterior,
   textoPresentacion,
-  ultimoPagoAntes,
+  ultimoPesoDelSeguimiento,
   type EscalonesDeLaSemana,
 } from "../../../lib/nutricion/seguimiento/formato";
 import {
@@ -226,7 +227,16 @@ export default function HojaSemana({
     : pendiente && !conPagoAnotado
       ? textoFaltaPago(pendiente).replace(/ \(desde el .*\)$/, "")
       : "Pago de esta semana";
-  const pagoAnterior = ultimoPagoAntes(otros, numero);
+  // Lo que ya lleva pagado el mes de esta semana (sin lo guardado en ella) y lo
+  // que pagó el mes anterior, por MES (§8.2): un mes se paga a veces en dos visitas.
+  const referenciasPago = referenciasDelPago(tratamiento.meses, numero, registro);
+
+  // El peso de la Evaluación se ofrece sólo si el control se anotó DESPUÉS del
+  // último peso del seguimiento (de todas sus semanas, también ésta como está
+  // guardada; por fecha y, el mismo día, por cuándo se guardó) y no es de un
+  // día posterior al de esta hoja (§8.2).
+  const ultimoPeso = ultimoPesoDelSeguimiento(tratamiento.registros);
+  const fechaHoja = esDia(form.fecha) ? form.fecha : (registro?.fecha ?? hoy);
 
   // Los escalones son de la droga (en mg): los que manda el servidor o, si el
   // producto de hoy no es del catálogo, los del producto de esta semana o del
@@ -453,7 +463,7 @@ export default function HojaSemana({
                 semana={numero}
                 antes={pesoAntes ? { pesoKg: pesoAntes.pesoKg!, semana: pesoAntes.semana } : null}
                 inicial={primerPeso ? { pesoKg: primerPeso.pesoKg!, semana: primerPeso.semana } : null}
-                evaluacion={pesoDeLaEvaluacion(ultimoControl, pesoAntes?.fecha ?? null, esInicial ? "inicio" : "semana", hoy)}
+                evaluacion={pesoDeLaEvaluacion(ultimoControl, ultimoPeso, esInicial ? "inicio" : "semana", hoy, fechaHoja)}
                 autoFocus={!registro && !focoPago}
               />
 
@@ -506,7 +516,7 @@ export default function HojaSemana({
                 cambiar={cambiar}
                 tocaPago={tocaPago}
                 titulo={tituloPago}
-                anterior={pagoAnterior ? textoPagoAnterior(pagoAnterior) : null}
+                referencias={referenciasPago}
                 abiertaDeEntrada={tocaPago || (!!pendiente && catalogo.ajustes.avisarPagos) || conPagoAnotado || focoPago}
                 refMedicamento={medicamento}
               />

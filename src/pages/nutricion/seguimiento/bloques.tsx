@@ -20,6 +20,7 @@ import {
   textoProducto,
   valorDelPaso,
   dosisConMg,
+  type ReferenciaPago,
   type TonoKg,
 } from "../../../lib/nutricion/seguimiento/formato";
 import { valorLimitado, vialDe, type ErroresSemana, type FormSemana } from "../../../lib/nutricion/seguimiento/formulario";
@@ -800,7 +801,7 @@ export function BloquePagos({
   cambiar,
   tocaPago,
   titulo,
-  anterior,
+  referencias = [],
   abiertaDeEntrada,
   refMedicamento,
 }: {
@@ -813,8 +814,11 @@ export function BloquePagos({
   tocaPago: boolean;
   /** «Hoy toca el pago del mes 2», «Falta el pago de la semana 5…», «Pago de esta semana». */
   titulo: string;
-  /** «El anterior: Bs 600 el 20/10 (450 + 150)». */
-  anterior: string | null;
+  /**
+   * Lo pagado por MES (§8.2): «Este mes ya lleva Bs 250 · Medicamento Bs 100 ·
+   * Control Bs 150» y «El mes 1 pagó Bs 600 · …». Primero la de este mes.
+   */
+  referencias?: ReferenciaPago[];
   /** Abierta al entrar: toca pagar, hay un pago pendiente o la semana ya tiene un pago. */
   abiertaDeEntrada: boolean;
   refMedicamento?: RefObject<HTMLInputElement | null>;
@@ -855,10 +859,16 @@ export function BloquePagos({
         className="flex min-h-[52px] items-center gap-2.5 rounded-2xl border border-borde bg-white px-4 py-2 text-left text-[15px] font-medium text-texto transition-colors hover:bg-muted sm:min-h-14 sm:px-[18px] sm:text-base lg:min-h-12 lg:rounded-[14px] lg:px-4 lg:text-[15px]"
       >
         <Icon name="plus" size={20} strokeWidth={2.4} className="shrink-0 text-primary-boton" />
-        {/* En la columna angosta de la PC, «El anterior…» baja entero (se cortaba con «…» y partía «Anotar un / pago»). */}
+        {/* En la columna angosta de la PC, la referencia baja entera (se cortaba con «…» y partía «Anotar un / pago»). Sin detalle. */}
         <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
           <span className="whitespace-nowrap">Anotar un pago</span>
-          {anterior && <span className="text-sm font-normal text-texto-3 max-sm:hidden">{anterior}</span>}
+          {/* El espacio, para el lector de pantalla (en el flex no ocupa lugar). */}
+          {referencias[0] && (
+            <>
+              {" "}
+              <span className="text-sm font-normal text-texto-3 max-sm:hidden">{referencias[0].texto}</span>
+            </>
+          )}
         </span>
       </button>
     );
@@ -869,12 +879,22 @@ export function BloquePagos({
       aria-label="Pagos"
       className="flex flex-col gap-2.5 rounded-2xl border border-warning bg-warning-bg p-3.5 sm:gap-3 sm:px-[18px] sm:pb-4 sm:pt-3.5 lg:gap-2.5 lg:p-3.5"
     >
-      <div className="flex flex-col gap-0.5 text-amber-900 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-3 lg:flex-col lg:items-start">
+      <div className="flex flex-col gap-0.5 text-amber-900">
         <span className="flex items-center gap-1.5 text-base font-bold" role={tocaPago ? "status" : undefined}>
           {tocaPago && <Icon name="coins" size={17} className="shrink-0" />}
           {titulo}
         </span>
-        {anterior && <span className="text-[13px] sm:text-sm lg:text-[13px]">{anterior}</span>}
+        {/* Un renglón por referencia: el texto y, tras « · », el detalle, que no se parte (si no entra, baja entero). */}
+        {referencias.map((r) => (
+          <p key={r.texto} className="text-[13px] sm:text-sm lg:text-[13px]">
+            <span className="font-semibold">{r.texto}</span>
+            {r.detalle && (
+              <>
+                {" ·"} <span className="inline-block max-w-full">{r.detalle}</span>
+              </>
+            )}
+          </p>
+        ))}
       </div>
       <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:gap-2">
         {plata("pagoMedicamento", "Medicamento")}

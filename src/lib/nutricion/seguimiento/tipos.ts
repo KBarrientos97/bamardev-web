@@ -249,6 +249,18 @@ export interface TratamientoAnterior {
   kgBajados: number | null;
 }
 
+/** El último control de la Evaluación que tiene peso. */
+export interface UltimoControl {
+  fecha: string;
+  pesoKg: number;
+  /**
+   * Cuándo se guardó el control (ISO, §8.1): el mismo día, se ofrece en una
+   * semana sólo si se anotó después del último peso del seguimiento. Un
+   * backend anterior no lo manda (= el mismo día no es «después»).
+   */
+  actualizadoEn?: string | null;
+}
+
 /** `GET /nutricion/seguimiento/pacientes/:id`: la hoja del paciente. */
 export interface HojaPaciente {
   paciente: {
@@ -263,7 +275,7 @@ export interface HojaPaciente {
     activo: boolean;
   };
   /** El último control de la Evaluación con peso: se ofrece con «Usar», nunca se precarga. */
-  ultimoControl: { fecha: string; pesoKg: number } | null;
+  ultimoControl: UltimoControl | null;
   /** El ACTIVO, o null. */
   tratamiento: Tratamiento | null;
   /** Los TERMINADOS, del más nuevo al más viejo. */
@@ -287,7 +299,12 @@ export interface TratamientoDeLosPagos {
 /** El último registro con pago de medicamento o control, y lo que sumó. */
 export interface UltimoPago {
   fecha: string;
+  /** Lo que sumó ESE registro (los tres conceptos). */
   total: number;
+  /** El mes del ciclo de ese registro (§8.1; un backend anterior no lo manda). */
+  mes?: number | null;
+  /** Lo que pagó ese mes entero, los tres conceptos: el «Pagado» del encabezado del mes (§8.1). */
+  pagadoEnElMes?: number | null;
 }
 
 /** `GET /nutricion/seguimiento/pagos-pendientes`. */
