@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic, urlDeImagen } from "../../lib/pagina/apiPagina";
@@ -16,7 +16,7 @@ import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
 import { useInfoPedidos } from "../../lib/pedidosWeb/useInfoPedidos";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
-import { urlInscribirmeDe, urlMiCuentaDe, urlMiFichaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
+import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
 import PedirPagina, { plantillaPedir } from "./PedirPagina";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
@@ -26,6 +26,10 @@ import { estiloTextoSitio, tonosSitio } from "../../lib/pagina/sitio";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 import ChatPagina from "./ChatPagina";
+import FormularioConsulta from "./FormularioConsulta";
+// La ficha consultada (la planilla, el gráfico, los PDF) se baja recién al consultar.
+const VistaFicha = lazy(() => import("./MiFichaPagina").then((m) => ({ default: m.VistaFicha })));
+import type { ConsultaPaciente } from "../../lib/nutricion/consulta";
 
 
 /**
@@ -171,20 +175,6 @@ const BOTON_REGALO: EnlacePublico = {
 };
 
 /**
- * «Consultar mi ficha» (nutrición, 25-nov): como la gift card, un botón más
- * de la página, con su forma y su estilo. Es un enlace de verdad (a
- * `/mi-ficha`), así que anda igual en todos los armados.
- */
-const ID_BOTON_FICHA = -2;
-const botonFicha = (subdominio: string): EnlacePublico => ({
-  id: ID_BOTON_FICHA,
-  tipo: "BOTON",
-  etiqueta: "Consultar mi ficha",
-  url: urlMiFichaDe(subdominio),
-  icono: null,
-});
-
-/**
  * `/p/:subdominio`: la página pública del negocio (PLAN-PAGINA-NEGOCIO §2).
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
  * al login. También en `link.bamardev.com/<subdominio>` (RutasLink.tsx).
@@ -204,6 +194,9 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   useMetadatosPagina(pagina, pedir);
   const pedido = usePedido(subdominio ?? "");
   const [regalando, setRegalando] = useState(false);
+  // Nutrición (25-nov): la ficha consultada con el carnet desde la página. Sólo
+  // en memoria, como en `/mi-ficha`: «Salir» la borra y vuelve a la página.
+  const [ficha, setFicha] = useState<ConsultaPaciente | null>(null);
   // La sucursal elegida en el catálogo («Mis productos» con más de una): de
   // ella son los precios del pedido, y el mensaje la nombra.
   const [sucursal, setSucursal] = useState(0);
@@ -278,12 +271,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   }
   // "Regalá una gift card" entra como un botón más de la página, con su
   // forma y su estilo, sin tocar cada armado.
-  // «Consultar mi ficha» va primero: es lo que busca el paciente que entra.
-  const vista = useMemo(() => {
-    if (!pagina) return pagina;
-    const extra = [...(pagina.consultaPacientes ? [botonFicha(pagina.subdominio)] : []), ...pagina.botones, ...(conRegalos ? [BOTON_REGALO] : [])];
-    return extra.length === pagina.botones.length ? pagina : { ...pagina, botones: extra };
-  }, [pagina, conRegalos]);
+  const vista = useMemo(() => (pagina && conRegalos ? { ...pagina, botones: [...pagina.botones, BOTON_REGALO] } : pagina), [pagina, conRegalos]);
 
   if (error) return <NoDisponible mensaje={error} />;
   if (!pagina || !vista) return <Cargando />;
@@ -291,6 +279,42 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   if (tienda && !pagina.sitio) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
   // El modo pedir es para pedir: sin carrito (ni WhatsApp ni pedidos al sistema) o sin carta, la página de siempre.
   if (pedir && (!carrito || !pagina.catalogo?.items.length)) return <Navigate to={urlPaginaDe(pagina.subdominio)} replace />;
+  // Nutrición: el carnet se escribe en la misma página (sólo un consultorio; el
+  // backend manda `consultaPacientes` nada más que en ese rubro).
+  const colorFicha = paleta(pagina.color.hex).oscuro;
+  const volverAPagina = () => {
+    setFicha(null);
+    window.scrollTo(0, 0);
+  };
+  if (ficha) {
+    const inicio = (
+      <button
+        type="button"
+        onClick={volverAPagina}
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#E5E7EB] bg-white px-3.5 text-[13px] font-semibold text-[#374151] shadow-sm hover:bg-[#F9FAFB]"
+      >
+        ← {pagina.nombre}
+      </button>
+    );
+    return (
+      <Suspense fallback={<Cargando />}>
+        <VistaFicha datos={ficha} color={colorFicha} inicio={inicio} onSalir={volverAPagina} />
+      </Suspense>
+    );
+  }
+  const consulta =
+    pagina.consultaPacientes && !tienda && !pedir ? (
+      <FormularioConsulta
+        sub={pagina.subdominio}
+        nombre={pagina.nombre}
+        color={colorFicha}
+        enPagina
+        onConsulta={(d) => {
+          setFicha(d);
+          window.scrollTo(0, 0);
+        }}
+      />
+    ) : undefined;
   return (
     <>
       {conSistema && !pedir && (
@@ -314,7 +338,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
         urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
         urlInscribirme={(grupoId) => urlInscribirmeDe(pagina.subdominio, grupoId)}
         urlMiCuenta={urlMiCuentaDe(pagina.subdominio)}
-        alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : e.id === ID_BOTON_FICHA ? undefined : avisarClic(pagina.subdominio, e.id))}
+        alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
         alAgregarAlPedido={carrito ? agregarAlPedido : undefined}
         lineasPedido={carrito ? pedido.lineas : undefined}
         alCambiarPedido={carrito ? pedido.cambiar : undefined}
@@ -323,6 +347,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
         tienda={tienda ? { urlInicio: urlPaginaDe(pagina.subdominio), categoria: busqueda.get("categoria") } : undefined}
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
+        consulta={consulta}
       />
       )}
       {carrito && (

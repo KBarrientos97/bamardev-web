@@ -1,6 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import Captcha from "../../publico/Captcha";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { conUnidad, fechaLarga, type CampoControl } from "../../lib/nutricion/calculo";
@@ -14,16 +13,14 @@ import type { Paciente } from "../../lib/nutricion/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { urlPaginaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
-import { siteKeyTurnstile } from "../../lib/turnstile";
 import { useApi } from "../../lib/useApi";
 import { KpiTarjeta, Tarjeta } from "../academia/piezas";
 import GraficoEvolucion from "../nutricion/GraficoEvolucion";
 import { Evolucion, FichaLectura, ImcDeHoy, Planilla, Resumen } from "../nutricion/PlanillaPaciente";
 import { NoDisponible } from "./PaginaPublica";
 import { MarcaBamarDev } from "./VistaPagina";
+import FormularioConsulta from "./FormularioConsulta";
 
-const INPUT =
-  "w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base text-[#111827] outline-none focus:border-[#6B7280]";
 /** El verde de nutrición, si el consultorio no tiene página publicada (de ahí sale su color). */
 const VERDE = "#047857";
 
@@ -50,124 +47,93 @@ export default function MiFichaPagina() {
   const info = useApi(() => apiConsultaNutricion.info(sub), [sub]);
   // La página publicada sólo da el color y el «← volver»: sin ella, igual se consulta.
   const { pagina } = usePaginaPublica(sub);
-  const [ci, setCi] = useState("");
-  const siteKey = siteKeyTurnstile();
-  const [captcha, setCaptcha] = useState<string | null>(null);
-  const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
-  const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState("");
   const [datos, setDatos] = useState<ConsultaPaciente | null>(null);
 
   if (info.error && !info.datos) return <NoDisponible mensaje="Esta consulta no está disponible." />;
   if (!info.datos) return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" />;
   const nombre = info.datos.negocio;
   const color = pagina ? paleta(pagina.color.hex).oscuro : VERDE;
+  const volver = pagina ? (
+    <a href={urlPaginaDe(sub)} className={PILDORA}>
+      ← {nombre}
+    </a>
+  ) : (
+    <span className="text-[13px] font-semibold text-[#374151]">{nombre}</span>
+  );
 
-  async function entrar(e: FormEvent) {
-    e.preventDefault();
-    if (ci.trim().length < 3) return setError("Escribí tu carnet de identidad.");
-    if (siteKey && !captcha) return setError("Completá la verificación anti-robots.");
-    setError("");
-    setEnviando(true);
-    try {
-      setDatos(await apiConsultaNutricion.consultar(sub, { ci: ci.trim(), ...(siteKey && captcha ? { captcha } : {}) }));
-      setCi("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo consultar. Probá de nuevo.");
-    } finally {
-      setEnviando(false);
-      // El token de Turnstile es de un solo uso: el backend ya lo gastó.
-      if (siteKey) {
-        setCaptcha(null);
-        setVueltaCaptcha((v) => v + 1);
-      }
-    }
-  }
+  if (datos) return <VistaFicha datos={datos} color={color} inicio={volver} onSalir={() => setDatos(null)} />;
+  return (
+    <MarcoFicha ancho="max-w-[480px] md:max-w-[920px]" inicio={volver}>
+      <main className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <aside className="hidden flex-col justify-between gap-8 p-8 text-white md:flex" style={{ background: color }}>
+          <div className="space-y-2">
+            <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+              <Icon name="evaluacion" size={24} />
+            </span>
+            <p className="pt-2 text-2xl font-bold leading-tight">Tu evaluación y tu seguimiento, cuando quieras</p>
+            <p className="text-sm text-white/80">Mirá cómo venís desde el celular o la compu y bajá tus planillas en PDF.</p>
+          </div>
+          <ol className="space-y-3">
+            {PASOS.map((paso, i) => (
+              <li key={paso} className="flex items-start gap-3 text-sm">
+                <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+                  {i + 1}
+                </span>
+                <span className="pt-0.5 text-white/90">{paso}</span>
+              </li>
+            ))}
+          </ol>
+        </aside>
+        <div className="p-5 md:p-8">
+          <FormularioConsulta sub={sub} nombre={nombre} color={color} onConsulta={setDatos} />
+        </div>
+      </main>
+    </MarcoFicha>
+  );
+}
 
+const PASOS = ["Entrá con tu carnet", "Mirá tu evolución, tus controles y tus semanas", "Bajá el PDF de tu evaluación o de tu tratamiento"];
+
+const PILDORA =
+  "inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#E5E7EB] bg-white px-3.5 text-[13px] font-semibold text-[#374151] shadow-sm hover:bg-[#F9FAFB]";
+
+/** El fondo gris, el ancho y el «Powered by» de la consulta, sola o desde la página. */
+function MarcoFicha({ ancho, inicio, fin, children }: { ancho: string; inicio: ReactNode; fin?: ReactNode; children: ReactNode }) {
   return (
     <div style={{ minHeight: "100dvh", background: "#F6F7F9", fontFamily: "Roboto, system-ui, sans-serif" }}>
-      <div className={`mx-auto w-full px-4 py-6 md:py-10 ${datos ? "max-w-[1100px]" : "max-w-[480px] md:max-w-[920px]"}`}>
+      <div className={`mx-auto w-full px-4 py-6 md:py-10 ${ancho}`}>
         <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          {pagina ? (
-            <a
-              href={urlPaginaDe(sub)}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#E5E7EB] bg-white px-3.5 text-[13px] font-semibold text-[#374151] shadow-sm hover:bg-[#F9FAFB]"
-            >
-              ← {nombre}
-            </a>
-          ) : (
-            <span className="text-[13px] font-semibold text-[#374151]">{nombre}</span>
-          )}
-          {datos && (
-            <button
-              type="button"
-              onClick={() => {
-                setDatos(null);
-                setError("");
-              }}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[#E5E7EB] bg-white px-3.5 text-[13px] font-semibold text-[#374151] shadow-sm hover:bg-[#F9FAFB]"
-            >
-              <Icon name="logout" size={15} />
-              Salir
-            </button>
-          )}
+          {inicio}
+          {fin}
         </header>
-        {datos ? (
-          <Ficha datos={datos} color={color} />
-        ) : (
-          <main className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-            <aside className="hidden flex-col justify-between gap-8 p-8 text-white md:flex" style={{ background: color }}>
-              <div className="space-y-2">
-                <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
-                  <Icon name="evaluacion" size={24} />
-                </span>
-                <p className="pt-2 text-2xl font-bold leading-tight">Tu evaluación y tu seguimiento, cuando quieras</p>
-                <p className="text-sm text-white/80">Mirá cómo venís desde el celular o la compu y bajá tus planillas en PDF.</p>
-              </div>
-              <ol className="space-y-3">
-                {["Entrá con tu carnet", "Mirá tu evolución, tus controles y tus semanas", "Bajá el PDF de tu evaluación o de tu tratamiento"].map((paso, i) => (
-                  <li key={paso} className="flex items-start gap-3 text-sm">
-                    <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
-                      {i + 1}
-                    </span>
-                    <span className="pt-0.5 text-white/90">{paso}</span>
-                  </li>
-                ))}
-              </ol>
-            </aside>
-            <form onSubmit={(e) => void entrar(e)} className="space-y-4 p-5 md:p-8" noValidate>
-              <div>
-                <h1 className="text-xl font-bold text-[#111827]">Consultar mi ficha</h1>
-                <p className="text-[13px] text-[#6B7280]">Entrá con tu carnet para ver tu evaluación y tu seguimiento en {nombre}. Es sólo para mirar: los cambios los hace tu nutricionista.</p>
-              </div>
-              <label className="block">
-                <span className="mb-1 block text-[13px] font-semibold text-[#374151]">Carnet de identidad</span>
-                <input value={ci} onChange={(e) => setCi(e.target.value)} inputMode="numeric" autoComplete="off" className={INPUT} />
-              </label>
-              {siteKey && <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} />}
-              {error && (
-                <p role="alert" className="rounded-xl bg-[#FEE2E2] px-3.5 py-2.5 text-sm text-[#B91C1C]">
-                  {error}
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={enviando}
-                className="w-full rounded-xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-60"
-                style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
-              >
-                {enviando ? "Buscando…" : "Ver mi ficha"}
-              </button>
-              <p className="text-center text-[12px] text-[#6B7280]">Si cerrás o salís, para volver a mirar hay que escribir el carnet de nuevo.</p>
-            </form>
-          </main>
-        )}
+        {children}
         <a href="https://bamardev.com" className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#6B7280]">
           <MarcaBamarDev />
           Powered by BamarDev
         </a>
       </div>
     </div>
+  );
+}
+
+/**
+ * Lo consultado a pantalla completa, con «Salir» (que lo borra). La usan
+ * `/mi-ficha` y la página del consultorio, que lleva el formulario adentro.
+ */
+export function VistaFicha({ datos, color, inicio, onSalir }: { datos: ConsultaPaciente; color: string; inicio: ReactNode; onSalir: () => void }) {
+  return (
+    <MarcoFicha
+      ancho="max-w-[1100px]"
+      inicio={inicio}
+      fin={
+        <button type="button" onClick={onSalir} className={PILDORA}>
+          <Icon name="logout" size={15} />
+          Salir
+        </button>
+      }
+    >
+      <Ficha datos={datos} color={color} />
+    </MarcoFicha>
   );
 }
 
