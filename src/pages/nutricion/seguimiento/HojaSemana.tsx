@@ -49,10 +49,11 @@ import {
   vialDe,
   type FormSemana,
 } from "../../../lib/nutricion/seguimiento/formulario";
-import type { CatalogoSeguimiento, HojaPaciente, Producto, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import type { CatalogoSeguimiento, HojaPaciente, Producto, ProductoSeguimiento, Registro, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
 import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, BloqueProducto, PieHoja, PreguntaSinPago, QuienYCuando } from "./bloques";
+import DialogoTratamientos from "./DialogoTratamientos";
 import HojaGrande from "./HojaGrande";
 
 /**
@@ -84,6 +85,7 @@ export default function HojaSemana({
   onGuardado,
   onDesactualizada,
   onVerSemana,
+  onListaCambiada,
 }: {
   tratamiento: Tratamiento;
   catalogo: CatalogoSeguimiento;
@@ -114,6 +116,11 @@ export default function HojaSemana({
    * preguntar, vuelve a leer la hoja y deja a la vista esa semana.
    */
   onVerSemana?: (semana: number) => void;
+  /**
+   * Se cambió la lista de tratamientos desde el «+ Agregar» del cambio de
+   * producto (§9.2, ya guardada): el catálogo de atrás se vuelve a leer.
+   */
+  onListaCambiada?: (productos: ProductoSeguimiento[]) => void;
 }) {
   const esInicial = registro?.semana === 0;
   const unidad = tratamiento.unidadDosis;
@@ -144,6 +151,8 @@ export default function HojaSemana({
   const [borrando, setBorrando] = useState(false);
   const [preguntaCerrar, setPreguntaCerrar] = useState(false);
   const [preguntaPago, setPreguntaPago] = useState(false);
+  // «Tratamientos» abierta encima, desde el «+ Agregar» del cambio de producto (§9.2).
+  const [enLaLista, setEnLaLista] = useState(false);
   // La semana que el servidor dijo que ya existe al CARGARLA (puede que se haya
   // guardado y se perdió la respuesta): la ayuda para no cargarla dos veces.
   const [repetida, setRepetida] = useState<number | null>(null);
@@ -317,7 +326,8 @@ export default function HojaSemana({
     }
   }
 
-  const otraPregunta = borrando || preguntaCerrar || preguntaPago;
+  // Con una pregunta o la ventana «Tratamientos» encima, `Esc`, el atrás y `Ctrl+Enter` son de ella.
+  const otraPregunta = borrando || preguntaCerrar || preguntaPago || enLaLista;
   // El atrás del navegador con algo escrito tampoco se lleva la hoja: pregunta
   // lo mismo que `Esc` (si ya hay una pregunta abierta, no abre otra). Cerrar o
   // recargar la pestaña, el aviso del navegador.
@@ -505,6 +515,8 @@ export default function HojaSemana({
                   uiPorMl={catalogo.uiPorMl}
                   onBorrarSemana={registro ? () => setBorrando(true) : undefined}
                   refNombre={refProducto}
+                  sugerencias={catalogo.tratamientos.map((t) => t.nombre)}
+                  onAgregarALaLista={catalogo.ajustes.puedeCambiarlos ? () => setEnLaLista(true) : undefined}
                 />
               )}
 
@@ -583,6 +595,17 @@ export default function HojaSemana({
         }}
         onGuardar={() => void guardar(true)}
       />
+      {enLaLista && (
+        <DialogoTratamientos
+          abrirEn="agregar"
+          onCerrar={(productos) => {
+            setEnLaLista(false);
+            if (productos) onListaCambiada?.(productos);
+            // De vuelta al «+ Agregar»: el botón nuevo queda a la vista, sin elegirse.
+            setTimeout(() => document.getElementById(`${id}-producto-agregar`)?.focus(), 0);
+          }}
+        />
+      )}
     </>
   );
 }

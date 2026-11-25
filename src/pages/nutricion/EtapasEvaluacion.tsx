@@ -10,6 +10,7 @@ import {
   tablaQueToca,
   textoAlSalir,
   textoEdadCorporal,
+  UNIDAD_TALLA,
   valorDe,
   type CampoNumerico,
 } from "../../lib/nutricion/calculo";
@@ -261,7 +262,7 @@ export function EtapaFicha(
             id="ev-talla"
             campo="tallaCm"
             label="Talla"
-            unidad="cm"
+            unidad={UNIDAD_TALLA}
             valor={ficha.tallaCm}
             onCambiar={(v) => cambiarFicha("tallaCm", v)}
             ayuda={p.avisoImc ? <AvisoImc texto={p.avisoImc} /> : undefined}
@@ -572,7 +573,7 @@ export function EtapaPesoImc(p: PropsEtapa) {
           {/* `self-start`: la columna no se estira al alto del medidor y la tabla. */}
           <div className="grid grid-cols-2 content-start gap-3 self-start md:grid-cols-1 md:gap-4">
             <Numero id="ev-peso4" campo="pesoKg" label="Peso" unidad="kg" valor={control.pesoKg} onCambiar={(v) => p.cambiarControl("pesoKg", v)} p={p} />
-            <Numero id="ev-talla4" campo="tallaCm" label="Talla" unidad="cm" valor={ficha.tallaCm} onCambiar={(v) => p.cambiarFicha("tallaCm", v)} p={p} />
+            <Numero id="ev-talla4" campo="tallaCm" label="Talla" unidad={UNIDAD_TALLA} valor={ficha.tallaCm} onCambiar={(v) => p.cambiarFicha("tallaCm", v)} p={p} />
             <div className="col-span-2 rounded-xl bg-muted px-4 py-3 md:col-span-1" aria-live="polite">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">IMC</p>
               {imc != null ? (

@@ -68,7 +68,7 @@ export default function TablaSemanas({
 }: {
   tratamiento: Tratamiento;
   /** Para leer la dosis de cada semana contra sus escalones (§7.4). */
-  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null;
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "ocultos" | "uiPorMl"> | null;
   /** El mes elegido en los chips (null = todo). */
   mes: number | null;
   /** Activo y con `seguimiento.editar`: se corrige tocando y se cargan las que faltan. */

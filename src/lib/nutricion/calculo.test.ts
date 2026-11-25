@@ -24,7 +24,10 @@ import {
   resumenDe,
   sufijoDelDia,
   tablaQueToca,
+  tallaConUnidad,
+  tallaEnMetros,
   textoAlSalir,
+  textoDe,
   textoEdadCorporal,
   textoFaltaTabla,
   ultimoValor,
@@ -110,11 +113,18 @@ describe("los números aceptan coma o punto y se muestran con coma", () => {
     expect(errorDeTope("pesoKg", "82,4 kg")).toBeNull();
     expect(errorDeTope("grasaPct", "75 %")).toBeNull();
     expect(textoAlSalir("pesoKg", "82,4 kg")).toBe("82,4");
-    expect(textoAlSalir("tallaCm", "1,80 cm")).toBe("180");
+    expect(textoAlSalir("tallaCm", "1,80 cm")).toBe("1,80");
     // La unidad de OTRO campo, otra letra o la unidad sola siguen siendo error.
     expect(errorDeTope("tallaCm", "180 kg")).toBe("Escribí sólo el número");
     expect(errorDeTope("pesoKg", "82,4 kgs")).toBe("Escribí sólo el número");
-    expect(errorDeTope("tallaCm", "1,80 m")).toBe("Escribí sólo el número");
+    // La talla acepta las dos, metros y centímetros; otra cosa, no.
+    expect(valorDe("tallaCm", "1,73 m")).toBe(173);
+    expect(valorDe("tallaCm", "1,73M")).toBe(173);
+    expect(valorDe("tallaCm", "173 cm")).toBe(173);
+    expect(errorDeTope("tallaCm", "1,73 m")).toBeNull();
+    expect(textoAlSalir("tallaCm", "1,73 m")).toBe("1,73");
+    expect(errorDeTope("tallaCm", "1,80 mts")).toBe("Escribí sólo el número");
+    expect(errorDeTope("tallaCm", "m")).toBe("Escribí sólo el número");
     expect(errorDeTope("pesoKg", "kg")).toBe("Escribí sólo el número");
     expect(errorDeTope("pesoKg", "Peso: 82,4 kg")).toBe("Escribí sólo el número");
     expect(errorDeTope("edadCorporal", "44 años")).toBe("Escribí sólo el número");
@@ -354,7 +364,7 @@ describe("la aguja del medidor del IMC", () => {
 describe("topes de validación (para frenar un dedazo)", () => {
   it("fuera de rango dice entre cuánto y cuánto", () => {
     expect(errorDeTope("pesoKg", "8,2")).toBe("Entre 20 y 400 kg");
-    expect(errorDeTope("tallaCm", "58")).toBe("Entre 80 y 250 cm");
+    expect(errorDeTope("tallaCm", "58")).toBe("Entre 0,80 y 2,50\u00a0m");
     expect(errorDeTope("grasaPct", "41,2")).toBeNull();
   });
 
@@ -369,7 +379,7 @@ describe("topes de validación (para frenar un dedazo)", () => {
     expect(errorDeTope("pesoKg", "ochenta")).toBe("Escribí sólo el número");
   });
 
-  it("la talla escrita en metros vale en centímetros: «1,80» es 180 (testing profundo, 23-nov)", () => {
+  it("la talla escrita en metros se guarda en centímetros: «1,80» es 180 (testing profundo, 23-nov)", () => {
     for (const t of ["1,80", "1.80", "1,8", "1.8"]) {
       expect(errorDeTope("tallaCm", t)).toBeNull();
       expect(valorDe("tallaCm", t)).toBe(180);
@@ -377,7 +387,7 @@ describe("topes de validación (para frenar un dedazo)", () => {
     expect(valorDe("tallaCm", "1,755")).toBe(175.5);
     expect(valorDe("tallaCm", "2,5")).toBe(250);
     // Desde 3 ya son centímetros (y fuera del tope); el cero no se agranda.
-    const fueraTalla = "Entre 80 y 250 cm";
+    const fueraTalla = "Entre 0,80 y 2,50\u00a0m";
     expect(errorDeTope("tallaCm", "3")).toBe(fueraTalla);
     expect(errorDeTope("tallaCm", "18")).toBe(fueraTalla);
     expect(errorDeTope("tallaCm", "0")).toBe(fueraTalla);
@@ -388,8 +398,14 @@ describe("topes de validación (para frenar un dedazo)", () => {
   });
 
   it("al salir del campo: lo que está bien se muestra con coma; lo que está mal queda como se escribió", () => {
-    expect(textoAlSalir("tallaCm", "1,80")).toBe("180");
-    expect(textoAlSalir("tallaCm", " 180 ")).toBe("180");
+    // La talla queda en metros, se haya escrito en metros o en centímetros (QA, 24-nov).
+    expect(textoAlSalir("tallaCm", "1,80")).toBe("1,80");
+    expect(textoAlSalir("tallaCm", " 180 ")).toBe("1,80");
+    expect(textoAlSalir("tallaCm", "173")).toBe("1,73");
+    expect(textoAlSalir("tallaCm", "1.73")).toBe("1,73");
+    expect(textoAlSalir("tallaCm", "1,8")).toBe("1,80");
+    expect(textoAlSalir("tallaCm", "175,5")).toBe("1,755");
+    expect(textoAlSalir("tallaCm", "58")).toBe("58");
     expect(textoAlSalir("pesoKg", "82.40")).toBe("82,4");
     // Antes «2,5» hijos se volvía «3» (y 29,5 años, 30) sin decir nada.
     expect(textoAlSalir("hijos", "2,5")).toBe("2,5");
@@ -399,6 +415,33 @@ describe("topes de validación (para frenar un dedazo)", () => {
     expect(textoAlSalir("pesoKg", "1.270")).toBe("1.270");
     expect(textoAlSalir("pesoKg", "abc")).toBe("abc");
     expect(textoAlSalir("pesoKg", "")).toBe("");
+  });
+});
+
+describe("la talla se muestra en metros, como se dice (QA, 24-nov)", () => {
+  it("dos decimales siempre, tres con medio centímetro, y vacío sin dato", () => {
+    expect(tallaEnMetros(173)).toBe("1,73");
+    expect(tallaEnMetros(180)).toBe("1,80");
+    expect(tallaEnMetros(200)).toBe("2,00");
+    expect(tallaEnMetros(80)).toBe("0,80");
+    expect(tallaEnMetros(175.5)).toBe("1,755");
+    expect(tallaEnMetros(158.1)).toBe("1,581");
+    expect(tallaEnMetros(null)).toBe("");
+    expect(tallaEnMetros(0)).toBe("");
+    expect(tallaConUnidad(173)).toBe("1,73\u00a0m");
+    expect(tallaConUnidad(null)).toBe("—");
+  });
+
+  it("lo que se muestra se vuelve a leer igual: guardar sin tocar la talla no la cambia", () => {
+    for (const cm of [80, 99.5, 100, 158, 158.1, 173, 175.5, 199.9, 250]) {
+      const texto = textoDe("tallaCm", cm);
+      expect(errorDeTope("tallaCm", texto)).toBeNull();
+      expect(valorDe("tallaCm", texto)).toBe(cm);
+      expect(textoAlSalir("tallaCm", texto)).toBe(texto);
+    }
+    // Los demás campos siguen como estaban.
+    expect(textoDe("cinturaCm", 92)).toBe("92");
+    expect(textoDe("pesoKg", 82.4)).toBe("82,4");
   });
 });
 

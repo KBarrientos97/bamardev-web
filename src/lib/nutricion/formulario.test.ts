@@ -77,7 +77,8 @@ describe("la edición manda sólo lo que cambió", () => {
     const f = fichaDesde(paciente({ fechaNacimiento: null, edad: 37, edadDeclarada: 36 }));
     expect(f.edad).toBe("37");
     expect(fichaDesde(paciente()).edad).toBe("");
-    expect(fichaDesde(paciente()).tallaCm).toBe("158");
+    // La talla del formulario, en metros (se guarda 158 cm).
+    expect(fichaDesde(paciente()).tallaCm).toBe("1,58");
   });
 
   it("la tabla de un control usa la edad del servidor: la anotada con su día, o la escrita hoy si se cambió", () => {

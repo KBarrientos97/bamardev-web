@@ -456,6 +456,7 @@ export default function HojaSeguimiento() {
           onGuardado={alGuardar}
           onDesactualizada={marcarDesactualizada}
           onVerSemana={verSemana}
+          onListaCambiada={catalogo.listaCambiada}
         />
       )}
       {(abierta?.que === "iniciar" || abierta?.que === "editar") && (
@@ -468,6 +469,7 @@ export default function HojaSeguimiento() {
           ultimoControl={h.ultimoControl}
           onCerrar={cerrarHoja}
           onDesactualizada={marcarDesactualizada}
+          onListaCambiada={catalogo.listaCambiada}
           onGuardado={(nuevo, texto) => {
             if (abierta.que === "iniciar") {
               desactualizada.current = false;
