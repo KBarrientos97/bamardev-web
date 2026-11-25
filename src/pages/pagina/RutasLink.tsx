@@ -13,6 +13,7 @@ const VerRegalo = lazy(() => import("./VerRegalo"));
 const InscribirmePagina = lazy(() => import("./InscribirmePagina"));
 const PagarPagina = lazy(() => import("./PagarPagina"));
 const MiCuentaPagina = lazy(() => import("./MiCuentaPagina"));
+const MiFichaPagina = lazy(() => import("./MiFichaPagina"));
 const SeguimientoPedido = lazy(() => import("./SeguimientoPedido"));
 const ReservaPublica = lazy(() => import("../../publico/ReservaPublica"));
 const PrivacidadDeLaReserva = lazy(() =>
@@ -46,6 +47,7 @@ export default function RutasLink() {
         <Route path="/:subdominio/inscribirme/:grupoId" element={<InscribirmePagina />} />
         <Route path="/:subdominio/pagar/:token" element={<PagarPagina />} />
         <Route path="/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />
+        <Route path="/:subdominio/mi-ficha" element={<MiFichaPagina />} />
         <Route path="/:subdominio/tienda" element={<PaginaPublica tienda />} />
         <Route path="/:subdominio/pedir" element={<PaginaPublica pedir />} />
         <Route path="/:subdominio/pedido/:token" element={<SeguimientoPedido />} />

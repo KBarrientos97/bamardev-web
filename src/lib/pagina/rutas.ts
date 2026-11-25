@@ -54,6 +54,9 @@ export const urlInscribirmeDe = (subdominio: string, grupoId: number) =>
 /** «Pagar mi inscripción» (M5): entrar con el carnet. */
 export const urlMiCuentaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/mi-cuenta`;
 
+/** «Consultar mi ficha» (nutrición, 25-nov): la evaluación y el seguimiento con el carnet. */
+export const urlMiFichaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/mi-ficha`;
+
 /**
  * `/p/<subdominio>` y su privacidad se atienden antes de mirar el token (ver
  * RutasPagina.tsx). En el host link no se usa: ahí no hay app (RutasLink.tsx).
@@ -66,10 +69,11 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/pagar/<token>`: el estado de cuenta de un estudiante (P6),
   // el enlace que la recepción manda por WhatsApp.
   // `/p/<negocio>/mi-cuenta`: «Pagar mi inscripción» con el carnet (M5).
+  // `/p/<negocio>/mi-ficha`: «Consultar mi ficha» de nutrición con el carnet (25-nov).
   // `/p/<negocio>/tienda`: el catálogo entero del sitio (09-nov).
   // `/p/<negocio>/pedido/<token>`: el seguimiento de un pedido web (13-nov).
   // `/p/<negocio>/pedir`: directo a la carta para pedir (20-nov).
-  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/tienda|\/pedir|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
+  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/mi-ficha|\/tienda|\/pedir|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
 }
 
 /**

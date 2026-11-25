@@ -11,6 +11,7 @@
  *   link…/<sub>/regalo/<token>   una gift card    (= app…/p/<sub>/regalo/<token>)
  *   link…/<sub>/inscribirme/<id> preinscribirse a un grupo (= app…/p/<sub>/inscribirme/<id>)
  *   link…/<sub>/mi-cuenta        pagar con el carnet (= app…/p/<sub>/mi-cuenta)
+ *   link…/<sub>/mi-ficha         consultar la ficha de nutrición con el carnet (= app…/p/<sub>/mi-ficha)
  *   link…/<sub>/pedido/<token>   seguir un pedido web (= app…/p/<sub>/pedido/<token>)
  *   link…/<sub>/pedir            directo a la carta para pedir (= app…/p/<sub>/pedir)
  *
@@ -65,6 +66,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (segundo === "privacidad" && tercero === undefined) return `/p/${sub}/privacidad`;
   // «Pagar mi inscripción» de una academia (M5): sin más tramos.
   if (segundo === "mi-cuenta" && tercero === undefined) return `/p/${sub}/mi-cuenta`;
+  // «Consultar mi ficha» de un consultorio de nutrición (25-nov): sin más tramos.
+  if (segundo === "mi-ficha" && tercero === undefined) return `/p/${sub}/mi-ficha`;
   // La tienda del sitio del Profesional (09-nov): el catálogo entero.
   if (segundo === "tienda" && tercero === undefined) return `/p/${sub}/tienda`;
   // El modo pedir (20-nov): directo a la carta, el enlace que se comparte para vender.
@@ -152,6 +155,7 @@ Disallow: /*/c/
 Disallow: /*/inscribirme/
 Disallow: /*/pagar/
 Disallow: /*/mi-cuenta
+Disallow: /*/mi-ficha
 Disallow: /*/pedido/
 Allow: /
 `;

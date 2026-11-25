@@ -37,7 +37,8 @@ export class ErrorPublico extends Error {
   }
 }
 
-async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
+/** El fetch de las rutas públicas (sin sesión). Lo usa también la consulta de nutrición. */
+export async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   const corte = new AbortController();
   const alarma = setTimeout(() => corte.abort(), TIMEOUT_MS);
   let res: Response;

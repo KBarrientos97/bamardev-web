@@ -49,6 +49,9 @@ describe("dirección corta → la de siempre", () => {
     expect(rutaLargaDeLink("/elganadero/pedir")).toBe("/p/elganadero/pedir");
     expect(rutaLargaDeLink("/elganadero/pedir/x")).toBeNull();
     expect(rutaLargaDeLink("/horizonte/mi-cuenta/x")).toBeNull();
+    // «Consultar mi ficha» de nutrición (25-nov), sin más tramos.
+    expect(rutaLargaDeLink("/consultorio/mi-ficha")).toBe("/p/consultorio/mi-ficha");
+    expect(rutaLargaDeLink("/consultorio/mi-ficha/x")).toBeNull();
     // El seguimiento de un pedido web (13-nov): con su token, sin más tramos.
     expect(rutaLargaDeLink("/elganadero/pedido/Ab3_x-9QkLm2Ab3_x-9QkLm2Ab3_x-9QkLm2")).toBe(
       "/p/elganadero/pedido/Ab3_x-9QkLm2Ab3_x-9QkLm2Ab3_x-9QkLm2",

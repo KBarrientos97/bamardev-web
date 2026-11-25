@@ -16,7 +16,7 @@ import { avisoSinPedidos } from "../../lib/pedidosWeb/aviso";
 import { useInfoPedidos } from "../../lib/pedidosWeb/useInfoPedidos";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
-import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
+import { urlInscribirmeDe, urlMiCuentaDe, urlMiFichaDe, urlPaginaDe, urlPrivacidadDe, urlReservaDe, urlTiendaDe } from "../../lib/pagina/rutas";
 import PedirPagina, { plantillaPedir } from "./PedirPagina";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
@@ -171,6 +171,20 @@ const BOTON_REGALO: EnlacePublico = {
 };
 
 /**
+ * «Consultar mi ficha» (nutrición, 25-nov): como la gift card, un botón más
+ * de la página, con su forma y su estilo. Es un enlace de verdad (a
+ * `/mi-ficha`), así que anda igual en todos los armados.
+ */
+const ID_BOTON_FICHA = -2;
+const botonFicha = (subdominio: string): EnlacePublico => ({
+  id: ID_BOTON_FICHA,
+  tipo: "BOTON",
+  etiqueta: "Consultar mi ficha",
+  url: urlMiFichaDe(subdominio),
+  icono: null,
+});
+
+/**
  * `/p/:subdominio`: la página pública del negocio (PLAN-PAGINA-NEGOCIO §2).
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
  * al login. También en `link.bamardev.com/<subdominio>` (RutasLink.tsx).
@@ -264,10 +278,12 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   }
   // "Regalá una gift card" entra como un botón más de la página, con su
   // forma y su estilo, sin tocar cada armado.
-  const vista = useMemo(
-    () => (pagina && conRegalos ? { ...pagina, botones: [...pagina.botones, BOTON_REGALO] } : pagina),
-    [pagina, conRegalos],
-  );
+  // «Consultar mi ficha» va primero: es lo que busca el paciente que entra.
+  const vista = useMemo(() => {
+    if (!pagina) return pagina;
+    const extra = [...(pagina.consultaPacientes ? [botonFicha(pagina.subdominio)] : []), ...pagina.botones, ...(conRegalos ? [BOTON_REGALO] : [])];
+    return extra.length === pagina.botones.length ? pagina : { ...pagina, botones: extra };
+  }, [pagina, conRegalos]);
 
   if (error) return <NoDisponible mensaje={error} />;
   if (!pagina || !vista) return <Cargando />;
@@ -298,7 +314,7 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
         urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
         urlInscribirme={(grupoId) => urlInscribirmeDe(pagina.subdominio, grupoId)}
         urlMiCuenta={urlMiCuentaDe(pagina.subdominio)}
-        alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
+        alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : e.id === ID_BOTON_FICHA ? undefined : avisarClic(pagina.subdominio, e.id))}
         alAgregarAlPedido={carrito ? agregarAlPedido : undefined}
         lineasPedido={carrito ? pedido.lineas : undefined}
         alCambiarPedido={carrito ? pedido.cambiar : undefined}

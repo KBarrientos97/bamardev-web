@@ -277,7 +277,13 @@ export type Seccion =
    * y pagos (CONTRATO-nutricion-seguimiento-23nov). Sólo en NUTRICION. Sin
    * `seguimiento.editar`, todo de sólo lectura (ver `editaSeguimiento`).
    */
-  | "seguimiento";
+  | "seguimiento"
+  /**
+   * Los reportes del consultorio (25-nov-2026): pacientes, resultados,
+   * tratamientos y pagos anotados. Un módulo de nutrición, no una ficha de
+   * Reportes de ventas. Sólo en NUTRICION.
+   */
+  | "nutricion_reportes";
 
 /**
  * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
@@ -504,6 +510,8 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Ver la hoja de seguimiento; cargar semanas es `seguimiento.editar`, adentro.
   // No pide `nutricion.ver`: un rol puede tener sólo el seguimiento.
   seguimiento: { permiso: "seguimiento.ver", feature: "nutricion" },
+  // Los reportes del módulo: su propio permiso (sensible), no `reportes.ver`.
+  nutricion_reportes: { permiso: "nutricion.reportes", feature: "nutricion" },
 };
 
 /**
@@ -655,6 +663,8 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   nutricion: ["NUTRICION"],
   // El seguimiento del tratamiento, lo mismo (23-nov).
   seguimiento: ["NUTRICION"],
+  // Y sus reportes (25-nov).
+  nutricion_reportes: ["NUTRICION"],
 };
 
 /**
@@ -1063,6 +1073,8 @@ const ORDEN_INICIO: [Seccion, string][] = [
   // El seguimiento, después de la evaluación: un rol con sólo `seguimiento.ver`
   // (de sólo lectura) entra ahí y no en «/sin-acceso».
   ["seguimiento", "/seguimiento"],
+  // Un rol armado sólo con los reportes del consultorio entra ahí.
+  ["nutricion_reportes", "/nutricion/reportes"],
   ["reportes", "/reportes"],
   ["usuarios", "/usuarios"],
   ["creditos", "/creditos"],
@@ -1139,6 +1151,12 @@ export function editaNutricion(usuario: ConPermisos): boolean {
 
 /** El seguimiento del tratamiento: la lista y la hoja de cada paciente (rubro NUTRICION). */
 export const RUTA_SEGUIMIENTO = "/seguimiento";
+
+/**
+ * Los reportes del consultorio (rubro NUTRICION, 25-nov-2026). Bajo
+ * `/nutricion` y no bajo `/reportes`, que es la pantalla de los de ventas.
+ */
+export const RUTA_REPORTES_NUTRICION = "/nutricion/reportes";
 
 /**
  * ¿Carga el seguimiento? Lo mismo que pide el backend para escribir: iniciar

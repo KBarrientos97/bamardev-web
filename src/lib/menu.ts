@@ -261,6 +261,16 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "seguimiento",
     bloque: "agenda",
   },
+  // Los reportes del consultorio (25-nov): debajo del Seguimiento, con su
+  // propio permiso. Mismo encierro (NUTRICION y la feature `nutricion`).
+  {
+    a: "/nutricion/reportes",
+    label: "Reportes",
+    titulo: "Reportes del consultorio",
+    icono: "chart",
+    seccion: "nutricion_reportes",
+    bloque: "agenda",
+  },
   // Educación (PLAN-ACADEMIAS §4): lo del día con el alumno, en Atención.
   // Sólo existen con la feature `academia` (estricta, ver permisos.ts): a los
   // demás rubros no les mueven el menú.

@@ -295,8 +295,10 @@ export default function PlanillaPaciente() {
 }
 
 // ── Las tarjetas de arriba ──────────────────────────────────────────────────
+// Las piezas de abajo son de sólo lectura (sin `onAbrir` ni `edita`): las usa
+// también la consulta del paciente por carnet en la página (25-nov).
 
-function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
+export function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {tarjetasDeHoy(paciente, catalogo).map(({ campo, medida: m, resumen: r, grado: g, desdeInicio, desdeAnterior, delSeguimiento }) => {
@@ -330,7 +332,7 @@ function Resumen({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalog
 // ── El medidor del IMC ──────────────────────────────────────────────────────
 
 /** El medidor de la hoja con el último IMC (sólo para mirar: el grado se corrige en el control). */
-function ImcDeHoy({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
+export function ImcDeHoy({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalogo }) {
   // Con la serie de pesos al día, el último IMC de la serie (puede ser de una
   // semana del seguimiento); sin ella, el del último control, como siempre.
   const { ultimo, rangos, grado: g } = imcDeHoy(paciente, catalogo);
@@ -351,7 +353,7 @@ function ImcDeHoy({ paciente, catalogo }: { paciente: Paciente; catalogo: Catalo
 
 // ── El gráfico ──────────────────────────────────────────────────────────────
 
-function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Medida }) {
+export function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Medida }) {
   // Peso e IMC: todos los puntos de la serie al día; los del seguimiento, más chicos.
   const { puntos, leyenda } = evolucionDe(paciente, medida.campo);
   if (!puntos.length) {
@@ -384,7 +386,7 @@ function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Medida })
  * fecha (la primera es la «Inicial»). Se desplaza de costado con la primera
  * columna fija, y arranca mostrando el último control.
  */
-function Planilla({
+export function Planilla({
   controles,
   catalogo,
   onAbrir,
@@ -528,7 +530,7 @@ function Encabezado({ c, vez }: { c: Control; vez: number }) {
 
 // ── La ficha, en modo lectura ───────────────────────────────────────────────
 
-function FichaLectura({ paciente: p, catalogo, edita }: { paciente: Paciente; catalogo: Catalogo; edita: boolean }) {
+export function FichaLectura({ paciente: p, catalogo, edita }: { paciente: Paciente; catalogo: Catalogo; edita: boolean }) {
   const [abierta, setAbierta] = useState(false);
   const nombreEnf = (codigo: string) => catalogo.enfermedades.find((e) => e.codigo === codigo)?.nombre ?? codigo;
   const conSi = Object.entries(p.enfermedades ?? {}).filter(([, e]) => e.tiene);
