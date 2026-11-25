@@ -105,7 +105,7 @@ export function documentoSeguimiento({
   paciente: HojaPaciente["paciente"];
   tratamiento: Tratamiento;
   /** Para leer cada dosis contra sus escalones (§7.4); sin él, los escalones del tratamiento. */
-  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null;
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "ocultos" | "uiPorMl"> | null;
   hoy?: string;
 }): DocumentoSeguimiento {
   const r = t.resumen;

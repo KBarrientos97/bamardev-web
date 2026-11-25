@@ -529,6 +529,11 @@ describe("el catálogo", () => {
     expect(delCatalogo(CATALOGO_SEGUIMIENTO, " RETATRUTIDA ")?.nombre).toBe("Retatrutida");
     expect(delCatalogo(CATALOGO_SEGUIMIENTO, "Otro")).toBeNull();
     expect(delCatalogo(CATALOGO_SEGUIMIENTO, "")).toBeNull();
+    // §9.1: el que el negocio ocultó no sale como botón, pero se sigue encontrando (sus escalones valen para quien ya lo usa).
+    const tirze = CATALOGO_SEGUIMIENTO.tratamientos.find((t) => t.nombre === "Tirzepatida")!;
+    const conOculto = { tratamientos: CATALOGO_SEGUIMIENTO.tratamientos.filter((t) => t !== tirze), ocultos: [tirze] };
+    expect(delCatalogo(conOculto, "tirzepatida")?.pasosMg).toEqual([2.5, 5, 7.5, 10, 12.5, 15]);
+    expect(delCatalogo({ tratamientos: conOculto.tratamientos }, "tirzepatida")).toBeNull();
   });
 });
 
@@ -593,6 +598,12 @@ describe("cómo se lee una dosis anotada (§7.4): la de un escalón, con sus val
     expect(escalonesDeLaSemana(t, 4, CATALOGO_SEGUIMIENTO).mgPorMl).toBe(20);
     // El producto de hoy no es del catálogo (sin pasos del servidor): los de la droga del inicio.
     expect(pasosMgDe({ ...t, pasos: [] }, CATALOGO_SEGUIMIENTO, "Tirze")).toEqual([2.5, 5, 7.5, 10, 12.5, 15]);
+    // …también si el negocio ocultó ese botón (§9.1): ocultar no le saca los escalones al paciente que ya lo usa.
+    const sinBoton = {
+      tratamientos: CATALOGO_SEGUIMIENTO.tratamientos.filter((x) => x.nombre !== "Tirzepatida"),
+      ocultos: CATALOGO_SEGUIMIENTO.tratamientos.filter((x) => x.nombre === "Tirzepatida"),
+    };
+    expect(pasosMgDe({ ...t, pasos: [] }, sinBoton, "Tirze")).toEqual([2.5, 5, 7.5, 10, 12.5, 15]);
     expect(pasosMgDe({ ...t, pasos: [], nombre: "Otra", productoInicial: { nombre: "Otra", vialMg: null, vialMl: null }, registros: [] }, CATALOGO_SEGUIMIENTO)).toEqual([]);
   });
 });

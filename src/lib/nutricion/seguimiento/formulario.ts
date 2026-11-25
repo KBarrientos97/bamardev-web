@@ -401,11 +401,15 @@ export interface ErroresProducto {
   viales: { mg: string | null; ml: string | null; vial: string | null }[];
 }
 
-/** Lo que está mal (el nombre, 1 a 80 letras; cada vial, con los topes del vial del tratamiento). */
+/**
+ * Lo que está mal: el nombre, 2 a 80 letras (lo mismo que pide la hoja al
+ * iniciar un tratamiento: un botón de una letra escribiría un nombre que la
+ * hoja rechaza); cada vial, con los topes del vial del tratamiento.
+ */
 export function erroresDeProducto(f: FormProducto): ErroresProducto {
   const nombre = nombreDeProducto(f.nombre);
   return {
-    nombre: !nombre ? "Escribí el nombre del tratamiento" : nombre.length > 80 ? "Hasta 80 letras" : null,
+    nombre: !nombre ? "Escribí el nombre del tratamiento" : nombre.length < 2 ? "Al menos 2 letras" : nombre.length > 80 ? "Hasta 80 letras" : null,
     viales: f.viales.map((v) => ({
       mg: errorDeNumero("vialMg", v.mg),
       ml: errorDeNumero("vialMl", v.ml),

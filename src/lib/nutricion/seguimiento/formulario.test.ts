@@ -39,7 +39,10 @@ describe("un tratamiento de la lista («Agregar tratamiento» / «Editar»)", ()
     expect(erroresDeProducto(productoVacio()).nombre).toBe("Escribí el nombre del tratamiento");
     expect(erroresDeProducto({ nombre: "   ", viales: [] }).nombre).toBe("Escribí el nombre del tratamiento");
     expect(erroresDeProducto({ nombre: "x".repeat(81), viales: [] }).nombre).toBe("Hasta 80 letras");
-    expect(erroresDeProducto({ nombre: "X", viales: [] }).nombre).toBeNull();
+    // Lo mismo que pide la hoja al iniciar: un botón de una letra escribiría un nombre que la hoja rechaza.
+    expect(erroresDeProducto({ nombre: "X", viales: [] }).nombre).toBe("Al menos 2 letras");
+    expect(erroresDeProducto({ nombre: " X  ", viales: [] }).nombre).toBe("Al menos 2 letras");
+    expect(erroresDeProducto({ nombre: "XL", viales: [] }).nombre).toBeNull();
     expect(nombreDeProducto("  Péptido   de  prueba ")).toBe("Péptido de prueba");
   });
 

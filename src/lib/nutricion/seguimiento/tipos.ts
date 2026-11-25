@@ -28,6 +28,12 @@ export interface CatalogoSeguimiento {
   /** La jeringa de insulina: 100 UI por ml. */
   uiPorMl: number;
   tratamientos: TratamientoDelCatalogo[];
+  /**
+   * Los que el negocio ocultó (§9.1): no salen como botón, pero sus escalones
+   * y sus viales siguen valiendo para leer la hoja de quien ya los usa. Un
+   * backend anterior no lo manda.
+   */
+  ocultos?: TratamientoDelCatalogo[];
 }
 
 /**

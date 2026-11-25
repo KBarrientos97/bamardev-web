@@ -31,14 +31,15 @@ export function olvidarCatalogoSeguimiento() {
 
 /**
  * El catálogo con la lista del negocio que devolvió una escritura (§9.1): los
- * botones son los que no están ocultos, en el orden de la lista.
+ * botones son los que no están ocultos, en el orden de la lista; los ocultos
+ * van aparte (siguen valiendo para leer los escalones).
  */
 export function catalogoConLista(catalogo: CatalogoSeguimiento, productos: ProductoSeguimiento[]): CatalogoSeguimiento {
+  const sugerido = ({ id, nombre, deFabrica, pasosMg, presentaciones }: ProductoSeguimiento) => ({ id, nombre, deFabrica, pasosMg, presentaciones });
   return {
     ...catalogo,
-    tratamientos: productos
-      .filter((p) => !p.oculto)
-      .map(({ id, nombre, deFabrica, pasosMg, presentaciones }) => ({ id, nombre, deFabrica, pasosMg, presentaciones })),
+    tratamientos: productos.filter((p) => !p.oculto).map(sugerido),
+    ocultos: productos.filter((p) => p.oculto).map(sugerido),
   };
 }
 
