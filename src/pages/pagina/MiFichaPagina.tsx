@@ -41,7 +41,8 @@ const VERDE = "#047857";
  * build trae la clave y topes de intentos del lado del servidor.
  *
  * Anda aunque la página del consultorio no esté publicada: la nutricionista
- * puede mandar este enlace directo. Lo cierra el interruptor de los ajustes.
+ * puede mandar este enlace directo. Sin interruptor (decisión del dueño,
+ * 25-nov): todo consultorio de nutrición la tiene, ningún otro rubro.
  */
 export default function MiFichaPagina() {
   const { subdominio = "" } = useParams();

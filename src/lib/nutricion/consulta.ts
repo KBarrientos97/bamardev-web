@@ -33,7 +33,7 @@ export interface InfoConsulta {
 const sub = (s: string) => encodeURIComponent(s);
 
 export const apiConsultaNutricion = {
-  /** 404 si el consultorio no tiene la consulta prendida. */
+  /** 404 si el negocio no es un consultorio de nutrición. */
   info: (subdominio: string) => pedir<InfoConsulta>(`/publico/nutricion/${sub(subdominio)}`),
   consultar: (subdominio: string, input: { ci: string; captcha?: string }) =>
     pedir<ConsultaPaciente>(`/publico/nutricion/${sub(subdominio)}/consulta`, {

@@ -10,9 +10,7 @@ import { ConPuntos } from "./piezas";
 
 /**
  * «Ajustes del seguimiento» (§4.1): si se avisan los pagos y cada cuántas
- * semanas paga el paciente (de fábrica, al iniciar y cada 5), y si el
- * paciente puede consultar su ficha con el carnet en la página (25-nov,
- * apagado de fábrica). Es un ajuste del
+ * semanas paga el paciente (de fábrica, al iniciar y cada 5). Es un ajuste del
  * negocio: abre con lo que está guardado. Lo ve sólo quien puede cambiarlo
  * (`ajustes.puedeCambiarlos`). Cambiarlo no toca ninguna semana cargada: el
  * servidor vuelve a contar al leer.
@@ -38,8 +36,6 @@ export default function DialogoAjustesSeguimiento({
   onListaCambiada?: (productos: ProductoSeguimiento[]) => void;
 }) {
   const [avisar, setAvisar] = useState(ajustes.avisarPagos);
-  // La consulta por carnet en la página (25-nov). Un backend anterior no la manda: apagada.
-  const [consulta, setConsulta] = useState(!!ajustes.consultaPublica);
   const [cada, setCada] = useState(String(ajustes.pagoCadaSemanas));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -54,7 +50,6 @@ export default function DialogoAjustesSeguimiento({
     const cambios: Partial<AjustesSeguimiento> = {};
     if (avisar !== ajustes.avisarPagos) cambios.avisarPagos = avisar;
     if (n !== ajustes.pagoCadaSemanas) cambios.pagoCadaSemanas = n;
-    if (consulta !== !!ajustes.consultaPublica) cambios.consultaPublica = consulta;
     if (!Object.keys(cambios).length) {
       onCerrar();
       return;
@@ -107,12 +102,26 @@ export default function DialogoAjustesSeguimiento({
       }
     >
       <div className="space-y-4">
-        <Interruptor
-          prendido={avisar}
-          onCambio={setAvisar}
-          titulo="Avisar los pagos"
-          texto="En la lista, en la hoja de cada paciente y en «Pagos pendientes»."
-        />
+        {/* El renglón entero es el interruptor: en la tablet se toca con el dedo, y la perilla sola era chica. */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={avisar}
+          onClick={() => setAvisar((v) => !v)}
+          className="flex min-h-14 w-full items-center justify-between gap-4 border-b border-borde-soft py-3 text-left"
+        >
+          <span className="min-w-0">
+            <span className="block text-sm text-texto">Avisar los pagos</span>
+            <span className="mt-0.5 block text-[13px] text-texto-3">En la lista, en la hoja de cada paciente y en «Pagos pendientes».</span>
+          </span>
+          <span
+            aria-hidden="true"
+            className="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors"
+            style={{ background: avisar ? "var(--color-primary-boton)" : "#CBD5E1" }}
+          >
+            <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-150" style={{ left: avisar ? 18 : 2 }} />
+          </span>
+        </button>
         <div className="space-y-1.5">
           <label htmlFor="ajuste-cada" className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-texto">
             <span>El paciente paga al iniciar y después cada</span>
@@ -159,20 +168,6 @@ export default function DialogoAjustesSeguimiento({
             Cambiar la lista
           </Boton>
         </div>
-        <div className="border-t border-borde-soft">
-          <Interruptor
-            prendido={consulta}
-            onCambio={setConsulta}
-            titulo="Consulta por carnet en la página"
-            texto="Sale «Consultar mi ficha» en la página del consultorio: el paciente escribe su carnet y ve su evaluación y su seguimiento (sin los pagos), con los PDF."
-            sinBorde
-          />
-          {consulta && !ajustes.consultaPublica && (
-            <p className="pb-1 text-[13px] text-warning-text">
-              Alcanza con el carnet para ver los datos de salud del paciente. Prendela si tus pacientes están de acuerdo.
-            </p>
-          )}
-        </div>
         {error && (
           <p className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-sm text-danger-text" role="alert">
             {error}
@@ -180,42 +175,5 @@ export default function DialogoAjustesSeguimiento({
         )}
       </div>
     </Modal>
-  );
-}
-
-/** Un ajuste de sí o no. El renglón entero es el interruptor: en la tablet se toca con el dedo, y la perilla sola era chica. */
-function Interruptor({
-  prendido,
-  onCambio,
-  titulo,
-  texto,
-  sinBorde = false,
-}: {
-  prendido: boolean;
-  onCambio: (v: boolean) => void;
-  titulo: string;
-  texto: string;
-  sinBorde?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={prendido}
-      onClick={() => onCambio(!prendido)}
-      className={`flex min-h-14 w-full items-center justify-between gap-4 py-3 text-left ${sinBorde ? "" : "border-b border-borde-soft"}`}
-    >
-      <span className="min-w-0">
-        <span className="block text-sm text-texto">{titulo}</span>
-        <span className="mt-0.5 block text-[13px] text-texto-3">{texto}</span>
-      </span>
-      <span
-        aria-hidden="true"
-        className="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors"
-        style={{ background: prendido ? "var(--color-primary-boton)" : "#CBD5E1" }}
-      >
-        <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-150" style={{ left: prendido ? 18 : 2 }} />
-      </span>
-    </button>
   );
 }

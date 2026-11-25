@@ -97,7 +97,7 @@ describe("Consultar mi ficha (página pública de nutrición)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No encontramos una ficha con ese carnet");
   });
 
-  it("la consulta apagada (404) dice que no está disponible", async () => {
+  it("otro rubro (404) dice que no está disponible", async () => {
     vi.mocked(apiConsultaNutricion.info).mockRejectedValue(new Error("Esta consulta no está disponible."));
     abrir();
     expect(await screen.findByText(/no está disponible/)).toBeInTheDocument();

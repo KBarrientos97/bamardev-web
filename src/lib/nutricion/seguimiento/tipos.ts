@@ -18,12 +18,6 @@ export interface AjustesSeguimiento {
   pagoCadaSemanas: number;
   /** Los avisos de «toca pago» y «falta pagar». */
   avisarPagos: boolean;
-  /**
-   * El paciente consulta su ficha y su seguimiento con el carnet en la página
-   * del consultorio (25-nov-2026). Apagado de fábrica. Un backend anterior no
-   * lo manda (= apagado).
-   */
-  consultaPublica?: boolean;
 }
 
 /** `GET /nutricion/seguimiento/catalogo`: sugerencias para escribir menos y los ajustes del negocio. */
