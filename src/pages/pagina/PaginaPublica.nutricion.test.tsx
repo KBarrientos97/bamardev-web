@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiConsultaNutricion, type ConsultaPaciente } from "../../lib/nutricion/consulta";
@@ -98,6 +98,23 @@ describe("página de un consultorio de nutrición", () => {
     expect(screen.queryByText("Ana Rojas")).toBeNull();
     expect(screen.getByRole("heading", { name: "Consultá tu ficha" })).toBeInTheDocument();
     expect((screen.getByLabelText("Carnet de identidad") as HTMLInputElement).value).toBe("");
+  });
+
+  it("sitio en la computadora sin reservas ni catálogo: un solo WhatsApp en la portada", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1280 });
+    try {
+      await montar({
+        ...PAGINA,
+        destacado: { id: 7, tipo: "WHATSAPP", etiqueta: "WhatsApp", url: "https://wa.me/59170123456", icono: null },
+        sitio: { plantilla: "COMERCIO", bloques: [{ tipo: "PORTADA", titulo: "Tu salud empieza en el plato", subtitulo: null, fotos: [] }] },
+      });
+      const portada = screen.getByRole("region", { name: "Portada" });
+      expect(within(portada).getAllByRole("link", { name: /WhatsApp/ })).toHaveLength(1);
+      // El carnet sigue debajo de la portada.
+      expect(screen.getByRole("heading", { name: "Consultá tu ficha" })).toBeInTheDocument();
+    } finally {
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
   });
 
   it("otro rubro (sin la consulta) no lleva el formulario", async () => {
