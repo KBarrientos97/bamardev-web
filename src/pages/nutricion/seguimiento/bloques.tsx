@@ -26,7 +26,7 @@ import {
 import { valorLimitado, vialDe, type ErroresSemana, type FormSemana } from "../../../lib/nutricion/seguimiento/formulario";
 import type { DosisAnotada, Paso, Producto, UnidadDosis } from "../../../lib/nutricion/seguimiento/tipos";
 import { CampoNumero, CampoTexto } from "../piezas";
-import { BotonToque, Equivalentes } from "./piezas";
+import { BotonAgregarALaLista, BotonSugerencia, BotonToque, Equivalentes } from "./piezas";
 
 /**
  * Los bloques de la hoja «Semana N» según la maqueta A del 23-nov («Todo a la
@@ -585,6 +585,9 @@ type CamposProducto = Pick<FormSemana, "cambioProducto" | "productoNombre" | "pr
  * el vial nuevo (lo hace la hoja). En una semana que ya tenía la marca, «Quitar
  * el cambio»; si la semana no tiene nada más, quitarla la dejaría vacía (el
  * servidor no deja): se ofrece borrar la semana.
+ *
+ * Debajo del producto nuevo, los botones del catálogo (escriben el nombre, no
+ * vienen marcados) y, para quien puede cambiar la lista, «+ Agregar» (§9.2).
  */
 export function BloqueProducto({
   id,
@@ -600,6 +603,8 @@ export function BloqueProducto({
   uiPorMl,
   onBorrarSemana,
   refNombre,
+  sugerencias = [],
+  onAgregarALaLista,
 }: {
   id: string;
   form: FormSemana;
@@ -617,6 +622,10 @@ export function BloqueProducto({
   uiPorMl: number;
   onBorrarSemana?: () => void;
   refNombre?: RefObject<HTMLInputElement | null>;
+  /** Los nombres de los botones del catálogo. */
+  sugerencias?: string[];
+  /** «+ Agregar» (abre «Tratamientos»); sin él, no se ofrece. */
+  onAgregarALaLista?: () => void;
 }) {
   const propio = useRef<HTMLInputElement>(null);
   const nombre = refNombre ?? propio;
@@ -694,6 +703,16 @@ export function BloqueProducto({
           className="min-h-12 text-base"
         />
         {errNombre && <p className="text-xs text-danger-text">{errNombre}</p>}
+        {(sugerencias.length > 0 || onAgregarALaLista) && (
+          <div className="mt-0.5 flex flex-wrap gap-2">
+            {sugerencias.map((n) => (
+              <BotonSugerencia key={n} onClick={() => cambiar({ productoNombre: n })}>
+                {n}
+              </BotonSugerencia>
+            ))}
+            {onAgregarALaLista && <BotonAgregarALaLista id={`${id}-producto-agregar`} onClick={onAgregarALaLista} />}
+          </div>
+        )}
       </div>
       <SelectorVial
         id={`${id}-producto`}

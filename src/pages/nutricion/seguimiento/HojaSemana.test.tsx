@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
@@ -27,6 +27,7 @@ vi.mock("../../../lib/nutricion/seguimiento/api", async (original) => ({
     cargarSemana: vi.fn(),
     corregirRegistro: vi.fn(),
     borrarRegistro: vi.fn(),
+    productos: vi.fn(),
   },
 }));
 
@@ -557,6 +558,46 @@ describe("el cambio de producto (§7.1 y §7.2)", () => {
     fireEvent.change(screen.getByLabelText("Producto nuevo"), { target: { value: "Tirze" } });
     expect(sinNb(igual().textContent)).toBe("Igual que la anterior17 UI");
     expect(igual()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  // §9.2: los botones del catálogo escriben el producto nuevo; «+ Agregar», sólo para quien puede cambiar la lista.
+  it("los botones del catálogo escriben el producto nuevo (ninguno marcado); «+ Agregar» abre «Tratamientos» y `Esc` no cierra la semana", async () => {
+    vi.mocked(apiSeguimiento.productos).mockResolvedValue({ productos: [] });
+    const { onCerrar } = abrir(lucia, { semana: 8 });
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    const nombre = screen.getByLabelText("Producto nuevo");
+    expect(nombre).toHaveValue("");
+    fireEvent.click(boton("Glow"));
+    expect(nombre).toHaveValue("Glow");
+    fireEvent.click(boton("Agregar un tratamiento a la lista"));
+    await act(async () => {});
+    expect(screen.getByRole("dialog", { name: "Agregar tratamiento" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Agregar tratamiento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Semana 8" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Producto nuevo")).toHaveValue("Glow");
+    expect(onCerrar).not.toHaveBeenCalled();
+  });
+
+  it("sin `puedeCambiarlos`, el cambio de producto no ofrece «+ Agregar»", () => {
+    render(
+      <MemoryRouter>
+        <HojaSemana
+          tratamiento={lucia}
+          catalogo={{ ...CATALOGO_SEGUIMIENTO, ajustes: { ...CATALOGO_SEGUIMIENTO.ajustes, puedeCambiarlos: false } }}
+          registro={null}
+          semana={8}
+          pacienteNombre="Paciente de prueba"
+          ultimoControl={null}
+          onCerrar={vi.fn()}
+          onGuardado={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    expect(boton("Retatrutida")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agregar un tratamiento a la lista" })).not.toBeInTheDocument();
   });
 
   it("abrirlo y cerrarlo sin escribir no deja cambios", () => {

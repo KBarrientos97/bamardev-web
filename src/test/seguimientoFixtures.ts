@@ -27,9 +27,12 @@ export const CATALOGO_SEGUIMIENTO: CatalogoSeguimiento = {
   ajustes: { pagoCadaSemanas: 5, avisarPagos: true, puedeCambiarlos: true },
   unidades: ["mg", "UI", "ml"],
   uiPorMl: 100,
+  // Los tres de fábrica sin tocar (§9.1): sin fila del negocio (`id: null`).
   tratamientos: [
     {
+      id: null,
       nombre: "Tirzepatida",
+      deFabrica: true,
       pasosMg: [2.5, 5, 7.5, 10, 12.5, 15],
       presentaciones: [
         { mg: 15, ml: 0.5 },
@@ -37,7 +40,8 @@ export const CATALOGO_SEGUIMIENTO: CatalogoSeguimiento = {
         { mg: 5, ml: 0.5 },
       ],
     },
-    { nombre: "Retatrutida", pasosMg: [], presentaciones: [] },
+    { id: null, nombre: "Retatrutida", deFabrica: true, pasosMg: [], presentaciones: [] },
+    { id: null, nombre: "Glow", deFabrica: true, pasosMg: [], presentaciones: [] },
   ],
 };
 

@@ -198,6 +198,8 @@ export default function ListaSeguimiento() {
       {ajustando && ajustes && (
         <DialogoAjustesSeguimiento
           ajustes={ajustes}
+          tratamientos={catalogo.datos?.tratamientos}
+          onListaCambiada={catalogo.listaCambiada}
           onCerrar={() => setAjustando(false)}
           onGuardado={() => {
             setAjustando(false);
