@@ -111,6 +111,13 @@ describe("hoja de control", () => {
     expect(screen.queryByText(/Revisá la talla y el peso/)).not.toBeInTheDocument();
   });
 
+  it("las medidas van de arriba abajo, como el cuerpo y el formulario: Pecho, Cintura, Cadera (25-nov)", () => {
+    abrir();
+    const [pecho, cintura, cadera] = ["Pecho", "Cintura", "Cadera"].map((l) => screen.getByLabelText(l));
+    expect(pecho.compareDocumentPosition(cintura) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cintura.compareDocumentPosition(cadera) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("al salir de la edad corporal con decimales no se redondea callado: queda con su error", () => {
     abrir();
     const edad = screen.getByLabelText("Edad corporal");

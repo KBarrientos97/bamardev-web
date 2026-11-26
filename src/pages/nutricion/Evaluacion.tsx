@@ -27,7 +27,8 @@ import type { AltaPacienteInput, Catalogo, MedidaConTabla, Paciente } from "../.
 import { pedirCatalogo } from "../../lib/nutricion/useCatalogo";
 import { useSalidaConCambios } from "../../lib/useSalidaConCambios";
 import { EncabezadoPagina, PaginaAcademia as Pagina } from "../academia/piezas";
-import { EtapaComposicion, EtapaFicha, EtapaMedidas, EtapaPesoImc, type CampoForm, type PropsEtapa } from "./EtapasEvaluacion";
+import { EtapaMedidas } from "./EtapaMedidas";
+import { EtapaComposicion, EtapaFicha, EtapaPesoImc, type CampoForm, type PropsEtapa } from "./EtapasEvaluacion";
 import type { Cinta } from "./FiguraCuerpo";
 import { EstadoGuardado, Tecla } from "./piezas";
 

@@ -327,10 +327,11 @@ export default function HojaControl({
           </Seccion>
 
           <Seccion titulo="Medidas">
+            {/* De arriba abajo, como el cuerpo y como el formulario de la evaluación. */}
             <div className="grid gap-4 sm:grid-cols-3">
+              {numero("pechoCm", "Pecho")}
               {numero("cinturaCm", "Cintura")}
               {numero("caderaCm", "Cadera")}
-              {numero("pechoCm", "Pecho")}
             </div>
           </Seccion>
 

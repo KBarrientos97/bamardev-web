@@ -1,4 +1,5 @@
 import { edadEn, edadEnFecha, gradoDeTabla, hoyIso, textoDe, valorDe, type CampoNumerico } from "./calculo";
+import { ATAJOS, normalizarRespuesta, type CampoConAtajos } from "./respuestas";
 import type { Catalogo, Control, ControlInput, Enfermedad, FichaInput, MedidaConTabla, Paciente, Sexo } from "./tipos";
 
 /**
@@ -98,6 +99,13 @@ export function controlVacio(fecha = hoyIso()): FormControl {
 
 const texto = (v: string) => (v.trim() ? v.trim() : null);
 
+/**
+ * Un campo con atajos, como se guarda: «si:  » → «Sí», «no, nunca» → «No:
+ * nunca» (`normalizarRespuesta`). Como `hayCambios` compara dos `fichaAInput`,
+ * un «no» que vino así del servidor no aparece como cambio.
+ */
+const conAtajos = (f: FormFicha, campo: CampoConAtajos) => texto(normalizarRespuesta(f[campo], ATAJOS[campo]));
+
 /** La edad de hoy: la de la fecha de nacimiento si está, si no la escrita. */
 export function edadDeFicha(f: Pick<FormFicha, "edad" | "fechaNacimiento">, hoy = hoyIso()): number | null {
   if (f.fechaNacimiento) return edadEn(f.fechaNacimiento, hoy);
@@ -144,14 +152,14 @@ export function fichaAInput(f: FormFicha): Required<FichaInput> {
     hijos: valorDe("hijos", f.hijos),
     tallaCm: valorDe("tallaCm", f.tallaCm),
     observaciones: texto(f.observaciones),
-    ultimosAnalisis: texto(f.ultimosAnalisis),
+    ultimosAnalisis: conAtajos(f, "ultimosAnalisis"),
     enfermedades,
     otrasEnfermedades: texto(f.otrasEnfermedades),
-    cirugias: texto(f.cirugias),
+    cirugias: conAtajos(f, "cirugias"),
     conductaAlimentaria: texto(f.conductaAlimentaria),
-    conductaSueno: texto(f.conductaSueno),
-    actividadFisica: texto(f.actividadFisica),
-    consumoAgua: texto(f.consumoAgua),
+    conductaSueno: conAtajos(f, "conductaSueno"),
+    actividadFisica: conAtajos(f, "actividadFisica"),
+    consumoAgua: conAtajos(f, "consumoAgua"),
   };
 }
 

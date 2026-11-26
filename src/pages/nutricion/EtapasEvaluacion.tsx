@@ -15,9 +15,10 @@ import {
   type CampoNumerico,
 } from "../../lib/nutricion/calculo";
 import { edadDelControl, type FormControl, type FormFicha } from "../../lib/nutricion/formulario";
+import { ATAJOS } from "../../lib/nutricion/respuestas";
 import type { Catalogo, MedidaConTabla, Sexo } from "../../lib/nutricion/tipos";
 import { Tarjeta } from "../academia/piezas";
-import FiguraCuerpo, { type Cinta } from "./FiguraCuerpo";
+import CampoConAtajos from "./CampoConAtajos";
 import MedidorImc from "./MedidorImc";
 import { TONO } from "../../lib/nutricion/tonos";
 import { AreaTexto, BotonesSexo, CampoNumero, CampoTexto, ChipGrado, Rotulo } from "./piezas";
@@ -86,7 +87,7 @@ type EnfermedadForm = FormFicha["enfermedades"][string];
  * Un campo de número con su rótulo. Al salir, lo escrito se muestra con coma
  * y sin ceros de más («82.40» → «82,4»).
  */
-function Numero({
+export function Numero({
   id,
   campo,
   label,
@@ -297,15 +298,15 @@ export function EtapaFicha(
 
       <Tarjeta titulo="Enfermedades de base" bajada="Tocá «Sí» o «No»; tocá otra vez para dejarla sin preguntar.">
         <div className="space-y-4">
-          <Rotulo htmlFor="ev-analisis" label="Últimos análisis clínicos">
-            <AreaTexto
-              id="ev-analisis"
-              rows={2}
-              maxLength={2000}
-              value={ficha.ultimosAnalisis}
-              onChange={(e) => cambiarFicha("ultimosAnalisis", e.target.value)}
-            />
-          </Rotulo>
+          <CampoConAtajos
+            id="ev-analisis"
+            label="Últimos análisis clínicos"
+            opciones={ATAJOS.ultimosAnalisis}
+            multilinea
+            placeholder="Fecha, laboratorio y valores que llamen la atención"
+            valor={ficha.ultimosAnalisis}
+            onCambiar={(v) => cambiarFicha("ultimosAnalisis", v)}
+          />
 
           <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
             {enfermedades.map((e) => {
@@ -358,34 +359,56 @@ export function EtapaFicha(
         </div>
       </Tarjeta>
 
+      {/* En el orden de la hoja de papel de la doctora. Los tres hábitos van en tres
+          columnas sólo si la TARJETA es ancha (no la ventana: el menú lateral cambia
+          el ancho útil); ahí cada fila de atajos entra en un renglón y las tres
+          notas quedan a la misma altura. */}
       <Tarjeta titulo="Cirugías y hábitos">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Rotulo htmlFor="ev-cirugias" label="Cirugías" className="sm:col-span-3">
-            <AreaTexto id="ev-cirugias" rows={2} maxLength={2000} value={ficha.cirugias} onChange={(e) => cambiarFicha("cirugias", e.target.value)} />
-          </Rotulo>
-          <Rotulo htmlFor="ev-alimentaria" label="Conducta alimentaria" className="sm:col-span-3">
+        <div className="@container space-y-4">
+          <CampoConAtajos
+            id="ev-cirugias"
+            label="Cirugías"
+            opciones={ATAJOS.cirugias}
+            multilinea
+            placeholder="¿Cuál y cuándo?"
+            valor={ficha.cirugias}
+            onCambiar={(v) => cambiarFicha("cirugias", v)}
+          />
+          <Rotulo htmlFor="ev-alimentaria" label="Conducta alimentaria">
             <AreaTexto
               id="ev-alimentaria"
-              rows={4}
+              rows={3}
               maxLength={2000}
               value={ficha.conductaAlimentaria}
               onChange={(e) => cambiarFicha("conductaAlimentaria", e.target.value)}
             />
           </Rotulo>
-          <Rotulo htmlFor="ev-sueno" label="Conducta del sueño">
-            <CampoTexto id="ev-sueno" maxLength={2000} value={ficha.conductaSueno} onChange={(e) => cambiarFicha("conductaSueno", e.target.value)} />
-          </Rotulo>
-          <Rotulo htmlFor="ev-actividad" label="Actividad física">
-            <CampoTexto
-              id="ev-actividad"
-              maxLength={2000}
-              value={ficha.actividadFisica}
-              onChange={(e) => cambiarFicha("actividadFisica", e.target.value)}
+          <div className="grid items-start gap-4 @2xl:grid-cols-3">
+            <CampoConAtajos
+              id="ev-sueno"
+              label="Conducta del sueño"
+              opciones={ATAJOS.conductaSueno}
+              placeholder="Horas y si se despierta"
+              valor={ficha.conductaSueno}
+              onCambiar={(v) => cambiarFicha("conductaSueno", v)}
             />
-          </Rotulo>
-          <Rotulo htmlFor="ev-agua" label="Consumo de agua">
-            <CampoTexto id="ev-agua" maxLength={2000} value={ficha.consumoAgua} onChange={(e) => cambiarFicha("consumoAgua", e.target.value)} />
-          </Rotulo>
+            <CampoConAtajos
+              id="ev-actividad"
+              label="Actividad física"
+              opciones={ATAJOS.actividadFisica}
+              placeholder="¿Qué hace y cuántas veces?"
+              valor={ficha.actividadFisica}
+              onCambiar={(v) => cambiarFicha("actividadFisica", v)}
+            />
+            <CampoConAtajos
+              id="ev-agua"
+              label="Consumo de agua"
+              opciones={ATAJOS.consumoAgua}
+              placeholder="Nota (opcional)"
+              valor={ficha.consumoAgua}
+              onCambiar={(v) => cambiarFicha("consumoAgua", v)}
+            />
+          </div>
         </div>
       </Tarjeta>
     </div>
@@ -415,57 +438,7 @@ function BotonSiNo({ marcado, tono, onClick, children }: { marcado: boolean; ton
   );
 }
 
-// ── 2 · Medidas ─────────────────────────────────────────────────────────────
-
-export function EtapaMedidas(p: PropsEtapa & { cinta: Cinta | null; onCinta: (c: Cinta | null) => void }) {
-  const { ficha, control, cambiarControl } = p;
-  const sexo = sexoDe(ficha);
-  const medida = (cinta: Cinta, campo: "cinturaCm" | "caderaCm" | "pechoCm", label: string) => (
-    <Numero
-      id={`ev-${cinta}`}
-      campo={campo}
-      label={label}
-      unidad="cm"
-      valor={control[campo]}
-      onCambiar={(v) => cambiarControl(campo, v)}
-      onFocus={() => p.onCinta(cinta)}
-      onBlur={() => p.onCinta(null)}
-      p={p}
-    />
-  );
-  return (
-    <Tarjeta titulo="Medidas" bajada="Con la cinta, en centímetros.">
-      <div className="grid grid-cols-[minmax(0,1fr)_118px] items-start gap-x-4 gap-y-4 sm:grid-cols-[minmax(0,1fr)_200px] sm:gap-x-8 lg:grid-cols-[minmax(0,1fr)_230px]">
-        <div className="space-y-4">
-          <Rotulo htmlFor="ev-fecha" label="Fecha de la evaluación" error={p.error("fecha")}>
-            <CampoTexto
-              id="ev-fecha"
-              type="date"
-              value={control.fecha}
-              max={hoyIso()}
-              invalido={!!p.error("fecha")}
-              onChange={(e) => cambiarControl("fecha", e.target.value)}
-              onBlur={() => p.tocar("fecha")}
-            />
-          </Rotulo>
-          {medida("cintura", "cinturaCm", "Cintura")}
-          {medida("cadera", "caderaCm", "Cadera")}
-          {medida("pecho", "pechoCm", "Pecho")}
-        </div>
-        <div className="sm:pt-1">
-          {sexo ? (
-            <FiguraCuerpo sexo={sexo} resaltada={p.cinta} />
-          ) : (
-            <div className="space-y-2 rounded-2xl border border-dashed border-borde bg-muted p-2.5 sm:p-4">
-              <p className="text-center text-[12px] font-semibold text-texto-3 sm:text-[13px]">Sexo del paciente</p>
-              <BotonesSexo valor="" apilados etiqueta="Sexo del paciente" onElegir={(s) => p.cambiarFicha("sexo", s)} />
-            </div>
-          )}
-        </div>
-      </div>
-    </Tarjeta>
-  );
-}
+// ── 2 · Medidas: en `EtapaMedidas.tsx` ──────────────────────────────────────
 
 // ── Una medida con su tabla de grados (etapas 3 y 4) ───────────────────────
 
