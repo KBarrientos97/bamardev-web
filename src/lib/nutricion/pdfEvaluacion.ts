@@ -824,9 +824,3 @@ export const nombreDelPdfEvaluacion = (hoy = hoyIso()) => `evaluacion-nutriciona
 export async function bajarPdfEvaluacion(doc: DocumentoEvaluacion): Promise<EntregaPdf> {
   return entregarPdf(await pdfDeLaEvaluacion(doc), nombreDelPdfEvaluacion());
 }
-
-/**
- * El mensaje que acompaña al PDF en «Enviar por WhatsApp» (`DialogoWhatsapp`:
- * el chat del número o el diálogo de compartir, ver `pdfComun`).
- */
-export const mensajeDeLaEvaluacion = (hoy = hoyIso()) => `Evaluación nutricional al ${fechaLarga(hoy)}.`;

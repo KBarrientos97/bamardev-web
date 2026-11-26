@@ -23,7 +23,7 @@ import {
   textoSexo,
   textoVial,
 } from "../../../lib/nutricion/seguimiento/formato";
-import { bajarPdfSeguimiento, documentoSeguimiento, mensajeDelSeguimiento, nombreDelPdf, pdfDelSeguimiento } from "../../../lib/nutricion/seguimiento/pdf";
+import { bajarPdfSeguimiento, documentoSeguimiento, nombreDelPdf, pdfDelSeguimiento } from "../../../lib/nutricion/seguimiento/pdf";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
@@ -425,7 +425,6 @@ export default function HojaSeguimiento() {
                   telefono: p.telefono,
                   paciente: p.nombre,
                   que: "Seguimiento",
-                  mensaje: mensajeDelSeguimiento(),
                   nombreArchivo: nombreDelPdf(),
                   armar: () => pdfDelSeguimiento(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat })),
                 }}

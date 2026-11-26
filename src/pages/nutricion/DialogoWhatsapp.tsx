@@ -18,8 +18,6 @@ export interface EnvioPorWhatsapp {
   /** El nombre del paciente: «Seguimiento de Lucía Paredes». */
   paciente: string;
   que: "Seguimiento" | "Evaluación";
-  /** El mensaje: «Seguimiento del tratamiento al 26/11/2026.» */
-  mensaje: string;
   nombreArchivo: string;
   armar: () => Promise<Blob>;
 }
@@ -44,20 +42,22 @@ function NombreDeArchivo({ nombre }: { nombre: string }) {
 // ── El diálogo ──────────────────────────────────────────────────────────────
 
 /**
- * «Enviar por WhatsApp» del PDF de nutrición (26-nov-2026): el número de la
- * ficha del paciente en un campo y el botón redondo de enviar, como en
- * WhatsApp, que abre el chat de ESE número con el mensaje listo. Antes, en el
- * teléfono, salía el diálogo de compartir del sistema: había que buscar el
- * contacto, y si el paciente no estaba agendado no aparecía.
+ * «Enviar por WhatsApp» del PDF de nutrición (26-nov-2026). Lo que importa
+ * es que el PDF llegue al WhatsApp del paciente, sin mensaje (Kevin, 26-nov:
+ * por el chat del número se mandaba el texto solo y el PDF no iba).
  *
- * Desde una página web `wa.me` no puede adjuntar el PDF: se descarga y se
- * adjunta en el chat con el clip (el diálogo lo dice). Donde el equipo puede
- * compartir archivos, también está «Compartir el PDF por otra app», que sí lo
- * adjunta pero sin elegir el número.
+ * Arriba, el PDF que se manda. Donde el equipo puede compartir archivos (el
+ * teléfono, la tablet), la acción principal es «Compartir el PDF»: el
+ * diálogo de compartir del sistema, donde se elige WhatsApp y el chat, con el
+ * PDF adjunto. Debajo, por si no está agendado o hay que mandarlo a otro
+ * número, el número de la ficha y el botón redondo que abre el chat de ESE
+ * número: desde una página web `wa.me` no puede adjuntar el PDF, así que se
+ * descarga y se adjunta con el clip (el diálogo lo dice). En la PC, sólo el
+ * número, y ahí el botón redondo es el principal.
  *
  * Cada vez que se abre, el número es el de la ficha o vacío: no se recuerda
  * uno escrito antes. El PDF se empieza a armar al abrir, para que al tocar
- * enviar (o compartir) ya esté.
+ * compartir (o abrir el chat) ya esté.
  */
 export default function DialogoWhatsapp({
   envio,
@@ -110,7 +110,7 @@ export default function DialogoWhatsapp({
     const mostrar = numeroParaMostrar(numero);
     // El chat se abre acá mismo, dentro del toque: `abrirChatConPdf` no espera nada antes.
     const listo = elPdf();
-    abrirChatConPdf({ numero, texto: envio.mensaje, nombreArchivo: envio.nombreArchivo, armar: () => listo, listo: pdfListo.current }).then(
+    abrirChatConPdf({ numero, nombreArchivo: envio.nombreArchivo, armar: () => listo, listo: pdfListo.current }).then(
       () => onAviso(`Se abrió el chat de ${mostrar}. El PDF se descargó: adjuntalo con el clip.`),
       () => onError("No se pudo armar el PDF. Probá de nuevo."),
     );
@@ -122,7 +122,7 @@ export default function DialogoWhatsapp({
     setCompartiendo(true);
     let r: ResultadoCompartir;
     try {
-      r = await compartirPdf({ texto: envio.mensaje, nombreArchivo: envio.nombreArchivo, armar: elPdf });
+      r = await compartirPdf({ nombreArchivo: envio.nombreArchivo, armar: elPdf });
     } catch {
       onError("No se pudo armar el PDF. Probá de nuevo.");
       onCerrar();
@@ -140,7 +140,45 @@ export default function DialogoWhatsapp({
   return (
     <Modal abierto titulo="Enviar por WhatsApp" subtitulo={`${envio.que} de ${envio.paciente}`} onClose={onCerrar} ancho="max-w-md">
       <form onSubmit={enviar} noValidate className="pb-[env(safe-area-inset-bottom)]">
-        <label htmlFor="whatsapp-numero" className="block text-[13px] font-semibold text-texto-2">
+        {/* Lo que se manda: el PDF, solo. */}
+        <div className="flex items-center gap-3 rounded-xl border border-borde-soft bg-muted px-3 py-2.5">
+          <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
+            <Icon name="fileText" size={21} />
+          </span>
+          <span className="min-w-0">
+            <span className="block break-words text-[13px] font-semibold text-texto">
+              <NombreDeArchivo nombre={envio.nombreArchivo} />
+            </span>
+            <span className="block text-xs text-texto-3">Documento PDF</span>
+          </span>
+        </div>
+
+        {puedeCompartir && (
+          <>
+            <button
+              type="button"
+              onClick={() => void compartir()}
+              disabled={compartiendo}
+              aria-describedby="whatsapp-compartir"
+              className="mt-4 flex min-h-[52px] w-full items-center justify-center gap-2.5 rounded-xl bg-[#00A884] px-4 text-[15px] font-semibold text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#008F70] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A884] active:scale-[0.98] disabled:opacity-70"
+            >
+              <Icon name="whatsapp" size={21} />
+              {compartiendo ? "Abriendo…" : "Compartir el PDF"}
+            </button>
+            {/* Parejo en dos renglones si no entra: a 320 px «adjunto.» quedaba solo abajo. */}
+            <p id="whatsapp-compartir" className="mt-1.5 text-balance text-center text-xs text-texto-3">
+              Elegís WhatsApp y el chat del paciente: el PDF va adjunto.
+            </p>
+            {/* La otra forma: por el número, si no está agendado o es otro. */}
+            <div className="mb-3 mt-5 flex items-center gap-3 text-xs font-semibold text-texto-3">
+              <span aria-hidden="true" className="h-px flex-1 bg-borde" />
+              ¿No lo tenés agendado?
+              <span aria-hidden="true" className="h-px flex-1 bg-borde" />
+            </div>
+          </>
+        )}
+
+        <label htmlFor="whatsapp-numero" className={`block text-[13px] font-semibold text-texto-2 ${puedeCompartir ? "" : "mt-4"}`}>
           Número de WhatsApp
         </label>
         <div className="mt-1.5 flex items-center gap-2">
@@ -192,9 +230,12 @@ export default function DialogoWhatsapp({
           </div>
           <button
             type="submit"
-            aria-label={numero ? `Enviar por WhatsApp al ${numeroParaMostrar(numero)}` : "Enviar por WhatsApp"}
+            aria-label={numero ? `Abrir el chat de WhatsApp del ${numeroParaMostrar(numero)}` : "Abrir el chat de WhatsApp"}
             title="Abrir el chat"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#00A884] text-white shadow-sm transition-[background-color,transform] duration-150 hover:bg-[#008F70] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A884] active:scale-95"
+            // Al lado de «Compartir el PDF» es la otra forma: con borde y el avión en verde. En la PC, el principal: verde lleno.
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition-[background-color,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00A884] active:scale-95 ${
+              puedeCompartir ? "border-2 border-[#00A884] bg-white text-[#008F70] hover:bg-[#E7F8F2]" : "bg-[#00A884] text-white shadow-sm hover:bg-[#008F70]"
+            }`}
           >
             <Icon name="enviar" size={22} />
           </button>
@@ -209,41 +250,14 @@ export default function DialogoWhatsapp({
           </p>
         )}
 
-        <p className="mt-4 text-[13px] font-semibold text-texto-2">Se envía</p>
-        {/* Como se ve en el chat: el mensaje, con el PDF adjunto. */}
-        <div className="mt-1.5 rounded-2xl rounded-tr-md bg-[#D9FDD3] p-2">
-          <div className="flex items-center gap-2.5 rounded-xl bg-white/85 px-2.5 py-2">
-            <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600">
-              <Icon name="fileText" size={19} />
-            </span>
-            <span className="min-w-0 break-words text-[13px] font-semibold text-texto">
-              <NombreDeArchivo nombre={envio.nombreArchivo} />
-            </span>
-          </div>
-          <p className="break-words px-1.5 pb-0.5 pt-2 text-sm text-texto">{envio.mensaje}</p>
-        </div>
-        <p className="mt-3 flex items-start gap-2 text-xs text-texto-3">
+        <p className="mt-2 flex items-start gap-2 text-xs text-texto-3">
           <Icon name="info" size={15} className="mt-px shrink-0" />
-          <span>Se abre el chat de ese número con el mensaje listo. El PDF se descarga: adjuntalo en el chat con el clip.</span>
+          <span className="text-pretty">
+            {puedeCompartir
+              ? "Se abre su chat y el PDF se descarga: adjuntalo ahí con el clip."
+              : "Se abre WhatsApp en el chat de ese número y el PDF se descarga: arrastralo al chat o adjuntalo con el clip."}
+          </span>
         </p>
-
-        {puedeCompartir && (
-          <div className="mt-4 border-t border-borde-soft pt-4">
-            <button
-              type="button"
-              onClick={() => void compartir()}
-              disabled={compartiendo}
-              aria-describedby="whatsapp-compartir"
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted disabled:opacity-60"
-            >
-              <Icon name="compartir" size={17} />
-              {compartiendo ? "Abriendo…" : "Compartir el PDF por otra app"}
-            </button>
-            <p id="whatsapp-compartir" className="mt-1.5 text-center text-xs text-texto-3">
-              Para elegir un contacto guardado u otra aplicación.
-            </p>
-          </div>
-        )}
       </form>
     </Modal>
   );

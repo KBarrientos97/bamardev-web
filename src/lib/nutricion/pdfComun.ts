@@ -259,12 +259,14 @@ export function dibujarPies(pdf: jsPDF, texto: string) {
 
 // ── La entrega por WhatsApp ─────────────────────────────────────────────────
 //
-// Desde una página web, `wa.me/<número>?text=…` abre el chat de ese número con
-// el mensaje escrito, pero NO puede adjuntar un archivo; adjuntar el PDF sólo
-// se puede con el diálogo de compartir del sistema (que no deja elegir el
-// número: hay que buscar el contacto, y si no está agendado no aparece) o a
-// mano con el clip. Por eso son dos entregas separadas, y el diálogo «Enviar
-// por WhatsApp» (`DialogoWhatsapp`) ofrece las dos (26-nov-2026).
+// Desde una página web, `wa.me/<número>` abre el chat de ese número, pero NO
+// puede adjuntar un archivo; adjuntar el PDF sólo se puede con el diálogo de
+// compartir del sistema (que no deja elegir el número: hay que buscar el
+// contacto, y si no está agendado no aparece) o a mano con el clip. Por eso
+// son dos entregas separadas, y el diálogo «Enviar por WhatsApp»
+// (`DialogoWhatsapp`) ofrece las dos (26-nov-2026). Ninguna lleva mensaje
+// (26-nov): por el chat se mandaba el texto solo, sin el PDF, y lo que tiene
+// que llegar es el PDF.
 
 // Vive en `foco.ts` (la regla del foco con el dedo); sigue saliendo de acá para no romper importaciones.
 export { conDedo } from "./foco";
@@ -300,7 +302,7 @@ export function numeroParaMostrar(numero: string): string {
   return numero.length === 11 && numero.startsWith("591") ? Telefono.paraMostrar(numero) : `+${numero}`;
 }
 
-/** Cómo terminó «Compartir el PDF por otra app». Cancelar no es un error. */
+/** Cómo terminó «Compartir el PDF». Cancelar no es un error. */
 export type ResultadoCompartir = "compartido" | "cancelado" | "descargado";
 
 /** Baja el PDF con su nombre (el `<a download>` de siempre). */
@@ -314,10 +316,10 @@ function bajar(blob: Blob, nombreArchivo: string) {
 }
 
 /**
- * El chat de ese número con el mensaje listo, y el PDF descargado para
- * adjuntarlo con el clip. El chat se abre EN EL MISMO CLIC, antes de cualquier
- * espera (si no, lo frena el bloqueador de ventanas): `armar` se espera recién
- * después. Si armar el PDF falla, el chat ya quedó abierto y la promesa falla.
+ * El chat de ese número (sin mensaje), y el PDF descargado para adjuntarlo con
+ * el clip. El chat se abre EN EL MISMO CLIC, antes de cualquier espera (si no,
+ * lo frena el bloqueador de ventanas): `armar` se espera recién después. Si
+ * armar el PDF falla, el chat ya quedó abierto y la promesa falla.
  *
  * Con el PDF ya armado (`listo`: el diálogo lo arma al abrirse), primero baja
  * y después abre el chat, las dos cosas dentro del toque: en el teléfono, abrir
@@ -326,21 +328,18 @@ function bajar(blob: Blob, nombreArchivo: string) {
  */
 export async function abrirChatConPdf({
   numero,
-  texto,
   nombreArchivo,
   armar,
   listo,
 }: {
   /** Para `wa.me`: sólo dígitos, con el código de país (59170490686). */
   numero: string;
-  /** El mensaje: «Seguimiento del tratamiento al 24/11/2026.» */
-  texto: string;
   nombreArchivo: string;
   armar: () => Promise<Blob>;
   /** El PDF, si ya está armado. */
   listo?: Blob | null;
 }): Promise<void> {
-  const chat = `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+  const chat = `https://wa.me/${numero}`;
   if (listo) {
     bajar(listo, nombreArchivo);
     window.open(chat, "_blank", "noopener,noreferrer");
@@ -351,18 +350,16 @@ export async function abrirChatConPdf({
 }
 
 /**
- * El diálogo de compartir del sistema con el PDF y, si el equipo lo acepta,
- * también el mensaje (ahí se elige WhatsApp, u otra app, y el contacto). Si el
- * equipo no puede compartir archivos, baja el PDF. Conviene que `armar` ya
- * esté resuelta: el navegador pide que `share` salga del toque, y armar un PDF
+ * El diálogo de compartir del sistema con el PDF solo, sin mensaje (ahí se
+ * elige WhatsApp y el chat del paciente: el PDF va adjunto). Si el equipo no
+ * puede compartir archivos, baja el PDF. Conviene que `armar` ya esté
+ * resuelta: el navegador pide que `share` salga del toque, y armar un PDF
  * largo puede tardar más que eso.
  */
 export async function compartirPdf({
-  texto,
   nombreArchivo,
   armar,
 }: {
-  texto: string;
   nombreArchivo: string;
   armar: () => Promise<Blob>;
 }): Promise<ResultadoCompartir> {
@@ -370,8 +367,7 @@ export async function compartirPdf({
   const archivo = new File([blob], nombreArchivo, { type: "application/pdf" });
   if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [archivo] })) {
     try {
-      const conTexto = navigator.canShare({ files: [archivo], text: texto });
-      await navigator.share(conTexto ? { files: [archivo], text: texto, title: nombreArchivo } : { files: [archivo], title: nombreArchivo });
+      await navigator.share({ files: [archivo], title: nombreArchivo });
       return "compartido";
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return "cancelado";
