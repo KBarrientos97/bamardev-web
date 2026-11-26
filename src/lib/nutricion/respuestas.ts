@@ -1,14 +1,14 @@
 /**
- * Las respuestas con atajos de la ficha (25-nov-2026): cinco campos de texto
- * («Últimos análisis clínicos», «Cirugías», «Conducta del sueño», «Actividad
- * física» y «Consumo de agua») ganan una fila de botoncitos con lo típico, sin
+ * Las respuestas con atajos de la ficha (25-nov-2026): cuatro campos de texto
+ * («Últimos análisis clínicos», «Cirugías», «Conducta del sueño» y «Actividad
+ * física») ganan una fila de botoncitos con lo típico, sin
  * perder el campo para escribir.
  *
  * El dato sigue siendo UN texto (el backend guarda un string por campo):
  * sólo el atajo → «No»; atajo y nota → «No: nunca»; sólo la nota → «nunca».
  * Al leer un texto guardado se reconoce el atajo aunque esté escrito a mano
  * («si», «SI, cesárea», «No - nunca»); si no empieza con uno, todo es la nota
- * («Apendicitis 2015», «2 litros»), sin ningún botón encendido.
+ * («Apendicitis 2015», «Nos operaron»), sin ningún botón encendido.
  *
  * Mientras se escribe no se recorta nada (la nota guarda los espacios que se
  * van tecleando); al guardar, `normalizarRespuesta` deja la escritura de
@@ -16,7 +16,7 @@
  */
 
 /** Los campos de la ficha que tienen atajos. */
-export type CampoConAtajos = "ultimosAnalisis" | "cirugias" | "conductaSueno" | "actividadFisica" | "consumoAgua";
+export type CampoConAtajos = "ultimosAnalisis" | "cirugias" | "conductaSueno" | "actividadFisica";
 
 /** Los atajos de cada campo, en el orden en que se muestran. Una sola elección por campo. */
 export const ATAJOS: Record<CampoConAtajos, readonly string[]> = {
@@ -24,7 +24,6 @@ export const ATAJOS: Record<CampoConAtajos, readonly string[]> = {
   cirugias: ["Sí", "No"],
   conductaSueno: ["Bien", "Regular", "Mal"],
   actividadFisica: ["Sí", "No"],
-  consumoAgua: ["1 L", "2 L", "3 L", "4 L"],
 };
 
 /** Los campos con atajos, para recorrerlos. */

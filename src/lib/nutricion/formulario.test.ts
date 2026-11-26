@@ -106,14 +106,14 @@ describe("la edición manda sólo lo que cambió", () => {
       ultimosAnalisis: "no los trajo, la semana que viene ",
       conductaSueno: "Regular: se despierta a las 3 ",
       actividadFisica: "No",
-      consumoAgua: "2 litros",
+      consumoAgua: " 2 litros ",
     });
     expect(i).toMatchObject({
       cirugias: "Sí",
       ultimosAnalisis: "No los trajo: la semana que viene",
       conductaSueno: "Regular: se despierta a las 3",
       actividadFisica: "No",
-      consumoAgua: "2 litros",
+      consumoAgua: "2 L",
     });
     // Un atajo con la nota en blanco, o sólo espacios, es el atajo solo; nada es null.
     expect(fichaAInput({ ...fichaVacia(), cirugias: "No: " }).cirugias).toBe("No");

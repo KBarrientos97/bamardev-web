@@ -27,7 +27,7 @@ describe("leer", () => {
   it("el texto ES el atajo, sin mayúsculas ni tildes", () => {
     for (const t of ["Sí", "si", "SI", "Si", "sí", "SÍ"]) expect(leerRespuesta(t, SI_NO)).toEqual({ opcion: "Sí", nota: "" });
     expect(leerRespuesta("no", SI_NO)).toEqual({ opcion: "No", nota: "" });
-    expect(leerRespuesta("2 l", ATAJOS.consumoAgua)).toEqual({ opcion: "2 L", nota: "" });
+    expect(leerRespuesta("bien", ATAJOS.conductaSueno)).toEqual({ opcion: "Bien", nota: "" });
   });
 
   it("el atajo y la nota, con cualquier separador", () => {
@@ -45,8 +45,7 @@ describe("leer", () => {
     expect(leerRespuesta("Apendicitis 2015", SI_NO)).toEqual({ opcion: null, nota: "Apendicitis 2015" });
     expect(leerRespuesta("Nos operaron", SI_NO)).toEqual({ opcion: null, nota: "Nos operaron" });
     expect(leerRespuesta("No-fumador", SI_NO)).toEqual({ opcion: null, nota: "No-fumador" });
-    expect(leerRespuesta("2 litros", ATAJOS.consumoAgua)).toEqual({ opcion: null, nota: "2 litros" });
-    expect(leerRespuesta("1 L y medio", ATAJOS.consumoAgua)).toEqual({ opcion: null, nota: "1 L y medio" });
+    expect(leerRespuesta("Bienestar", ATAJOS.conductaSueno)).toEqual({ opcion: null, nota: "Bienestar" });
     expect(leerRespuesta("Sin", SI_NO)).toEqual({ opcion: null, nota: "Sin" });
   });
 

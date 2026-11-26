@@ -1,4 +1,5 @@
 import { edadEn, edadEnFecha, gradoDeTabla, hoyIso, textoDe, valorDe, type CampoNumerico } from "./calculo";
+import { normalizarAgua } from "./agua";
 import { ATAJOS, normalizarRespuesta, type CampoConAtajos } from "./respuestas";
 import type { Catalogo, Control, ControlInput, Enfermedad, FichaInput, MedidaConTabla, Paciente, Sexo } from "./tipos";
 
@@ -159,7 +160,7 @@ export function fichaAInput(f: FormFicha): Required<FichaInput> {
     conductaAlimentaria: texto(f.conductaAlimentaria),
     conductaSueno: conAtajos(f, "conductaSueno"),
     actividadFisica: conAtajos(f, "actividadFisica"),
-    consumoAgua: conAtajos(f, "consumoAgua"),
+    consumoAgua: texto(normalizarAgua(f.consumoAgua)),
   };
 }
 

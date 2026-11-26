@@ -18,6 +18,7 @@ import { edadDelControl, type FormControl, type FormFicha } from "../../lib/nutr
 import { ATAJOS } from "../../lib/nutricion/respuestas";
 import type { Catalogo, MedidaConTabla, Sexo } from "../../lib/nutricion/tipos";
 import { Tarjeta } from "../academia/piezas";
+import CampoAgua from "./CampoAgua";
 import CampoConAtajos from "./CampoConAtajos";
 import MedidorImc from "./MedidorImc";
 import { TONO } from "../../lib/nutricion/tonos";
@@ -400,14 +401,7 @@ export function EtapaFicha(
               valor={ficha.actividadFisica}
               onCambiar={(v) => cambiarFicha("actividadFisica", v)}
             />
-            <CampoConAtajos
-              id="ev-agua"
-              label="Consumo de agua"
-              opciones={ATAJOS.consumoAgua}
-              placeholder="Nota (opcional)"
-              valor={ficha.consumoAgua}
-              onCambiar={(v) => cambiarFicha("consumoAgua", v)}
-            />
+            <CampoAgua id="ev-agua" valor={ficha.consumoAgua} onCambiar={(v) => cambiarFicha("consumoAgua", v)} />
           </div>
         </div>
       </Tarjeta>
