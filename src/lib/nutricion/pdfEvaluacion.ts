@@ -10,6 +10,7 @@ import {
   dibujarDatos,
   dibujarPies,
   enUnRenglon,
+  enviarPdfPorWhatsapp,
   FIN,
   FONDO_CUADRO,
   FUENTES,
@@ -23,6 +24,7 @@ import {
   TEXTO,
   usar,
   UTIL,
+  type EnvioWhatsapp,
   type Fuente,
 } from "./pdfComun";
 import { celdaDe, evolucionDe, FILAS, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "./planilla";
@@ -823,4 +825,18 @@ export const nombreDelPdfEvaluacion = (hoy = hoyIso()) => `evaluacion-nutriciona
 /** «Descargar PDF»: en el teléfono y la tablet, compartir el archivo; en la PC, «Guardar como» o la descarga (`entregarPdf`). */
 export async function bajarPdfEvaluacion(doc: DocumentoEvaluacion): Promise<EntregaPdf> {
   return entregarPdf(await pdfDeLaEvaluacion(doc), nombreDelPdfEvaluacion());
+}
+
+/**
+ * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`), sólo el PDF: en el
+ * teléfono y la tablet, el diálogo de compartir con el PDF; en la PC, el chat
+ * del paciente (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF
+ * descargado.
+ */
+export async function enviarPdfEvaluacionPorWhatsapp(doc: DocumentoEvaluacion, telefono: string | null): Promise<EnvioWhatsapp> {
+  return enviarPdfPorWhatsapp({
+    telefono,
+    nombreArchivo: nombreDelPdfEvaluacion(),
+    armar: () => pdfDeLaEvaluacion(doc),
+  });
 }
