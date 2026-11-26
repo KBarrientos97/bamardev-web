@@ -290,13 +290,13 @@ export function filasDeComparar(controles: Control[], par: Par, catalogo: Catalo
   return { filas, sinMedir };
 }
 
-/** «Cadera y Pecho», «A, B y C». */
+/** «Cintura y Cadera», «A, B y C». */
 export function listaConY(nombres: string[]): string {
   if (nombres.length <= 1) return nombres.join("");
   return `${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
 }
 
-/** «Sin medir en esas fechas: Cadera y Pecho.» (o nada). */
+/** «Sin medir en esas fechas: Cintura y Cadera.» (o nada). */
 export function textoSinMedir(sinMedir: string[]): string | null {
   return sinMedir.length ? `Sin medir en esas fechas: ${listaConY(sinMedir)}.` : null;
 }

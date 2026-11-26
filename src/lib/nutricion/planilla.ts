@@ -42,15 +42,19 @@ export const MEDIDAS: Record<CampoControl, Medida> = {
     decimales: 1,
     grado: { medida: "visceral", campo: "visceralGrado" },
   },
+  pechoCm: { campo: "pechoCm", nombre: "Pecho", corto: "Pecho", unidad: "cm", decimales: 1 },
   cinturaCm: { campo: "cinturaCm", nombre: "Cintura", corto: "Cintura", unidad: "cm", decimales: 1 },
   caderaCm: { campo: "caderaCm", nombre: "Cadera", corto: "Cadera", unidad: "cm", decimales: 1 },
-  pechoCm: { campo: "pechoCm", nombre: "Pecho", corto: "Pecho", unidad: "cm", decimales: 1 },
 };
 
-/** Los renglones de la planilla, como la hoja de papel. */
-export const FILAS: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "edadCorporal", "grasaVisceral", "cinturaCm", "caderaCm", "pechoCm"];
-/** Las medidas que se pueden ver en el gráfico, en este orden. */
-export const DEL_GRAFICO: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "cinturaCm", "caderaCm", "pechoCm", "grasaVisceral"];
+/**
+ * Los renglones de la planilla. Las tres cintas van como el cuerpo, de arriba
+ * abajo (Pecho, Cintura, Cadera): el mismo orden del paso «Medidas» y de
+ * «Nuevo control», para que lo que se carga y lo que se lee no se crucen.
+ */
+export const FILAS: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "edadCorporal", "grasaVisceral", "pechoCm", "cinturaCm", "caderaCm"];
+/** Las medidas que se pueden ver en el gráfico, en este orden (las cintas, igual que en la planilla). */
+export const DEL_GRAFICO: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "pechoCm", "cinturaCm", "caderaCm", "grasaVisceral"];
 /** Las tarjetas de arriba. */
 export const DEL_RESUMEN: CampoControl[] = ["pesoKg", "imc", "grasaPct", "musculoPct", "grasaVisceral", "cinturaCm"];
 

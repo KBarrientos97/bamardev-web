@@ -243,9 +243,9 @@ describe("lo que dice el papel", () => {
       ["% de músculo", null],
       ["Edad corporal", "(años)"],
       ["Grasa visceral", null],
+      ["Pecho", "(cm)"],
       ["Cintura", "(cm)"],
       ["Cadera", "(cm)"],
-      ["Pecho", "(cm)"],
     ]);
     const fila = (n: string) => b.filas.find((f) => f.nombre === n)!.celdas;
     expect(fila("Peso").map((x) => x.texto)).toEqual(["72", "71,5", "70,95"]);
@@ -378,14 +378,14 @@ describe("las hojas", () => {
     ]);
     const encabezados = textos.filter((e) => e.t === "MEDIDA");
     expect(encabezados).toHaveLength(3);
-    // El bloque no se parte: su encabezado, su título y su último renglón («Pecho») en la misma hoja.
+    // El bloque no se parte: su encabezado, su título y su último renglón («Cadera») en la misma hoja.
     const titulos = textos.filter((e) => /^Controles \d+ a \d+ de 12$/.test(e.t));
-    const pechos = textos.filter((e) => e.t === "Pecho " || e.t === "Pecho");
+    const caderas = textos.filter((e) => e.t === "Cadera " || e.t === "Cadera");
     expect(titulos).toHaveLength(3);
-    expect(pechos).toHaveLength(3);
+    expect(caderas).toHaveLength(3);
     for (let i = 0; i < 3; i++) {
       expect(titulos[i].hoja).toBe(encabezados[i].hoja);
-      expect(pechos[i].hoja).toBe(encabezados[i].hoja);
+      expect(caderas[i].hoja).toBe(encabezados[i].hoja);
     }
   });
 
