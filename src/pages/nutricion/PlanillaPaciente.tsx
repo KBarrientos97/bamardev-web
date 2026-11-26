@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
@@ -7,9 +7,9 @@ import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Vacio, useAviso } from "
 import { iniciales } from "../../lib/format";
 import { apiNutricion, esNoEncontrado } from "../../lib/nutricion/api";
 import { conAlt, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
-import { fechaLarga, fmtCambio, sufijoDelDia, tallaConUnidad, vecesDelDia, type CampoControl } from "../../lib/nutricion/calculo";
+import { fechaLarga, fmtCambio, tallaConUnidad, type CampoControl } from "../../lib/nutricion/calculo";
 import { bajarPdfEvaluacion, documentoEvaluacion, enviarPdfEvaluacionPorWhatsapp } from "../../lib/nutricion/pdfEvaluacion";
-import { celdaDe, DEL_GRAFICO, evolucionDe, FILAS, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "../../lib/nutricion/planilla";
+import { DEL_GRAFICO, evolucionDe, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "../../lib/nutricion/planilla";
 import type { Catalogo, Control, Paciente } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
 import { editaNutricion, RUTA_SEGUIMIENTO } from "../../lib/permisos";
@@ -20,8 +20,8 @@ import BotonesPdf from "./BotonesPdf";
 import GraficoEvolucion from "./GraficoEvolucion";
 import HojaControl from "./HojaControl";
 import MedidorImc from "./MedidorImc";
-import { TONO } from "../../lib/nutricion/tonos";
 import { ChipGrado, Tecla } from "./piezas";
+import { Planilla } from "./PlanillaControles";
 
 /**
  * La planilla del paciente (CONTRATO-nutricion-evaluacion-22nov §4.3): quién
@@ -226,7 +226,6 @@ export default function PlanillaPaciente() {
               // Sin pesos del seguimiento, la bajada de siempre.
               conPesoSemanal ? (
                 <>
-                  {edita && controles.length > 0 && <span className="block">Tocá una fecha para corregir ese control.</span>}
                   <span className="block">
                     El peso de cada semana se anota en{" "}
                     {veSeguimiento ? (
@@ -239,8 +238,6 @@ export default function PlanillaPaciente() {
                     y se ve en el gráfico.
                   </span>
                 </>
-              ) : edita ? (
-                "Tocá una fecha para corregir ese control."
               ) : undefined
             }
             sinRelleno
@@ -381,152 +378,8 @@ export function Evolucion({ paciente, medida }: { paciente: Paciente; medida: Me
 
 // ── La planilla de controles ────────────────────────────────────────────────
 
-/**
- * Como la hoja: un renglón por medida y una columna por control, en orden de
- * fecha (la primera es la «Inicial»). Se desplaza de costado con la primera
- * columna fija, y arranca mostrando el último control.
- */
-export function Planilla({
-  controles,
-  catalogo,
-  onAbrir,
-}: {
-  controles: Control[];
-  catalogo: Catalogo;
-  onAbrir?: (c: Control) => void;
-}) {
-  const carril = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = carril.current;
-    if (el) el.scrollLeft = el.scrollWidth;
-  }, [controles.length]);
-
-  const celdaFija =
-    "sticky left-0 z-10 border-r border-borde-soft bg-white px-4 py-2.5 text-left shadow-[4px_0_8px_-6px_rgba(15,23,42,0.18)] max-sm:px-3 sm:px-5";
-  // El segundo control del mismo día lleva «(2)»: si no, las dos columnas se llaman igual.
-  const veces = vecesDelDia(controles.map((c) => c.fecha));
-
-  // Cada control ocupa justo 1/N de lo que queda al lado de la columna fija
-  // (N = cuántos entran: 2 en el celular, de 3 a 7 según el ancho) y el carril
-  // encaja de a una columna: nunca asoma medio control detrás de los nombres
-  // de las medidas («besidad grado 1»). Con menos controles que N, llenan el ancho.
-  const anchoControl = "calc((100cqw - var(--fija)) / min(var(--columnas), var(--visibles)))";
-  return (
-    <div className="@container">
-      {/* scroll-lateral-ok: la planilla de controles se lee como la hoja, con la primera columna fija (contrato §4.3). */}
-      <div
-        ref={carril}
-        className="overflow-x-auto snap-x snap-mandatory scroll-pl-(--fija) [--fija:8.75rem] [--visibles:2] sm:[--fija:12.5rem] sm:[--visibles:3] sm:@3xl:[--visibles:4] sm:@4xl:[--visibles:5] sm:@5xl:[--visibles:6] sm:@6xl:[--visibles:7]"
-      >
-        <table
-          className="min-w-full table-fixed border-separate border-spacing-0 text-sm"
-          style={{ "--columnas": controles.length, width: `calc(var(--fija) + var(--columnas) * ${anchoControl})` } as React.CSSProperties}
-        >
-          <colgroup>
-            <col style={{ width: "var(--fija)" }} />
-            {controles.map((c) => (
-              <col key={c.id} style={{ width: anchoControl }} />
-            ))}
-          </colgroup>
-        <thead>
-          <tr className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">
-            <th scope="col" className={`${celdaFija} bg-muted`}>
-              Medida
-            </th>
-            {controles.map((c, i) => (
-              <th scope="col" key={c.id} className="min-w-0 snap-start border-b border-borde-soft bg-muted px-2 py-1.5 text-center align-bottom">
-                {onAbrir ? (
-                  <button
-                    type="button"
-                    onClick={() => onAbrir(c)}
-                    aria-label={`Corregir el control del ${fechaLarga(c.fecha)}${sufijoDelDia(veces[i])}`}
-                    className="inline-flex w-full flex-col items-center gap-0.5 rounded-lg px-2 py-1 transition-colors hover:bg-white hover:text-primary-700 focus-visible:bg-white"
-                  >
-                    <Encabezado c={c} vez={veces[i]} />
-                  </button>
-                ) : (
-                  <span className="inline-flex flex-col items-center gap-0.5 px-2 py-1">
-                    <Encabezado c={c} vez={veces[i]} />
-                  </span>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {FILAS.map((campo) => {
-            const m = MEDIDAS[campo];
-            return (
-              <tr key={campo}>
-                <th scope="row" className={`${celdaFija} border-t font-semibold text-texto-2 sm:whitespace-nowrap`}>
-                  {m.nombre}
-                  {/* «% de grasa» ya dice su unidad: «(%)» al lado sería repetirla. */}
-                  {m.unidad && m.unidad !== "%" && <span className="font-normal text-texto-4 max-sm:block sm:ml-1">({m.unidad})</span>}
-                </th>
-                {controles.map((c) => {
-                  const { valor: v, grado: g } = celdaDe(c, m, catalogo);
-                  const t = g ? TONO[g.tono] : null;
-                  return (
-                    <td
-                      key={c.id}
-                      onClick={onAbrir ? () => onAbrir(c) : undefined}
-                      className={`border-t border-borde-soft px-2 py-1.5 text-center align-middle ${onAbrir ? "cursor-pointer" : ""}`}
-                    >
-                      {v == null && !g ? (
-                        <span className="text-texto-4">—</span>
-                      ) : (
-                        <span className={`inline-flex w-full max-w-[7.5rem] flex-col items-center rounded-lg px-1.5 py-1 ${t ? `${t.suave} ${t.texto}` : "text-texto"}`}>
-                          {v != null ? (
-                            <span className="font-semibold tabular-nums">{valorCon({ ...m, unidad: "" }, v)}</span>
-                          ) : (
-                            // El grado se eligió sin escribir el valor: «—» parecía un dato que falta.
-                            <span className="text-[12px] font-medium">sin medir</span>
-                          )}
-                          {g && <span className="text-[11px] font-medium leading-tight">{g.nombre}</span>}
-                        </span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-          <tr>
-            <th scope="row" className={`${celdaFija} border-t align-top font-semibold text-texto-2`}>
-              Nota
-            </th>
-            {controles.map((c) => (
-              <td
-                key={c.id}
-                onClick={onAbrir ? () => onAbrir(c) : undefined}
-                className={`max-w-[14rem] border-t border-borde-soft px-3 py-2 align-top text-[13px] text-texto-2 ${onAbrir ? "cursor-pointer" : ""}`}
-              >
-                {c.nota ? <span className="block whitespace-pre-line break-words">{c.nota}</span> : <span className="block text-center text-texto-4">—</span>}
-              </td>
-            ))}
-          </tr>
-        </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function Encabezado({ c, vez }: { c: Control; vez: number }) {
-  return (
-    <>
-      <span className="whitespace-nowrap text-[13px] font-bold normal-case tracking-normal text-texto tabular-nums">
-        {fechaLarga(c.fecha)}
-        {sufijoDelDia(vez)}
-      </span>
-      {c.inicial ? (
-        <span className="rounded-full bg-primary-100 px-2 py-px text-[10px] font-bold uppercase tracking-wide text-primary-700">Inicial</span>
-      ) : (
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-texto-4">Control</span>
-      )}
-    </>
-  );
-}
+// Vive en su archivo (§8 del contrato); sigue saliendo de acá porque la importa «Consultar mi ficha».
+export { Planilla };
 
 // ── La ficha, en modo lectura ───────────────────────────────────────────────
 
