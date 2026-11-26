@@ -10,10 +10,10 @@ import DialogoWhatsapp, { type EnvioPorWhatsapp } from "./DialogoWhatsapp";
  * Con poder ver alcanza. «Descargar PDF»: en el teléfono y la tablet, el
  * diálogo de compartir del equipo; en la PC, «Guardar como» o la descarga.
  *
- * «Enviar por WhatsApp» abre `DialogoWhatsapp` (26-nov-2026): el número de la
- * ficha y el botón de enviar, que abre el chat de ese número; `whatsapp` trae
- * lo que el diálogo necesita (el teléfono, el paciente, el mensaje, el nombre
- * del archivo y cómo armarlo).
+ * «Enviar por WhatsApp» abre `DialogoWhatsapp` (26-nov-2026): «Compartir
+ * el PDF» donde el equipo puede, y el número de la ficha con el botón que abre
+ * el chat de ese número; `whatsapp` trae lo que el diálogo necesita (el
+ * teléfono, el paciente, el nombre del archivo y cómo armarlo).
  */
 export default function BotonesPdf({
   listo,

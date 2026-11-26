@@ -536,9 +536,3 @@ export const nombreDelPdf = (hoy = hoyIso()) => `seguimiento-tratamiento-${hoy}.
 export async function bajarPdfSeguimiento(doc: DocumentoSeguimiento): Promise<EntregaPdf> {
   return entregarPdf(await pdfDelSeguimiento(doc), nombreDelPdf());
 }
-
-/**
- * El mensaje que acompaña al PDF en «Enviar por WhatsApp» (`DialogoWhatsapp`:
- * el chat del número o el diálogo de compartir, ver `pdfComun`).
- */
-export const mensajeDelSeguimiento = (hoy = hoyIso()) => `Seguimiento del tratamiento al ${fechaLarga(hoy)}.`;

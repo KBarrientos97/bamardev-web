@@ -5,15 +5,15 @@ import BotonesPdf from "./BotonesPdf";
 import DialogoWhatsapp, { type EnvioPorWhatsapp } from "./DialogoWhatsapp";
 
 /**
- * «Enviar por WhatsApp» del PDF de nutrición (26-nov-2026): el número de la
- * ficha en el campo y el botón de enviar, que abre el chat de ESE número con
- * el mensaje (`wa.me/<número>?text=…`) y baja el PDF; «Compartir el PDF por
- * otra app» sólo donde el equipo puede compartir archivos. Lo que cuida el
- * envío: a qué número va, que el incompleto no abre nada, el mensaje, y que
- * cada vez arranca con el de la ficha (no recuerda otro).
+ * «Enviar por WhatsApp» del PDF de nutrición (26-nov-2026): lo que importa
+ * es que llegue el PDF, sin mensaje. Donde el equipo puede compartir
+ * archivos, «Compartir el PDF» es lo principal (el PDF va adjunto); debajo,
+ * el número de la ficha y el botón que abre el chat de ESE número
+ * (`wa.me/<número>`, sin texto) y baja el PDF. Lo que cuida el envío: a qué
+ * número va, que el incompleto no abre nada, que no viaja ningún mensaje, y
+ * que cada vez arranca con el de la ficha (no recuerda otro).
  */
 
-const MENSAJE = "Seguimiento del tratamiento al 26/11/2026.";
 const ARCHIVO = "seguimiento-tratamiento-2026-11-26.pdf";
 
 function envio(cambios: Partial<EnvioPorWhatsapp> = {}): EnvioPorWhatsapp {
@@ -21,7 +21,6 @@ function envio(cambios: Partial<EnvioPorWhatsapp> = {}): EnvioPorWhatsapp {
     telefono: "70490686",
     paciente: "Lucía Paredes Soria",
     que: "Seguimiento",
-    mensaje: MENSAJE,
     nombreArchivo: ARCHIVO,
     armar: vi.fn(() => Promise.resolve(new Blob(["%PDF-1.3"], { type: "application/pdf" }))),
     ...cambios,
@@ -34,8 +33,15 @@ function abrir(e: EnvioPorWhatsapp = envio()) {
   return { ...props, dialogo: screen.getByRole("dialog", { name: "Enviar por WhatsApp" }), campo: screen.getByLabelText("Número de WhatsApp") as HTMLInputElement };
 }
 
+/** El teléfono o la tablet: pantalla táctil sin mouse. */
+function conElDedo() {
+  vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+}
+
 const escribir = (campo: HTMLElement, valor: string) => fireEvent.change(campo, { target: { value: valor } });
-const botonEnviar = (dialogo: HTMLElement) => within(dialogo).getByRole("button", { name: /^Enviar por WhatsApp/ });
+const botonChat = (dialogo: HTMLElement) => within(dialogo).getByRole("button", { name: /^Abrir el chat de WhatsApp/ });
+const AYUDA_PC = "Se abre WhatsApp en el chat de ese número y el PDF se descarga: arrastralo al chat o adjuntalo con el clip.";
+const AYUDA_DEDO = "Se abre su chat y el PDF se descarga: adjuntalo ahí con el clip.";
 
 let abrirVentana: ReturnType<typeof vi.spyOn>;
 let bajados: string[];
@@ -58,11 +64,10 @@ afterEach(() => {
   Object.assign(navigator, { share: undefined, canShare: undefined });
 });
 
-/** El link que se abrió, separado: el número y el mensaje. */
-function chatAbierto() {
+/** El chat que se abrió: siempre `https://wa.me/<número>`, sin `?text=`. */
+function chatAbierto(): string {
   expect(abrirVentana).toHaveBeenCalledTimes(1);
-  const url = new URL(String(abrirVentana.mock.calls[0][0]));
-  return { origen: url.origin, numero: url.pathname.slice(1), texto: url.searchParams.get("text") };
+  return String(abrirVentana.mock.calls[0][0]);
 }
 
 describe("el número", () => {
@@ -73,7 +78,7 @@ describe("el número", () => {
     expect(campo).toHaveAttribute("inputmode", "tel");
     expect(within(dialogo).getByText("+591")).toBeInTheDocument();
     expect(within(dialogo).getByText("Es el teléfono de su ficha. Podés cambiarlo.")).toBeInTheDocument();
-    expect(botonEnviar(dialogo)).toHaveAccessibleName("Enviar por WhatsApp al +591 70490686");
+    expect(botonChat(dialogo)).toHaveAccessibleName("Abrir el chat de WhatsApp del +591 70490686");
     expect(within(dialogo).getByText("Seguimiento de Lucía Paredes Soria")).toBeInTheDocument();
     expect(numeroDeLaFicha("+591 70490686")).toBe("70490686");
     expect(numeroDeLaFicha("59170490686")).toBe("70490686");
@@ -85,6 +90,7 @@ describe("el número", () => {
     expect(campo).toHaveValue("");
     expect(within(dialogo).getByText("No tiene teléfono en su ficha: escribí el número.")).toBeInTheDocument();
     expect(within(dialogo).queryByRole("button", { name: "Borrar el número" })).not.toBeInTheDocument();
+    expect(botonChat(dialogo)).toHaveAccessibleName("Abrir el chat de WhatsApp");
   });
 
   it("8 dígitos van con 591 adelante; 11 con el 591, tal cual; con «+», de otro país, tal cual", () => {
@@ -115,41 +121,50 @@ describe("el número", () => {
   });
 });
 
-describe("enviar", () => {
-  it("abre el chat de ese número en el mismo toque, con el mensaje en `text=`, baja el PDF, cierra y avisa", async () => {
+describe("lo que se manda", () => {
+  it("el PDF solo, con su nombre entero; ningún mensaje", () => {
+    const { dialogo } = abrir();
+    expect(dialogo).toHaveTextContent(ARCHIVO);
+    expect(within(dialogo).getByText("Documento PDF")).toBeInTheDocument();
+    expect(within(dialogo).queryByText("Se envía")).not.toBeInTheDocument();
+    expect(dialogo).not.toHaveTextContent(/mensaje/i);
+  });
+});
+
+describe("abrir el chat del número", () => {
+  it("abre el chat de ese número en el mismo toque, sin `text=`, baja el PDF, cierra y avisa", async () => {
     const e = envio();
     const { dialogo, onCerrar, onAviso } = abrir(e);
     // El PDF se empieza a armar al abrir.
     expect(e.armar).toHaveBeenCalledTimes(1);
-    fireEvent.click(botonEnviar(dialogo));
-    // Todavía sin esperar nada: el chat ya se abrió.
-    expect(chatAbierto()).toEqual({ origen: "https://wa.me", numero: "59170490686", texto: MENSAJE });
-    expect(String(abrirVentana.mock.calls[0][0])).toContain(`?text=${encodeURIComponent(MENSAJE)}`);
+    fireEvent.click(botonChat(dialogo));
+    // Todavía sin esperar nada: el chat ya se abrió, a secas.
+    expect(chatAbierto()).toBe("https://wa.me/59170490686");
     expect(onCerrar).toHaveBeenCalled();
     await waitFor(() => expect(onAviso).toHaveBeenCalledWith("Se abrió el chat de +591 70490686. El PDF se descargó: adjuntalo con el clip."));
     expect(bajados).toEqual([ARCHIVO]);
     expect(e.armar).toHaveBeenCalledTimes(1);
   });
 
-  it("Enter en el campo también envía; un número de otro país va tal cual", () => {
+  it("Enter en el campo también abre el chat; un número de otro país va tal cual", () => {
     const { campo } = abrir(envio({ telefono: null }));
     escribir(campo, "+54 9 11 1234-5678");
     fireEvent.submit(campo.form!);
-    expect(chatAbierto().numero).toBe("5491112345678");
+    expect(chatAbierto()).toBe("https://wa.me/5491112345678");
   });
 
   it("un número que cambió de a mano es el que va", () => {
     const { dialogo, campo } = abrir();
     escribir(campo, "71234567");
     expect(within(dialogo).queryByText("Es el teléfono de su ficha. Podés cambiarlo.")).not.toBeInTheDocument();
-    fireEvent.click(botonEnviar(dialogo));
-    expect(chatAbierto().numero).toBe("59171234567");
+    fireEvent.click(botonChat(dialogo));
+    expect(chatAbierto()).toBe("https://wa.me/59171234567");
   });
 
   it("el número incompleto no abre nada: el error en rojo y el diálogo abierto", () => {
     const { dialogo, campo, onCerrar } = abrir();
     escribir(campo, "7049068");
-    fireEvent.click(botonEnviar(dialogo));
+    fireEvent.click(botonChat(dialogo));
     expect(abrirVentana).not.toHaveBeenCalled();
     expect(within(dialogo).getByRole("alert")).toHaveTextContent("Escribí el número completo: 8 dígitos.");
     expect(campo).toHaveAttribute("aria-invalid", "true");
@@ -161,14 +176,14 @@ describe("enviar", () => {
 
   it("vacío, tampoco", () => {
     const { dialogo } = abrir(envio({ telefono: null }));
-    fireEvent.click(botonEnviar(dialogo));
+    fireEvent.click(botonChat(dialogo));
     expect(abrirVentana).not.toHaveBeenCalled();
     expect(within(dialogo).getByRole("alert")).toBeInTheDocument();
   });
 
   it("si armar el PDF falla, el chat se abre igual y sale el error", async () => {
     const { dialogo, onError, onAviso } = abrir(envio({ armar: vi.fn(() => Promise.reject(new Error("jsPDF"))) }));
-    fireEvent.click(botonEnviar(dialogo));
+    fireEvent.click(botonChat(dialogo));
     expect(abrirVentana).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onError).toHaveBeenCalledWith("No se pudo armar el PDF. Probá de nuevo."));
     expect(onAviso).not.toHaveBeenCalled();
@@ -176,26 +191,43 @@ describe("enviar", () => {
   });
 });
 
-describe("compartir el PDF por otra app", () => {
-  it("en la PC (sin pantalla táctil) no está", () => {
+describe("«Compartir el PDF»", () => {
+  it("en la PC (sin pantalla táctil) no está: sólo el número, sin la alternativa, y la ayuda de la PC", () => {
     Object.assign(navigator, { share: vi.fn(), canShare: () => true });
     const { dialogo } = abrir();
     expect(within(dialogo).queryByRole("button", { name: /Compartir el PDF/ })).not.toBeInTheDocument();
+    expect(within(dialogo).queryByText("¿No lo tenés agendado?")).not.toBeInTheDocument();
+    expect(within(dialogo).getByText(AYUDA_PC)).toBeInTheDocument();
   });
 
   it("con el dedo pero sin poder compartir archivos, tampoco", () => {
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+    conElDedo();
     const { dialogo } = abrir();
     expect(within(dialogo).queryByRole("button", { name: /Compartir el PDF/ })).not.toBeInTheDocument();
+    expect(within(dialogo).getByText(AYUDA_PC)).toBeInTheDocument();
   });
 
-  it("con el dedo y donde se puede: comparte el PDF con el mensaje y cierra; cancelado, queda abierto", async () => {
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+  it("con el dedo y donde se puede: arriba el PDF, después «Compartir el PDF» y, como alternativa, el número", () => {
+    conElDedo();
+    Object.assign(navigator, { share: vi.fn(), canShare: () => true });
+    const { dialogo, campo } = abrir();
+    const compartir = within(dialogo).getByRole("button", { name: "Compartir el PDF" });
+    expect(compartir).toHaveAccessibleDescription("Elegís WhatsApp y el chat del paciente: el PDF va adjunto.");
+    const pdf = within(dialogo).getByText("Documento PDF");
+    const alternativa = within(dialogo).getByText("¿No lo tenés agendado?");
+    const despues = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(despues(pdf, compartir)).toBe(true);
+    expect(despues(compartir, alternativa)).toBe(true);
+    expect(despues(alternativa, campo)).toBe(true);
+    expect(within(dialogo).getByText(AYUDA_DEDO)).toBeInTheDocument();
+  });
+
+  it("comparte el PDF solo, sin texto, y cierra; cancelado, queda abierto", async () => {
+    conElDedo();
     const share = vi.fn().mockRejectedValueOnce(new DOMException("cancelado", "AbortError")).mockResolvedValueOnce(undefined);
     Object.assign(navigator, { share, canShare: () => true });
     const { dialogo, onCerrar, onError } = abrir();
-    const compartir = within(dialogo).getByRole("button", { name: "Compartir el PDF por otra app" });
-    expect(compartir).toHaveAccessibleDescription("Para elegir un contacto guardado u otra aplicación.");
+    const compartir = within(dialogo).getByRole("button", { name: "Compartir el PDF" });
     fireEvent.click(compartir);
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(compartir).toBeEnabled());
@@ -203,9 +235,9 @@ describe("compartir el PDF por otra app", () => {
     fireEvent.click(compartir);
     await waitFor(() => expect(onCerrar).toHaveBeenCalled());
     const datos = share.mock.calls[1][0] as ShareData;
+    expect(Object.keys(datos).sort()).toEqual(["files", "title"]);
     expect(datos.files?.[0].name).toBe(ARCHIVO);
     expect(datos.files?.[0].type).toBe("application/pdf");
-    expect(datos.text).toBe(MENSAJE);
     expect(abrirVentana).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });

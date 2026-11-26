@@ -109,15 +109,15 @@ describe("los botones del PDF", () => {
     expect(screen.getByRole("button", { name: "Descargar PDF" })).toBeEnabled();
   });
 
-  // 26-nov: ya no manda directo; abre el diálogo con el número de la ficha (ver DialogoWhatsapp.test).
-  it("«Enviar por WhatsApp» abre el diálogo con el teléfono de la ficha y el mensaje de la evaluación", async () => {
+  // 26-nov: ya no manda directo; abre el diálogo con el PDF y el número de la ficha, sin mensaje (ver DialogoWhatsapp.test).
+  it("«Enviar por WhatsApp» abre el diálogo con el PDF de la evaluación y el teléfono de la ficha", async () => {
     await abrir(paciente({ controles }));
     fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
     const dialogo = screen.getByRole("dialog", { name: "Enviar por WhatsApp" });
     expect(within(dialogo).getByText("Evaluación de Lucía Paredes Soria")).toBeInTheDocument();
     expect(within(dialogo).getByLabelText("Número de WhatsApp")).toHaveValue("70000000");
-    expect(within(dialogo).getByText(/^Evaluación nutricional al \d{2}\/\d{2}\/\d{4}\.$/)).toBeInTheDocument();
     expect(within(dialogo).getByText(/^evaluacion-nutricional-/)).toBeInTheDocument();
+    expect(within(dialogo).queryByText(/^Evaluación nutricional al /)).not.toBeInTheDocument();
   });
 });
 

@@ -7,7 +7,6 @@ import {
   dibujarSeguimiento,
   documentoSeguimiento,
   dosisParaPdf,
-  mensajeDelSeguimiento,
   nombreDelPdf,
   paginarFilas,
   pdfDelSeguimiento,
@@ -154,25 +153,24 @@ describe("la talla y el envío", () => {
     expect(doc.datos.find((d) => d.etiqueta === "TALLA")!.valor).toBe("1,60 m");
   });
 
-  // «Enviar por WhatsApp» (`DialogoWhatsapp`, 26-nov) manda este mensaje y este nombre, con el texto de siempre.
-  it("el mensaje y el nombre del archivo de «Enviar por WhatsApp»", () => {
-    expect(mensajeDelSeguimiento("2026-11-26")).toBe("Seguimiento del tratamiento al 26/11/2026.");
+  // «Enviar por WhatsApp» (`DialogoWhatsapp`) manda el PDF con este nombre, sin mensaje (26-nov).
+  it("el nombre del archivo de «Enviar por WhatsApp»", () => {
     expect(nombreDelPdf("2026-11-26")).toBe("seguimiento-tratamiento-2026-11-26.pdf");
   });
 
-  it("«Compartir el PDF por otra app»: el diálogo de compartir con el PDF del seguimiento y el mensaje, sin abrir wa.me", async () => {
+  it("«Compartir el PDF»: el diálogo de compartir con el PDF del seguimiento solo (sin texto), sin abrir wa.me", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     const abrir = vi.spyOn(window, "open").mockReturnValue(null);
     Object.assign(navigator, { share, canShare: () => true });
     try {
       const h = hojaDe(lucia);
       const doc = documentoSeguimiento({ negocio: null, paciente: h.paciente, tratamiento: h.tratamiento!, hoy: HOY });
-      expect(await compartirPdf({ texto: mensajeDelSeguimiento(), nombreArchivo: nombreDelPdf(), armar: () => pdfDelSeguimiento(doc) })).toBe("compartido");
+      expect(await compartirPdf({ nombreArchivo: nombreDelPdf(), armar: () => pdfDelSeguimiento(doc) })).toBe("compartido");
       expect(abrir).not.toHaveBeenCalled();
       const datos = share.mock.calls[0][0] as ShareData;
       expect(datos.files?.[0].name).toMatch(/^seguimiento-tratamiento-\d{4}-\d{2}-\d{2}\.pdf$/);
       expect(datos.files?.[0].type).toBe("application/pdf");
-      expect(datos.text).toMatch(/^Seguimiento del tratamiento al /);
+      expect(datos.text).toBeUndefined();
     } finally {
       abrir.mockRestore();
       Object.assign(navigator, { share: undefined, canShare: undefined });
