@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import { Boton, Confirmar, Modal } from "../../components/ui";
 import { apiNutricion } from "../../lib/nutricion/api";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../lib/nutricion/atajos";
+import { enfocaSolo } from "../../lib/nutricion/foco";
 import {
   avisoImc,
   calcularImc,
@@ -212,8 +213,9 @@ export default function HojaControl({
             value={form[campo]}
             unidad={UNIDAD[campo]}
             invalido={!!err}
-            // En un control nuevo se empieza por el peso: la fecha ya es hoy.
-            autoFocus={!control && campo === "pesoKg"}
+            // En un control nuevo se empieza por el peso: la fecha ya es hoy. Con el dedo,
+            // sin subir el teclado al abrir (`foco.ts`).
+            autoFocus={!control && campo === "pesoKg" && enfocaSolo()}
             onChange={(v) => cambiar(campo, v)}
             onBlur={() => {
               const t = textoAlSalir(campo, form[campo]);

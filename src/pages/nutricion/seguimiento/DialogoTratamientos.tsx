@@ -3,6 +3,7 @@ import { Icon } from "../../../components/Icon";
 import { Boton, Cargando, Confirmar, ErrorMsg, Modal } from "../../../components/ui";
 import { ApiError } from "../../../lib/api";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
+import { enfocaSolo, enfocarOMostrar } from "../../../lib/nutricion/foco";
 import { apiSeguimiento, esProductoRepetido } from "../../../lib/nutricion/seguimiento/api";
 import { textoVial } from "../../../lib/nutricion/seguimiento/formato";
 import {
@@ -165,7 +166,8 @@ export default function DialogoTratamientos({
     if (hayErroresDeProducto(deFabrica ? { ...errores, nombre: null } : errores)) {
       setErrorForm("");
       // Al primer campo para revisar de ESTA ventana (la hoja de atrás también es un diálogo).
-      setTimeout(() => campos.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0);
+      // Con el dedo queda a la vista, sin subir el teclado.
+      setTimeout(() => enfocarOMostrar(campos.current?.querySelector<HTMLElement>('[aria-invalid="true"]')), 0);
       return;
     }
     let pedido: () => Promise<ListaProductos>;
@@ -210,6 +212,7 @@ export default function DialogoTratamientos({
   const agregarVial = () => {
     const i = form.viales.length;
     setForm((f) => (f.viales.length >= MAX_PRESENTACIONES ? f : { ...f, viales: [...f.viales, { mg: "", ml: "" }] }));
+    // El botón es para escribir el renglón nuevo: el foco va, también con el dedo (`foco.ts`).
     setTimeout(() => document.getElementById(`${ID}-vial-${i}-mg`)?.focus(), 0);
   };
 
@@ -263,7 +266,9 @@ export default function DialogoTratamientos({
               id={`${ID}-nombre`}
               value={form.nombre}
               maxLength={80}
-              autoFocus
+              // «Agregar tratamiento» y «+ Agregar» son para escribir el nombre: el foco va,
+              // también con el dedo. «Editar» abre un formulario: con el dedo, sin teclado.
+              autoFocus={!producto || enfocaSolo()}
               autoComplete="off"
               enterKeyHint="next"
               invalido={!!errNombre}
@@ -298,7 +303,8 @@ export default function DialogoTratamientos({
                       value={v.mg}
                       unidad="mg"
                       enterKeyHint="next"
-                      autoFocus={deFabrica && i === 0}
+                      // Editar uno de fábrica empieza por su vial (el nombre no se cambia); con el dedo, sin teclado.
+                      autoFocus={deFabrica && i === 0 && enfocaSolo()}
                       invalido={!!errMg || falta === "mg"}
                       onChange={(x) => cambiarVial(i, "mg", x)}
                       className="min-h-12 pr-10! text-base"

@@ -23,9 +23,10 @@ type Filtro = "en_tratamiento" | "todos";
 
 /**
  * Seguimiento · buscar al paciente (CONTRATO-nutricion-seguimiento-23nov
- * §4.1). El buscador arranca con el foco: se escribe el carnet o el nombre y
- * busca solo (la misma búsqueda de la Evaluación). Sin texto, los pacientes en
- * tratamiento, el de actividad más reciente arriba. `/` o `Ctrl+K` vuelven al
+ * §4.1). En la PC el buscador arranca con el foco (con el dedo, no: `foco.ts`):
+ * se escribe el carnet o el nombre y busca solo (la misma búsqueda de la
+ * Evaluación). Sin texto, los pacientes en tratamiento, el de actividad más
+ * reciente arriba. `/` o `Ctrl+K` vuelven al
  * buscador, `↑` `↓` recorren y `Enter` abre (con un solo resultado, directo).
  * Los avisos de pago y el botón «Pagos pendientes», sólo con los avisos prendidos.
  */

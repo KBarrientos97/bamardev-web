@@ -4,6 +4,7 @@ import { Boton, Confirmar } from "../../../components/ui";
 import { fmtFechaHora, fmtPlata } from "../../../lib/format";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
 import { fechaLarga, fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
+import { enfocaSolo, enfocarOMostrar } from "../../../lib/nutricion/foco";
 import { apiSeguimiento, esCodigo, hojaDesactualizada } from "../../../lib/nutricion/seguimiento/api";
 import {
   concentracion,
@@ -163,21 +164,22 @@ export default function HojaSemana({
   useEffect(() => {
     if (error) avisoError.current?.scrollIntoView?.({ block: "nearest" });
   }, [error]);
-  // «Anotar pago»: directo al campo del medicamento.
+  // «Anotar pago»: directo al campo del medicamento. En la PC con el foco; con
+  // el dedo, el pago queda a la vista sin subir el teclado (`foco.ts`).
   useEffect(() => {
     if (!focoPago) return;
     const t = setTimeout(() => {
-      medicamento.current?.focus();
+      enfocarOMostrar(medicamento.current);
       medicamento.current?.scrollIntoView?.({ block: "center" });
     }, 50);
     return () => clearTimeout(t);
   }, [focoPago]);
-  // «Corregir» la marca desde la tabla: directo al producto.
+  // «Corregir» la marca desde la tabla: directo al producto (con el dedo, a la vista).
   useEffect(() => {
     if (!focoProducto) return;
     const t = setTimeout(() => {
       refProducto.current?.scrollIntoView?.({ block: "center" });
-      refProducto.current?.focus();
+      enfocarOMostrar(refProducto.current);
     }, 80);
     return () => clearTimeout(t);
   }, [focoProducto]);
@@ -437,7 +439,8 @@ export default function HojaSemana({
               onCambiar={(v) => cambiar("fecha", v)}
               className="col-start-2 row-start-1 justify-self-start sm:row-span-2 sm:justify-self-end"
             />
-            <p className="col-span-2 row-start-2 min-w-0 text-sm text-texto-2 sm:col-span-1 sm:col-start-1">
+            {/* Con el teclado abierto y poco alto, este renglón no va (los errores de abajo, sí). */}
+            <p className="col-span-2 row-start-2 min-w-0 text-sm text-texto-2 sm:col-span-1 sm:col-start-1 group-data-[teclado=compacto]/hoja:hidden">
               {pacienteNombre} · {productoSemana.nombre}
               {vial && <span className="max-sm:hidden">, {vial}</span>}
             </p>
@@ -474,7 +477,8 @@ export default function HojaSemana({
                 antes={pesoAntes ? { pesoKg: pesoAntes.pesoKg!, semana: pesoAntes.semana } : null}
                 inicial={primerPeso ? { pesoKg: primerPeso.pesoKg!, semana: primerPeso.semana } : null}
                 evaluacion={pesoDeLaEvaluacion(ultimoControl, ultimoPeso, esInicial ? "inicio" : "semana", hoy, fechaHoja)}
-                autoFocus={!registro && !focoPago}
+                // Una semana nueva empieza por el peso; con el dedo, sin subir el teclado al abrir (Kevin, 26-nov).
+                autoFocus={!registro && !focoPago && enfocaSolo()}
               />
 
               <BloqueDosis
@@ -591,7 +595,8 @@ export default function HojaSemana({
         procesando={guardando}
         onAnotar={() => {
           setPreguntaPago(false);
-          setTimeout(() => medicamento.current?.focus(), 0);
+          // De vuelta de la pregunta: con el dedo, el pago a la vista y el teclado cerrado.
+          setTimeout(() => enfocarOMostrar(medicamento.current), 0);
         }}
         onGuardar={() => void guardar(true)}
       />
@@ -602,6 +607,7 @@ export default function HojaSemana({
             setEnLaLista(false);
             if (productos) onListaCambiada?.(productos);
             // De vuelta al «+ Agregar»: el botón nuevo queda a la vista, sin elegirse.
+            // Es un botón (no sube el teclado): también con el dedo.
             setTimeout(() => document.getElementById(`${id}-producto-agregar`)?.focus(), 0);
           }}
         />
