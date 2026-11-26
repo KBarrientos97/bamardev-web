@@ -23,7 +23,7 @@ import {
   textoSexo,
   textoVial,
 } from "../../../lib/nutricion/seguimiento/formato";
-import { bajarPdfSeguimiento, documentoSeguimiento, nombreDelPdf, pdfDelSeguimiento } from "../../../lib/nutricion/seguimiento/pdf";
+import { bajarPdfSeguimiento, documentoSeguimiento, enviarPdfSeguimientoPorWhatsapp } from "../../../lib/nutricion/seguimiento/pdf";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
@@ -421,13 +421,7 @@ export default function HojaSeguimiento() {
               <BotonesPdf
                 listo="PDF del seguimiento listo."
                 descargar={() => bajarPdfSeguimiento(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat }))}
-                whatsapp={{
-                  telefono: p.telefono,
-                  paciente: p.nombre,
-                  que: "Seguimiento",
-                  nombreArchivo: nombreDelPdf(),
-                  armar: () => pdfDelSeguimiento(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat })),
-                }}
+                enviar={() => enviarPdfSeguimientoPorWhatsapp(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat }), p.telefono)}
                 onAviso={setAviso}
                 onError={setError}
               />

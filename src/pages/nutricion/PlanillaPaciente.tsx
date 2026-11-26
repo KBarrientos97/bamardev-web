@@ -8,7 +8,7 @@ import { iniciales } from "../../lib/format";
 import { apiNutricion, esNoEncontrado } from "../../lib/nutricion/api";
 import { conAlt, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
 import { fechaLarga, fmtCambio, tallaConUnidad, type CampoControl } from "../../lib/nutricion/calculo";
-import { bajarPdfEvaluacion, documentoEvaluacion, nombreDelPdfEvaluacion, pdfDeLaEvaluacion } from "../../lib/nutricion/pdfEvaluacion";
+import { bajarPdfEvaluacion, documentoEvaluacion, enviarPdfEvaluacionPorWhatsapp } from "../../lib/nutricion/pdfEvaluacion";
 import { DEL_GRAFICO, evolucionDe, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "../../lib/nutricion/planilla";
 import type { Catalogo, Control, Paciente } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
@@ -230,13 +230,7 @@ export default function PlanillaPaciente() {
               <BotonesPdf
                 listo="PDF de la evaluación listo."
                 descargar={() => bajarPdfEvaluacion(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat }))}
-                whatsapp={{
-                  telefono: p.telefono,
-                  paciente: p.nombre,
-                  que: "Evaluación",
-                  nombreArchivo: nombreDelPdfEvaluacion(),
-                  armar: () => pdfDeLaEvaluacion(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat })),
-                }}
+                enviar={() => enviarPdfEvaluacionPorWhatsapp(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat }), p.telefono)}
                 onAviso={setAviso}
                 onError={setError}
               />
