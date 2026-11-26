@@ -17,7 +17,6 @@ import {
 import { edadDelControl, type FormControl, type FormFicha } from "../../lib/nutricion/formulario";
 import type { Catalogo, MedidaConTabla, Sexo } from "../../lib/nutricion/tipos";
 import { Tarjeta } from "../academia/piezas";
-import FiguraCuerpo, { type Cinta } from "./FiguraCuerpo";
 import MedidorImc from "./MedidorImc";
 import { TONO } from "../../lib/nutricion/tonos";
 import { AreaTexto, BotonesSexo, CampoNumero, CampoTexto, ChipGrado, Rotulo } from "./piezas";
@@ -86,7 +85,7 @@ type EnfermedadForm = FormFicha["enfermedades"][string];
  * Un campo de número con su rótulo. Al salir, lo escrito se muestra con coma
  * y sin ceros de más («82.40» → «82,4»).
  */
-function Numero({
+export function Numero({
   id,
   campo,
   label,
@@ -415,57 +414,7 @@ function BotonSiNo({ marcado, tono, onClick, children }: { marcado: boolean; ton
   );
 }
 
-// ── 2 · Medidas ─────────────────────────────────────────────────────────────
-
-export function EtapaMedidas(p: PropsEtapa & { cinta: Cinta | null; onCinta: (c: Cinta | null) => void }) {
-  const { ficha, control, cambiarControl } = p;
-  const sexo = sexoDe(ficha);
-  const medida = (cinta: Cinta, campo: "cinturaCm" | "caderaCm" | "pechoCm", label: string) => (
-    <Numero
-      id={`ev-${cinta}`}
-      campo={campo}
-      label={label}
-      unidad="cm"
-      valor={control[campo]}
-      onCambiar={(v) => cambiarControl(campo, v)}
-      onFocus={() => p.onCinta(cinta)}
-      onBlur={() => p.onCinta(null)}
-      p={p}
-    />
-  );
-  return (
-    <Tarjeta titulo="Medidas" bajada="Con la cinta, en centímetros.">
-      <div className="grid grid-cols-[minmax(0,1fr)_118px] items-start gap-x-4 gap-y-4 sm:grid-cols-[minmax(0,1fr)_200px] sm:gap-x-8 lg:grid-cols-[minmax(0,1fr)_230px]">
-        <div className="space-y-4">
-          <Rotulo htmlFor="ev-fecha" label="Fecha de la evaluación" error={p.error("fecha")}>
-            <CampoTexto
-              id="ev-fecha"
-              type="date"
-              value={control.fecha}
-              max={hoyIso()}
-              invalido={!!p.error("fecha")}
-              onChange={(e) => cambiarControl("fecha", e.target.value)}
-              onBlur={() => p.tocar("fecha")}
-            />
-          </Rotulo>
-          {medida("cintura", "cinturaCm", "Cintura")}
-          {medida("cadera", "caderaCm", "Cadera")}
-          {medida("pecho", "pechoCm", "Pecho")}
-        </div>
-        <div className="sm:pt-1">
-          {sexo ? (
-            <FiguraCuerpo sexo={sexo} resaltada={p.cinta} />
-          ) : (
-            <div className="space-y-2 rounded-2xl border border-dashed border-borde bg-muted p-2.5 sm:p-4">
-              <p className="text-center text-[12px] font-semibold text-texto-3 sm:text-[13px]">Sexo del paciente</p>
-              <BotonesSexo valor="" apilados etiqueta="Sexo del paciente" onElegir={(s) => p.cambiarFicha("sexo", s)} />
-            </div>
-          )}
-        </div>
-      </div>
-    </Tarjeta>
-  );
-}
+// ── 2 · Medidas: en `EtapaMedidas.tsx` ──────────────────────────────────────
 
 // ── Una medida con su tabla de grados (etapas 3 y 4) ───────────────────────
 
