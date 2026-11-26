@@ -1,7 +1,18 @@
 import { jsPDF } from "jspdf";
 import { describe, expect, it, vi } from "vitest";
 import { armarTratamiento, hojaDe, pacientesDePrueba, type SemanaCruda } from "../../../test/seguimientoFixtures";
-import { conUnidadesPegadas, dibujarSeguimiento, documentoSeguimiento, dosisParaPdf, enviarPdfSeguimientoPorWhatsapp, nombreDelPdf, paginarFilas, type FilaMedida } from "./pdf";
+import { compartirPdf } from "../pdfComun";
+import {
+  conUnidadesPegadas,
+  dibujarSeguimiento,
+  documentoSeguimiento,
+  dosisParaPdf,
+  mensajeDelSeguimiento,
+  nombreDelPdf,
+  paginarFilas,
+  pdfDelSeguimiento,
+  type FilaMedida,
+} from "./pdf";
 
 /**
  * El PDF del seguimiento (CONTRATO-nutricion-seguimiento-23nov §7.2, maqueta
@@ -143,23 +154,27 @@ describe("la talla y el envío", () => {
     expect(doc.datos.find((d) => d.etiqueta === "TALLA")!.valor).toBe("1,60 m");
   });
 
-  // Probado el 24-nov: en la tablet Android (que no se dice «mobile») abría wa.me y bajaba el PDF para adjuntarlo a mano.
-  it("«Enviar por WhatsApp» en una tablet (pantalla táctil sin mouse): el diálogo de compartir con el PDF, sin abrir wa.me", async () => {
+  // «Enviar por WhatsApp» (`DialogoWhatsapp`, 26-nov) manda este mensaje y este nombre, con el texto de siempre.
+  it("el mensaje y el nombre del archivo de «Enviar por WhatsApp»", () => {
+    expect(mensajeDelSeguimiento("2026-11-26")).toBe("Seguimiento del tratamiento al 26/11/2026.");
+    expect(nombreDelPdf("2026-11-26")).toBe("seguimiento-tratamiento-2026-11-26.pdf");
+  });
+
+  it("«Compartir el PDF por otra app»: el diálogo de compartir con el PDF del seguimiento y el mensaje, sin abrir wa.me", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     const abrir = vi.spyOn(window, "open").mockReturnValue(null);
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
     Object.assign(navigator, { share, canShare: () => true });
     try {
       const h = hojaDe(lucia);
       const doc = documentoSeguimiento({ negocio: null, paciente: h.paciente, tratamiento: h.tratamiento!, hoy: HOY });
-      expect(await enviarPdfSeguimientoPorWhatsapp(doc, "70000000")).toBe("compartido");
+      expect(await compartirPdf({ texto: mensajeDelSeguimiento(), nombreArchivo: nombreDelPdf(), armar: () => pdfDelSeguimiento(doc) })).toBe("compartido");
       expect(abrir).not.toHaveBeenCalled();
       const datos = share.mock.calls[0][0] as ShareData;
       expect(datos.files?.[0].name).toMatch(/^seguimiento-tratamiento-\d{4}-\d{2}-\d{2}\.pdf$/);
+      expect(datos.files?.[0].type).toBe("application/pdf");
       expect(datos.text).toMatch(/^Seguimiento del tratamiento al /);
     } finally {
       abrir.mockRestore();
-      vi.unstubAllGlobals();
       Object.assign(navigator, { share: undefined, canShare: undefined });
     }
   });

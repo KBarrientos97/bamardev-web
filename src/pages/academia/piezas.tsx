@@ -59,6 +59,7 @@ export function EncabezadoPagina({
   acciones,
   volver,
   children,
+  className = "",
 }: {
   titulo: ReactNode;
   /** La línea chica de arriba del título (la fecha, la sede, las migas). */
@@ -69,9 +70,11 @@ export function EncabezadoPagina({
   volver?: { a: string; texto: string };
   /** Lo que va debajo de la bajada (el estado de la caja, chips). */
   children?: ReactNode;
+  /** Se suma al `<header>`: una pantalla que acomoda sus acciones en el teléfono (la hoja de seguimiento). */
+  className?: string;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+    <header className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-3 ${className}`}>
       <div className="min-w-0 space-y-1">
         {volver && (
           <Link

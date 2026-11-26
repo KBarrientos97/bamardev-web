@@ -17,9 +17,10 @@ import { BuscadorPacientes, ChipGrado, Tecla } from "./piezas";
 
 /**
  * Evaluación · la lista de pacientes (CONTRATO-nutricion-evaluacion-22nov
- * §4.1). El buscador arranca con el foco: se escribe el carnet o el nombre y
- * busca solo. `/` o `Ctrl+K` vuelven al buscador, `↑` `↓` recorren y `Enter`
- * abre. «Nuevo paciente» con `Alt+N`. El que se atendió recién queda arriba.
+ * §4.1). En la PC el buscador arranca con el foco (con el dedo, no: `foco.ts`):
+ * se escribe el carnet o el nombre y busca solo. `/` o `Ctrl+K` vuelven al
+ * buscador, `↑` `↓` recorren y `Enter` abre. «Nuevo paciente» con `Alt+N`. El
+ * que se atendió recién queda arriba.
  */
 export default function Pacientes() {
   const navigate = useNavigate();
@@ -119,7 +120,7 @@ export default function Pacientes() {
         }
       />
 
-      {/* El buscador grande, con el foco puesto al entrar. */}
+      {/* El buscador grande, con el foco puesto al entrar en la PC. */}
       <BuscadorPacientes ref={buscador} valor={q} onCambiar={setQ} />
 
       <Tarjeta

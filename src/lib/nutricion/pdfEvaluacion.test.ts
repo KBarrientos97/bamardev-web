@@ -1,13 +1,14 @@
 import { jsPDF } from "jspdf";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CATALOGO, control, paciente } from "../../test/nutricionFixtures";
-import { ALTO, anchoComoSeDibuja, entraEnLaFuente, FIN, MARGEN, UTIL } from "./pdfComun";
+import { abrirChatConPdf, ALTO, anchoComoSeDibuja, compartirPdf, entraEnLaFuente, FIN, MARGEN, UTIL } from "./pdfComun";
 import {
   cambioConPalabras,
   dibujarEvaluacion,
   documentoEvaluacion,
-  enviarPdfEvaluacionPorWhatsapp,
+  mensajeDeLaEvaluacion,
   nombreDelPdfEvaluacion,
+  pdfDeLaEvaluacion,
   ubicarPiezas,
   type DocumentoEvaluacion,
 } from "./pdfEvaluacion";
@@ -461,26 +462,53 @@ describe("cómo se reparten las piezas", () => {
   });
 });
 
+// «Enviar por WhatsApp» (`DialogoWhatsapp`, 26-nov): el chat del número con el mensaje y el PDF bajado,
+// o el diálogo de compartir con el PDF. Las dos entregas viven en `pdfComun`.
 describe("el envío", () => {
-  it("«Enviar por WhatsApp» en una tablet (pantalla táctil sin mouse): el diálogo de compartir con el PDF, sin abrir wa.me", async () => {
+  it("el mensaje y el nombre del archivo, con el texto de siempre", () => {
+    expect(mensajeDeLaEvaluacion("2026-11-26")).toBe("Evaluación nutricional al 26/11/2026.");
+    expect(nombreDelPdfEvaluacion("2026-11-26")).toBe("evaluacion-nutricional-2026-11-26.pdf");
+  });
+
+  it("«Compartir el PDF por otra app»: el diálogo de compartir con el PDF y el mensaje, sin abrir wa.me", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     const abrir = vi.spyOn(window, "open").mockReturnValue(null);
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
     Object.assign(navigator, { share, canShare: () => true });
     try {
-      expect(await enviarPdfEvaluacionPorWhatsapp(documento(sinSerie), "70000000")).toBe("compartido");
+      const r = await compartirPdf({ texto: mensajeDeLaEvaluacion(), nombreArchivo: nombreDelPdfEvaluacion(), armar: () => pdfDeLaEvaluacion(documento(sinSerie)) });
+      expect(r).toBe("compartido");
       expect(abrir).not.toHaveBeenCalled();
       const datos = share.mock.calls[0][0] as ShareData;
       expect(datos.files?.[0].name).toMatch(/^evaluacion-nutricional-\d{4}-\d{2}-\d{2}\.pdf$/);
       expect(datos.files?.[0].type).toBe("application/pdf");
       expect(datos.text).toMatch(/^Evaluación nutricional al \d{2}\/\d{2}\/\d{4}\.$/);
     } finally {
-      vi.unstubAllGlobals();
       Object.assign(navigator, { share: undefined, canShare: undefined });
     }
   });
 
-  it("en la PC: abre el chat ANTES de armar el PDF (en el mismo clic) y baja el archivo", async () => {
+  it("compartir cancelado no es un error; sin poder compartir, baja el PDF", async () => {
+    const bajados: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      bajados.push(this.download);
+    });
+    const antes = { crear: URL.createObjectURL, soltar: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: () => "blob:prueba", revokeObjectURL: () => {} });
+    const armar = () => Promise.resolve(new Blob(["%PDF"], { type: "application/pdf" }));
+    try {
+      Object.assign(navigator, { share: vi.fn().mockRejectedValue(new DOMException("cancelado", "AbortError")), canShare: () => true });
+      expect(await compartirPdf({ texto: "Hola.", nombreArchivo: "a.pdf", armar })).toBe("cancelado");
+      expect(bajados).toEqual([]);
+      Object.assign(navigator, { share: undefined, canShare: undefined });
+      expect(await compartirPdf({ texto: "Hola.", nombreArchivo: "a.pdf", armar })).toBe("descargado");
+      expect(bajados).toEqual(["a.pdf"]);
+    } finally {
+      Object.assign(URL, { createObjectURL: antes.crear, revokeObjectURL: antes.soltar });
+      Object.assign(navigator, { share: undefined, canShare: undefined });
+    }
+  });
+
+  it("el chat del número: lo abre ANTES de armar el PDF (en el mismo clic) y después baja el archivo", async () => {
     const abrir = vi.spyOn(window, "open").mockReturnValue(null);
     const bajados: string[] = [];
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
@@ -490,12 +518,40 @@ describe("el envío", () => {
     const antes = { crear: URL.createObjectURL, soltar: URL.revokeObjectURL };
     Object.assign(URL, { createObjectURL: () => "blob:prueba", revokeObjectURL: () => {} });
     try {
-      const envio = enviarPdfEvaluacionPorWhatsapp(documento(sinSerie), "70000000");
+      const envio = abrirChatConPdf({
+        numero: "59170000000",
+        texto: mensajeDeLaEvaluacion(),
+        nombreArchivo: nombreDelPdfEvaluacion(),
+        armar: () => pdfDeLaEvaluacion(documento(sinSerie)),
+      });
       // Todavía sin esperar nada: el chat ya se abrió.
       expect(abrir).toHaveBeenCalledTimes(1);
       expect(String(abrir.mock.calls[0][0])).toMatch(/^https:\/\/wa\.me\/59170000000\?text=Evaluaci%C3%B3n%20nutricional%20al%20/);
-      expect(await envio).toBe("descargado");
+      expect(bajados).toEqual([]);
+      await envio;
       expect(bajados).toEqual([expect.stringMatching(/^evaluacion-nutricional-\d{4}-\d{2}-\d{2}\.pdf$/)]);
+    } finally {
+      Object.assign(URL, { createObjectURL: antes.crear, revokeObjectURL: antes.soltar });
+    }
+  });
+
+  it("el chat del número, con el PDF ya armado: primero baja el archivo y después abre el chat, sin esperar nada", () => {
+    const pasos: string[] = [];
+    vi.spyOn(window, "open").mockImplementation((url) => {
+      pasos.push(`chat ${String(url)}`);
+      return null;
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      pasos.push(`baja ${this.download}`);
+    });
+    const antes = { crear: URL.createObjectURL, soltar: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: () => "blob:prueba", revokeObjectURL: () => {} });
+    const armar = vi.fn();
+    try {
+      void abrirChatConPdf({ numero: "59170000000", texto: "Hola.", nombreArchivo: "a.pdf", armar, listo: new Blob(["%PDF"], { type: "application/pdf" }) });
+      // En el mismo toque, las dos cosas y en ese orden; no se vuelve a armar.
+      expect(pasos).toEqual(["baja a.pdf", "chat https://wa.me/59170000000?text=Hola."]);
+      expect(armar).not.toHaveBeenCalled();
     } finally {
       Object.assign(URL, { createObjectURL: antes.crear, revokeObjectURL: antes.soltar });
     }

@@ -146,7 +146,7 @@ export function EtapaFicha(
     /** El aviso del carnet que ya es de un paciente (o null), a todo lo ancho. */
     avisoCarnet: ReactNode;
     onSalirCarnet: () => void;
-    /** Qué campo tiene el foco al abrir: el carnet (lo primero, §4.2) o el nombre. */
+    /** Qué campo tiene el foco al abrir: el carnet (lo primero, §4.2) o el nombre. Con el dedo, ninguno (lo decide `Evaluacion`). */
     enfocar: "ci" | "nombre" | null;
   },
 ) {

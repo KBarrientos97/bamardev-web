@@ -8,7 +8,7 @@ import { iniciales } from "../../lib/format";
 import { apiNutricion, esNoEncontrado } from "../../lib/nutricion/api";
 import { conAlt, hayDialogoAbierto, useTeclas } from "../../lib/nutricion/atajos";
 import { fechaLarga, fmtCambio, tallaConUnidad, type CampoControl } from "../../lib/nutricion/calculo";
-import { bajarPdfEvaluacion, documentoEvaluacion, enviarPdfEvaluacionPorWhatsapp } from "../../lib/nutricion/pdfEvaluacion";
+import { bajarPdfEvaluacion, documentoEvaluacion, mensajeDeLaEvaluacion, nombreDelPdfEvaluacion, pdfDeLaEvaluacion } from "../../lib/nutricion/pdfEvaluacion";
 import { DEL_GRAFICO, evolucionDe, imcDeHoy, MEDIDAS, tarjetasDeHoy, valorCon, type Medida } from "../../lib/nutricion/planilla";
 import type { Catalogo, Control, Paciente } from "../../lib/nutricion/tipos";
 import { useCatalogo } from "../../lib/nutricion/useCatalogo";
@@ -17,6 +17,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { EncabezadoPagina, PaginaAcademia as Pagina, Tarjeta } from "../academia/piezas";
 import BotonesPdf from "./BotonesPdf";
+import { ENCABEZADO_CON_MENU, MENU_AL_LADO_DEL_NOMBRE, RenglonDeAcciones } from "./EncabezadoConMenu";
 import GraficoEvolucion from "./GraficoEvolucion";
 import HojaControl from "./HojaControl";
 import MedidorImc from "./MedidorImc";
@@ -112,9 +113,16 @@ export default function PlanillaPaciente() {
     p.telefono,
   ].filter(Boolean);
 
+  // Con el «⋯» (quien edita), en el teléfono va arriba a la derecha del nombre
+  // y los botones llenan sus renglones (como en la hoja de seguimiento): sin
+  // «Seguimiento», «Editar ficha» + «Nuevo control» + «⋯» no entran en 360 px y
+  // el «⋯» caía solo abajo. Desde `sm`, como siempre.
+  const enRenglon = edita ? "max-sm:min-h-11 max-sm:flex-auto" : "";
+
   return (
     <Pagina>
       <EncabezadoPagina
+        className={edita ? ENCABEZADO_CON_MENU : ""}
         volver={{ a: "/evaluacion", texto: "Pacientes" }}
         titulo={
           <span className="flex items-center gap-3">
@@ -126,34 +134,39 @@ export default function PlanillaPaciente() {
         }
         acciones={
           <>
-            {veSeguimiento && (
-              <Link
-                to={`${RUTA_SEGUIMIENTO}/${p.id}`}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted"
-              >
-                <Icon name="seguimiento" size={16} />
-                Seguimiento
-              </Link>
-            )}
-            {edita && (
-              <Link
-                to={`/evaluacion/${p.id}/editar`}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted"
-              >
-                <Icon name="edit" size={16} />
-                Editar ficha
-              </Link>
-            )}
-            {edita && (
-              <Boton icono="plus" onClick={() => setHoja({ control: null })} title="Nuevo control (Alt+N)">
-                Nuevo control
-                <Tecla sobreColor>Alt+N</Tecla>
-              </Boton>
+            {(veSeguimiento || edita) && (
+              <RenglonDeAcciones conMenu={edita}>
+                {veSeguimiento && (
+                  <Link
+                    to={`${RUTA_SEGUIMIENTO}/${p.id}`}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted ${enRenglon}`}
+                  >
+                    <Icon name="seguimiento" size={16} />
+                    Seguimiento
+                  </Link>
+                )}
+                {edita && (
+                  <Link
+                    to={`/evaluacion/${p.id}/editar`}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted ${enRenglon}`}
+                  >
+                    <Icon name="edit" size={16} />
+                    Editar ficha
+                  </Link>
+                )}
+                {edita && (
+                  <Boton icono="plus" className={enRenglon} onClick={() => setHoja({ control: null })} title="Nuevo control (Alt+N)">
+                    Nuevo control
+                    <Tecla sobreColor>Alt+N</Tecla>
+                  </Boton>
+                )}
+              </RenglonDeAcciones>
             )}
             {edita && (
               <MenuMas
                 etiqueta="Más acciones del paciente"
                 titulo={p.nombre}
+                className={MENU_AL_LADO_DEL_NOMBRE}
                 acciones={[
                   p.activo
                     ? { clave: "archivar", etiqueta: "Archivar paciente", icono: "archive", peligrosa: true, onClick: () => setArchivando(true) }
@@ -217,7 +230,14 @@ export default function PlanillaPaciente() {
               <BotonesPdf
                 listo="PDF de la evaluación listo."
                 descargar={() => bajarPdfEvaluacion(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat }))}
-                enviar={() => enviarPdfEvaluacionPorWhatsapp(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat }), p.telefono)}
+                whatsapp={{
+                  telefono: p.telefono,
+                  paciente: p.nombre,
+                  que: "Evaluación",
+                  mensaje: mensajeDeLaEvaluacion(),
+                  nombreArchivo: nombreDelPdfEvaluacion(),
+                  armar: () => pdfDeLaEvaluacion(documentoEvaluacion({ negocio: negocio?.nombre ?? null, paciente: p, catalogo: cat })),
+                }}
                 onAviso={setAviso}
                 onError={setError}
               />

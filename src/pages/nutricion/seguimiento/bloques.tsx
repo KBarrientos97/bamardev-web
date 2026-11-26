@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { Icon } from "../../../components/Icon";
 import { Boton, Modal } from "../../../components/ui";
 import { fmtNumero, textoAlSalir, valorDe } from "../../../lib/nutricion/calculo";
+import { enfocarOMostrar } from "../../../lib/nutricion/foco";
 import {
   type PesoDeLaEvaluacion,
   concentracion,
@@ -79,6 +80,7 @@ export function BloquePeso({
   /** El primer peso del tratamiento, para «desde el inicio». */
   inicial: { pesoKg: number; semana: number } | null;
   evaluacion: PesoDeLaEvaluacion | null;
+  /** Lo decide la hoja, con la regla de `foco.ts` (en la PC sí; con el dedo, no). */
   autoFocus?: boolean;
 }) {
   const err = intento || form.pesoKg ? errores.pesoKg : null;
@@ -315,7 +317,8 @@ export function BloqueDosis({
               onChange={(e) => {
                 onTocar?.();
                 cambiar("sinDosis", e.target.checked);
-                if (e.target.checked) setTimeout(() => motivo.current?.focus(), 0);
+                // Al motivo; con el dedo, sólo a la vista: los botones de un toque («Salud»…) no piden teclado.
+                if (e.target.checked) setTimeout(() => enfocarOMostrar(motivo.current), 0);
               }}
               className="h-[22px] w-[22px] shrink-0 cursor-pointer accent-[var(--color-warning-text)] lg:h-5 lg:w-5"
             />
@@ -639,7 +642,9 @@ export function BloqueProducto({
           aria-expanded={false}
           onClick={() => {
             cambiar({ cambioProducto: true });
-            setTimeout(() => nombre.current?.focus(), 0);
+            // Al producto nuevo; con el dedo, sólo a la vista: abre un bloque con los botones
+            // del catálogo, que se tocan sin teclado (que los taparía).
+            setTimeout(() => enfocarOMostrar(nombre.current), 0);
           }}
           className="flex h-[52px] items-center justify-between gap-3 rounded-2xl border border-borde bg-white px-4 text-left text-[15px] font-medium text-texto transition-colors hover:bg-muted sm:h-14 sm:px-[18px] sm:text-base lg:h-12 lg:rounded-[14px] lg:px-4 lg:text-[15px]"
         >
@@ -873,7 +878,9 @@ export function BloquePagos({
         type="button"
         onClick={() => {
           setAbierta(true);
-          setTimeout(() => medicamento.current?.focus(), 0);
+          // Al medicamento; con el dedo, sólo a la vista: son tres montos y se toca el que va
+          // (el teclado del primero taparía los otros dos).
+          setTimeout(() => enfocarOMostrar(medicamento.current), 0);
         }}
         className="flex min-h-[52px] items-center gap-2.5 rounded-2xl border border-borde bg-white px-4 py-2 text-left text-[15px] font-medium text-texto transition-colors hover:bg-muted sm:min-h-14 sm:px-[18px] sm:text-base lg:min-h-12 lg:rounded-[14px] lg:px-4 lg:text-[15px]"
       >
@@ -987,7 +994,10 @@ export function QuienYCuando({ partes }: { partes: string[] }) {
   );
 }
 
-/** El pie de las hojas grandes: «Cancelar» y el botón principal (con `Ctrl+Enter` a la vista en la PC). */
+/**
+ * El pie de las hojas grandes: «Cancelar» y el botón principal (con `Ctrl+Enter` a la vista en la PC).
+ * Con el teclado abierto y poco alto (`HojaGrande` compacta), los botones bajan a 44 px.
+ */
 export function PieHoja({ onCancelar, onGuardar, guardando, etiqueta }: { onCancelar: () => void; onGuardar: () => void; guardando: boolean; etiqueta: string }) {
   return (
     <div className="flex items-center gap-2.5 sm:gap-3 lg:justify-end">
@@ -995,7 +1005,7 @@ export function PieHoja({ onCancelar, onGuardar, guardando, etiqueta }: { onCanc
         type="button"
         onClick={onCancelar}
         disabled={guardando}
-        className="h-[54px] shrink-0 rounded-2xl border border-slate-300 bg-white px-[18px] text-base font-medium text-texto transition-colors hover:bg-muted disabled:opacity-60 sm:h-14 sm:px-[26px] sm:text-[17px] lg:h-12 lg:rounded-[14px] lg:px-[22px] lg:text-base"
+        className="h-[54px] shrink-0 rounded-2xl border border-slate-300 bg-white px-[18px] text-base font-medium text-texto transition-colors hover:bg-muted disabled:opacity-60 sm:h-14 sm:px-[26px] sm:text-[17px] lg:h-12 lg:rounded-[14px] lg:px-[22px] lg:text-base group-data-[teclado=compacto]/hoja:h-11"
       >
         Cancelar
       </button>
@@ -1004,7 +1014,7 @@ export function PieHoja({ onCancelar, onGuardar, guardando, etiqueta }: { onCanc
         onClick={onGuardar}
         disabled={guardando}
         title={`${etiqueta} (Ctrl+Enter)`}
-        className="inline-flex h-[54px] min-w-0 flex-1 items-center justify-center gap-2.5 rounded-2xl bg-primary-boton px-4 text-[17px] font-bold text-white transition-colors hover:bg-primary-boton-hover disabled:opacity-70 sm:h-14 sm:text-lg lg:h-12 lg:flex-none lg:rounded-[14px] lg:px-[22px] lg:text-base"
+        className="inline-flex h-[54px] min-w-0 flex-1 items-center justify-center gap-2.5 rounded-2xl bg-primary-boton px-4 text-[17px] font-bold text-white transition-colors hover:bg-primary-boton-hover disabled:opacity-70 sm:h-14 sm:text-lg lg:h-12 lg:flex-none lg:rounded-[14px] lg:px-[22px] lg:text-base group-data-[teclado=compacto]/hoja:h-11"
       >
         <span className="truncate">{guardando ? "Guardando…" : etiqueta}</span>
         <kbd className="hidden h-5 shrink-0 items-center rounded-md border border-primary-200 px-1.5 font-sans text-xs font-medium lg:inline-flex">Ctrl+Enter</kbd>

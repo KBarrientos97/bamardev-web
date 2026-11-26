@@ -3,6 +3,7 @@ import { Icon } from "../../../components/Icon";
 import { Boton, Confirmar } from "../../../components/ui";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
 import { hoyIso } from "../../../lib/nutricion/calculo";
+import { enfocaSolo, enfocarOMostrar } from "../../../lib/nutricion/foco";
 import { apiSeguimiento, hojaDesactualizada, tratamientoQueYaTiene } from "../../../lib/nutricion/seguimiento/api";
 import {
   concentracion,
@@ -193,7 +194,8 @@ export default function HojaTratamiento({
         cabecera={
           <>
             <h2 className="text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">{titulo}</h2>
-            <p className="mt-1 text-sm text-texto-2">{pacienteNombre}</p>
+            {/* Con el teclado abierto y poco alto, el renglón del paciente no va. */}
+            <p className="mt-1 text-sm text-texto-2 group-data-[teclado=compacto]/hoja:hidden">{pacienteNombre}</p>
           </>
         }
         pie={<PieHoja onCancelar={pedirCerrar} onGuardar={() => void guardar()} guardando={guardando} etiqueta={iniciar ? "Iniciar tratamiento" : "Guardar"} />}
@@ -222,7 +224,8 @@ export default function HojaTratamiento({
               id={`${id}-nombre`}
               value={formT.nombre}
               maxLength={80}
-              autoFocus
+              // Al abrir, el nombre; con el dedo, sin subir el teclado (las sugerencias de abajo se tocan).
+              autoFocus={enfocaSolo()}
               autoComplete="off"
               invalido={intento && !!erroresT.nombre}
               onChange={(e) => cambiarT("nombre", e.target.value)}
@@ -348,7 +351,8 @@ export default function HojaTratamiento({
         procesando={guardando}
         onAnotar={() => {
           setPreguntaPago(false);
-          setTimeout(() => medicamento.current?.focus(), 0);
+          // De vuelta de la pregunta: con el dedo, el pago a la vista y el teclado cerrado.
+          setTimeout(() => enfocarOMostrar(medicamento.current), 0);
         }}
         onGuardar={() => void guardar(true)}
       />
@@ -359,6 +363,7 @@ export default function HojaTratamiento({
             setEnLaLista(false);
             if (productos) onListaCambiada?.(productos);
             // De vuelta al «+ Agregar»: el botón nuevo queda a la vista, sin elegirse.
+            // Es un botón (no sube el teclado): también con el dedo.
             setTimeout(() => document.getElementById(`${id}-agregar-tratamiento`)?.focus(), 0);
           }}
         />

@@ -754,3 +754,49 @@ describe("el atrás del navegador", () => {
     expect(onCerrar).toHaveBeenCalledTimes(1);
   });
 });
+
+// Kevin, 26-nov: «al abrir la hoja Semana el Peso toma el foco y se abre el teclado». Con el
+// dedo el teclado sube sólo cuando se toca un campo (`lib/nutricion/foco.ts`); en la PC, como siempre.
+describe("el foco con el dedo (el teléfono, la tablet)", () => {
+  const conDedo = () =>
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+  /** Lo que tarda en correr el foco que se pone con `setTimeout`. */
+  const unRato = () => act(() => new Promise<void>((listo) => setTimeout(listo, 80)));
+  const escribiendo = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("en la PC, una semana nueva abre con el foco en el peso, como siempre", () => {
+    abrir(lucia);
+    expect(peso()).toHaveFocus();
+  });
+
+  it("con el dedo, la hoja abre sin el foco en el peso: ningún campo, el teclado no sube", async () => {
+    conDedo();
+    abrir(lucia);
+    await unRato();
+    expect(peso()).not.toHaveFocus();
+    expect(escribiendo()).toBe(false);
+  });
+
+  it("con el dedo, tildar «No se aplicó» muestra el motivo sin enfocarlo (sus botones no piden teclado)", async () => {
+    conDedo();
+    abrir(lucia);
+    fireEvent.click(screen.getByRole("checkbox", { name: "No se aplicó esta semana" }));
+    await unRato();
+    expect(screen.getByLabelText("Motivo")).not.toHaveFocus();
+    expect(escribiendo()).toBe(false);
+  });
+
+  it("con el dedo, «Anotar el pago» de la pregunta vuelve al pago sin enfocar el medicamento", async () => {
+    conDedo();
+    abrir(carla, { semana: 5 });
+    fireEvent.change(peso(), { target: { value: "84,6" } });
+    fireEvent.click(boton(/^Guardar/));
+    fireEvent.click(boton("Anotar el pago"));
+    await unRato();
+    expect(screen.queryByRole("dialog", { name: "¿Guardar sin el pago?" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Medicamento/)).not.toHaveFocus();
+    expect(escribiendo()).toBe(false);
+  });
+});

@@ -23,7 +23,7 @@ import {
   textoSexo,
   textoVial,
 } from "../../../lib/nutricion/seguimiento/formato";
-import { bajarPdfSeguimiento, documentoSeguimiento, enviarPdfSeguimientoPorWhatsapp } from "../../../lib/nutricion/seguimiento/pdf";
+import { bajarPdfSeguimiento, documentoSeguimiento, mensajeDelSeguimiento, nombreDelPdf, pdfDelSeguimiento } from "../../../lib/nutricion/seguimiento/pdf";
 import type { CatalogoSeguimiento, HojaPaciente, Registro, Tratamiento, TratamientoAnterior } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { editaSeguimiento, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
@@ -31,6 +31,7 @@ import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { ChipsFiltro, EncabezadoPagina, KpiTarjeta, PaginaAcademia as Pagina, Tarjeta } from "../../academia/piezas";
 import BotonesPdf from "../BotonesPdf";
+import { ENCABEZADO_CON_MENU, MENU_AL_LADO_DEL_NOMBRE, RenglonDeAcciones } from "../EncabezadoConMenu";
 import GraficoEvolucion from "../GraficoEvolucion";
 import { AreaTexto, CampoTexto, Rotulo, Tecla } from "../piezas";
 import HojaSemana from "./HojaSemana";
@@ -270,10 +271,17 @@ export default function HojaSeguimiento() {
     acciones.push({ clave: "borrar", etiqueta: "Borrar tratamiento", icono: "trash", peligrosa: true, separar: acciones.length > 0, onClick: () => setAbierta({ que: "borrar" }) });
   }
   const puedeIniciar = edita && !activo && p.activo;
+  // En el teléfono, «Evaluación» + «Cargar semana N» + «⋯» no entran en un
+  // renglón y el «⋯» caía solo abajo (Kevin, 26-nov). Ahí el «⋯» sube a la
+  // derecha del nombre y los otros dos ocupan su renglón. Desde `sm`, como
+  // siempre; sin «⋯» (quien sólo mira), también.
+  const conMenu = acciones.length > 0;
+  const botones = [veEvaluacion, editable].filter(Boolean).length;
 
   return (
     <Pagina>
       <EncabezadoPagina
+        className={conMenu ? ENCABEZADO_CON_MENU : ""}
         volver={{ a: RUTA_SEGUIMIENTO, texto: "Seguimiento" }}
         titulo={
           <span className="flex items-center gap-3">
@@ -285,29 +293,37 @@ export default function HojaSeguimiento() {
         }
         acciones={
           <>
-            {veEvaluacion && (
-              <Link
-                to={`${RUTA_EVALUACION}/${p.id}`}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-borde bg-white px-3 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted sm:min-h-[42px] sm:px-4"
-              >
-                <Icon name="evaluacion" size={16} />
-                {/* En el celular, corto: así «⋯» no queda solo en otro renglón. */}
-                <span className="max-sm:hidden">Ver evaluación</span>
-                <span className="sm:hidden">Evaluación</span>
-              </Link>
+            {botones > 0 && (
+              <RenglonDeAcciones conMenu={conMenu}>
+                {veEvaluacion && (
+                  <Link
+                    to={`${RUTA_EVALUACION}/${p.id}`}
+                    className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-borde bg-white px-3 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted sm:min-h-[42px] sm:px-4 ${
+                      // Sola en su renglón, lo llena; al lado de «Cargar semana», su ancho
+                      // (un poco más justo: a 320 px, «Cargar semana 53» se partía en dos).
+                      conMenu ? (botones === 1 ? "max-sm:flex-1" : "max-sm:shrink-0 max-sm:gap-1.5 max-sm:px-2.5") : ""
+                    }`}
+                  >
+                    <Icon name="evaluacion" size={16} />
+                    {/* En el celular, corto: así entra al lado de «Cargar semana N». */}
+                    <span className="max-sm:hidden">Ver evaluación</span>
+                    <span className="sm:hidden">Evaluación</span>
+                  </Link>
+                )}
+                {editable && (
+                  <Boton
+                    icono="plus"
+                    className={`min-h-11 sm:min-h-[42px] ${conMenu ? "max-sm:flex-1 max-sm:gap-1.5 max-sm:whitespace-nowrap max-sm:px-2.5" : "max-sm:px-3"}`}
+                    onClick={() => setAbierta({ que: "semana", registro: null, semana: siguiente })}
+                    title={`Cargar semana ${siguiente} (Alt+N)`}
+                  >
+                    Cargar semana {siguiente}
+                    <Tecla sobreColor>Alt+N</Tecla>
+                  </Boton>
+                )}
+              </RenglonDeAcciones>
             )}
-            {editable && (
-              <Boton
-                icono="plus"
-                className="min-h-11 max-sm:px-3 sm:min-h-[42px]"
-                onClick={() => setAbierta({ que: "semana", registro: null, semana: siguiente })}
-                title={`Cargar semana ${siguiente} (Alt+N)`}
-              >
-                Cargar semana {siguiente}
-                <Tecla sobreColor>Alt+N</Tecla>
-              </Boton>
-            )}
-            {acciones.length > 0 && <MenuMas etiqueta="Más acciones del tratamiento" titulo={t?.nombre ?? p.nombre} acciones={acciones} />}
+            {conMenu && <MenuMas etiqueta="Más acciones del tratamiento" titulo={t?.nombre ?? p.nombre} acciones={acciones} className={MENU_AL_LADO_DEL_NOMBRE} />}
           </>
         }
       >
@@ -405,7 +421,14 @@ export default function HojaSeguimiento() {
               <BotonesPdf
                 listo="PDF del seguimiento listo."
                 descargar={() => bajarPdfSeguimiento(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat }))}
-                enviar={() => enviarPdfSeguimientoPorWhatsapp(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat }), p.telefono)}
+                whatsapp={{
+                  telefono: p.telefono,
+                  paciente: p.nombre,
+                  que: "Seguimiento",
+                  mensaje: mensajeDelSeguimiento(),
+                  nombreArchivo: nombreDelPdf(),
+                  armar: () => pdfDelSeguimiento(documentoSeguimiento({ negocio: negocio?.nombre ?? null, paciente: p, tratamiento: t, catalogo: cat })),
+                }}
                 onAviso={setAviso}
                 onError={setError}
               />

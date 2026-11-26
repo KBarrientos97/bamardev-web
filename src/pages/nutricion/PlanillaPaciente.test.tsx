@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiNutricion } from "../../lib/nutricion/api";
@@ -33,7 +33,8 @@ vi.mock("../../lib/nutricion/api", async (original) => ({
 vi.mock("../../lib/nutricion/pdfEvaluacion", async (original) => ({
   ...(await original<typeof import("../../lib/nutricion/pdfEvaluacion")>()),
   bajarPdfEvaluacion: vi.fn(),
-  enviarPdfEvaluacionPorWhatsapp: vi.fn(),
+  // Lo arma «Enviar por WhatsApp» al abrir su diálogo: acá, un PDF de mentira.
+  pdfDeLaEvaluacion: vi.fn(() => Promise.resolve(new Blob(["%PDF"], { type: "application/pdf" }))),
 }));
 
 // La planilla entera es pesada: con la máquina cargada pasaba los 5 s de fábrica.
@@ -106,6 +107,17 @@ describe("los botones del PDF", () => {
     await act(async () => terminar("descargado"));
     await waitFor(() => expect(screen.getByText("PDF de la evaluación listo.")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Descargar PDF" })).toBeEnabled();
+  });
+
+  // 26-nov: ya no manda directo; abre el diálogo con el número de la ficha (ver DialogoWhatsapp.test).
+  it("«Enviar por WhatsApp» abre el diálogo con el teléfono de la ficha y el mensaje de la evaluación", async () => {
+    await abrir(paciente({ controles }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
+    const dialogo = screen.getByRole("dialog", { name: "Enviar por WhatsApp" });
+    expect(within(dialogo).getByText("Evaluación de Lucía Paredes Soria")).toBeInTheDocument();
+    expect(within(dialogo).getByLabelText("Número de WhatsApp")).toHaveValue("70000000");
+    expect(within(dialogo).getByText(/^Evaluación nutricional al \d{2}\/\d{2}\/\d{4}\.$/)).toBeInTheDocument();
+    expect(within(dialogo).getByText(/^evaluacion-nutricional-/)).toBeInTheDocument();
   });
 });
 

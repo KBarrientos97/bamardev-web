@@ -7,6 +7,7 @@ import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { apiNutricion, esNoEncontrado, pacienteDelCarnet } from "../../lib/nutricion/api";
 import { altNumero, ctrlEnter, hayDialogoAbierto, pasarAlSiguiente, useTeclas } from "../../lib/nutricion/atajos";
 import { avisoImc, edadEn, empiezaConDigito, errorDeTope, hoyIso, imcDeLoEscrito } from "../../lib/nutricion/calculo";
+import { enfocaSolo } from "../../lib/nutricion/foco";
 import {
   cambios,
   cambiosDeControl,
@@ -471,9 +472,10 @@ export default function Evaluacion() {
     avisoImc: verAvisoImc ? avisoImc(imcDeLoEscrito(control.pesoKg, ficha.tallaCm)) : null,
   };
 
-  // Al abrir el alta, el foco en el carnet (lo primero); si el carnet ya vino
-  // de la lista («Crear paciente «X»»), en el nombre. Editando, en ninguno.
-  const enfocarAlAbrir = pacienteId != null ? null : params.get("ci") ? "nombre" : "ci";
+  // Al abrir el alta en la PC, el foco en el carnet (lo primero); si el carnet
+  // ya vino de la lista («Crear paciente «X»»), en el nombre. Editando, en
+  // ninguno. Con el dedo, en ninguno: el teclado sube al tocar el campo (`foco.ts`).
+  const enfocarAlAbrir = pacienteId != null || !enfocaSolo() ? null : params.get("ci") ? "nombre" : "ci";
   const estado = guardando ? "guardando" : sucio ? (pacienteId == null ? "nuevo" : "sinGuardar") : pacienteId == null ? "nuevo" : "guardado";
   // Bien visible: es la diferencia entre seguir con un paciente que ya vino o duplicarlo.
   const avisoCarnet: ReactNode = carnet ? (

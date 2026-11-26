@@ -32,6 +32,7 @@ export function EtapaMedidas(p: PropsEtapa & { cinta: Cinta | null; onCinta: (c:
   const sexo = ficha.sexo || null;
   const valores: Record<Cinta, string> = { pecho: control.pechoCm, cintura: control.cinturaCm, cadera: control.caderaCm };
   // El foco pasa al campo y su onFocus marca la cinta: la figura no decide nada por su cuenta.
+  // También con el dedo: tocar la cinta es para escribir esa medida (`foco.ts`).
   const irAlCampo = (cinta: Cinta) => document.getElementById(`ev-${cinta}`)?.focus();
 
   return (
