@@ -463,9 +463,9 @@ export interface EstadoSitio {
   actual: Sitio | null;
   publicado: boolean;
   enBorrador: boolean;
-  /** Todas las fotos subidas, usadas o no. */
+  /** Todas las fotos subidas, usadas o no (menos las que el borrador soltó). */
   fotos: { foto: string; url: string | null }[];
-  /** Las que usa el sitio publicado: no se pueden borrar. */
+  /** Las que usa el sitio publicado: borradas o cambiadas, se van al publicar. */
   fotosPublicadas: string[];
 }
 

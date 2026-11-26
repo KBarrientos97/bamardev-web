@@ -93,7 +93,8 @@ describe("página de un consultorio de nutrición", () => {
     expect(screen.getByRole("link", { name: /Nuestros planes/ })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "8958703" } });
     fireEvent.click(screen.getByRole("button", { name: "Ver mi ficha" }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Ana Rojas" })).toBeInTheDocument();
+    // La ficha se baja con `lazy`: en frío, el import tarda más que el segundo por defecto.
+    expect(await screen.findByRole("heading", { level: 1, name: "Ana Rojas" }, { timeout: 10_000 })).toBeInTheDocument();
     expect(apiConsultaNutricion.consultar).toHaveBeenCalledWith("vida", { ci: "8958703" });
     expect(screen.queryByRole("link", { name: /Nuestros planes/ })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Salir/ }));
@@ -112,6 +113,11 @@ describe("página de un consultorio de nutrición", () => {
       });
       const portada = screen.getByRole("region", { name: "Portada" });
       expect(within(portada).getAllByRole("link", { name: /WhatsApp/ })).toHaveLength(1);
+      // El WhatsApp del encabezado es relleno: su ícono no puede ir del mismo
+      // verde que el fondo (salía invisible y corría el texto, 26-nov).
+      for (const enlace of [within(screen.getByRole("banner")).getByRole("link", { name: /WhatsApp/ }), within(portada).getByRole("link", { name: /WhatsApp/ })]) {
+        expect(enlace.querySelector("svg")).not.toHaveAttribute("stroke", "#0C7A55");
+      }
       // El carnet sigue debajo de la portada.
       expect(screen.getByRole("heading", { name: "Consultá tu ficha" })).toBeInTheDocument();
     } finally {

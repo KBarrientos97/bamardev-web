@@ -135,6 +135,14 @@ function ElegirFotos({
     else if (una) onElegidas([foto]);
     else if (elegidas.length < max) onElegidas([...elegidas, foto]);
   };
+  // El orden del carrusel y de la galería con flechas (26-nov): antes había
+  // que destildarlas y volver a tocarlas en el orden buscado.
+  const mover = (n: number, paso: -1 | 1) => {
+    const lista = [...elegidas];
+    [lista[n], lista[n + paso]] = [lista[n + paso], lista[n]];
+    onElegidas(lista);
+  };
+  const urlDe = new Map(estado.fotos.map((f) => [f.foto, f.url]));
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -190,6 +198,42 @@ function ElegirFotos({
             );
           })}
         </ul>
+      )}
+      {!una && elegidas.length > 1 && (
+        <div className="space-y-1.5">
+          <span className="block text-[13px] font-semibold text-texto-2">Orden en que salen</span>
+          <ol className="flex flex-wrap gap-2" aria-label="Orden de las fotos elegidas">
+            {elegidas.map((foto, n) => {
+              const url = urlDe.get(foto);
+              return (
+                <li key={foto} className="flex items-center gap-1 rounded-lg border border-borde-soft bg-white p-1">
+                  <button
+                    type="button"
+                    aria-label={`Mover la foto del lugar ${n + 1} antes`}
+                    disabled={n === 0}
+                    onClick={() => mover(n, -1)}
+                    className="rounded p-1 text-texto-3 hover:bg-muted disabled:opacity-30"
+                  >
+                    <Icon name="chevronDown" size={14} className="rotate-90" />
+                  </button>
+                  <span className="relative block h-10 w-10 overflow-hidden rounded bg-muted">
+                    {url && <img src={urlDeImagen(url) ?? undefined} alt="" loading="lazy" className="h-full w-full object-cover" />}
+                    <span className="absolute bottom-0 right-0 rounded-tl bg-emerald-700 px-1 text-[10px] font-bold text-white">{n + 1}</span>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Mover la foto del lugar ${n + 1} después`}
+                    disabled={n === elegidas.length - 1}
+                    onClick={() => mover(n, 1)}
+                    className="rounded p-1 text-texto-3 hover:bg-muted disabled:opacity-30"
+                  >
+                    <Icon name="chevronDown" size={14} className="-rotate-90" />
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       )}
     </div>
   );
@@ -480,6 +524,9 @@ export default function SitioEditor({ estado, sitio, onCambiar, onEstado, antes,
   const [confirmarQuitar, setConfirmarQuitar] = useState(false);
   const [aBorrar, setABorrar] = useState<string | null>(null);
   const inputFotos = useRef<HTMLInputElement>(null);
+  // «Cambiar» una foto: un solo selector de archivo para todas, con la que se tocó.
+  const inputCambiar = useRef<HTMLInputElement>(null);
+  const aCambiar = useRef<string | null>(null);
 
   /** Una acción que va al toque: primero lo pendiente, después ella. */
   const alToque = async (accion: () => Promise<EstadoEditor>, ok?: string) => {
@@ -523,6 +570,26 @@ export default function SitioEditor({ estado, sitio, onCambiar, onEstado, antes,
       setSubiendo(false);
     }
     return subidas;
+  };
+
+  /** «Cambiar» (26-nov): la nueva va al mismo lugar de cada bloque del borrador. */
+  const cambiar = async (foto: string, archivo: File | undefined) => {
+    if (!archivo) return;
+    const publicada = estado.fotosPublicadas.includes(foto);
+    setSubiendo(true);
+    onError("");
+    try {
+      const blob = await prepararImagen(archivo, "portada");
+      if (blob.size > TOPE_SUBIDA) throw new Error("La foto pesa más de 2 MB aun achicada. Probá con otra.");
+      await antes();
+      const r = await apiPagina.cambiarFotoSitio(foto, blob);
+      onEstado(r.estado);
+      onAviso(publicada ? "Foto cambiada: se ve en tu página cuando publiques los cambios" : "Foto cambiada");
+    } catch (e) {
+      onError(mensaje(e, "No se pudo cambiar la foto"));
+    } finally {
+      setSubiendo(false);
+    }
   };
 
   if (!estado.disponible) return null;
@@ -715,28 +782,55 @@ export default function SitioEditor({ estado, sitio, onCambiar, onEstado, antes,
           <p className="text-[13px] text-texto-3">Subí fotos de tu local, tus productos o tus trabajos y elegilas en la portada o la galería.</p>
         ) : (
           <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6" aria-label="Fotos del sitio">
-            {estado.fotos.map((f, i) => {
-              const publicada = usadas.has(f.foto);
-              return (
-                <li key={f.foto} className="relative">
-                  <div className="aspect-square overflow-hidden rounded-lg bg-muted">
-                    {f.url && <img src={urlDeImagen(f.url) ?? undefined} alt={`Foto ${i + 1}`} loading="lazy" className="h-full w-full object-cover" />}
-                  </div>
+            {estado.fotos.map((f, i) => (
+              <li key={f.foto} className="relative">
+                <div className="aspect-square overflow-hidden rounded-lg bg-muted">
+                  {f.url && <img src={urlDeImagen(f.url) ?? undefined} alt={`Foto ${i + 1}`} loading="lazy" className="h-full w-full object-cover" />}
+                </div>
+                {/* Cambiar o borrar cualquiera, también las publicadas (26-nov): la página las muestra hasta publicar. */}
+                <div className="absolute right-1 top-1 flex gap-1">
                   <button
                     type="button"
-                    aria-label={publicada ? `La foto ${i + 1} está en tu sitio publicado` : `Borrar la foto ${i + 1}`}
-                    title={publicada ? "Está en tu sitio publicado: sacala de los bloques y publicá para poder borrarla." : "Borrar"}
-                    disabled={publicada || ocupado}
-                    onClick={() => setABorrar(f.foto)}
-                    className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-danger-text shadow disabled:text-texto-4"
+                    aria-label={`Cambiar la foto ${i + 1}`}
+                    title="Cambiar por otra"
+                    disabled={ocupado || subiendo}
+                    onClick={() => {
+                      aCambiar.current = f.foto;
+                      inputCambiar.current?.click();
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-texto-2 shadow disabled:text-texto-4"
                   >
-                    <Icon name={publicada ? "lock" : "trash"} size={13} />
+                    <Icon name="camara" size={13} />
                   </button>
-                </li>
-              );
-            })}
+                  <button
+                    type="button"
+                    aria-label={`Borrar la foto ${i + 1}`}
+                    title="Borrar"
+                    disabled={ocupado || subiendo}
+                    onClick={() => setABorrar(f.foto)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-danger-text shadow disabled:text-texto-4"
+                  >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
+        <input
+          ref={inputCambiar}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          aria-label="Elegir la foto nueva"
+          onChange={async (ev) => {
+            const foto = aCambiar.current;
+            const archivo = ev.target.files?.[0];
+            ev.target.value = "";
+            aCambiar.current = null;
+            if (foto) await cambiar(foto, archivo);
+          }}
+        />
       </div>
 
       <div className="flex flex-wrap justify-end">
@@ -791,14 +885,21 @@ export default function SitioEditor({ estado, sitio, onCambiar, onEstado, antes,
       <Confirmar
         abierto={aBorrar !== null}
         titulo="Borrar la foto"
-        texto="¿Borrar esta foto? Sale también de los bloques que la usan."
+        texto={
+          aBorrar && usadas.has(aBorrar)
+            ? "¿Borrar esta foto? Sale de los bloques que la usan. Tu página la sigue mostrando hasta que publiques los cambios."
+            : "¿Borrar esta foto? Sale también de los bloques que la usan."
+        }
         etiquetaOk="Borrar"
         peligroso
         onCancel={() => setABorrar(null)}
         onOk={() => {
           const foto = aBorrar;
           setABorrar(null);
-          if (foto) void alToque(() => apiPagina.borrarFotoSitio(foto), "Foto borrada");
+          if (foto) {
+            const aviso = usadas.has(foto) ? "Foto borrada: sale de tu página cuando publiques los cambios" : "Foto borrada";
+            void alToque(() => apiPagina.borrarFotoSitio(foto), aviso);
+          }
         }}
       />
     </Seccion>
