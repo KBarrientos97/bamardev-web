@@ -15,8 +15,10 @@ import {
   type CampoNumerico,
 } from "../../lib/nutricion/calculo";
 import { edadDelControl, type FormControl, type FormFicha } from "../../lib/nutricion/formulario";
+import { ATAJOS } from "../../lib/nutricion/respuestas";
 import type { Catalogo, MedidaConTabla, Sexo } from "../../lib/nutricion/tipos";
 import { Tarjeta } from "../academia/piezas";
+import CampoConAtajos from "./CampoConAtajos";
 import MedidorImc from "./MedidorImc";
 import { TONO } from "../../lib/nutricion/tonos";
 import { AreaTexto, BotonesSexo, CampoNumero, CampoTexto, ChipGrado, Rotulo } from "./piezas";
@@ -296,15 +298,15 @@ export function EtapaFicha(
 
       <Tarjeta titulo="Enfermedades de base" bajada="Tocá «Sí» o «No»; tocá otra vez para dejarla sin preguntar.">
         <div className="space-y-4">
-          <Rotulo htmlFor="ev-analisis" label="Últimos análisis clínicos">
-            <AreaTexto
-              id="ev-analisis"
-              rows={2}
-              maxLength={2000}
-              value={ficha.ultimosAnalisis}
-              onChange={(e) => cambiarFicha("ultimosAnalisis", e.target.value)}
-            />
-          </Rotulo>
+          <CampoConAtajos
+            id="ev-analisis"
+            label="Últimos análisis clínicos"
+            opciones={ATAJOS.ultimosAnalisis}
+            multilinea
+            placeholder="Fecha, laboratorio y valores que llamen la atención"
+            valor={ficha.ultimosAnalisis}
+            onCambiar={(v) => cambiarFicha("ultimosAnalisis", v)}
+          />
 
           <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
             {enfermedades.map((e) => {
@@ -357,34 +359,56 @@ export function EtapaFicha(
         </div>
       </Tarjeta>
 
+      {/* En el orden de la hoja de papel de la doctora. Los tres hábitos van en tres
+          columnas sólo si la TARJETA es ancha (no la ventana: el menú lateral cambia
+          el ancho útil); ahí cada fila de atajos entra en un renglón y las tres
+          notas quedan a la misma altura. */}
       <Tarjeta titulo="Cirugías y hábitos">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Rotulo htmlFor="ev-cirugias" label="Cirugías" className="sm:col-span-3">
-            <AreaTexto id="ev-cirugias" rows={2} maxLength={2000} value={ficha.cirugias} onChange={(e) => cambiarFicha("cirugias", e.target.value)} />
-          </Rotulo>
-          <Rotulo htmlFor="ev-alimentaria" label="Conducta alimentaria" className="sm:col-span-3">
+        <div className="@container space-y-4">
+          <CampoConAtajos
+            id="ev-cirugias"
+            label="Cirugías"
+            opciones={ATAJOS.cirugias}
+            multilinea
+            placeholder="¿Cuál y cuándo?"
+            valor={ficha.cirugias}
+            onCambiar={(v) => cambiarFicha("cirugias", v)}
+          />
+          <Rotulo htmlFor="ev-alimentaria" label="Conducta alimentaria">
             <AreaTexto
               id="ev-alimentaria"
-              rows={4}
+              rows={3}
               maxLength={2000}
               value={ficha.conductaAlimentaria}
               onChange={(e) => cambiarFicha("conductaAlimentaria", e.target.value)}
             />
           </Rotulo>
-          <Rotulo htmlFor="ev-sueno" label="Conducta del sueño">
-            <CampoTexto id="ev-sueno" maxLength={2000} value={ficha.conductaSueno} onChange={(e) => cambiarFicha("conductaSueno", e.target.value)} />
-          </Rotulo>
-          <Rotulo htmlFor="ev-actividad" label="Actividad física">
-            <CampoTexto
-              id="ev-actividad"
-              maxLength={2000}
-              value={ficha.actividadFisica}
-              onChange={(e) => cambiarFicha("actividadFisica", e.target.value)}
+          <div className="grid items-start gap-4 @2xl:grid-cols-3">
+            <CampoConAtajos
+              id="ev-sueno"
+              label="Conducta del sueño"
+              opciones={ATAJOS.conductaSueno}
+              placeholder="Horas y si se despierta"
+              valor={ficha.conductaSueno}
+              onCambiar={(v) => cambiarFicha("conductaSueno", v)}
             />
-          </Rotulo>
-          <Rotulo htmlFor="ev-agua" label="Consumo de agua">
-            <CampoTexto id="ev-agua" maxLength={2000} value={ficha.consumoAgua} onChange={(e) => cambiarFicha("consumoAgua", e.target.value)} />
-          </Rotulo>
+            <CampoConAtajos
+              id="ev-actividad"
+              label="Actividad física"
+              opciones={ATAJOS.actividadFisica}
+              placeholder="¿Qué hace y cuántas veces?"
+              valor={ficha.actividadFisica}
+              onCambiar={(v) => cambiarFicha("actividadFisica", v)}
+            />
+            <CampoConAtajos
+              id="ev-agua"
+              label="Consumo de agua"
+              opciones={ATAJOS.consumoAgua}
+              placeholder="Nota (opcional)"
+              valor={ficha.consumoAgua}
+              onCambiar={(v) => cambiarFicha("consumoAgua", v)}
+            />
+          </div>
         </div>
       </Tarjeta>
     </div>
