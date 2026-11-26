@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CATALOGO, control, paciente } from "../../test/nutricionFixtures";
-import { ALTO, anchoComoSeDibuja, entraEnLaFuente, FIN, MARGEN, UTIL } from "./pdfComun";
+import { ALTO, anchoComoSeDibuja, entraEnLaFuente, enviarPdfPorWhatsapp, FIN, MARGEN, UTIL } from "./pdfComun";
 import {
   cambioConPalabras,
   dibujarEvaluacion,
@@ -243,9 +243,9 @@ describe("lo que dice el papel", () => {
       ["% de músculo", null],
       ["Edad corporal", "(años)"],
       ["Grasa visceral", null],
+      ["Pecho", "(cm)"],
       ["Cintura", "(cm)"],
       ["Cadera", "(cm)"],
-      ["Pecho", "(cm)"],
     ]);
     const fila = (n: string) => b.filas.find((f) => f.nombre === n)!.celdas;
     expect(fila("Peso").map((x) => x.texto)).toEqual(["72", "71,5", "70,95"]);
@@ -378,14 +378,14 @@ describe("las hojas", () => {
     ]);
     const encabezados = textos.filter((e) => e.t === "MEDIDA");
     expect(encabezados).toHaveLength(3);
-    // El bloque no se parte: su encabezado, su título y su último renglón («Pecho») en la misma hoja.
+    // El bloque no se parte: su encabezado, su título y su último renglón («Cadera») en la misma hoja.
     const titulos = textos.filter((e) => /^Controles \d+ a \d+ de 12$/.test(e.t));
-    const pechos = textos.filter((e) => e.t === "Pecho " || e.t === "Pecho");
+    const caderas = textos.filter((e) => e.t === "Cadera " || e.t === "Cadera");
     expect(titulos).toHaveLength(3);
-    expect(pechos).toHaveLength(3);
+    expect(caderas).toHaveLength(3);
     for (let i = 0; i < 3; i++) {
       expect(titulos[i].hoja).toBe(encabezados[i].hoja);
-      expect(pechos[i].hoja).toBe(encabezados[i].hoja);
+      expect(caderas[i].hoja).toBe(encabezados[i].hoja);
     }
   });
 
@@ -461,43 +461,87 @@ describe("cómo se reparten las piezas", () => {
   });
 });
 
+// «Enviar por WhatsApp», directo y sólo con el PDF (26-nov): sin mensaje, ni en el chat ni al compartir
+// (por el chat se mandaba el texto solo, sin el PDF).
 describe("el envío", () => {
-  it("«Enviar por WhatsApp» en una tablet (pantalla táctil sin mouse): el diálogo de compartir con el PDF, sin abrir wa.me", async () => {
+  /** Una tablet: pantalla táctil sin mouse (`conDedo`). */
+  const conDedo = () =>
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+  const pdfDeMentira = () => Promise.resolve(new Blob(["%PDF"], { type: "application/pdf" }));
+  /** jsdom no tiene `URL.createObjectURL`: uno de mentira mientras dura la prueba; anota lo que se baja. */
+  function conDescargas() {
+    const bajados: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      bajados.push(this.download);
+    });
+    const antes = { crear: URL.createObjectURL, soltar: URL.revokeObjectURL };
+    Object.assign(URL, { createObjectURL: () => "blob:prueba", revokeObjectURL: () => {} });
+    return { bajados, soltar: () => Object.assign(URL, { createObjectURL: antes.crear, revokeObjectURL: antes.soltar }) };
+  }
+
+  it("«Enviar por WhatsApp» en una tablet (pantalla táctil sin mouse): el diálogo de compartir con el PDF solo, sin texto y sin abrir wa.me", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     const abrir = vi.spyOn(window, "open").mockReturnValue(null);
-    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+    conDedo();
     Object.assign(navigator, { share, canShare: () => true });
     try {
       expect(await enviarPdfEvaluacionPorWhatsapp(documento(sinSerie), "70000000")).toBe("compartido");
       expect(abrir).not.toHaveBeenCalled();
       const datos = share.mock.calls[0][0] as ShareData;
+      expect(Object.keys(datos).sort()).toEqual(["files", "title"]);
       expect(datos.files?.[0].name).toMatch(/^evaluacion-nutricional-\d{4}-\d{2}-\d{2}\.pdf$/);
       expect(datos.files?.[0].type).toBe("application/pdf");
-      expect(datos.text).toMatch(/^Evaluación nutricional al \d{2}\/\d{2}\/\d{4}\.$/);
     } finally {
       vi.unstubAllGlobals();
       Object.assign(navigator, { share: undefined, canShare: undefined });
     }
   });
 
-  it("en la PC: abre el chat ANTES de armar el PDF (en el mismo clic) y baja el archivo", async () => {
+  it("en la tablet, cancelar el diálogo de compartir no es un error (no baja nada); otro error sigue a la descarga", async () => {
     const abrir = vi.spyOn(window, "open").mockReturnValue(null);
-    const bajados: string[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-      bajados.push(this.download);
-    });
-    // jsdom no tiene `URL.createObjectURL`: uno de mentira mientras dura la prueba.
-    const antes = { crear: URL.createObjectURL, soltar: URL.revokeObjectURL };
-    Object.assign(URL, { createObjectURL: () => "blob:prueba", revokeObjectURL: () => {} });
+    const { bajados, soltar } = conDescargas();
+    conDedo();
+    try {
+      Object.assign(navigator, { share: vi.fn().mockRejectedValue(new DOMException("cancelado", "AbortError")), canShare: () => true });
+      expect(await enviarPdfPorWhatsapp({ telefono: "70000000", nombreArchivo: "a.pdf", armar: pdfDeMentira })).toBe("cancelado");
+      expect(bajados).toEqual([]);
+      Object.assign(navigator, { share: vi.fn().mockRejectedValue(new DOMException("sin permiso", "NotAllowedError")), canShare: () => true });
+      expect(await enviarPdfPorWhatsapp({ telefono: "70000000", nombreArchivo: "a.pdf", armar: pdfDeMentira })).toBe("descargado");
+      expect(bajados).toEqual(["a.pdf"]);
+      expect(abrir).not.toHaveBeenCalled();
+    } finally {
+      soltar();
+      vi.unstubAllGlobals();
+      Object.assign(navigator, { share: undefined, canShare: undefined });
+    }
+  });
+
+  it("en la PC: abre el chat a secas (sin `?text=`) ANTES de armar el PDF (en el mismo clic) y baja el archivo", async () => {
+    const abrir = vi.spyOn(window, "open").mockReturnValue(null);
+    const { bajados, soltar } = conDescargas();
     try {
       const envio = enviarPdfEvaluacionPorWhatsapp(documento(sinSerie), "70000000");
       // Todavía sin esperar nada: el chat ya se abrió.
       expect(abrir).toHaveBeenCalledTimes(1);
-      expect(String(abrir.mock.calls[0][0])).toMatch(/^https:\/\/wa\.me\/59170000000\?text=Evaluaci%C3%B3n%20nutricional%20al%20/);
+      expect(String(abrir.mock.calls[0][0])).toBe("https://wa.me/59170000000");
+      expect(bajados).toEqual([]);
       expect(await envio).toBe("descargado");
       expect(bajados).toEqual([expect.stringMatching(/^evaluacion-nutricional-\d{4}-\d{2}-\d{2}\.pdf$/)]);
     } finally {
-      Object.assign(URL, { createObjectURL: antes.crear, revokeObjectURL: antes.soltar });
+      soltar();
+    }
+  });
+
+  it("en la PC, sin teléfono en la ficha: no abre ningún chat y baja el PDF igual", async () => {
+    const abrir = vi.spyOn(window, "open").mockReturnValue(null);
+    const { bajados, soltar } = conDescargas();
+    try {
+      expect(await enviarPdfPorWhatsapp({ telefono: null, nombreArchivo: "a.pdf", armar: pdfDeMentira })).toBe("descargado");
+      expect(await enviarPdfPorWhatsapp({ telefono: "", nombreArchivo: "b.pdf", armar: pdfDeMentira })).toBe("descargado");
+      expect(abrir).not.toHaveBeenCalled();
+      expect(bajados).toEqual(["a.pdf", "b.pdf"]);
+    } finally {
+      soltar();
     }
   });
 });

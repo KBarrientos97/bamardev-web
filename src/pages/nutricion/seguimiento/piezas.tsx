@@ -132,6 +132,30 @@ export function BotonToque({ children, className = "", ...props }: ButtonHTMLAtt
   );
 }
 
+/**
+ * Un botón del catálogo (los tratamientos de la lista del negocio, §9.2): ESCRIBE
+ * el nombre, nunca viene marcado. Con muchos, bajan de renglón enteros; uno más
+ * largo que el renglón (un nombre propio de 80 letras) se parte adentro en vez
+ * de salirse.
+ */
+export function BotonSugerencia({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <BotonToque {...props} className={`max-w-full whitespace-normal! break-words py-1.5 ${className}`} />;
+}
+
+/**
+ * «+ Agregar», discreto, al final de los botones del catálogo (§9.2): abre la
+ * ventana «Tratamientos» ya en «Agregar tratamiento». Sólo para quien puede
+ * cambiar la lista (`ajustes.puedeCambiarlos`).
+ */
+export function BotonAgregarALaLista(props: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children">) {
+  return (
+    <BotonToque {...props} aria-label="Agregar un tratamiento a la lista" title="Agregar un tratamiento a la lista" className="border-dashed text-texto-3!">
+      <Icon name="plus" size={15} strokeWidth={2.4} className="shrink-0" />
+      Agregar
+    </BotonToque>
+  );
+}
+
 /** Tres botones grandes para elegir en qué se anota la dosis: «UI» · «mg» · «ml», ninguno marcado al abrir. */
 export function BotonesUnidad({
   valor,

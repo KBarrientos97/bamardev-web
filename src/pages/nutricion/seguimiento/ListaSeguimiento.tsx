@@ -11,7 +11,7 @@ import { haceDias, nombreSemana, textoDosis, textoKg } from "../../../lib/nutric
 import type { FilaSeguimiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { usePaginado } from "../../../lib/paginado";
-import { editaNutricion, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
+import { editaNutricion, RUTA_EVALUACION, RUTA_PAGOS_PENDIENTES, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonIcono, ChipsFiltro, EncabezadoPagina, LISTA, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../../academia/piezas";
@@ -23,9 +23,10 @@ type Filtro = "en_tratamiento" | "todos";
 
 /**
  * Seguimiento · buscar al paciente (CONTRATO-nutricion-seguimiento-23nov
- * §4.1). El buscador arranca con el foco: se escribe el carnet o el nombre y
- * busca solo (la misma búsqueda de la Evaluación). Sin texto, los pacientes en
- * tratamiento, el de actividad más reciente arriba. `/` o `Ctrl+K` vuelven al
+ * §4.1). En la PC el buscador arranca con el foco (con el dedo, no: `foco.ts`):
+ * se escribe el carnet o el nombre y busca solo (la misma búsqueda de la
+ * Evaluación). Sin texto, los pacientes en tratamiento, el de actividad más
+ * reciente arriba. `/` o `Ctrl+K` vuelven al
  * buscador, `↑` `↓` recorren y `Enter` abre (con un solo resultado, directo).
  * Los avisos de pago y el botón «Pagos pendientes», sólo con los avisos prendidos.
  */
@@ -100,7 +101,7 @@ export default function ListaSeguimiento() {
             <>
               {avisar && (
                 <Link
-                  to={`${RUTA_SEGUIMIENTO}/pagos`}
+                  to={RUTA_PAGOS_PENDIENTES}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted sm:min-h-[42px]"
                 >
                   <Icon name="coins" size={16} />
@@ -198,6 +199,8 @@ export default function ListaSeguimiento() {
       {ajustando && ajustes && (
         <DialogoAjustesSeguimiento
           ajustes={ajustes}
+          tratamientos={catalogo.datos?.tratamientos}
+          onListaCambiada={catalogo.listaCambiada}
           onCerrar={() => setAjustando(false)}
           onGuardado={() => {
             setAjustando(false);

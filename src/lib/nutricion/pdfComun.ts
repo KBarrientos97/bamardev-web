@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
-import { esCelular } from "../compartirTicket";
 import { Telefono } from "../telefono";
+import { conDedo } from "./foco";
 
 /**
  * Lo común de los PDF de nutrición (el del seguimiento del tratamiento y el
@@ -258,37 +258,33 @@ export function dibujarPies(pdf: jsPDF, texto: string) {
 }
 
 // ── La entrega por WhatsApp ─────────────────────────────────────────────────
+//
+// Sin mensaje (26-nov-2026): por el chat (`wa.me/<número>?text=…`) se mandaba
+// el texto solo, sin el PDF, y lo que tiene que llegar es el PDF. Ese mismo día
+// se probó que «Enviar por WhatsApp» abriera un diálogo con el número de la
+// ficha y un botón para abrir ese chat; visto en el teléfono, se volvió a lo
+// directo de antes: un toque y el PDF sale, en la PC, el teléfono o la tablet.
 
 export type EnvioWhatsapp = "compartido" | "cancelado" | "descargado";
 
-/**
- * El teléfono o la tablet: `esCelular` no alcanza, porque la tablet Android
- * (y el iPad) no se dicen «mobile» y ahí «Enviar por WhatsApp» abría wa.me y
- * bajaba el PDF para adjuntarlo a mano. Una pantalla sólo táctil, sin mouse,
- * también usa el diálogo de compartir.
- */
-export function conDedo(): boolean {
-  if (esCelular()) return true;
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-}
+// Vive en `foco.ts` (la regla del foco con el dedo); sigue saliendo de acá para no romper importaciones.
+export { conDedo };
 
 /**
  * «Enviar por WhatsApp», como el recibo (`enviarPorWhatsapp` de
- * `compartirTicket`): en el teléfono y la tablet, el diálogo de compartir del
- * sistema con el PDF y el mensaje (ahí se elige WhatsApp y el chat); en la PC
- * `wa.me` no puede adjuntar archivos: se abre el chat del paciente (si tiene
- * teléfono) con el mensaje y se baja el PDF para arrastrarlo. El chat se abre
- * ANTES de armar el PDF, mientras dura el clic (si no, lo frena el bloqueador
- * de ventanas): `armar` se llama recién después.
+ * `compartirTicket`) pero sólo con el PDF: en el teléfono y la tablet, el
+ * diálogo de compartir del sistema con el PDF (ahí se elige WhatsApp y el
+ * chat: el PDF va adjunto); en la PC `wa.me` no puede adjuntar archivos: se
+ * abre el chat del paciente (si la ficha tiene teléfono; si no, ninguno) y se
+ * baja el PDF para arrastrarlo. El chat se abre ANTES de armar el PDF,
+ * mientras dura el clic (si no, lo frena el bloqueador de ventanas): `armar`
+ * se llama recién después. Cancelar el diálogo de compartir no es un error.
  */
 export async function enviarPdfPorWhatsapp({
-  texto,
   telefono,
   nombreArchivo,
   armar,
 }: {
-  /** El mensaje: «Seguimiento del tratamiento al 24/11/2026.» */
-  texto: string;
   telefono: string | null;
   nombreArchivo: string;
   armar: () => Promise<Blob>;
@@ -296,14 +292,13 @@ export async function enviarPdfPorWhatsapp({
   const celular = conDedo() && typeof navigator.share === "function" && typeof navigator.canShare === "function";
   if (!celular) {
     const numero = Telefono.paraWhatsApp(telefono);
-    window.open(`https://wa.me/${numero ?? ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+    if (numero) window.open(`https://wa.me/${numero}`, "_blank", "noopener,noreferrer");
   }
   const blob = await armar();
   const archivo = new File([blob], nombreArchivo, { type: "application/pdf" });
   if (celular && navigator.canShare({ files: [archivo] })) {
     try {
-      const conTexto = navigator.canShare({ files: [archivo], text: texto });
-      await navigator.share(conTexto ? { files: [archivo], text: texto, title: nombreArchivo } : { files: [archivo], title: nombreArchivo });
+      await navigator.share({ files: [archivo], title: nombreArchivo });
       return "compartido";
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return "cancelado";

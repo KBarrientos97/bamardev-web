@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
 import { isoDia } from "../../../lib/format";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
+import type { ProductoSeguimiento } from "../../../lib/nutricion/seguimiento/tipos";
+import { catalogoConLista, olvidarCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { CATALOGO_SEGUIMIENTO, filaDe, hojaDe, pacientesDePrueba, pagosDe } from "../../../test/seguimientoFixtures";
 import HojaSeguimiento from "./HojaSeguimiento";
 import ListaSeguimiento from "./ListaSeguimiento";
@@ -38,6 +40,8 @@ vi.mock("../../../lib/nutricion/seguimiento/api", async (original) => ({
     pagosPendientes: vi.fn(),
     cargarSemana: vi.fn(),
     corregirRegistro: vi.fn(),
+    productos: vi.fn(),
+    agregarProducto: vi.fn(),
   },
 }));
 
@@ -256,6 +260,44 @@ describe("la hoja del paciente, con permiso de cargar", () => {
     expect(within(hoja).getByText(/^Último control de la evaluación: 92,4.kg/)).toBeInTheDocument();
     // El inicial es la semana de pago del mes 1.
     expect(within(hoja).getByText("Hoy toca el pago del mes 1")).toBeInTheDocument();
+  });
+});
+
+// §9.2: la lista de tratamientos cambia desde «+ Agregar» con la hoja abierta.
+describe("«+ Agregar» desde «Iniciar tratamiento»", () => {
+  // El catálogo queda guardado entre pruebas: que las que siguen no vean el tratamiento agregado.
+  afterEach(() => olvidarCatalogoSeguimiento());
+
+  it("al volver, el botón nuevo está (el catálogo se vuelve a leer), no se elige solo y la hoja no se rearma", async () => {
+    const deFabrica: ProductoSeguimiento[] = CATALOGO_SEGUIMIENTO.tratamientos.map((t) => ({
+      id: null,
+      nombre: t.nombre,
+      deFabrica: true,
+      cambiado: false,
+      oculto: false,
+      pasosMg: t.pasosMg,
+      presentaciones: t.presentaciones,
+    }));
+    const conNuevo: ProductoSeguimiento[] = [...deFabrica, { ...deFabrica[2], id: 12, nombre: "Péptido nuevo", deFabrica: false }];
+    vi.mocked(apiSeguimiento.productos).mockResolvedValue({ productos: deFabrica });
+    vi.mocked(apiSeguimiento.agregarProducto).mockResolvedValue({ productos: conNuevo });
+    await abrirHoja(20);
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar tratamiento" }));
+    const hoja = screen.getByRole("dialog", { name: "Iniciar tratamiento" });
+    fireEvent.change(within(hoja).getByLabelText("Tratamiento"), { target: { value: "Escrito a mano" } });
+    const lecturas = vi.mocked(apiSeguimiento.catalogo).mock.calls.length;
+    vi.mocked(apiSeguimiento.catalogo).mockResolvedValue(catalogoConLista(CATALOGO_SEGUIMIENTO, conNuevo));
+    fireEvent.click(within(hoja).getByRole("button", { name: "Agregar un tratamiento a la lista" }));
+    const ventana = screen.getByRole("dialog", { name: "Agregar tratamiento" });
+    fireEvent.change(within(ventana).getByLabelText("Nombre"), { target: { value: "Péptido nuevo" } });
+    fireEvent.click(within(ventana).getByRole("button", { name: "Agregar" }));
+    expect(await within(hoja).findByRole("button", { name: "Péptido nuevo" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Agregar tratamiento" })).not.toBeInTheDocument();
+    await waitFor(() => expect(vi.mocked(apiSeguimiento.catalogo).mock.calls.length).toBe(lecturas + 1));
+    expect(within(hoja).getByLabelText("Tratamiento")).toHaveValue("Escrito a mano");
+    // La misma hoja (no se desmontó ni se volvió a armar).
+    expect(screen.getByRole("dialog", { name: "Iniciar tratamiento" })).toBe(hoja);
+    expect(within(hoja).getByRole("button", { name: "Péptido nuevo" })).toBeInTheDocument();
   });
 });
 

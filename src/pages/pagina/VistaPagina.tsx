@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createPortal, preload } from "react-dom";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_ANUNCIO, ICONO_RED, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
@@ -333,6 +333,12 @@ export interface PropsVista {
   urlInscribirme?: (grupoId: number) => string;
   /** Academias (M5): «Pagar mi inscripción» al pie de los cursos. */
   urlMiCuenta?: string;
+  /**
+   * Nutrición (25-nov): el formulario del carnet («Consultá tu ficha»), primero
+   * entre los botones y a todo el ancho. Sin esto (la vista previa del editor)
+   * no va.
+   */
+  consulta?: ReactNode;
 }
 
 export default function VistaPagina({
@@ -353,6 +359,7 @@ export default function VistaPagina({
   onSucursalCatalogo,
   urlInscribirme,
   urlMiCuenta,
+  consulta,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
   const [sucursalPropia, setSucursalPropia] = useState(0);
@@ -516,7 +523,7 @@ export default function VistaPagina({
     })),
   ];
 
-  const botones = p.botones.map((x) =>
+  const enlaces = p.botones.map((x) =>
     centrados ? (
       <Enlace key={x.id} href={x.url} onClick={clic(x)} style={botonSecundario}>
         {x.etiqueta}
@@ -529,6 +536,26 @@ export default function VistaPagina({
       </Enlace>
     ),
   );
+  // La consulta del carnet va primero: es lo que busca el paciente que entra.
+  // En las grillas de botones ocupa su propia fila, centrada y con tope: la
+  // tarjeta (ilustración + formulario) se arma sola según el ancho que le toca.
+  const botones = consulta
+    ? [
+        <div
+          key="consulta-ficha"
+          style={{
+            gridColumn: "1 / -1",
+            width: "100%",
+            maxWidth: 960,
+            marginInline: "auto",
+            boxSizing: "border-box",
+          }}
+        >
+          {consulta}
+        </div>,
+        ...enlaces,
+      ]
+    : enlaces;
 
   const accionesDe = (s: PaginaPublica["sucursales"][number]): AccionSucursal[] =>
     [

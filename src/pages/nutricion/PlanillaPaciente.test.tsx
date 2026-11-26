@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiNutricion } from "../../lib/nutricion/api";
-import { bajarPdfEvaluacion, documentoEvaluacion } from "../../lib/nutricion/pdfEvaluacion";
+import { bajarPdfEvaluacion, documentoEvaluacion, enviarPdfEvaluacionPorWhatsapp } from "../../lib/nutricion/pdfEvaluacion";
 import type { Paciente, PesoDelPaciente } from "../../lib/nutricion/tipos";
 import { CATALOGO, control, paciente } from "../../test/nutricionFixtures";
 import PlanillaPaciente from "./PlanillaPaciente";
@@ -62,6 +62,7 @@ async function abrir(p: Paciente) {
 beforeEach(() => {
   vi.mocked(apiNutricion.catalogo).mockResolvedValue(CATALOGO);
   vi.mocked(bajarPdfEvaluacion).mockReset();
+  vi.mocked(enviarPdfEvaluacionPorWhatsapp).mockReset();
   sesion.permisos = ["nutricion.ver"];
 });
 
@@ -106,6 +107,35 @@ describe("los botones del PDF", () => {
     await act(async () => terminar("descargado"));
     await waitFor(() => expect(screen.getByText("PDF de la evaluación listo.")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Descargar PDF" })).toBeEnabled();
+  });
+
+  // 26-nov: se probó un diálogo con el número y se volvió a lo directo: un toque manda el PDF (sin mensaje) al teléfono de la ficha.
+  it("«Enviar por WhatsApp» va directo, sin diálogo: el PDF de la evaluación al teléfono de la ficha, «Armando…» y el aviso si bajó", async () => {
+    let terminar: (r: "descargado") => void = () => {};
+    vi.mocked(enviarPdfEvaluacionPorWhatsapp).mockImplementation(() => new Promise((ok) => (terminar = ok)));
+    await abrir(paciente({ controles }));
+    fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar por WhatsApp" })).toHaveTextContent("Armando…");
+    expect(screen.getByRole("button", { name: "Descargar PDF" })).toBeDisabled();
+    const [doc, telefono] = vi.mocked(enviarPdfEvaluacionPorWhatsapp).mock.calls[0];
+    expect(doc.paciente).toBe("Lucía Paredes Soria");
+    expect(telefono).toBe("70000000");
+    await act(async () => terminar("descargado"));
+    await waitFor(() => expect(screen.getByText("Se descargó el PDF: adjuntalo en el chat de WhatsApp.")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Enviar por WhatsApp" })).toBeEnabled();
+  });
+
+  it("«Enviar por WhatsApp» compartido o cancelado: sin aviso", async () => {
+    vi.mocked(enviarPdfEvaluacionPorWhatsapp).mockResolvedValueOnce("cancelado").mockResolvedValueOnce("compartido");
+    await abrir(paciente({ controles }));
+    for (let i = 0; i < 2; i++) {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar por WhatsApp" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Enviar por WhatsApp" })).toBeEnabled());
+    }
+    expect(enviarPdfEvaluacionPorWhatsapp).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/Se descargó el PDF/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No se pudo armar el PDF/)).not.toBeInTheDocument();
   });
 });
 

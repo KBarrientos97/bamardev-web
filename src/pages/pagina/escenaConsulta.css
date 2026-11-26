@@ -1,0 +1,268 @@
+/*
+  La escena de la consulta por carnet (EscenaConsulta.tsx), al estilo de las
+  de la landing: sólo transform y opacity, pausada fuera de pantalla y quieta
+  con "reducir movimiento".
+
+  Ciclo maestro de 6.5 s (el de la landing): la cortina descubre la curva del
+  peso, el último control late, sale el aviso y el PDF da un saltito. Las
+  clases llevan `.ecn` delante para ganarle a `.ecn svg *` y fijar pivotes
+  propios. Sin animación queda la pose final: la curva entera y el punto.
+*/
+
+.ecn svg * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ecn:not([data-vista]) *,
+.ecn:not([data-vista]) *::before {
+  animation-play-state: paused !important;
+}
+
+/* Conjunto: la ficha, la manzana y el vaso flotan apenas, desfasados. */
+@keyframes ecn-flota {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3.5px);
+  }
+}
+@keyframes ecn-sombra {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.14;
+  }
+  50% {
+    transform: scaleX(0.93);
+    opacity: 0.09;
+  }
+}
+.ecn .ecn-flota {
+  animation: ecn-flota 6.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-delay: var(--d, 0s);
+}
+.ecn .ecn-sombra {
+  animation: ecn-sombra 6.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-delay: var(--d, 0s);
+}
+
+/* Hojas y ramitas: se mecen desde su base. */
+@keyframes ecn-mece {
+  0%,
+  100% {
+    transform: rotate(calc(var(--g, 4deg) * -1));
+  }
+  50% {
+    transform: rotate(var(--g, 4deg));
+  }
+}
+.ecn .ecn-mece {
+  animation: ecn-mece 3.25s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-delay: var(--d, 0s);
+  transform-origin: var(--o, 50% 100%);
+}
+
+/* La curva del peso: una cortina del color del papel la descubre de izquierda
+   a derecha; al final del ciclo la curva se apaga y la cortina vuelve tapada. */
+@keyframes ecn-cortina {
+  0%,
+  6% {
+    transform: translateX(0);
+  }
+  32%,
+  100% {
+    transform: translateX(86px);
+  }
+}
+.ecn .ecn-cortina {
+  transform: translateX(86px);
+  animation: ecn-cortina 6.5s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes ecn-grafico {
+  0%,
+  86% {
+    opacity: 1;
+  }
+  92%,
+  100% {
+    opacity: 0;
+  }
+}
+.ecn .ecn-grafico {
+  animation: ecn-grafico 6.5s linear infinite;
+}
+
+/* El último control: aparece con rebote cuando la curva llega, y emite un aro. */
+@keyframes ecn-punto {
+  0%,
+  29% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  33% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  37%,
+  86% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  92%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+.ecn .ecn-punto {
+  animation: ecn-punto 6.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+@keyframes ecn-aro {
+  0%,
+  32% {
+    transform: scale(1);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.8;
+  }
+  58%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+.ecn .ecn-aro {
+  opacity: 0;
+  animation: ecn-aro 6.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+/* El PDF da un saltito después del aviso: «bajalo». */
+@keyframes ecn-salto {
+  0%,
+  46%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(-6deg);
+  }
+  54% {
+    transform: translateY(0) rotate(0deg);
+  }
+  57% {
+    transform: translateY(-2.5px) rotate(2deg);
+  }
+  60% {
+    transform: translateY(0) rotate(0deg);
+  }
+}
+.ecn .ecn-salto {
+  animation: ecn-salto 6.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  transform-origin: 50% 100%;
+}
+
+/* El agua: la ola corre y las burbujas suben. */
+@keyframes ecn-ola {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(24px);
+  }
+}
+.ecn .ecn-ola {
+  animation: ecn-ola 2.6s linear infinite;
+}
+@keyframes ecn-burbuja {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(-46px) scale(1);
+    opacity: 0;
+  }
+}
+.ecn .ecn-burbuja {
+  opacity: 0;
+  animation: ecn-burbuja 3.25s ease-out infinite;
+  animation-delay: var(--d, 0s);
+}
+
+/* Brillitos que titilan alrededor. */
+@keyframes ecn-brillo {
+  0%,
+  100% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+}
+.ecn .ecn-brillo {
+  opacity: 0;
+  animation: ecn-brillo 3.25s ease-in-out infinite;
+  animation-delay: var(--d, 0s);
+}
+
+/* Orbes de luz del fondo que derivan despacio. */
+@keyframes ecn-deriva {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(14px, 8px);
+  }
+}
+.ecn-deriva {
+  animation: ecn-deriva 13s ease-in-out infinite;
+}
+.ecn-deriva-b {
+  animation: ecn-deriva 13s ease-in-out infinite reverse;
+}
+
+/* El aviso del sistema: entra cuando el punto late y se va antes de que la
+   curva se apague. */
+@keyframes ecn-chip {
+  0%,
+  33%,
+  88%,
+  100% {
+    transform: translateY(-8px) scale(0.94);
+    opacity: 0;
+  }
+  39% {
+    transform: translateY(1px) scale(1.02);
+    opacity: 1;
+  }
+  43%,
+  80% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.ecn-chip {
+  opacity: 0;
+  animation: ecn-chip 6.5s ease-in-out infinite;
+  transform-origin: 0% 0%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ecn *,
+  .ecn *::before {
+    animation: none !important;
+  }
+  /* Sin animación el aviso no aparece: sólo importa la ilustración. */
+  .ecn-chip {
+    display: none;
+  }
+}

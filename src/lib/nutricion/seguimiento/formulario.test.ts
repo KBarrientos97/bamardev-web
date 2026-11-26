@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   cambioLaMarca,
+  cambiosDeProducto,
   cambiosDeSemana,
   cambiosDeTratamiento,
   conPagoDelMes,
   errorDeNumero,
+  erroresDeProducto,
   erroresDeSemana,
   erroresDeTratamiento,
+  hayErroresDeProducto,
   iniciarAInput,
+  nombreDeProducto,
+  presentacionesDe,
+  productoDesde,
+  productoVacio,
   semanaAInput,
   semanaCambio,
   semanaConDatos,
@@ -19,6 +26,54 @@ import {
   valorLimitado,
 } from "./formulario";
 import { armarTratamiento, pacientesDePrueba } from "../../../test/seguimientoFixtures";
+
+// §9.2: el formulario de un tratamiento de la lista del negocio.
+describe("un tratamiento de la lista («Agregar tratamiento» / «Editar»)", () => {
+  it("abre vacío: el nombre y un renglón del vial; editar trae lo guardado (sin viales, un renglón vacío)", () => {
+    expect(productoVacio()).toEqual({ nombre: "", viales: [{ mg: "", ml: "" }] });
+    expect(productoDesde({ nombre: "Glow", presentaciones: [] })).toEqual({ nombre: "Glow", viales: [{ mg: "", ml: "" }] });
+    expect(productoDesde({ nombre: "Tirzepatida", presentaciones: [{ mg: 15, ml: 0.5 }] }).viales).toEqual([{ mg: "15", ml: "0,5" }]);
+  });
+
+  it("el nombre: vacío no, más de 80 letras no; se recorta y se le juntan los espacios", () => {
+    expect(erroresDeProducto(productoVacio()).nombre).toBe("Escribí el nombre del tratamiento");
+    expect(erroresDeProducto({ nombre: "   ", viales: [] }).nombre).toBe("Escribí el nombre del tratamiento");
+    expect(erroresDeProducto({ nombre: "x".repeat(81), viales: [] }).nombre).toBe("Hasta 80 letras");
+    // Lo mismo que pide la hoja al iniciar: un botón de una letra escribiría un nombre que la hoja rechaza.
+    expect(erroresDeProducto({ nombre: "X", viales: [] }).nombre).toBe("Al menos 2 letras");
+    expect(erroresDeProducto({ nombre: " X  ", viales: [] }).nombre).toBe("Al menos 2 letras");
+    expect(erroresDeProducto({ nombre: "XL", viales: [] }).nombre).toBeNull();
+    expect(nombreDeProducto("  Péptido   de  prueba ")).toBe("Péptido de prueba");
+  });
+
+  it("un renglón a medio llenar (mg sin ml) es un error; vacío, no; los números con coma o punto y los topes del vial", () => {
+    const e = erroresDeProducto({ nombre: "Uno", viales: [{ mg: "15", ml: "" }, { mg: "", ml: "" }, { mg: "1001", ml: "0,5" }, { mg: "70", ml: "3.5" }] });
+    expect(e.viales[0].vial).toBe("Completá los dos: los mg y los ml del vial");
+    expect(e.viales[1]).toEqual({ mg: null, ml: null, vial: null });
+    expect(e.viales[2].mg).toMatch(/^Mayor que 0 y hasta 1\.?000 mg$/);
+    expect(e.viales[3]).toEqual({ mg: null, ml: null, vial: null });
+    expect(hayErroresDeProducto(e)).toBe(true);
+    expect(hayErroresDeProducto(erroresDeProducto({ nombre: "Uno", viales: [{ mg: "", ml: "" }] }))).toBe(false);
+  });
+
+  it("los viales viajan completos, sin los vacíos ni los repetidos, en el orden en que se escribieron", () => {
+    expect(
+      presentacionesDe({ nombre: "Uno", viales: [{ mg: "70", ml: "3" }, { mg: "", ml: "" }, { mg: "15", ml: "0,5" }, { mg: "70,0", ml: "3" }] }),
+    ).toEqual([
+      { mg: 70, ml: 3 },
+      { mg: 15, ml: 0.5 },
+    ]);
+  });
+
+  it("al editar viaja sólo lo que cambió; al de fábrica no se le manda el nombre", () => {
+    const glow = { nombre: "Glow", deFabrica: true, presentaciones: [] };
+    expect(cambiosDeProducto(glow, productoDesde(glow))).toEqual({});
+    expect(cambiosDeProducto(glow, { nombre: "Otro", viales: [{ mg: "70", ml: "3" }] })).toEqual({ presentaciones: [{ mg: 70, ml: 3 }] });
+    const propio = { nombre: "Péptido de prueba", deFabrica: false, presentaciones: [{ mg: 10, ml: 1 }] };
+    expect(cambiosDeProducto(propio, { nombre: " Péptido  de prueba ", viales: [{ mg: "10", ml: "1" }] })).toEqual({});
+    expect(cambiosDeProducto(propio, { nombre: "Péptido B", viales: [{ mg: "", ml: "" }] })).toEqual({ nombre: "Péptido B", presentaciones: [] });
+  });
+});
 
 /**
  * Lo que se escribe en la hoja «Semana N» y en «Iniciar tratamiento», y cómo

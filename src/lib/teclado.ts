@@ -31,6 +31,57 @@ export function useAltoTeclado(activo = true): number {
   return alto;
 }
 
+/** La parte de la ventana que se ve con el teclado abierto, en px desde arriba de la ventana. */
+export type AreaVisible = { arriba: number; alto: number };
+
+/**
+ * Lo que se ve de verdad con el teclado de la pantalla abierto (null si está
+ * cerrado), para una hoja que tiene que ocupar justo eso.
+ *
+ * En Chrome de Android el teclado no achica la página: achica sólo la parte
+ * visible (`visualViewport`) y, al enfocar un campo, la CORRE hacia abajo
+ * (`offsetTop > 0`). Una hoja `fixed` con el borde de abajo encima del teclado
+ * (`useAltoTeclado`) dejaba su cabecera arriba, fuera de la vista, y como lo de
+ * adentro no deja pasar el arrastre (`overscroll-contain`), no había forma de
+ * volver a subir sin cerrar el teclado (Kevin, 26-nov, la hoja «Semana 5»).
+ *
+ * null también sin `visualViewport` (la PC, las pruebas), con zoom (la parte
+ * visible es la lupa, no el teclado) y con menos de 80 px tapados (la barra
+ * del navegador que aparece y se va). Se mide a lo sumo una vez por cuadro y
+ * sólo cambia el estado si cambió el número: el teclado avisa muchas veces
+ * mientras sube.
+ *
+ * `useAltoTeclado` sigue como está: lo usan el `Modal` de todo el sistema y la
+ * hoja de la mesa, que sólo necesitan el borde de abajo.
+ */
+export function useAreaVisible(activo = true): AreaVisible | null {
+  const [area, setArea] = useState<AreaVisible | null>(null);
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!activo || !vv) return;
+    let cuadro = 0;
+    const medir = () => {
+      cuadro = 0;
+      const conTeclado = vv.scale <= 1.01 && window.innerHeight - vv.height > 80;
+      const nueva = conTeclado ? { arriba: Math.round(vv.offsetTop), alto: Math.round(vv.height) } : null;
+      setArea((a) => (a?.arriba === nueva?.arriba && a?.alto === nueva?.alto ? a : nueva));
+    };
+    const pedir = () => {
+      if (!cuadro) cuadro = window.requestAnimationFrame(medir);
+    };
+    medir();
+    vv.addEventListener("resize", pedir);
+    vv.addEventListener("scroll", pedir);
+    return () => {
+      vv.removeEventListener("resize", pedir);
+      vv.removeEventListener("scroll", pedir);
+      if (cuadro) window.cancelAnimationFrame(cuadro);
+    };
+  }, [activo]);
+  // Apagado, nada (lo medido antes de apagarlo ya no vale).
+  return activo ? area : null;
+}
+
 /**
  * Al enfocar un campo adentro de `contenedor`, lo deja a la vista cuando el
  * teclado termina de subir (tarda unos 250 ms en el iPhone).

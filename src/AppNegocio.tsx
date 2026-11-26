@@ -128,6 +128,7 @@ const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m
 const RutasNutricion = lazy(() => import("./pages/nutricion/RutasNutricion"));
 // El seguimiento del tratamiento (23-nov), en su propio paquete: el Médico no baja la evaluación.
 const RutasSeguimiento = lazy(() => import("./pages/nutricion/seguimiento/RutasSeguimiento"));
+const ReportesNutricion = lazy(() => import("./pages/nutricion/reportes/ReportesNutricion"));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
 function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
@@ -1178,6 +1179,17 @@ function Rutas() {
             <Protegida seccion="seguimiento">
               <Suspense fallback={null}>
                 <RutasSeguimiento />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        {/* Los reportes del consultorio (25-nov): con su permiso propio. */}
+        <Route
+          path="/nutricion/reportes"
+          element={
+            <Protegida seccion="nutricion_reportes">
+              <Suspense fallback={null}>
+                <ReportesNutricion />
               </Suspense>
             </Protegida>
           }

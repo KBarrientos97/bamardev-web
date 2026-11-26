@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
@@ -27,6 +27,7 @@ vi.mock("../../../lib/nutricion/seguimiento/api", async (original) => ({
     cargarSemana: vi.fn(),
     corregirRegistro: vi.fn(),
     borrarRegistro: vi.fn(),
+    productos: vi.fn(),
   },
 }));
 
@@ -559,6 +560,46 @@ describe("el cambio de producto (§7.1 y §7.2)", () => {
     expect(igual()).toHaveAttribute("aria-pressed", "true");
   });
 
+  // §9.2: los botones del catálogo escriben el producto nuevo; «+ Agregar», sólo para quien puede cambiar la lista.
+  it("los botones del catálogo escriben el producto nuevo (ninguno marcado); «+ Agregar» abre «Tratamientos» y `Esc` no cierra la semana", async () => {
+    vi.mocked(apiSeguimiento.productos).mockResolvedValue({ productos: [] });
+    const { onCerrar } = abrir(lucia, { semana: 8 });
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    const nombre = screen.getByLabelText("Producto nuevo");
+    expect(nombre).toHaveValue("");
+    fireEvent.click(boton("Glow"));
+    expect(nombre).toHaveValue("Glow");
+    fireEvent.click(boton("Agregar un tratamiento a la lista"));
+    await act(async () => {});
+    expect(screen.getByRole("dialog", { name: "Agregar tratamiento" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Agregar tratamiento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar sin guardar?" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Semana 8" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Producto nuevo")).toHaveValue("Glow");
+    expect(onCerrar).not.toHaveBeenCalled();
+  });
+
+  it("sin `puedeCambiarlos`, el cambio de producto no ofrece «+ Agregar»", () => {
+    render(
+      <MemoryRouter>
+        <HojaSemana
+          tratamiento={lucia}
+          catalogo={{ ...CATALOGO_SEGUIMIENTO, ajustes: { ...CATALOGO_SEGUIMIENTO.ajustes, puedeCambiarlos: false } }}
+          registro={null}
+          semana={8}
+          pacienteNombre="Paciente de prueba"
+          ultimoControl={null}
+          onCerrar={vi.fn()}
+          onGuardado={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(boton(/^Cambió de producto desde esta semana/));
+    expect(boton("Retatrutida")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Agregar un tratamiento a la lista" })).not.toBeInTheDocument();
+  });
+
   it("abrirlo y cerrarlo sin escribir no deja cambios", () => {
     const { onCerrar } = abrir(lucia);
     fireEvent.click(boton(/^Cambió de producto desde esta semana/));
@@ -711,5 +752,51 @@ describe("el atrás del navegador", () => {
     const { onCerrar } = abrir(lucia);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onCerrar).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Kevin, 26-nov: «al abrir la hoja Semana el Peso toma el foco y se abre el teclado». Con el
+// dedo el teclado sube sólo cuando se toca un campo (`lib/nutricion/foco.ts`); en la PC, como siempre.
+describe("el foco con el dedo (el teléfono, la tablet)", () => {
+  const conDedo = () =>
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(hover: none) and (pointer: coarse)", media: q, addEventListener() {}, removeEventListener() {} }));
+  /** Lo que tarda en correr el foco que se pone con `setTimeout`. */
+  const unRato = () => act(() => new Promise<void>((listo) => setTimeout(listo, 80)));
+  const escribiendo = () => document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("en la PC, una semana nueva abre con el foco en el peso, como siempre", () => {
+    abrir(lucia);
+    expect(peso()).toHaveFocus();
+  });
+
+  it("con el dedo, la hoja abre sin el foco en el peso: ningún campo, el teclado no sube", async () => {
+    conDedo();
+    abrir(lucia);
+    await unRato();
+    expect(peso()).not.toHaveFocus();
+    expect(escribiendo()).toBe(false);
+  });
+
+  it("con el dedo, tildar «No se aplicó» muestra el motivo sin enfocarlo (sus botones no piden teclado)", async () => {
+    conDedo();
+    abrir(lucia);
+    fireEvent.click(screen.getByRole("checkbox", { name: "No se aplicó esta semana" }));
+    await unRato();
+    expect(screen.getByLabelText("Motivo")).not.toHaveFocus();
+    expect(escribiendo()).toBe(false);
+  });
+
+  it("con el dedo, «Anotar el pago» de la pregunta vuelve al pago sin enfocar el medicamento", async () => {
+    conDedo();
+    abrir(carla, { semana: 5 });
+    fireEvent.change(peso(), { target: { value: "84,6" } });
+    fireEvent.click(boton(/^Guardar/));
+    fireEvent.click(boton("Anotar el pago"));
+    await unRato();
+    expect(screen.queryByRole("dialog", { name: "¿Guardar sin el pago?" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Medicamento/)).not.toHaveFocus();
+    expect(escribiendo()).toBe(false);
   });
 });

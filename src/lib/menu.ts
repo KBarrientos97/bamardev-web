@@ -52,6 +52,12 @@ export interface ItemNav {
    */
   rutas?: readonly string[];
   /**
+   * Rutas que cuelgan de este ítem pero tienen su propia entrada en el menú:
+   * ahí el ítem NO se enciende (sólo se enciende la otra). Ej.: «Seguimiento»
+   * no se enciende en «/seguimiento/pagos», que es «Pagos pendientes».
+   */
+  fuera?: readonly string[];
+  /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
    */
@@ -259,6 +265,27 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     titulo: "Seguimiento del tratamiento",
     icono: "seguimiento",
     seccion: "seguimiento",
+    bloque: "agenda",
+    fuera: ["/seguimiento/pagos"],
+  },
+  // 26-nov: el atajo del botón «Pagos pendientes» de Seguimiento, con su número
+  // de pacientes que deben. Mismo permiso que Seguimiento; se esconde si el
+  // negocio apagó los avisos de pago (ver MenuLateral).
+  {
+    a: "/seguimiento/pagos",
+    label: "Pagos pendientes",
+    icono: "coins",
+    seccion: "seguimiento",
+    bloque: "agenda",
+  },
+  // Los reportes del consultorio (25-nov): debajo del Seguimiento, con su
+  // propio permiso. Mismo encierro (NUTRICION y la feature `nutricion`).
+  {
+    a: "/nutricion/reportes",
+    label: "Reportes",
+    titulo: "Reportes del consultorio",
+    icono: "chart",
+    seccion: "nutricion_reportes",
     bloque: "agenda",
   },
   // Educación (PLAN-ACADEMIAS §4): lo del día con el alumno, en Atención.
@@ -812,6 +839,7 @@ export function aplanar(nodos: NodoMenu[]): NodoMenu[] {
 /** ¿Este ítem es la pantalla en la que se está? */
 export function esActivo(item: ItemNav, pathname: string): boolean {
   if (pathname === item.a) return true;
+  if (item.fuera?.some((r) => pathname === r || pathname.startsWith(`${r}/`))) return false;
   if (item.rutas?.some((r) => pathname === r || pathname.startsWith(`${r}/`))) return true;
   return !item.exacto && pathname.startsWith(`${item.a}/`);
 }

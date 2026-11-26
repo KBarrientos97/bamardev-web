@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { entregarPdf, type EntregaPdf } from "../pdf/tablaPdf";
-import { fechaCorta, fechaLarga, fmtNumero, hoyIso, posicionEnMedidor, rangoDe, sufijoDelDia, vecesDelDia } from "./calculo";
+import { fechaCorta, fechaLarga, fmtNumero, hoyIso, posicionEnMedidor, rangoDe, sufijoDelDia, tallaEnMetros, vecesDelDia } from "./calculo";
 import {
   altoDeDatos,
   anchoComoSeDibuja,
@@ -184,8 +184,8 @@ export function documentoEvaluacion({
     { etiqueta: "CARNET", valor: enUnRenglon(p.ci ? `${p.ci}${p.ciExpedido ? ` ${p.ciExpedido}` : ""}` : "") || "—" },
     { etiqueta: "EDAD", valor: p.edad != null ? `${p.edad} años` : "—" },
     { etiqueta: "SEXO", valor: p.sexo === "F" ? "Mujer" : p.sexo === "M" ? "Hombre" : "—" },
-    // En metros con dos decimales, como se dice una talla: «1,60 m» (no «1,6 m»).
-    { etiqueta: "TALLA", valor: p.tallaCm ? `${(p.tallaCm / 100).toFixed(2).replace(".", ",")} m` : "—" },
+    // En metros con dos decimales, como se dice una talla y como se ve en la pantalla: «1,60 m» (no «1,6 m»).
+    { etiqueta: "TALLA", valor: p.tallaCm ? `${tallaEnMetros(p.tallaCm)} m` : "—" },
     { etiqueta: "TELÉFONO", valor: enUnRenglon(p.telefono) || "—" },
     { etiqueta: "PRIMER CONTROL", valor: primero ? fechaLarga(primero.fecha) : "—" },
     { etiqueta: "ÚLTIMO CONTROL", valor: ultimo ? fechaLarga(ultimo.fecha) : "—" },
@@ -828,13 +828,13 @@ export async function bajarPdfEvaluacion(doc: DocumentoEvaluacion): Promise<Entr
 }
 
 /**
- * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`): en el teléfono y la
- * tablet, el diálogo de compartir con el PDF; en la PC, el chat del paciente
- * (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF descargado.
+ * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`), sólo el PDF: en el
+ * teléfono y la tablet, el diálogo de compartir con el PDF; en la PC, el chat
+ * del paciente (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF
+ * descargado.
  */
 export async function enviarPdfEvaluacionPorWhatsapp(doc: DocumentoEvaluacion, telefono: string | null): Promise<EnvioWhatsapp> {
   return enviarPdfPorWhatsapp({
-    texto: `Evaluación nutricional al ${fechaLarga(hoyIso())}.`,
     telefono,
     nombreArchivo: nombreDelPdfEvaluacion(),
     armar: () => pdfDeLaEvaluacion(doc),

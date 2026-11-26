@@ -20,8 +20,9 @@ import {
 import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
 import { useContadorBillar } from "../lib/billar/contador";
 import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
+import { useContadorPagos } from "../lib/nutricion/seguimiento/contadorPagos";
 import { usePedidosNuevos } from "../lib/pedidosWeb/contador";
-import { revisaPagosEnLinea } from "../lib/permisos";
+import { RUTA_PAGOS_PENDIENTES, revisaPagosEnLinea } from "../lib/permisos";
 import { queCuentaElMenu } from "../lib/rotuloContador";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
@@ -105,8 +106,14 @@ export default function MenuLateral({
   );
   // Pedidos de la página sin responder (13-nov): el mismo reloj que usa el aviso.
   const pedidosWeb = usePedidosNuevos(menu.planos.some((n) => n.item.seccion === "pedidos_web")).nuevos;
+  // Nutrición (26-nov): los pacientes que deben un pago, en el atajo «Pagos pendientes».
+  const pagos = useContadorPagos(menu.planos.some((n) => n.item.a === RUTA_PAGOS_PENDIENTES));
+  // Con los avisos de pago apagados el atajo no se dibuja (mientras no responde, se ve).
+  const oculto = (n: NodoMenu) => n.item.a === RUTA_PAGOS_PENDIENTES && pagos.avisar === false;
   const contadorDe = (n: NodoMenu) =>
-    n.item.seccion === "solicitudes"
+    n.item.a === RUTA_PAGOS_PENDIENTES
+      ? pagos.deben
+      : n.item.seccion === "solicitudes"
       ? solicitudes
       : n.item.seccion === "academia_preinscripciones"
         ? preinscripciones
@@ -116,6 +123,7 @@ export default function MenuLateral({
             ? pedidosWeb
             : 0;
   const queCuenta = (n: NodoMenu, cantidad: number) => queCuentaElMenu(n.item.seccion, cantidad);
+  const enRojo = (n: NodoMenu) => n.item.a === RUTA_PAGOS_PENDIENTES;
   const enAlerta = (n: NodoMenu) => n.item.seccion === "billar" && billar.alerta;
   // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra
   // las pendientes en vez de cuántas pantallas guarda, o nadie las vería.
@@ -223,6 +231,7 @@ export default function MenuLateral({
 
   /** Barra de íconos: todo el árbol en una columna. */
   const nodoCompacto = (n: NodoMenu, padre: NodoMenu | null) => {
+    if (oculto(n)) return null;
     const activo = !n.esTitulo && esActivo(n.item, pathname);
     const dentro = !activo && n.hijos.length > 0 && contieneRuta(n, pathname);
     return (
@@ -248,7 +257,7 @@ export default function MenuLateral({
             {contadorDe(n) > 0 && (
               <span
                 aria-hidden
-                className={`absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-barra ${enAlerta(n) ? "bg-amber-400" : "bg-white"}`}
+                className={`absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-barra ${enAlerta(n) ? "bg-amber-400" : enRojo(n) ? "bg-danger" : "bg-white"}`}
               />
             )}
           </span>
@@ -258,6 +267,7 @@ export default function MenuLateral({
   };
 
   const nodo = (n: NodoMenu, padre: NodoMenu | null) => {
+    if (oculto(n)) return null;
     const activo = !n.esTitulo && esActivo(n.item, pathname);
     const esHijo = padre !== null;
 
@@ -293,7 +303,7 @@ export default function MenuLateral({
             {contadorDe(n) > 0 && (
               <span
                 className={`ml-auto rounded-full px-1.5 text-[11px] font-bold leading-[18px] tabular-nums ${
-                  enAlerta(n) ? "bg-amber-400 text-amber-950" : "bg-barra-texto text-barra"
+                  enAlerta(n) ? "bg-amber-400 text-amber-950" : enRojo(n) ? "bg-danger text-white" : "bg-barra-texto text-barra"
                 }`}
                 aria-label={`${contadorDe(n)} ${queCuenta(n, contadorDe(n))}`}
               >

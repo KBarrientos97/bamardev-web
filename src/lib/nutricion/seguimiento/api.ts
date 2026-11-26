@@ -1,14 +1,18 @@
 import { ApiError, qs, request } from "../../api";
+import { avisarPagosCambiaron } from "./avisoPagos";
 import type {
   AjustesSeguimiento,
+  CambiosProducto,
   CambiosTratamiento,
   CatalogoSeguimiento,
   HojaPaciente,
   IniciarTratamientoInput,
+  ListaProductos,
   ListaSeguimiento,
   PagosPendientes,
   RegistroInput,
   Tratamiento,
+  Vial,
 } from "./tipos";
 
 /**
@@ -40,6 +44,8 @@ export const CODIGOS_SEGUIMIENTO = {
   PACIENTE_NO_ENCONTRADO: "PACIENTE_NO_ENCONTRADO",
   TRATAMIENTO_NO_ENCONTRADO: "TRATAMIENTO_NO_ENCONTRADO",
   REGISTRO_NO_ENCONTRADO: "REGISTRO_NO_ENCONTRADO",
+  // §9.1: un tratamiento que ya está en la lista del negocio (visible u oculto).
+  PRODUCTO_REPETIDO: "PRODUCTO_REPETIDO",
 } as const;
 
 const NO_ENCONTRADOS: string[] = [
@@ -70,7 +76,22 @@ export const hojaDesactualizada = (e: unknown) => e instanceof ApiError && (e.st
 /** ¿El error es de este código? */
 export const esCodigo = (e: unknown, codigo: keyof typeof CODIGOS_SEGUIMIENTO) => e instanceof ApiError && e.codigo === codigo;
 
+/**
+ * ¿Ya está en la lista? (§9.1: `409 PRODUCTO_REPETIDO`). Las escrituras de la
+ * lista no dan otro 409, y el contrato lo escribe como `code`: se mira el
+ * estado, no sólo el nombre del código.
+ */
+export const esProductoRepetido = (e: unknown) =>
+  e instanceof ApiError && (e.status === 409 || e.codigo === CODIGOS_SEGUIMIENTO.PRODUCTO_REPETIDO || e.detalle.code === CODIGOS_SEGUIMIENTO.PRODUCTO_REPETIDO);
+
 const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
+
+/** Cuando la escritura sale bien, avisa que los pagos pendientes pueden haber cambiado (el número del menú). */
+const avisando = <T,>(p: Promise<T>) =>
+  p.then((r) => {
+    avisarPagosCambiaron();
+    return r;
+  });
 
 export const apiSeguimiento = {
   catalogo: () => request<CatalogoSeguimiento>("/nutricion/seguimiento/catalogo"),
@@ -96,29 +117,52 @@ export const apiSeguimiento = {
   pagosPendientes: () => request<PagosPendientes>("/nutricion/seguimiento/pagos-pendientes"),
 
   cambiarAjustes: (cambios: Partial<AjustesSeguimiento>) =>
-    request<AjustesSeguimiento>("/nutricion/seguimiento/ajustes", { method: "PATCH", body: json(cambios) }),
+    avisando(request<AjustesSeguimiento>("/nutricion/seguimiento/ajustes", { method: "PATCH", body: json(cambios) })),
 
   /** Inicia un tratamiento con su registro inicial. */
   iniciar: (pacienteId: number, cuerpo: IniciarTratamientoInput) =>
-    request<Tratamiento>(`/nutricion/seguimiento/pacientes/${pacienteId}/tratamientos`, { method: "POST", body: json(cuerpo) }),
+    avisando(request<Tratamiento>(`/nutricion/seguimiento/pacientes/${pacienteId}/tratamientos`, { method: "POST", body: json(cuerpo) })),
 
   /** Uno anterior (o cualquiera), por su id. */
   tratamiento: (id: number) => request<Tratamiento>(`/nutricion/tratamientos/${id}`),
 
   /** Nombre, unidad, vial, nota; terminar (`estado: "TERMINADO"`) o reabrir (`"ACTIVO"`). */
   cambiarTratamiento: (id: number, cambios: CambiosTratamiento) =>
-    request<Tratamiento>(`/nutricion/tratamientos/${id}`, { method: "PATCH", body: json(cambios) }),
+    avisando(request<Tratamiento>(`/nutricion/tratamientos/${id}`, { method: "PATCH", body: json(cambios) })),
 
   /** Borra el tratamiento con todas sus semanas. */
-  borrarTratamiento: (id: number) => request<{ ok: true }>(`/nutricion/tratamientos/${id}`, { method: "DELETE" }),
+  borrarTratamiento: (id: number) => avisando(request<{ ok: true }>(`/nutricion/tratamientos/${id}`, { method: "DELETE" })),
 
   cargarSemana: (tratamientoId: number, cuerpo: RegistroInput) =>
-    request<Tratamiento>(`/nutricion/tratamientos/${tratamientoId}/registros`, { method: "POST", body: json(cuerpo) }),
+    avisando(request<Tratamiento>(`/nutricion/tratamientos/${tratamientoId}/registros`, { method: "POST", body: json(cuerpo) })),
 
   /** Cambia sólo lo que viene; `null` borra el dato. */
   corregirRegistro: (id: number, cambios: RegistroInput) =>
-    request<Tratamiento>(`/nutricion/registros/${id}`, { method: "PATCH", body: json(cambios) }),
+    avisando(request<Tratamiento>(`/nutricion/registros/${id}`, { method: "PATCH", body: json(cambios) })),
 
   /** Borra una semana (el inicial no: 409 INICIAL_NO_SE_BORRA). */
-  borrarRegistro: (id: number) => request<Tratamiento>(`/nutricion/registros/${id}`, { method: "DELETE" }),
+  borrarRegistro: (id: number) => avisando(request<Tratamiento>(`/nutricion/registros/${id}`, { method: "DELETE" })),
+
+  // ── La lista de tratamientos del negocio (§9.1, `negocio.configurar`) ─────
+  // Todas devuelven la lista entera ya cambiada. Quien escribe olvida el
+  // catálogo guardado (`olvidarCatalogoSeguimiento`): sus botones cambiaron.
+  // Un backend anterior no tiene estas rutas (404).
+
+  /** La lista entera, con los ocultos. */
+  productos: () => request<ListaProductos>("/nutricion/seguimiento/productos"),
+
+  /** Agrega uno propio (409 PRODUCTO_REPETIDO si ya está, aunque esté oculto). */
+  agregarProducto: (cuerpo: { nombre: string; presentaciones?: Vial[] }) =>
+    request<ListaProductos>("/nutricion/seguimiento/productos", { method: "POST", body: json(cuerpo) }),
+
+  /** Cambia una fila: uno propio, o uno de fábrica que ya se tocó (a ése no se le cambia el nombre). */
+  cambiarProducto: (id: number, cambios: CambiosProducto) =>
+    request<ListaProductos>(`/nutricion/seguimiento/productos/${id}`, { method: "PATCH", body: json(cambios) }),
+
+  /** Redefine u oculta uno de fábrica que todavía no tiene fila (se busca por el nombre). */
+  cambiarDeFabrica: (nombre: string, cambios: Omit<CambiosProducto, "nombre">) =>
+    request<ListaProductos>("/nutricion/seguimiento/productos/de-fabrica", { method: "PATCH", body: json({ nombre, ...cambios }) }),
+
+  /** Borra la fila: uno propio desaparece; uno de fábrica vuelve a como venía. */
+  quitarProducto: (id: number) => request<ListaProductos>(`/nutricion/seguimiento/productos/${id}`, { method: "DELETE" }),
 };

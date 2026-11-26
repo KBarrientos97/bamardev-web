@@ -1060,17 +1060,21 @@ export default function SitioPagina(x: PiezasSitio) {
       </Enlace>
     ) : null;
   const primera = reservar && (belleza || !verCatalogo) ? reservar : (verCatalogo ?? reservar ?? accionWhatsapp(lleno));
+  // Sin reservas ni catálogo, la primera ya es el WhatsApp: la segunda no lo
+  // repite (salían dos botones iguales, 25-nov).
+  const primeraEsWhatsapp = !reservar && !verCatalogo;
+  const comoLlegar = tieneUbicacion ? (
+    <a href="#ubicacion" style={claro}>
+      Cómo llegar
+    </a>
+  ) : null;
   const segunda = escritorio
     ? primera === reservar
       ? verCatalogo
-      : accionWhatsapp(claro)
-    : tieneUbicacion
-      ? (
-          <a href="#ubicacion" style={claro}>
-            Cómo llegar
-          </a>
-        )
-      : null;
+      : primeraEsWhatsapp
+        ? comoLlegar
+        : accionWhatsapp(claro)
+    : comoLlegar;
   const accionesPortada = (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
       {primera && <span style={{ display: "contents" }}>{primera}</span>}

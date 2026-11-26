@@ -86,12 +86,20 @@ describe("evaluación, etapa 1", () => {
     servidor.altasPedidas = [];
   });
 
-  it("la talla escrita en metros pasa a centímetros al salir del campo", async () => {
+  it("la talla queda en metros al salir del campo, se escriba «1.73» o «173» (QA, 24-nov)", async () => {
     await abrirAlta();
     const talla = screen.getByLabelText("Talla");
-    escribirYSalir(talla, "1,80");
-    expect(talla).toHaveValue("180");
-    expect(screen.queryByText(/Entre 80 y 250/)).not.toBeInTheDocument();
+    escribirYSalir(talla, "1.73");
+    expect(talla).toHaveValue("1,73");
+    escribirYSalir(talla, "173");
+    expect(talla).toHaveValue("1,73");
+    escribirYSalir(talla, "1,8");
+    expect(talla).toHaveValue("1,80");
+    expect(screen.queryByText(/Entre 0,80 y 2,50/)).not.toBeInTheDocument();
+    // Fuera de tope, el error habla en metros y lo escrito queda como está.
+    escribirYSalir(talla, "58");
+    expect(talla).toHaveValue("58");
+    expect(screen.getByText(/Entre 0,80 y 2,50/)).toBeInTheDocument();
   });
 
   it("la unidad del campo pegada al número se acepta y se saca al salir («82,4 kg» → «82,4»)", async () => {
@@ -101,7 +109,7 @@ describe("evaluación, etapa 1", () => {
     expect(peso).toHaveValue("82,4");
     const talla = screen.getByLabelText("Talla");
     escribirYSalir(talla, "180cm");
-    expect(talla).toHaveValue("180");
+    expect(talla).toHaveValue("1,80");
     escribirYSalir(talla, "180 kg");
     expect(talla).toHaveValue("180 kg");
     expect(screen.getByText("Escribí sólo el número")).toBeInTheDocument();

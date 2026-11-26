@@ -41,6 +41,7 @@ describe("NUTRICION con la feature ve «Evaluación» y puede entrar", () => {
     expect(m[0].nodos.map((n) => [n.item.a, n.item.label, n.item.titulo, n.item.icono])).toEqual([
       ["/evaluacion", "Evaluación", "Evaluación de pacientes", "evaluacion"],
       ["/seguimiento", "Seguimiento", "Seguimiento del tratamiento", "seguimiento"],
+      ["/seguimiento/pagos", "Pagos pendientes", undefined, "coins"],
     ]);
     expect(editaNutricion(c)).toBe(true);
     expect(editaSeguimiento(c)).toBe(true);
@@ -49,21 +50,21 @@ describe("NUTRICION con la feature ve «Evaluación» y puede entrar", () => {
   it("la Nutricionista ve la evaluación y el seguimiento, y registra en los dos", () => {
     const c = ctx("NUTRICIONISTA", "NUTRICION");
     expect(puedeVer(c, "nutricion")).toBe(true);
-    expect(rutas(c)).toEqual(["/evaluacion", "/seguimiento"]);
+    expect(rutas(c)).toEqual(["/evaluacion", "/seguimiento", "/seguimiento/pagos"]);
     expect(editaNutricion(c)).toBe(true);
     expect(editaSeguimiento(c)).toBe(true);
   });
 
   it("el Médico ve la evaluación (sin registrar) y carga el seguimiento", () => {
     const c = ctx("MEDICO", "NUTRICION");
-    expect(rutas(c)).toEqual(["/evaluacion", "/seguimiento"]);
+    expect(rutas(c)).toEqual(["/evaluacion", "/seguimiento", "/seguimiento/pagos"]);
     expect(editaNutricion(c)).toBe(false);
     expect(editaSeguimiento(c)).toBe(true);
   });
 
   it("con sólo `seguimiento.ver` lo ve de sólo lectura, sin la evaluación", () => {
     const c: ContextoPermisos = { rubro: "NUTRICION", features: PLAN_NUTRICION, permisos: ["seguimiento.ver"], permisosPropios: [] };
-    expect(rutas(c)).toEqual(["/seguimiento"]);
+    expect(rutas(c)).toEqual(["/seguimiento", "/seguimiento/pagos"]);
     expect(editaSeguimiento(c)).toBe(false);
     expect(rutaInicial(c)).toBe(RUTA_SEGUIMIENTO);
   });

@@ -13,6 +13,7 @@ import {
   fichaAInput,
   fichaDesde,
   fichaVacia,
+  hayCambios,
   soloConValor,
 } from "./formulario";
 
@@ -77,7 +78,8 @@ describe("la edición manda sólo lo que cambió", () => {
     const f = fichaDesde(paciente({ fechaNacimiento: null, edad: 37, edadDeclarada: 36 }));
     expect(f.edad).toBe("37");
     expect(fichaDesde(paciente()).edad).toBe("");
-    expect(fichaDesde(paciente()).tallaCm).toBe("158");
+    // La talla del formulario, en metros (se guarda 158 cm).
+    expect(fichaDesde(paciente()).tallaCm).toBe("1,58");
   });
 
   it("la tabla de un control usa la edad del servidor: la anotada con su día, o la escrita hoy si se cambió", () => {
@@ -94,6 +96,39 @@ describe("la edición manda sólo lo que cambió", () => {
     expect(edadDelControl({ ...fichaVacia(), edad: "40" }, "2025-11-23", "2026-11-23")).toBe(39);
     // Con fecha de nacimiento no hay nada anotado.
     expect(fichaDesde(paciente()).edadAnotada).toBeNull();
+  });
+
+  it("los campos con atajos se guardan con la escritura de siempre: nunca «Sí:» ni «Sí:  » (25-nov)", () => {
+    const i = fichaAInput({
+      ...fichaVacia(),
+      nombre: "Lucía",
+      cirugias: "Sí:  ",
+      ultimosAnalisis: "no los trajo, la semana que viene ",
+      conductaSueno: "Regular: se despierta a las 3 ",
+      actividadFisica: "No",
+      consumoAgua: " 2 litros ",
+    });
+    expect(i).toMatchObject({
+      cirugias: "Sí",
+      ultimosAnalisis: "No los trajo: la semana que viene",
+      conductaSueno: "Regular: se despierta a las 3",
+      actividadFisica: "No",
+      consumoAgua: "2 L",
+    });
+    // Un atajo con la nota en blanco, o sólo espacios, es el atajo solo; nada es null.
+    expect(fichaAInput({ ...fichaVacia(), cirugias: "No: " }).cirugias).toBe("No");
+    expect(fichaAInput({ ...fichaVacia(), cirugias: "   " }).cirugias).toBeNull();
+    // Los demás textos, como siempre (sin atajos): «Conducta alimentaria» no se lee como «No».
+    expect(fichaAInput({ ...fichaVacia(), conductaAlimentaria: "no, come bien " }).conductaAlimentaria).toBe("no, come bien");
+  });
+
+  it("una ficha recién traída del servidor con «no» en cirugías no tiene cambios", () => {
+    const guardada = fichaDesde(paciente({ cirugias: "no", consumoAgua: "2 l", conductaSueno: "bien, 8 horas" }));
+    const enPantalla = { ...guardada };
+    expect(hayCambios(fichaAInput(guardada), fichaAInput(enPantalla))).toBe(false);
+    // Tocar «No» en la pantalla (deja «No») tampoco es un cambio; agregar una nota, sí.
+    expect(hayCambios(fichaAInput(guardada), fichaAInput({ ...guardada, cirugias: "No" }))).toBe(false);
+    expect(cambios(fichaAInput(guardada), fichaAInput({ ...guardada, cirugias: "No: nunca" }))).toEqual({ cirugias: "No: nunca" });
   });
 
   it("después de guardar, el carnet y la expedición quedan como los devolvió el servidor", () => {

@@ -650,6 +650,13 @@ const paths: Record<string, ReactNode> = {
       <path d="M7.5 14h2.2l1.4-3 2 6 1.4-3h2" />
     </>
   ),
+  /** WhatsApp: el globo con el teléfono (de Tabler «brand-whatsapp», MIT). */
+  whatsapp: (
+    <>
+      <path d="M3 21l1.65 -3.8a9 9 0 1 1 3.4 2.9l-5.05 .9" />
+      <path d="M9 10a.5 .5 0 0 0 1 0v-1a.5 .5 0 0 0 -1 0v1a5 5 0 0 0 5 5h1a.5 .5 0 0 0 0 -1h-1a.5 .5 0 0 0 0 1" />
+    </>
+  ),
   /** Seguimiento del tratamiento (nutrición): la hoja de cada semana, con el peso que baja. */
   seguimiento: (
     <>

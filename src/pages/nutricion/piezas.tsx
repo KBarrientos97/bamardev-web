@@ -1,12 +1,15 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode, type Ref, type TextareaHTMLAttributes } from "react";
 import { Icon } from "../../components/Icon";
+import { enfocaSolo } from "../../lib/nutricion/foco";
 import { TONO } from "../../lib/nutricion/tonos";
 import type { Rango } from "../../lib/nutricion/tipos";
 
 /**
- * El buscador grande de pacientes (Evaluación y Seguimiento): con el foco
- * puesto al entrar, la lupa a la izquierda y, a la derecha, la tecla «/» o la
- * ✕ para limpiar (que devuelve el foco al campo).
+ * El buscador grande de pacientes (Evaluación y Seguimiento): en la PC, con el
+ * foco puesto al entrar; en el teléfono y la tablet, no (el teclado tapaba la
+ * lista apenas se entraba, Kevin 26-nov: sube al tocar el campo). La lupa a la
+ * izquierda y, a la derecha, la tecla «/» o la ✕ para limpiar, que devuelve el
+ * foco al campo también con el dedo: ya se estaba escribiendo ahí.
  */
 export const BuscadorPacientes = forwardRef<
   HTMLInputElement,
@@ -23,7 +26,7 @@ export const BuscadorPacientes = forwardRef<
         value={valor}
         onChange={(e) => onCambiar(e.target.value)}
         placeholder={placeholder}
-        autoFocus
+        autoFocus={enfocaSolo()}
         autoComplete="off"
         spellCheck={false}
         className="h-14 w-full rounded-2xl border border-borde bg-white pl-12 pr-12 text-base text-texto shadow-sm outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-4 focus:ring-primary-100"

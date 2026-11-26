@@ -1,5 +1,5 @@
 import { errorDeTope, fmtNumero, hoyIso, leerNumero, redondear, textoDe, valorDe } from "../calculo";
-import type { CambiosTratamiento, IniciarTratamientoInput, Registro, RegistroInput, Tratamiento, UnidadDosis } from "./tipos";
+import type { CambiosTratamiento, IniciarTratamientoInput, ProductoSeguimiento, Registro, RegistroInput, Tratamiento, UnidadDosis, Vial } from "./tipos";
 
 /**
  * Lo que se escribe en la hoja «Semana N» y en «Iniciar tratamiento» (todo
@@ -358,6 +358,89 @@ export function iniciarAInput(t: FormTratamiento, inicial: FormSemana): IniciarT
     ...(vial ? { vialMg: vial.mg, vialMl: vial.ml } : {}),
     inicial: ini,
   };
+}
+
+// ── Un tratamiento de la lista del negocio (§9.2) ───────────────────────────
+
+/** Hasta cuántas presentaciones del vial se sugieren por tratamiento (§9.1). */
+export const MAX_PRESENTACIONES = 6;
+
+/** Un renglón «Vial de [ mg ] en [ ml ]», como está escrito. */
+export interface FormVial {
+  mg: string;
+  ml: string;
+}
+
+export interface FormProducto {
+  nombre: string;
+  /** Siempre al menos un renglón (vacío = sin vial). */
+  viales: FormVial[];
+}
+
+const vialVacio = (): FormVial => ({ mg: "", ml: "" });
+
+/** «Agregar tratamiento»: el nombre vacío y un renglón del vial vacío. */
+export function productoVacio(): FormProducto {
+  return { nombre: "", viales: [vialVacio()] };
+}
+
+/** «Editar»: el tratamiento como está en la lista (sin viales, un renglón vacío). */
+export function productoDesde(p: Pick<ProductoSeguimiento, "nombre" | "presentaciones">): FormProducto {
+  return {
+    nombre: p.nombre,
+    viales: p.presentaciones.length ? p.presentaciones.map((v) => ({ mg: fmtNumero(v.mg, 2), ml: fmtNumero(v.ml, 2) })) : [vialVacio()],
+  };
+}
+
+/** El nombre como lo guarda el servidor: recortado y con los espacios juntados. */
+export const nombreDeProducto = (nombre: string) => nombre.trim().replace(/\s+/g, " ");
+
+export interface ErroresProducto {
+  nombre: string | null;
+  /** Uno por renglón: el de cada número y el del renglón a medio llenar. */
+  viales: { mg: string | null; ml: string | null; vial: string | null }[];
+}
+
+/**
+ * Lo que está mal: el nombre, 2 a 80 letras (lo mismo que pide la hoja al
+ * iniciar un tratamiento: un botón de una letra escribiría un nombre que la
+ * hoja rechaza); cada vial, con los topes del vial del tratamiento.
+ */
+export function erroresDeProducto(f: FormProducto): ErroresProducto {
+  const nombre = nombreDeProducto(f.nombre);
+  return {
+    nombre: !nombre ? "Escribí el nombre del tratamiento" : nombre.length < 2 ? "Al menos 2 letras" : nombre.length > 80 ? "Hasta 80 letras" : null,
+    viales: f.viales.map((v) => ({
+      mg: errorDeNumero("vialMg", v.mg),
+      ml: errorDeNumero("vialMl", v.ml),
+      vial: !!v.mg.trim() !== !!v.ml.trim() ? "Completá los dos: los mg y los ml del vial" : null,
+    })),
+  };
+}
+
+export const hayErroresDeProducto = (e: ErroresProducto) => !!e.nombre || e.viales.some((v) => !!(v.mg || v.ml || v.vial));
+
+/** Los viales completos, como viajan: sin los renglones vacíos y sin repetir, en el orden en que se escribieron. */
+export function presentacionesDe(f: FormProducto): Vial[] {
+  const r: Vial[] = [];
+  for (const v of f.viales) {
+    const x = vialDe({ vialMg: v.mg, vialMl: v.ml });
+    if (x && !r.some((y) => y.mg === x.mg && y.ml === x.ml)) r.push(x);
+  }
+  return r;
+}
+
+/** Lo que cambió al editar (vacío = nada). Al de fábrica no se le manda el nombre. */
+export function cambiosDeProducto(
+  antes: Pick<ProductoSeguimiento, "nombre" | "presentaciones" | "deFabrica">,
+  ahora: FormProducto,
+): { nombre?: string; presentaciones?: Vial[] } {
+  const c: { nombre?: string; presentaciones?: Vial[] } = {};
+  const nombre = nombreDeProducto(ahora.nombre);
+  if (!antes.deFabrica && nombre !== antes.nombre) c.nombre = nombre;
+  const viales = presentacionesDe(ahora);
+  if (JSON.stringify(viales) !== JSON.stringify(antes.presentaciones.map(({ mg, ml }) => ({ mg, ml })))) c.presentaciones = viales;
+  return c;
 }
 
 /** Lo que cambió del tratamiento. Quitar el vial manda las dos en null. */

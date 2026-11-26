@@ -284,7 +284,7 @@ export function conMgDelEscalon<T extends Pick<DosisAnotada, "dosis" | "unidadDo
 /** Los escalones de la droga en mg: los que manda el servidor o, si el producto de hoy no es del catálogo, los de otro que sí (§7.1). */
 export function pasosMgDe(
   t: Pick<Tratamiento, "pasos" | "nombre" | "presentacion" | "productoInicial" | "registros">,
-  catalogo: Pick<CatalogoSeguimiento, "tratamientos"> | null | undefined,
+  catalogo: Pick<CatalogoSeguimiento, "tratamientos" | "ocultos"> | null | undefined,
   ...otrosNombres: string[]
 ): number[] {
   if (t.pasos.length) return t.pasos.map((p) => p.mg);
@@ -305,7 +305,7 @@ export function mgPorMlDe(p: Producto): number | null {
 export function escalonesDeLaSemana(
   t: Pick<Tratamiento, "pasos" | "nombre" | "presentacion" | "productoInicial" | "registros">,
   semana: number,
-  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null,
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "ocultos" | "uiPorMl"> | null,
 ): EscalonesDeLaSemana {
   const p = productoVigente(t, semana);
   return { pasosMg: pasosMgDe(t, catalogo, p.nombre), mgPorMl: mgPorMlDe(p), uiPorMl: catalogo?.uiPorMl };
@@ -522,11 +522,16 @@ export function normalizar(texto: string): string {
     .toLowerCase();
 }
 
-/** El tratamiento del catálogo que se llama así (sin distinguir mayúsculas ni tildes), o null. */
-export function delCatalogo(catalogo: Pick<CatalogoSeguimiento, "tratamientos"> | null | undefined, nombre: string): TratamientoDelCatalogo | null {
+/**
+ * El tratamiento del catálogo que se llama así (sin distinguir mayúsculas ni
+ * tildes), o null. Busca también en los que el negocio ocultó (§9.1): que no
+ * salga como botón no le quita los escalones al paciente que ya lo usa.
+ */
+export function delCatalogo(catalogo: Pick<CatalogoSeguimiento, "tratamientos" | "ocultos"> | null | undefined, nombre: string): TratamientoDelCatalogo | null {
   const n = normalizar(nombre);
   if (!n || !catalogo) return null;
-  return catalogo.tratamientos.find((t) => normalizar(t.nombre) === n) ?? null;
+  const es = (t: TratamientoDelCatalogo) => normalizar(t.nombre) === n;
+  return catalogo.tratamientos.find(es) ?? catalogo.ocultos?.find(es) ?? null;
 }
 
 // ── Los kilos ───────────────────────────────────────────────────────────────

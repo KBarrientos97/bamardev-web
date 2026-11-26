@@ -28,13 +28,63 @@ export interface CatalogoSeguimiento {
   /** La jeringa de insulina: 100 UI por ml. */
   uiPorMl: number;
   tratamientos: TratamientoDelCatalogo[];
+  /**
+   * Los que el negocio ocultó (§9.1): no salen como botón, pero sus escalones
+   * y sus viales siguen valiendo para leer la hoja de quien ya los usa. Un
+   * backend anterior no lo manda.
+   */
+  ocultos?: TratamientoDelCatalogo[];
 }
 
+/**
+ * Un botón de sugerencia al iniciar un tratamiento: los de fábrica y los que
+ * agregó el negocio, sin los ocultos (§9.1). Un backend anterior no manda `id`
+ * ni `deFabrica`.
+ */
 export interface TratamientoDelCatalogo {
+  /** La fila del negocio; null en uno de fábrica sin tocar. */
+  id?: number | null;
   nombre: string;
+  deFabrica?: boolean;
   /** Los escalones de la dosis semanal, en mg (vacío = sin botones de escalón). */
   pasosMg: number[];
-  presentaciones: { mg: number; ml: number }[];
+  presentaciones: Vial[];
+}
+
+/** Un vial: cuántos mg trae y en cuántos ml. */
+export interface Vial {
+  mg: number;
+  ml: number;
+}
+
+/**
+ * Un tratamiento de la lista que arma el negocio (§9.1), con los ocultos:
+ * `GET /nutricion/seguimiento/productos` y lo que devuelven sus escrituras.
+ */
+export interface ProductoSeguimiento {
+  /** La fila del negocio; null = uno de fábrica sin tocar. */
+  id: number | null;
+  nombre: string;
+  deFabrica: boolean;
+  /** Uno de fábrica que el negocio redefinió u ocultó: se puede volver a como venía. */
+  cambiado: boolean;
+  /** No sale como botón. */
+  oculto: boolean;
+  pasosMg: number[];
+  /** Los viales que se sugieren (0 a 6). */
+  presentaciones: Vial[];
+}
+
+/** La lista entera, ya cambiada: la devuelven el GET y las cuatro escrituras. */
+export interface ListaProductos {
+  productos: ProductoSeguimiento[];
+}
+
+/** `PATCH …/productos/:id` y `…/de-fabrica`: lo que viene se cambia. El nombre, sólo en uno propio. */
+export interface CambiosProducto {
+  nombre?: string;
+  presentaciones?: Vial[];
+  oculto?: boolean;
 }
 
 /** El vial: cuántos mg trae y en cuántos ml (15 mg en 0,5 ml), con su concentración. */

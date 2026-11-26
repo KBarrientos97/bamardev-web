@@ -1,0 +1,37 @@
+/*
+ * El pulso de la cinta activa (FiguraCuerpo): un aura del color del negocio
+ * que respira despacio por fuera del halo, para que se note cuál se está
+ * midiendo. Arranca y termina invisible, así aparece y se va sin saltos. Quien
+ * pidió menos movimiento no lo ve (el halo fijo queda igual).
+ */
+.figura-aura {
+  opacity: 0;
+  animation: figura-aura 2.8s ease-in-out infinite;
+}
+@keyframes figura-aura {
+  0%,
+  100% {
+    opacity: 0;
+    stroke-width: 9px;
+  }
+  50% {
+    opacity: 0.5;
+    stroke-width: 17px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .figura-aura {
+    animation: none;
+  }
+}
+
+/* Con el mouse encima, la cinta que no es la activa se oscurece apenas: se
+   ve que se puede tocar (lleva a su campo). Sólo donde hay puntero fino. */
+@media (hover: hover) {
+  .figura-tocable [data-estado="vacia"]:hover .figura-frente {
+    stroke: var(--color-texto-3);
+  }
+  .figura-tocable [data-estado="cargada"]:hover .figura-frente {
+    stroke: var(--color-primary-600);
+  }
+}

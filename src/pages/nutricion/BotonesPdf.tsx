@@ -9,7 +9,12 @@ import type { EntregaPdf } from "../../lib/pdf/tablaPdf";
  * «Controles» de la evaluación (CONTRATO-nutricion-evaluacion-22nov §6.1).
  * Con poder ver alcanza. En el teléfono y la tablet, el diálogo de compartir
  * del equipo; en la PC, «Guardar como» o la descarga, y para WhatsApp el chat
- * del paciente con el mensaje y el PDF descargado para adjuntar.
+ * del paciente (sin mensaje) y el PDF descargado para adjuntar.
+ *
+ * WhatsApp va directo, sin diálogo propio: el 26-nov-2026 se probó uno con el
+ * número de la ficha y, visto en el teléfono, se volvió a esto («directo desde
+ * aquí, tanto pc, teléfono o tablets»). Lo que tiene que llegar es el PDF, sin
+ * mensaje (por el chat se mandaba el texto solo).
  *
  * `descargar` y `enviar` arman el documento y lo entregan; se llaman en el
  * mismo clic, sin esperas antes (WhatsApp abre el chat antes de armar el PDF:
@@ -61,7 +66,7 @@ export default function BotonesPdf({
           </>
         )}
       </Boton>
-      <Boton variante="ghost" icono="compartir" aria-label="Enviar por WhatsApp" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
+      <Boton variante="ghost" icono="whatsapp" aria-label="Enviar por WhatsApp" className="min-h-11 lg:min-h-10" disabled={!!armando} onClick={() => void hacer("whatsapp")}>
         {armando === "whatsapp" ? (
           "Armando…"
         ) : (

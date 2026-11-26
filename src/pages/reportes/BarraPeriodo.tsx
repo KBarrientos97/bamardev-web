@@ -34,12 +34,20 @@ export function BarraPeriodo({
   onCambio,
   contra,
   corteMin,
+  enGrilla = false,
 }: {
   periodo: Periodo;
   onCambio: (p: Periodo) => void;
   /** Contra qué comparan las flechas. Sin él (un reporte sin flechas) no se dice. */
   contra?: string;
   corteMin: number;
+  /**
+   * En el teléfono, los chips en una grilla de 4 columnas, todos a la vista, en
+   * vez de la fila que se desliza: en los reportes del consultorio había que
+   * deslizar buscando el período (26-nov). Desde `sm`, una fila que pasa de
+   * renglón si no entra. Sin esto, como siempre (Reportes de ventas, Academia).
+   */
+  enGrilla?: boolean;
 }) {
   const [eligiendo, setEligiendo] = useState(false);
   const otro = !(CHIPS as Preset[]).includes(periodo.preset);
@@ -50,26 +58,58 @@ export function BarraPeriodo({
     `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
       activo ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
     }`;
+  // En la grilla del teléfono cada chip llena su columna: alto de dedo, el
+  // texto al centro y casi sin relleno («Semana» entra en un cuarto de 320 px).
+  const enCelda = enGrilla ? "max-sm:min-h-11 max-sm:justify-center max-sm:px-1" : "";
+  // El chip del calendario, con un rango elegido: en la grilla del teléfono
+  // dice «Personalizado» (las fechas ya van en el renglón de abajo y en una
+  // celda no entran); desde `sm`, las fechas, como siempre.
+  const rango = textoRango(periodo.desde, periodo.hasta);
+  const textoOtro = !otro ? (
+    "Personalizado"
+  ) : periodo.preset !== "rango" ? (
+    NOMBRE_PRESET[periodo.preset]
+  ) : enGrilla ? (
+    <>
+      <span className="sm:hidden">Personalizado</span>
+      <span className="max-sm:hidden">{rango}</span>
+    </>
+  ) : (
+    rango
+  );
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-6">
-      {/* En el celular, una sola fila que se desliza (ver FILA_DESLIZABLE). */}
-      <div className={`flex flex-wrap items-center gap-2 max-md:w-full ${FILA_DESLIZABLE}`}>
+      {/* En el celular, una sola fila que se desliza (ver FILA_DESLIZABLE); con
+          `enGrilla`, Hoy · Ayer · Semana · Mes arriba y 3 meses · Personalizado
+          abajo, a dos columnas cada uno. */}
+      <div
+        className={
+          enGrilla
+            ? "grid w-full grid-cols-4 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center"
+            : `flex flex-wrap items-center gap-2 max-md:w-full ${FILA_DESLIZABLE}`
+        }
+      >
         <span className="hidden items-center gap-1.5 text-[13px] font-semibold text-texto-3 sm:flex">
           <Icon name="calendar" size={15} />
           Período
         </span>
         {CHIPS.map((p) => (
-          <button key={p} type="button" onClick={() => onCambio(periodoDe(p, new Date(), corteMin))} className={chip(periodo.preset === p)}>
+          <button
+            key={p}
+            type="button"
+            onClick={() => onCambio(periodoDe(p, new Date(), corteMin))}
+            className={`${chip(periodo.preset === p)} ${enCelda} ${enGrilla && p === "dias90" ? "col-span-2" : ""}`}
+          >
             {NOMBRE_PRESET[p]}
           </button>
         ))}
-        <button type="button" onClick={() => setEligiendo(true)} className={chip(otro)}>
+        <button type="button" onClick={() => setEligiendo(true)} className={`${chip(otro)} ${enCelda} ${enGrilla ? "col-span-2" : ""}`}>
           <Icon name="calendar" size={14} />
-          {otro ? (periodo.preset === "rango" ? textoRango(periodo.desde, periodo.hasta) : NOMBRE_PRESET[periodo.preset]) : "Personalizado"}
+          {textoOtro}
         </button>
       </div>
       <p className="ml-auto text-[12px] text-texto-3">
-        <span className="font-semibold text-texto-2">{textoRango(periodo.desde, periodo.hasta)}</span>
+        <span className="font-semibold text-texto-2">{rango}</span>
         {jornada && (
           <span title={`Lo que se cobra antes de las ${horaDeCorte(corteMin)} cuenta para el día anterior.`}>
             {" "}

@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { entregarPdf, type EntregaPdf } from "../../pdf/tablaPdf";
-import { calcularImc, fechaLarga, fmtNumero, hoyIso } from "../calculo";
+import { calcularImc, fechaLarga, fmtNumero, hoyIso, tallaEnMetros } from "../calculo";
 import {
   AMBAR,
   BORDE,
@@ -105,7 +105,7 @@ export function documentoSeguimiento({
   paciente: HojaPaciente["paciente"];
   tratamiento: Tratamiento;
   /** Para leer cada dosis contra sus escalones (§7.4); sin él, los escalones del tratamiento. */
-  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "uiPorMl"> | null;
+  catalogo?: Pick<CatalogoSeguimiento, "tratamientos" | "ocultos" | "uiPorMl"> | null;
   hoy?: string;
 }): DocumentoSeguimiento {
   const r = t.resumen;
@@ -151,8 +151,8 @@ export function documentoSeguimiento({
       { etiqueta: "PACIENTE", valor: paciente.nombre },
       { etiqueta: "CARNET", valor: paciente.ci ? `${paciente.ci}${paciente.ciExpedido ? ` ${paciente.ciExpedido}` : ""}` : "—" },
       { etiqueta: "EDAD", valor: paciente.edad != null ? `${paciente.edad} años` : "—" },
-      // En metros con dos decimales, como se dice una talla: «1,60 m» (no «1,6 m»).
-      { etiqueta: "TALLA", valor: paciente.tallaCm ? `${(paciente.tallaCm / 100).toFixed(2).replace(".", ",")} m` : "—" },
+      // En metros con dos decimales, como se dice una talla y como se ve en la pantalla: «1,60 m» (no «1,6 m»).
+      { etiqueta: "TALLA", valor: paciente.tallaCm ? `${tallaEnMetros(paciente.tallaCm)} m` : "—" },
       { etiqueta: "PRODUCTO", valor: textoProducto(actual) },
       { etiqueta: "INICIO", valor: fechaLarga(t.inicio) },
       {
@@ -540,13 +540,13 @@ export async function bajarPdfSeguimiento(doc: DocumentoSeguimiento): Promise<En
 }
 
 /**
- * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`): en el teléfono y la
- * tablet, el diálogo de compartir con el PDF; en la PC, el chat del paciente
- * (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF descargado.
+ * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`), sólo el PDF: en el
+ * teléfono y la tablet, el diálogo de compartir con el PDF; en la PC, el chat
+ * del paciente (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF
+ * descargado.
  */
 export async function enviarPdfSeguimientoPorWhatsapp(doc: DocumentoSeguimiento, telefono: string | null): Promise<EnvioWhatsapp> {
   return enviarPdfPorWhatsapp({
-    texto: `Seguimiento del tratamiento al ${fechaLarga(hoyIso())}.`,
     telefono,
     nombreArchivo: nombreDelPdf(),
     armar: () => pdfDelSeguimiento(doc),

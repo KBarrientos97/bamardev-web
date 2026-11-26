@@ -303,6 +303,12 @@ export interface PaginaPublica {
    * anterior no lo manda.
    */
   cursos?: CursoPublico[] | null;
+  /**
+   * Nutrición (25-nov): el botón «Consultar mi ficha» (la consulta por carnet).
+   * Siempre en un consultorio de nutrición, nunca en otro rubro.
+   * Un backend anterior no lo manda (= sin botón).
+   */
+  consultaPacientes?: boolean;
   destacado: EnlacePublico | null;
   redes: EnlacePublico[];
   botones: EnlacePublico[];

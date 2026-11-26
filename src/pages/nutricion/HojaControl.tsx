@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import { Boton, Confirmar, Modal } from "../../components/ui";
 import { apiNutricion } from "../../lib/nutricion/api";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../lib/nutricion/atajos";
+import { enfocaSolo } from "../../lib/nutricion/foco";
 import {
   avisoImc,
   calcularImc,
@@ -212,8 +213,9 @@ export default function HojaControl({
             value={form[campo]}
             unidad={UNIDAD[campo]}
             invalido={!!err}
-            // En un control nuevo se empieza por el peso: la fecha ya es hoy.
-            autoFocus={!control && campo === "pesoKg"}
+            // En un control nuevo se empieza por el peso: la fecha ya es hoy. Con el dedo,
+            // sin subir el teclado al abrir (`foco.ts`).
+            autoFocus={!control && campo === "pesoKg" && enfocaSolo()}
             onChange={(v) => cambiar(campo, v)}
             onBlur={() => {
               const t = textoAlSalir(campo, form[campo]);
@@ -327,10 +329,11 @@ export default function HojaControl({
           </Seccion>
 
           <Seccion titulo="Medidas">
+            {/* De arriba abajo, como el cuerpo y como el formulario de la evaluación. */}
             <div className="grid gap-4 sm:grid-cols-3">
+              {numero("pechoCm", "Pecho")}
               {numero("cinturaCm", "Cintura")}
               {numero("caderaCm", "Cadera")}
-              {numero("pechoCm", "Pecho")}
             </div>
           </Seccion>
 

@@ -3,6 +3,7 @@ import { Icon } from "../../../components/Icon";
 import { Boton, Confirmar } from "../../../components/ui";
 import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/atajos";
 import { hoyIso } from "../../../lib/nutricion/calculo";
+import { enfocaSolo, enfocarOMostrar } from "../../../lib/nutricion/foco";
 import { apiSeguimiento, hojaDesactualizada, tratamientoQueYaTiene } from "../../../lib/nutricion/seguimiento/api";
 import {
   concentracion,
@@ -28,13 +29,14 @@ import {
   type FormSemana,
   type FormTratamiento,
 } from "../../../lib/nutricion/seguimiento/formulario";
-import type { CatalogoSeguimiento, HojaPaciente, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
+import type { CatalogoSeguimiento, HojaPaciente, ProductoSeguimiento, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
 import { CampoTexto, Rotulo, SeccionHoja } from "../piezas";
 import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PieHoja, PreguntaSinPago, SelectorVial } from "./bloques";
+import DialogoTratamientos from "./DialogoTratamientos";
 import HojaGrande from "./HojaGrande";
-import { BotonesUnidad, BotonToque } from "./piezas";
+import { BotonAgregarALaLista, BotonesUnidad, BotonSugerencia } from "./piezas";
 
 /**
  * «Iniciar tratamiento» y «Editar tratamiento» (§4.2): el nombre (con las
@@ -42,6 +44,11 @@ import { BotonesUnidad, BotonToque } from "./piezas";
  * dosis de mg a UI y a ml) y en qué se anota la dosis (ningún botón marcado al
  * iniciar: es obligatorio elegir). Al iniciar, además, el registro inicial,
  * con los mismos bloques que «Semana N». Todo arranca vacío.
+ *
+ * Quien puede cambiar la lista ve «+ Agregar» al final de las sugerencias
+ * (§9.2): abre «Tratamientos» encima, ya en «Agregar tratamiento». Cerrarla no
+ * cierra ni pregunta por esta hoja; al volver, el botón nuevo aparece (no se
+ * elige solo) y lo escrito acá sigue igual.
  */
 export default function HojaTratamiento({
   modo,
@@ -54,6 +61,7 @@ export default function HojaTratamiento({
   onGuardado,
   onYaTiene,
   onDesactualizada,
+  onListaCambiada,
 }: {
   modo: "iniciar" | "editar";
   pacienteId: number;
@@ -68,6 +76,8 @@ export default function HojaTratamiento({
   onYaTiene?: () => void;
   /** El servidor dijo que la hoja de atrás quedó vieja (404 / 409): se vuelve a leer al cerrar. */
   onDesactualizada?: () => void;
+  /** Se cambió la lista de tratamientos desde «+ Agregar» (ya guardada): el catálogo de atrás se vuelve a leer. */
+  onListaCambiada?: (productos: ProductoSeguimiento[]) => void;
 }) {
   const iniciar = modo === "iniciar";
   const [antesT] = useState<FormTratamiento>(() => (!iniciar && tratamiento ? tratamientoDesde(tratamiento) : tratamientoVacio()));
@@ -84,6 +94,8 @@ export default function HojaTratamiento({
   const [intento, setIntento] = useState(false);
   const [preguntaCerrar, setPreguntaCerrar] = useState(false);
   const [preguntaPago, setPreguntaPago] = useState(false);
+  // «Tratamientos» abierta encima (§9.2).
+  const [enLaLista, setEnLaLista] = useState(false);
   const avisoError = useRef<HTMLParagraphElement>(null);
   const medicamento = useRef<HTMLInputElement>(null);
   const hoy = hoyIso();
@@ -147,7 +159,8 @@ export default function HojaTratamiento({
     }
   }
 
-  const otraPregunta = preguntaCerrar || preguntaPago;
+  // Con una pregunta o la ventana «Tratamientos» encima, `Esc`, el atrás y `Ctrl+Enter` son de ella.
+  const otraPregunta = preguntaCerrar || preguntaPago || enLaLista;
   // El atrás del navegador con algo escrito tampoco se lleva la hoja: pregunta
   // lo mismo que `Esc` (si ya hay una pregunta abierta, no abre otra). Cerrar o
   // recargar la pestaña, el aviso del navegador.
@@ -166,6 +179,7 @@ export default function HojaTratamiento({
   const errMg = intento || formT.vialMg ? erroresT.vialMg : null;
   const errMl = intento || formT.vialMl ? erroresT.vialMl : null;
   const primerPaso = delCat?.pasosMg[0];
+  const puedeLista = catalogo.ajustes.puedeCambiarlos;
   // §7.1: con cambios de producto, acá se corrige el producto con el que EMPEZÓ.
   const alEmpezar = !iniciar && (tratamiento?.cambiosDeProducto ?? 0) > 0;
 
@@ -180,7 +194,8 @@ export default function HojaTratamiento({
         cabecera={
           <>
             <h2 className="text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">{titulo}</h2>
-            <p className="mt-1 text-sm text-texto-2">{pacienteNombre}</p>
+            {/* Con el teclado abierto y poco alto, el renglón del paciente no va. */}
+            <p className="mt-1 text-sm text-texto-2 group-data-[teclado=compacto]/hoja:hidden">{pacienteNombre}</p>
           </>
         }
         pie={<PieHoja onCancelar={pedirCerrar} onGuardar={() => void guardar()} guardando={guardando} etiqueta={iniciar ? "Iniciar tratamiento" : "Guardar"} />}
@@ -209,19 +224,21 @@ export default function HojaTratamiento({
               id={`${id}-nombre`}
               value={formT.nombre}
               maxLength={80}
-              autoFocus
+              // Al abrir, el nombre; con el dedo, sin subir el teclado (las sugerencias de abajo se tocan).
+              autoFocus={enfocaSolo()}
               autoComplete="off"
               invalido={intento && !!erroresT.nombre}
               onChange={(e) => cambiarT("nombre", e.target.value)}
               className="min-h-12 text-base"
             />
-            {catalogo.tratamientos.length > 0 && (
+            {(catalogo.tratamientos.length > 0 || puedeLista) && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {catalogo.tratamientos.map((t) => (
-                  <BotonToque key={t.nombre} onClick={() => cambiarT("nombre", t.nombre)}>
+                  <BotonSugerencia key={t.nombre} onClick={() => cambiarT("nombre", t.nombre)}>
                     {t.nombre}
-                  </BotonToque>
+                  </BotonSugerencia>
                 ))}
+                {puedeLista && <BotonAgregarALaLista id={`${id}-agregar-tratamiento`} onClick={() => setEnLaLista(true)} />}
               </div>
             )}
           </Rotulo>
@@ -334,10 +351,23 @@ export default function HojaTratamiento({
         procesando={guardando}
         onAnotar={() => {
           setPreguntaPago(false);
-          setTimeout(() => medicamento.current?.focus(), 0);
+          // De vuelta de la pregunta: con el dedo, el pago a la vista y el teclado cerrado.
+          setTimeout(() => enfocarOMostrar(medicamento.current), 0);
         }}
         onGuardar={() => void guardar(true)}
       />
+      {enLaLista && (
+        <DialogoTratamientos
+          abrirEn="agregar"
+          onCerrar={(productos) => {
+            setEnLaLista(false);
+            if (productos) onListaCambiada?.(productos);
+            // De vuelta al «+ Agregar»: el botón nuevo queda a la vista, sin elegirse.
+            // Es un botón (no sube el teclado): también con el dedo.
+            setTimeout(() => document.getElementById(`${id}-agregar-tratamiento`)?.focus(), 0);
+          }}
+        />
+      )}
     </>
   );
 }
