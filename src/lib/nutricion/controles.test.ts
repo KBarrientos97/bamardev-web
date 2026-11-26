@@ -211,8 +211,8 @@ describe("comparar dos fechas", () => {
   it("las filas sin dato en ninguna de las dos fechas se esconden y se nombran", () => {
     const { filas, sinMedir } = filasDeComparar(c, parDe(0, 2), CATALOGO);
     expect(filas.map((f) => f.medida.campo)).toEqual(["pesoKg", "imc", "grasaPct"]);
-    expect(sinMedir).toEqual(["% de músculo", "Edad corporal", "Grasa visceral", "Cintura", "Cadera", "Pecho"]);
-    expect(textoSinMedir(["Cadera", "Pecho"])).toBe("Sin medir en esas fechas: Cadera y Pecho.");
+    expect(sinMedir).toEqual(["% de músculo", "Edad corporal", "Grasa visceral", "Pecho", "Cintura", "Cadera"]);
+    expect(textoSinMedir(["Cintura", "Cadera"])).toBe("Sin medir en esas fechas: Cintura y Cadera.");
     expect(textoSinMedir([])).toBeNull();
   });
 

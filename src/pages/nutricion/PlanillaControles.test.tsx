@@ -62,6 +62,12 @@ describe("PC (sin medir el ancho)", () => {
     expect(screen.getByRole("columnheader", { name: /Cambio/ })).toBeInTheDocument();
   });
 
+  it("los renglones van como la hoja, y las tres cintas como el cuerpo: Pecho, Cintura, Cadera", () => {
+    render(<Planilla controles={doce()} catalogo={CATALOGO} />);
+    const renglones = screen.getAllByRole("rowheader").map((h) => h.textContent ?? "");
+    expect(renglones).toEqual(["Peso(kg)", "IMC", "% de grasa", "% de músculo", "Edad corporal(años)", "Grasa visceral", "Pecho(cm)", "Cintura(cm)", "Cadera(cm)", "Nota"]);
+  });
+
   it("«Ver los 8 controles anteriores» pasa a Todos", () => {
     render(<Planilla controles={doce()} catalogo={CATALOGO} />);
     fireEvent.click(screen.getByRole("button", { name: "Ver los 8 controles anteriores" }));
@@ -145,7 +151,7 @@ describe("teléfono (358)", () => {
     expect(screen.getByLabelText("Hasta")).toHaveDisplayValue("10/12/2026 · Último");
     expect(screen.getByText("Del 10/01/2026 al 10/12/2026: 11 meses")).toBeInTheDocument();
     expect(screen.getByText(/↓ 22\s+kg/)).toBeInTheDocument();
-    expect(screen.getByText("Sin medir en esas fechas: % de músculo, Edad corporal, Grasa visceral, Cintura, Cadera y Pecho.")).toBeInTheDocument();
+    expect(screen.getByText("Sin medir en esas fechas: % de músculo, Edad corporal, Grasa visceral, Pecho, Cintura y Cadera.")).toBeInTheDocument();
     expect(screen.getByText("Nota del 10/01/2026:")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
