@@ -8,7 +8,6 @@ import {
   dibujarCabecera,
   dibujarDatos,
   dibujarPies,
-  enviarPdfPorWhatsapp,
   FIN,
   FONDO_CUADRO,
   FUENTES,
@@ -23,7 +22,6 @@ import {
   TEXTO,
   usar,
   UTIL,
-  type EnvioWhatsapp,
   type Fuente,
 } from "../pdfComun";
 import { escalonesDeLaSemana, leerDosis, nombreSemana, productoVigente, rachaAntes, textoKg, textoKgTotal, textoProducto, type EscalonesDeLaSemana } from "./formato";
@@ -265,7 +263,7 @@ export function paginarFilas<T>(
 /** El color de siempre del seguimiento (el verde de nutrición). */
 export const MARCA_SEGUIMIENTO = MARCA_NUTRICION;
 
-export { conUnidadesPegadas, type EnvioWhatsapp } from "../pdfComun";
+export { conUnidadesPegadas } from "../pdfComun";
 
 /** Las columnas de la tabla (pt): Semana · Fecha · Peso · Kg bajado · Dosis · Observaciones (lo que sobra). */
 const RELLENO_X = 7;
@@ -540,15 +538,7 @@ export async function bajarPdfSeguimiento(doc: DocumentoSeguimiento): Promise<En
 }
 
 /**
- * «Enviar por WhatsApp» (ver `enviarPdfPorWhatsapp`): en el teléfono y la
- * tablet, el diálogo de compartir con el PDF; en la PC, el chat del paciente
- * (abierto ANTES de armar el PDF, mientras dura el clic) y el PDF descargado.
+ * El mensaje que acompaña al PDF en «Enviar por WhatsApp» (`DialogoWhatsapp`:
+ * el chat del número o el diálogo de compartir, ver `pdfComun`).
  */
-export async function enviarPdfSeguimientoPorWhatsapp(doc: DocumentoSeguimiento, telefono: string | null): Promise<EnvioWhatsapp> {
-  return enviarPdfPorWhatsapp({
-    texto: `Seguimiento del tratamiento al ${fechaLarga(hoyIso())}.`,
-    telefono,
-    nombreArchivo: nombreDelPdf(),
-    armar: () => pdfDelSeguimiento(doc),
-  });
-}
+export const mensajeDelSeguimiento = (hoy = hoyIso()) => `Seguimiento del tratamiento al ${fechaLarga(hoy)}.`;

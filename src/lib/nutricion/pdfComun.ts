@@ -1,12 +1,12 @@
 import type { jsPDF } from "jspdf";
-import { esCelular } from "../compartirTicket";
 import { Telefono } from "../telefono";
 
 /**
  * Lo común de los PDF de nutrición (el del seguimiento del tratamiento y el
  * de la evaluación): la hoja A4 en puntos, los colores, las fuentes, cómo se
  * parte un texto en renglones, la cabecera, los datos en cuatro columnas, el
- * pie de cada hoja y la entrega por WhatsApp.
+ * pie de cada hoja y las dos entregas por WhatsApp (el chat del número y el
+ * diálogo de compartir).
  *
  * Texto de verdad (jsPDF con la Helvetica de siempre, WinAnsi): nada de «−»
  * (U+2212), «≈», flechas, espacios duros ni emojis, que esa fuente no tiene.
@@ -258,49 +258,117 @@ export function dibujarPies(pdf: jsPDF, texto: string) {
 }
 
 // ── La entrega por WhatsApp ─────────────────────────────────────────────────
+//
+// Desde una página web, `wa.me/<número>?text=…` abre el chat de ese número con
+// el mensaje escrito, pero NO puede adjuntar un archivo; adjuntar el PDF sólo
+// se puede con el diálogo de compartir del sistema (que no deja elegir el
+// número: hay que buscar el contacto, y si no está agendado no aparece) o a
+// mano con el clip. Por eso son dos entregas separadas, y el diálogo «Enviar
+// por WhatsApp» (`DialogoWhatsapp`) ofrece las dos (26-nov-2026).
 
-export type EnvioWhatsapp = "compartido" | "cancelado" | "descargado";
+// Vive en `foco.ts` (la regla del foco con el dedo); sigue saliendo de acá para no romper importaciones.
+export { conDedo } from "./foco";
 
 /**
- * El teléfono o la tablet: `esCelular` no alcanza, porque la tablet Android
- * (y el iPad) no se dicen «mobile» y ahí «Enviar por WhatsApp» abría wa.me y
- * bajaba el PDF para adjuntarlo a mano. Una pantalla sólo táctil, sin mouse,
- * también usa el diálogo de compartir.
+ * El teléfono de la ficha, como se muestra en el campo del diálogo (al lado
+ * del «+591»): sin el 591 si lo trae. Uno de otro país («+54 9 11…») va tal
+ * cual; vacío si no hay.
  */
-export function conDedo(): boolean {
-  if (esCelular()) return true;
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+export function numeroDeLaFicha(telefono: string | null | undefined): string {
+  const limpio = (telefono ?? "").replace(/[^\d\s+-]/g, "").trim();
+  const conPais = Telefono.bolivia(limpio);
+  if (!conPais) return "";
+  return conPais.length === 11 ? conPais.slice(3) : limpio;
 }
 
 /**
- * «Enviar por WhatsApp», como el recibo (`enviarPorWhatsapp` de
- * `compartirTicket`): en el teléfono y la tablet, el diálogo de compartir del
- * sistema con el PDF y el mensaje (ahí se elige WhatsApp y el chat); en la PC
- * `wa.me` no puede adjuntar archivos: se abre el chat del paciente (si tiene
- * teléfono) con el mensaje y se baja el PDF para arrastrarlo. El chat se abre
- * ANTES de armar el PDF, mientras dura el clic (si no, lo frena el bloqueador
- * de ventanas): `armar` se llama recién después.
+ * El número para `wa.me` (sólo dígitos, con el código de país), o null si no
+ * vale: 8 dígitos (de Bolivia: va con 591 adelante), 11 que empiezan con 591,
+ * o con «+» adelante y de 8 a 15 dígitos (otro país, tal cual). Con «+591», el
+ * de Bolivia completo: «+591 7049068» no es de otro país, le falta un dígito.
  */
-export async function enviarPdfPorWhatsapp({
+export function numeroParaWhatsapp(valor: string): string | null {
+  const texto = valor.trim();
+  const digitos = texto.replace(/\D/g, "");
+  if (digitos.length === 11 && digitos.startsWith("591")) return digitos;
+  if (texto.startsWith("+")) return digitos.length >= 8 && digitos.length <= 15 && !digitos.startsWith("591") ? digitos : null;
+  return digitos.length === 8 ? Telefono.paraWhatsApp(digitos) : null;
+}
+
+/** «+591 70490686»; uno de otro país, «+5491112345678». */
+export function numeroParaMostrar(numero: string): string {
+  return numero.length === 11 && numero.startsWith("591") ? Telefono.paraMostrar(numero) : `+${numero}`;
+}
+
+/** Cómo terminó «Compartir el PDF por otra app». Cancelar no es un error. */
+export type ResultadoCompartir = "compartido" | "cancelado" | "descargado";
+
+/** Baja el PDF con su nombre (el `<a download>` de siempre). */
+function bajar(blob: Blob, nombreArchivo: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * El chat de ese número con el mensaje listo, y el PDF descargado para
+ * adjuntarlo con el clip. El chat se abre EN EL MISMO CLIC, antes de cualquier
+ * espera (si no, lo frena el bloqueador de ventanas): `armar` se espera recién
+ * después. Si armar el PDF falla, el chat ya quedó abierto y la promesa falla.
+ *
+ * Con el PDF ya armado (`listo`: el diálogo lo arma al abrirse), primero baja
+ * y después abre el chat, las dos cosas dentro del toque: en el teléfono, abrir
+ * el chat manda la página al fondo, y una descarga que arranca recién ahí
+ * queda a merced del navegador.
+ */
+export async function abrirChatConPdf({
+  numero,
   texto,
-  telefono,
+  nombreArchivo,
+  armar,
+  listo,
+}: {
+  /** Para `wa.me`: sólo dígitos, con el código de país (59170490686). */
+  numero: string;
+  /** El mensaje: «Seguimiento del tratamiento al 24/11/2026.» */
+  texto: string;
+  nombreArchivo: string;
+  armar: () => Promise<Blob>;
+  /** El PDF, si ya está armado. */
+  listo?: Blob | null;
+}): Promise<void> {
+  const chat = `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
+  if (listo) {
+    bajar(listo, nombreArchivo);
+    window.open(chat, "_blank", "noopener,noreferrer");
+    return;
+  }
+  window.open(chat, "_blank", "noopener,noreferrer");
+  bajar(await armar(), nombreArchivo);
+}
+
+/**
+ * El diálogo de compartir del sistema con el PDF y, si el equipo lo acepta,
+ * también el mensaje (ahí se elige WhatsApp, u otra app, y el contacto). Si el
+ * equipo no puede compartir archivos, baja el PDF. Conviene que `armar` ya
+ * esté resuelta: el navegador pide que `share` salga del toque, y armar un PDF
+ * largo puede tardar más que eso.
+ */
+export async function compartirPdf({
+  texto,
   nombreArchivo,
   armar,
 }: {
-  /** El mensaje: «Seguimiento del tratamiento al 24/11/2026.» */
   texto: string;
-  telefono: string | null;
   nombreArchivo: string;
   armar: () => Promise<Blob>;
-}): Promise<EnvioWhatsapp> {
-  const celular = conDedo() && typeof navigator.share === "function" && typeof navigator.canShare === "function";
-  if (!celular) {
-    const numero = Telefono.paraWhatsApp(telefono);
-    window.open(`https://wa.me/${numero ?? ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
-  }
+}): Promise<ResultadoCompartir> {
   const blob = await armar();
   const archivo = new File([blob], nombreArchivo, { type: "application/pdf" });
-  if (celular && navigator.canShare({ files: [archivo] })) {
+  if (typeof navigator.share === "function" && typeof navigator.canShare === "function" && navigator.canShare({ files: [archivo] })) {
     try {
       const conTexto = navigator.canShare({ files: [archivo], text: texto });
       await navigator.share(conTexto ? { files: [archivo], text: texto, title: nombreArchivo } : { files: [archivo], title: nombreArchivo });
@@ -309,11 +377,6 @@ export async function enviarPdfPorWhatsapp({
       if (e instanceof DOMException && e.name === "AbortError") return "cancelado";
     }
   }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = nombreArchivo;
-  a.click();
-  URL.revokeObjectURL(url);
+  bajar(blob, nombreArchivo);
   return "descargado";
 }

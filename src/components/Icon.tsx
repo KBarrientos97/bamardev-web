@@ -650,6 +650,20 @@ const paths: Record<string, ReactNode> = {
       <path d="M7.5 14h2.2l1.4-3 2 6 1.4-3h2" />
     </>
   ),
+  /** Enviar: el avión de papel hacia la derecha, como el botón de enviar de WhatsApp (de Lucide «send-horizontal», ISC). */
+  enviar: (
+    <>
+      <path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" />
+      <path d="M6 12h16" />
+    </>
+  ),
+  /** WhatsApp: el globo con el teléfono (de Tabler «brand-whatsapp», MIT). */
+  whatsapp: (
+    <>
+      <path d="M3 21l1.65 -3.8a9 9 0 1 1 3.4 2.9l-5.05 .9" />
+      <path d="M9 10a.5 .5 0 0 0 1 0v-1a.5 .5 0 0 0 -1 0v1a5 5 0 0 0 5 5h1a.5 .5 0 0 0 0 -1h-1a.5 .5 0 0 0 0 1" />
+    </>
+  ),
   /** Seguimiento del tratamiento (nutrición): la hoja de cada semana, con el peso que baja. */
   seguimiento: (
     <>

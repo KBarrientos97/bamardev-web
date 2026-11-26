@@ -63,7 +63,8 @@ export default function ReportesNutricion() {
       <EncabezadoPagina titulo="Reportes del consultorio" bajada={textoRango(periodo.desde, periodo.hasta)} />
 
       <div className="card pt-3">
-        <BarraPeriodo periodo={periodo} onCambio={setPeriodo} corteMin={0} />
+        {/* En el teléfono, todos los períodos a la vista (sin deslizar la fila). */}
+        <BarraPeriodo periodo={periodo} onCambio={setPeriodo} corteMin={0} enGrilla />
       </div>
 
       {datos.error && !r ? (
