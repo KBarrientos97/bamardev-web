@@ -133,7 +133,17 @@ export const apiPagina = {
   quitarSitio: () => request<EstadoEditor>("/pagina/borrador/sitio", { method: "DELETE" }),
   subirFotoSitio: (archivo: Blob) =>
     subirArchivo<{ foto: string; estado: EstadoEditor }>("/pagina/borrador/sitio/fotos", archivo, nombreDeFoto(archivo)),
-  /** 400 si la usa el sitio publicado. */
+  /**
+   * «Cambiar» una foto (26-nov): la nueva ocupa su lugar en los bloques del
+   * borrador; la vieja se va al publicar si la página la muestra.
+   */
+  cambiarFotoSitio: (foto: string, archivo: Blob) =>
+    subirArchivo<{ foto: string; estado: EstadoEditor }>(
+      `/pagina/borrador/sitio/fotos/${encodeURIComponent(foto)}`,
+      archivo,
+      nombreDeFoto(archivo),
+    ),
+  /** Sale de los bloques del borrador; si la página la muestra, se borra al publicar. */
   borrarFotoSitio: (foto: string) =>
     request<EstadoEditor>(`/pagina/borrador/sitio/fotos/${encodeURIComponent(foto)}`, { method: "DELETE" }),
 

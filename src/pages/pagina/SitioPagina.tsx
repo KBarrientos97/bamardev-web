@@ -1052,14 +1052,17 @@ export default function SitioPagina(x: PiezasSitio) {
     </a>
   ) : null;
   const wa = x.whatsapp;
-  const accionWhatsapp = (estilo: CSSProperties, texto = "WhatsApp") =>
+  // `relleno` va aparte y no se deduce de `estilo === lleno`: el encabezado
+  // pasa una copia del lleno (más bajo) y el ícono salía verde sobre verde,
+  // invisible pero ocupando lugar, con el texto corrido (26-nov).
+  const accionWhatsapp = (estilo: CSSProperties, relleno: boolean) =>
     wa ? (
       <Enlace href={wa.url} onClick={x.clic(wa)} style={estilo}>
-        <Trazo d={ICONO_RED.WHATSAPP} color={estilo === lleno ? x.colorIconoLleno : "#0C7A55"} size={18} />
-        {texto}
+        <Trazo d={ICONO_RED.WHATSAPP} color={relleno ? x.colorIconoLleno : "#0C7A55"} size={18} />
+        WhatsApp
       </Enlace>
     ) : null;
-  const primera = reservar && (belleza || !verCatalogo) ? reservar : (verCatalogo ?? reservar ?? accionWhatsapp(lleno));
+  const primera = reservar && (belleza || !verCatalogo) ? reservar : (verCatalogo ?? reservar ?? accionWhatsapp(lleno, true));
   // Sin reservas ni catálogo, la primera ya es el WhatsApp: la segunda no lo
   // repite (salían dos botones iguales, 25-nov).
   const primeraEsWhatsapp = !reservar && !verCatalogo;
@@ -1073,7 +1076,7 @@ export default function SitioPagina(x: PiezasSitio) {
       ? verCatalogo
       : primeraEsWhatsapp
         ? comoLlegar
-        : accionWhatsapp(claro)
+        : accionWhatsapp(claro, false)
     : comoLlegar;
   const accionesPortada = (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -1090,7 +1093,7 @@ export default function SitioPagina(x: PiezasSitio) {
       {x.conPedido ? "Pedir ahora" : plantilla === "GASTRONOMIA" ? "Ver la carta" : "Ver productos"}
     </a>
   ) : wa ? (
-    accionWhatsapp({ ...lleno, minHeight: 44, fontSize: 15 })
+    accionWhatsapp({ ...lleno, minHeight: 44, fontSize: 15 }, true)
   ) : null;
 
   const bloques: ReactNode[] = [];
