@@ -26,7 +26,7 @@ import { estiloTextoSitio, tonosSitio } from "../../lib/pagina/sitio";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 import ChatPagina from "./ChatPagina";
-import FormularioConsulta from "./FormularioConsulta";
+import ConsultaEnPagina from "./ConsultaEnPagina";
 // La ficha consultada (la planilla, el gráfico, los PDF) se baja recién al consultar.
 const VistaFicha = lazy(() => import("./MiFichaPagina").then((m) => ({ default: m.VistaFicha })));
 import type { ConsultaPaciente } from "../../lib/nutricion/consulta";
@@ -304,11 +304,10 @@ export default function PaginaPublica({ tienda = false, pedir = false }: { tiend
   }
   const consulta =
     pagina.consultaPacientes && !tienda && !pedir ? (
-      <FormularioConsulta
+      <ConsultaEnPagina
         sub={pagina.subdominio}
         nombre={pagina.nombre}
         color={colorFicha}
-        enPagina
         onConsulta={(d) => {
           setFicha(d);
           window.scrollTo(0, 0);

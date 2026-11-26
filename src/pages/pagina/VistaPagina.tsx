@@ -537,8 +537,8 @@ export default function VistaPagina({
     ),
   );
   // La consulta del carnet va primero: es lo que busca el paciente que entra.
-  // En las grillas de botones ocupa su propia fila, pero angosta y centrada: a
-  // todo el ancho de la computadora el campo del carnet quedaba larguísimo.
+  // En las grillas de botones ocupa su propia fila, centrada y con tope: la
+  // tarjeta (ilustración + formulario) se arma sola según el ancho que le toca.
   const botones = consulta
     ? [
         <div
@@ -546,14 +546,9 @@ export default function VistaPagina({
           style={{
             gridColumn: "1 / -1",
             width: "100%",
-            maxWidth: 560,
+            maxWidth: 960,
             marginInline: "auto",
             boxSizing: "border-box",
-            background: "#ffffff",
-            color: "#111827",
-            borderRadius: 18,
-            padding: 18,
-            boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(15, 23, 42, 0.08)",
           }}
         >
           {consulta}

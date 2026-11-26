@@ -85,6 +85,8 @@ describe("página de un consultorio de nutrición", () => {
     vi.mocked(apiConsultaNutricion.consultar).mockResolvedValue(consulta());
     await montar(PAGINA);
     expect(screen.getByRole("heading", { name: "Consultá tu ficha" })).toBeInTheDocument();
+    // La ilustración animada acompaña al formulario (decorativa).
+    expect(document.querySelector(".ecn")).toHaveAttribute("aria-hidden", "true");
     // Ya no es un botón que lleva a otra pantalla.
     expect(screen.queryByRole("link", { name: /Consultar mi ficha/ })).toBeNull();
     // Los botones del dueño siguen.
@@ -122,5 +124,6 @@ describe("página de un consultorio de nutrición", () => {
     expect(screen.getByRole("link", { name: /Nuestros planes/ })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Consultá tu ficha" })).toBeNull();
     expect(screen.queryByLabelText("Carnet de identidad")).toBeNull();
+    expect(document.querySelector(".ecn")).toBeNull();
   });
 });
