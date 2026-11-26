@@ -1152,6 +1152,9 @@ export function editaNutricion(usuario: ConPermisos): boolean {
 /** El seguimiento del tratamiento: la lista y la hoja de cada paciente (rubro NUTRICION). */
 export const RUTA_SEGUIMIENTO = "/seguimiento";
 
+/** Los pagos pendientes del seguimiento: el botón de la lista y el atajo del menú llevan acá. */
+export const RUTA_PAGOS_PENDIENTES = `${RUTA_SEGUIMIENTO}/pagos`;
+
 /**
  * Los reportes del consultorio (rubro NUTRICION, 25-nov-2026). Bajo
  * `/nutricion` y no bajo `/reportes`, que es la pantalla de los de ventas.

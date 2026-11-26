@@ -7,5 +7,6 @@ export function queCuentaElMenu(seccion: string, cantidad: number): string {
   const uno = cantidad === 1;
   if (seccion === "billar") return uno ? "mesa abierta" : "mesas abiertas";
   if (seccion === "pedidos_web") return uno ? "pedido nuevo" : "pedidos nuevos";
+  if (seccion === "seguimiento") return uno ? "debe" : "deben";
   return "por atender";
 }

@@ -1,4 +1,5 @@
 import { ApiError, qs, request } from "../../api";
+import { avisarPagosCambiaron } from "./avisoPagos";
 import type {
   AjustesSeguimiento,
   CambiosProducto,
@@ -85,6 +86,13 @@ export const esProductoRepetido = (e: unknown) =>
 
 const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
 
+/** Cuando la escritura sale bien, avisa que los pagos pendientes pueden haber cambiado (el número del menú). */
+const avisando = <T,>(p: Promise<T>) =>
+  p.then((r) => {
+    avisarPagosCambiaron();
+    return r;
+  });
+
 export const apiSeguimiento = {
   catalogo: () => request<CatalogoSeguimiento>("/nutricion/seguimiento/catalogo"),
 
@@ -109,31 +117,31 @@ export const apiSeguimiento = {
   pagosPendientes: () => request<PagosPendientes>("/nutricion/seguimiento/pagos-pendientes"),
 
   cambiarAjustes: (cambios: Partial<AjustesSeguimiento>) =>
-    request<AjustesSeguimiento>("/nutricion/seguimiento/ajustes", { method: "PATCH", body: json(cambios) }),
+    avisando(request<AjustesSeguimiento>("/nutricion/seguimiento/ajustes", { method: "PATCH", body: json(cambios) })),
 
   /** Inicia un tratamiento con su registro inicial. */
   iniciar: (pacienteId: number, cuerpo: IniciarTratamientoInput) =>
-    request<Tratamiento>(`/nutricion/seguimiento/pacientes/${pacienteId}/tratamientos`, { method: "POST", body: json(cuerpo) }),
+    avisando(request<Tratamiento>(`/nutricion/seguimiento/pacientes/${pacienteId}/tratamientos`, { method: "POST", body: json(cuerpo) })),
 
   /** Uno anterior (o cualquiera), por su id. */
   tratamiento: (id: number) => request<Tratamiento>(`/nutricion/tratamientos/${id}`),
 
   /** Nombre, unidad, vial, nota; terminar (`estado: "TERMINADO"`) o reabrir (`"ACTIVO"`). */
   cambiarTratamiento: (id: number, cambios: CambiosTratamiento) =>
-    request<Tratamiento>(`/nutricion/tratamientos/${id}`, { method: "PATCH", body: json(cambios) }),
+    avisando(request<Tratamiento>(`/nutricion/tratamientos/${id}`, { method: "PATCH", body: json(cambios) })),
 
   /** Borra el tratamiento con todas sus semanas. */
-  borrarTratamiento: (id: number) => request<{ ok: true }>(`/nutricion/tratamientos/${id}`, { method: "DELETE" }),
+  borrarTratamiento: (id: number) => avisando(request<{ ok: true }>(`/nutricion/tratamientos/${id}`, { method: "DELETE" })),
 
   cargarSemana: (tratamientoId: number, cuerpo: RegistroInput) =>
-    request<Tratamiento>(`/nutricion/tratamientos/${tratamientoId}/registros`, { method: "POST", body: json(cuerpo) }),
+    avisando(request<Tratamiento>(`/nutricion/tratamientos/${tratamientoId}/registros`, { method: "POST", body: json(cuerpo) })),
 
   /** Cambia sólo lo que viene; `null` borra el dato. */
   corregirRegistro: (id: number, cambios: RegistroInput) =>
-    request<Tratamiento>(`/nutricion/registros/${id}`, { method: "PATCH", body: json(cambios) }),
+    avisando(request<Tratamiento>(`/nutricion/registros/${id}`, { method: "PATCH", body: json(cambios) })),
 
   /** Borra una semana (el inicial no: 409 INICIAL_NO_SE_BORRA). */
-  borrarRegistro: (id: number) => request<Tratamiento>(`/nutricion/registros/${id}`, { method: "DELETE" }),
+  borrarRegistro: (id: number) => avisando(request<Tratamiento>(`/nutricion/registros/${id}`, { method: "DELETE" })),
 
   // ── La lista de tratamientos del negocio (§9.1, `negocio.configurar`) ─────
   // Todas devuelven la lista entera ya cambiada. Quien escribe olvida el

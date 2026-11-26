@@ -11,7 +11,7 @@ import { haceDias, nombreSemana, textoDosis, textoKg } from "../../../lib/nutric
 import type { FilaSeguimiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { useCatalogoSeguimiento } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { usePaginado } from "../../../lib/paginado";
-import { editaNutricion, RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
+import { editaNutricion, RUTA_EVALUACION, RUTA_PAGOS_PENDIENTES, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonIcono, ChipsFiltro, EncabezadoPagina, LISTA, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../../academia/piezas";
@@ -100,7 +100,7 @@ export default function ListaSeguimiento() {
             <>
               {avisar && (
                 <Link
-                  to={`${RUTA_SEGUIMIENTO}/pagos`}
+                  to={RUTA_PAGOS_PENDIENTES}
                   className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-borde bg-white px-4 text-sm font-semibold text-texto-2 transition-colors hover:bg-muted sm:min-h-[42px]"
                 >
                   <Icon name="coins" size={16} />
