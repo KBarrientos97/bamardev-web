@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
@@ -7,6 +7,7 @@ import { fmtPlata, iniciales } from "../../../lib/format";
 import { conAlt, ctrlEnter, escribiendo, hayDialogoAbierto, useTeclas } from "../../../lib/nutricion/atajos";
 import { conUnidad, fechaLarga, hoyIso } from "../../../lib/nutricion/calculo";
 import { apiSeguimiento, esNoEncontrado } from "../../../lib/nutricion/seguimiento/api";
+import { esDiaSemana } from "../../../lib/nutricion/seguimiento/dias";
 import {
   escalonesDeLaSemana,
   flechaKg,
@@ -34,6 +35,7 @@ import BotonesPdf from "../BotonesPdf";
 import { ENCABEZADO_CON_MENU, MENU_AL_LADO_DEL_NOMBRE, RenglonDeAcciones } from "../EncabezadoConMenu";
 import GraficoEvolucion from "../GraficoEvolucion";
 import { AreaTexto, CampoTexto, Rotulo, Tecla } from "../piezas";
+import { ChipDia, DialogoDia } from "./DiaSemana";
 import HojaSemana from "./HojaSemana";
 import HojaTratamiento from "./HojaTratamiento";
 import { Equivalentes, Franja } from "./piezas";
@@ -44,12 +46,14 @@ type Abierta =
   | { que: "semana"; registro: Registro | null; semana: number; focoPago?: boolean; focoProducto?: boolean }
   | { que: "iniciar" }
   | { que: "editar" }
+  | { que: "dia" }
   | { que: "terminar" }
   | { que: "borrar" };
 
 /**
  * La hoja de seguimiento del paciente (CONTRATO-nutricion-seguimiento-23nov
- * §4.2): quién es, su tratamiento (con el vial y la nota), los avisos de pago,
+ * §4.2): quién es (con el día que viene al lado del nombre, §11), su
+ * tratamiento (con el vial y la nota), los avisos de pago,
  * cómo va (las tarjetas), la tabla como la hoja de papel (filtrable por mes) y
  * el peso de cada semana. «Cargar semana N» con `Alt+N`; `/` o `Ctrl+K` vuelven
  * al buscador. Sin `seguimiento.editar`, o con el tratamiento terminado, todo
@@ -262,9 +266,12 @@ export default function HojaSeguimiento() {
     p.telefono,
   ].filter(Boolean);
 
+  // §11: un backend anterior no manda `diaSemana` (ni lo acepta): entonces no se ofrece elegirlo.
+  const conDiaSemana = t?.diaSemana !== undefined;
   const acciones: AccionMenu[] = [];
   if (editable) {
     acciones.push({ clave: "editar", etiqueta: "Editar tratamiento", icono: "edit", onClick: () => setAbierta({ que: "editar" }) });
+    if (conDiaSemana) acciones.push({ clave: "dia", etiqueta: "Día que viene", icono: "calendar", onClick: () => setAbierta({ que: "dia" }) });
     acciones.push({ clave: "terminar", etiqueta: "Terminar tratamiento", icono: "checkCirculo", onClick: () => setAbierta({ que: "terminar" }) });
   }
   if (edita && t) {
@@ -277,6 +284,10 @@ export default function HojaSeguimiento() {
   // siempre; sin «⋯» (quien sólo mira), también.
   const conMenu = acciones.length > 0;
   const botones = [veEvaluacion, editable].filter(Boolean).length;
+  // §11: el día que viene, al lado del nombre: sólo el del tratamiento EN CURSO
+  // (ni uno terminado ni uno anterior que se esté mirando). Quien edita, lo toca para cambiarlo.
+  const diaALaVista = t && enCurso && !mirando && esDiaSemana(t.diaSemana) ? t.diaSemana : null;
+  const nombre = <span className="min-w-0 break-words">{p.nombre}</span>;
 
   return (
     <Pagina>
@@ -288,7 +299,16 @@ export default function HojaSeguimiento() {
             <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 text-base font-bold text-primary-700">
               {iniciales(p.nombre)}
             </span>
-            <span className="min-w-0 break-words">{p.nombre}</span>
+            {diaALaVista != null ? (
+              // Después del nombre, en el mismo renglón si entra; si no, la pastilla baja ENTERA debajo
+              // (en el teléfono, con el «⋯» al lado, el título ya le deja lugar: nunca queda debajo del «⋯»).
+              <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                {nombre}
+                <ChipDia dia={diaALaVista} onCambiar={editable ? () => setAbierta({ que: "dia" }) : undefined} />
+              </span>
+            ) : (
+              nombre
+            )}
           </span>
         }
         acciones={
@@ -388,6 +408,7 @@ export default function HojaSeguimiento() {
               const nuevo = await apiSeguimiento.cambiarTratamiento(t.id, { nota });
               alGuardar(nuevo, nota ? "Nota del tratamiento guardada." : "Nota del tratamiento borrada.");
             }}
+            onElegirDia={conDiaSemana ? () => setAbierta({ que: "dia" }) : undefined}
           />
 
           {t.estado === "TERMINADO" && (
@@ -463,6 +484,7 @@ export default function HojaSeguimiento() {
           registro={abierta.registro}
           semana={abierta.semana}
           pacienteNombre={p.nombre}
+          diaSemana={t.diaSemana}
           ultimoControl={h.ultimoControl}
           focoPago={abierta.focoPago}
           focoProducto={abierta.focoProducto}
@@ -502,6 +524,9 @@ export default function HojaSeguimiento() {
           }}
         />
       )}
+      {abierta?.que === "dia" && t && (
+        <DialogoDia t={t} pacienteNombre={p.nombre} onCerrar={cerrarHoja} onGuardado={alGuardar} onDesactualizada={marcarDesactualizada} />
+      )}
       {abierta?.que === "terminar" && t && <DialogoTerminar t={t} procesando={procesando} onCancelar={() => setAbierta(null)} onTerminar={(f) => void terminar(f)} />}
       <Confirmar
         abierto={abierta?.que === "borrar"}
@@ -530,12 +555,25 @@ function RenglonTratamiento({
   catalogo,
   edita,
   onNota,
+  onElegirDia,
 }: {
   t: Tratamiento;
   catalogo: CatalogoSeguimiento;
   edita: boolean;
   onNota: (nota: string | null) => Promise<void>;
+  /**
+   * «+ Elegir el día que viene» (§11): sólo sin día y con permiso; con día, la
+   * pastilla va al lado del nombre. Sin él (un backend anterior), nada.
+   */
+  onElegirDia?: () => void;
 }) {
+  const elegirDia =
+    edita && onElegirDia && !esDiaSemana(t.diaSemana) ? (
+      <button type="button" onClick={onElegirDia} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-semibold text-primary-700 hover:underline lg:min-h-8">
+        <Icon name="plus" size={14} />
+        Elegir el día que viene
+      </button>
+    ) : null;
   return (
     <section aria-label="Tratamiento" className="card space-y-2 px-4 py-3.5 sm:px-5">
       <p className="text-[15px] text-texto-2">
@@ -553,7 +591,7 @@ function RenglonTratamiento({
           Empezó con {textoProducto(t.productoInicial)} · cambió de producto {t.cambiosDeProducto === 1 ? "una vez" : `${t.cambiosDeProducto} veces`}
         </p>
       )}
-      <NotaTratamiento nota={t.nota} edita={edita} onGuardar={onNota} />
+      <NotaTratamiento nota={t.nota} edita={edita} onGuardar={onNota} antes={elegirDia} />
     </section>
   );
 }
@@ -562,8 +600,21 @@ function RenglonTratamiento({
  * La nota general del tratamiento, a la vista (§4.2). Con permiso se edita ahí
  * mismo: un toque la abre, `Ctrl+Enter` guarda y `Esc` cancela. Lo de UNA
  * semana va en las Observaciones de esa semana.
+ *
+ * `antes` («+ Elegir el día que viene», §11): en el mismo renglón que «+ Agregar
+ * una nota» (si no entra, baja entero) o, con la nota a la vista, arriba de ella.
  */
-function NotaTratamiento({ nota, edita, onGuardar }: { nota: string | null; edita: boolean; onGuardar: (nota: string | null) => Promise<void> }) {
+function NotaTratamiento({
+  nota,
+  edita,
+  onGuardar,
+  antes,
+}: {
+  nota: string | null;
+  edita: boolean;
+  onGuardar: (nota: string | null) => Promise<void>;
+  antes?: ReactNode;
+}) {
   const [abierta, setAbierta] = useState(false);
   const [texto, setTexto] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -601,61 +652,76 @@ function NotaTratamiento({ nota, edita, onGuardar }: { nota: string | null; edit
 
   if (abierta) {
     return (
-      <div className="space-y-2 border-t border-borde-soft pt-3">
-        <Rotulo htmlFor="nota-tratamiento" label="Notas del tratamiento" error={error || null}>
-          <AreaTexto
-            ref={area}
-            id="nota-tratamiento"
-            rows={3}
-            maxLength={2000}
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={(e) => {
-              if (ctrlEnter(e)) {
-                e.preventDefault();
-                e.stopPropagation();
-                void guardar();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                e.stopPropagation();
-                setAbierta(false);
-              }
-            }}
-          />
-        </Rotulo>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Boton variante="ghost" onClick={() => setAbierta(false)} disabled={guardando}>
-            Cancelar
-          </Boton>
-          <Boton onClick={() => void guardar()} disabled={guardando}>
-            {guardando ? "Guardando…" : "Guardar nota"}
-            <Tecla sobreColor>Ctrl+Enter</Tecla>
-          </Boton>
+      <>
+        {antes}
+        <div className="space-y-2 border-t border-borde-soft pt-3">
+          <Rotulo htmlFor="nota-tratamiento" label="Notas del tratamiento" error={error || null}>
+            <AreaTexto
+              ref={area}
+              id="nota-tratamiento"
+              rows={3}
+              maxLength={2000}
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              onKeyDown={(e) => {
+                if (ctrlEnter(e)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void guardar();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setAbierta(false);
+                }
+              }}
+            />
+          </Rotulo>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Boton variante="ghost" onClick={() => setAbierta(false)} disabled={guardando}>
+              Cancelar
+            </Boton>
+            <Boton onClick={() => void guardar()} disabled={guardando}>
+              {guardando ? "Guardando…" : "Guardar nota"}
+              <Tecla sobreColor>Ctrl+Enter</Tecla>
+            </Boton>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
   if (!nota) {
-    return edita ? (
+    if (!edita) return null;
+    const agregar = (
       <button type="button" onClick={abrir} className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-semibold text-primary-700 hover:underline lg:min-h-8">
         <Icon name="plus" size={14} />
         Agregar una nota del tratamiento
       </button>
-    ) : null;
+    );
+    return antes ? (
+      <div className="flex flex-wrap items-center gap-x-6">
+        {antes}
+        {agregar}
+      </div>
+    ) : (
+      agregar
+    );
   }
   return (
-    <div className="rounded-xl bg-muted px-3.5 py-2.5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Notas del tratamiento</p>
-        {edita && (
-          <button type="button" onClick={abrir} className="-my-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary-700 hover:bg-white lg:min-h-9">
-            <Icon name="edit" size={13} />
-            Editar
-          </button>
-        )}
+    <>
+      {antes}
+      <div className="rounded-xl bg-muted px-3.5 py-2.5">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Notas del tratamiento</p>
+          {edita && (
+            <button type="button" onClick={abrir} className="-my-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-primary-700 hover:bg-white lg:min-h-9">
+              <Icon name="edit" size={13} />
+              Editar
+            </button>
+          )}
+        </div>
+        <p className="mt-0.5 whitespace-pre-line break-words text-sm text-texto-2">{nota}</p>
       </div>
-      <p className="mt-0.5 whitespace-pre-line break-words text-sm text-texto-2">{nota}</p>
-    </div>
+    </>
   );
 }
 
