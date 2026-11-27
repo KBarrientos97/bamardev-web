@@ -17,6 +17,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
+import { recetasActivas } from "../../lib/recetas/donde";
 import { esFarmacia, insumosSinStock, termino } from "../../lib/rubro";
 import { FuenteSucursalesCtx } from "../../lib/sucursalesCompartidas";
 import { etiquetaReferenciaStock } from "../../lib/pedidosPlataforma/referencia";
@@ -230,7 +231,9 @@ export default function Almacenes() {
       <DetalleAlmacen
         almacen={detalle}
         farmacia={farmacia}
-        sinInsumos={insumosSinStock(rubro)}
+        // Con las recetas del plato prendidas (27-nov) la venta descuenta los
+        // insumos: su stock vuelve a ser un dato y se muestra como el del resto.
+        sinInsumos={insumosSinStock(rubro) && !recetasActivas(negocio)}
         onClose={() => setDetalle(null)}
         onHacerPrincipal={hacerPrincipal}
         deUnLocal={deUnLocal}

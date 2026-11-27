@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { fmtCantidad } from "../../lib/format";
+import { recetasActivas } from "../../lib/recetas/donde";
 import { insumosSinStock } from "../../lib/rubro";
 import { contiene } from "../../lib/texto";
 import { useAuth } from "../../store/AuthContext";
@@ -34,12 +35,14 @@ export default function ElegirArticulo({
   bloqueado?: string;
   autoFocus?: boolean;
 }) {
-  const { rubro } = useAuth();
+  const { rubro, negocio } = useAuth();
   // Restaurante: el renglón de un insumo va sin stock. Ahí vender un plato no
   // lo descuenta y el número es la suma de todas las compras: al cargar una
   // compra de aceite, "340 L" a la derecha se leía como lo que había en la
   // cocina. Los productos (las bebidas) sí lo muestran: ésos se venden.
-  const sinStockInsumos = insumosSinStock(rubro);
+  // Con las recetas del plato prendidas (27-nov) la venta sí los descuenta: el
+  // stock vuelve a ser un dato y se muestra.
+  const sinStockInsumos = insumosSinStock(rubro) && !recetasActivas(negocio);
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [marcado, setMarcado] = useState(0);

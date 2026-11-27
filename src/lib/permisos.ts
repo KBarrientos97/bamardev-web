@@ -128,6 +128,13 @@ export type Seccion =
    */
   | "agregados"
   /**
+   * Inventario → «Costos de platos» (CONTRATO-recetas-plato §3.5): cuánto
+   * cuesta y cuánto deja cada plato con receta, y el aviso cuando cambia. Sólo
+   * en el restaurante y con las recetas prendidas en Configuración
+   * (`negocio.recetas.activas`), que no es una feature del plan.
+   */
+  | "costos_platos"
+  /**
    * Configuración › Tickets y despacho (10-nov): si se usa la pantalla de
    * Despacho y cuándo vuelve a 001 el número del pedido. Del encargado, como
    * Tickets y pedidos.
@@ -469,6 +476,11 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Los grupos de toppings son parte del catálogo: lo mismo que Artículos. Que
   // el negocio los use lo decide el ajuste de Configuración (ver `puedeVer`).
   agregados: { permiso: "catalogo.editar", feature: "catalogo" },
+  // El costo y lo que deja cada plato (27-nov): plata del negocio, la misma
+  // llave que el costo en todas partes (el backend pide `costos.ver` en
+  // `/recetas-plato/costos`). Sin feature: que el negocio use recetas lo decide
+  // el ajuste de Configuración (ver `puedeVer`).
+  costos_platos: { permiso: "costos.ver", feature: null },
   // Despacho apagable y numeración por turno (10-nov): lo mismo que pide el
   // backend para `/tickets/config`.
   config_tickets: { permiso: "tickets.configurar", feature: "tickets_pedido" },
@@ -653,6 +665,8 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   mi_pos: ["RESTAURANTE"],
   // El ajuste vive en esa misma pantalla, así que el rubro es el mismo.
   agregados: ["RESTAURANTE"],
+  // Las recetas del plato son del restaurante (el backend no deja prenderlas en otro rubro).
+  costos_platos: ["RESTAURANTE"],
   config_tickets: ["RESTAURANTE"],
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
   // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
@@ -732,6 +746,13 @@ export interface ContextoPermisos {
    * backend viejo) no se ve, que es como funcionó siempre.
    */
   usaAgregados?: boolean;
+  /**
+   * Las recetas del plato prendidas (`recetasActivas(negocio)` de
+   * `lib/recetas/donde.ts`, CONTRATO-recetas-plato §3.5). «Costos de platos»
+   * sólo se ve con `true`; sin el dato (sesión o backend viejo, otro rubro) no
+   * se ve, y el menú queda como siempre.
+   */
+  recetas?: boolean;
 }
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
@@ -856,6 +877,8 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   if (seccion === "pedidos_web" && ctx.pedidosWeb !== true) return false;
   // Los grupos de toppings, sólo con el ajuste prendido (PLAN-AGREGADOS §7.6).
   if (seccion === "agregados" && ctx.usaAgregados !== true) return false;
+  // Los costos de los platos, sólo con las recetas prendidas (27-nov).
+  if (seccion === "costos_platos" && ctx.recetas !== true) return false;
 
   const req = REQUISITOS[seccion];
   // D9: «Mis clases» pide el alcance PROPIO, que el dueño no tiene (tiene todo

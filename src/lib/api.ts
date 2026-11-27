@@ -63,6 +63,8 @@ import type {
   ProductoInput,
   RangoReporte,
   ConfigConteo,
+  ConfigRecetas,
+  CambioConfigRecetas,
   EstadoConteoSucursal,
   ReporteCierreGanancia,
   ReporteCierreProductos,
@@ -1005,6 +1007,13 @@ export const api = {
   /** «Productos vendidos» del turno que mira la Supervisión: lo mismo que el del cierre. */
   productosDelTurnoSupervision: (cajaId: number) =>
     request<ReporteCierreProductos>(`/supervision/turno/${cajaId}/productos`),
+
+  // ── Recetas y costo por plato (27-nov) ─────────────────────────────────────
+  /** El ajuste de Configuración › Inventario y stock (`negocio.configurar`). */
+  configRecetas: () => request<ConfigRecetas>("/recetas-plato/config"),
+  /** Parcial: lo que se manda es lo que cambia. Prenderlas fuera del restaurante da 400. Devuelve la configuración entera. */
+  cambiarConfigRecetas: (cambio: CambioConfigRecetas) =>
+    request<ConfigRecetas>("/recetas-plato/config", { method: "PATCH", body: JSON.stringify(cambio) }),
 
   // ── Productos con agregados (toppings, PLAN-AGREGADOS §7) ──────────────────
   /** El ajuste de Configuración; pide `negocio.configurar`, como el del stock. */

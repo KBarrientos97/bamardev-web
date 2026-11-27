@@ -117,6 +117,13 @@ export default function ComandaCocina({
                     </span>
                   </p>
                 ))}
+                {/* Plato con receta: la presa y lo que cambió de la guarnición
+                    («Pierna y contra · Sin fideo»), en el recuadro de la nota. */}
+                {d.armadoTexto && (
+                  <p className="mt-1 rounded border-2 border-texto px-2 py-0.5 text-[15px] font-bold text-texto">
+                    {d.armadoTexto}
+                  </p>
+                )}
                 {d.nota && (
                   <p className="mt-1 rounded border-2 border-texto px-2 py-0.5 text-[15px] font-bold text-texto">
                     {d.nota}

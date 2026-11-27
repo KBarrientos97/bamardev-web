@@ -412,6 +412,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
         seccion: "productos",
         termino: "articulos",
       },
+      // Cuánto cuesta y cuánto deja cada plato con receta (27-nov): sólo con las
+      // recetas prendidas en Configuración y para quien ve los costos; `puedeVer`
+      // lo apaga sin el ajuste, así que el menú de siempre no cambia.
+      { a: "/inventario/costos-platos", label: "Costos de platos", icono: "cubiertos", seccion: "costos_platos" },
       { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos" },
       // Toppings y extras (PLAN-AGREGADOS §7.6): sólo con el ajuste de
       // Configuración prendido; `puedeVer` lo apaga sin él.

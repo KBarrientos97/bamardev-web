@@ -36,8 +36,9 @@ import {
 import { conPerfilDelEstado } from "../lib/perfilNegocio";
 import { mismaConfigPos, normalizarConfigPos, type ConfigPos } from "../lib/configPos";
 import { mismoConteo, normalizarConfigConteo } from "../lib/conteo";
+import { mismasRecetas, recetasActivas, sesionRecetas } from "../lib/recetas/donde";
 import type { Vocabulario } from "../lib/rubro";
-import type { ConfigConteo, CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
+import type { ConfigConteo, CupoEstado, EstadoLicencia, SesionNegocio, SesionRecetas, SesionUsuario } from "../types";
 
 /** Alias del negocio: se recuerda para no re-tipearlo en cada login. */
 const ALIAS_KEY = "bamardev_web_alias";
@@ -115,6 +116,13 @@ interface AuthValue {
    * quien lo cambió lo muestran (o dejan de mostrarlo) sin volver a entrar.
    */
   fijarConteo: (conteo: ConfigConteo) => void;
+  /**
+   * Pisa `negocio.recetas` con lo recién guardado en Configuración › Inventario
+   * y stock › Recetas y costo por plato (27-nov): Insumos, Movimientos,
+   * Artículos y el punto de venta de quien lo cambió lo muestran (o dejan de
+   * mostrarlo) sin volver a entrar.
+   */
+  fijarRecetas: (recetas: SesionRecetas) => void;
   /**
    * Pisa `negocio.pedidosWeb` con lo que acaba de publicar Mi página («Recibir
    * pedidos en el sistema»): «Pedidos web» sale (o se va) del menú sin esperar
@@ -384,6 +392,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /** Igual que `fijarConteo`: por contenido, para que el chequeo de la licencia no redibuje nada si dice lo mismo. */
+  const fijarRecetas = useCallback((recetas: unknown) => {
+    const nuevas = sesionRecetas(recetas);
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      if (previo.recetas && mismasRecetas(sesionRecetas(previo.recetas), nuevas)) return previo;
+      const actualizado = { ...previo, recetas: nuevas };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
   /**
    * Cómo se entregan los pedidos de la página (`negocio.entregaPedidosWeb` y
    * `servicioDeliveryExterno`, PLAN-DELIVERY-EXTERNO §2.6): sigue a `/licencia/estado`
@@ -553,6 +573,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (estado.pos && typeof estado.pos === "object") fijarConfigPos(estado.pos);
           // Y el conteo por categoría, igual: sin el campo (backend viejo) queda lo del login.
           if (estado.conteo && typeof estado.conteo === "object") fijarConteo(estado.conteo);
+          // Las recetas del plato, igual (sólo viajan en el restaurante): sin el campo queda lo del login.
+          if (estado.recetas && typeof estado.recetas === "object") fijarRecetas(estado.recetas);
           // Ausente (un backend viejo) = repartidores propios, como siempre.
           if (estado.entregaPedidosWeb !== undefined || estado.servicioDeliveryExterno !== undefined) {
             fijarEntregaPedidos(estado.entregaPedidosWeb ?? "PROPIO", estado.servicioDeliveryExterno ?? null);
@@ -595,6 +617,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fijarUsaAgregados,
     fijarConfigPos,
     fijarConteo,
+    fijarRecetas,
     fijarEntregaPedidos,
     fijarVariante,
     refrescarPermisos,
@@ -656,6 +679,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             dictaClases,
             pedidosWeb: negocio?.pedidosWeb === true,
             usaAgregados: negocio?.usaAgregados === true,
+            // «Costos de platos» se ve sólo con las recetas prendidas (27-nov).
+            recetas: recetasActivas(negocio),
           }
         : null,
     [usuario, negocio, dictaClases],
@@ -693,6 +718,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fijarUsaAgregados,
       fijarConfigPos,
       fijarConteo,
+      fijarRecetas,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     }),
@@ -715,6 +741,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fijarUsaAgregados,
       fijarConfigPos,
       fijarConteo,
+      fijarRecetas,
       fijarPedidosWeb,
       refrescarSucursalesActivas,
     ],

@@ -701,3 +701,99 @@ describe("cantidad de sucursales del usuario asignado (PLAN-SUCURSAL-TOTAL etapa
     expect(screen.getByText("activas:?")).toBeInTheDocument();
   });
 });
+
+describe("recetas del plato: negocio.recetas sigue al estado de la licencia (27-nov)", () => {
+  const RESTAURANTE: SesionNegocio = { id: 3, nombre: "Cocina QA", tipoNegocio: "RESTAURANTE" };
+  const PRENDIDAS = { activas: true, elegirPresa: false, puroDoble: true };
+
+  function SondaRecetas() {
+    const { negocio, fijarRecetas } = useAuth();
+    const r = negocio?.recetas;
+    return (
+      <>
+        <p>recetas:{r ? `${r.activas}/${r.elegirPresa}/${r.puroDoble}` : "-"}</p>
+        <button onClick={() => fijarRecetas({ activas: true, elegirPresa: true, puroDoble: false })}>guardar</button>
+      </>
+    );
+  }
+
+  const montarRecetas = async () => {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaRecetas />
+        </AuthProvider>,
+      );
+    });
+  };
+
+  it("si el dueño las prende en otro equipo, la sesión abierta se entera en el próximo chequeo", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, recetas: PRENDIDAS });
+    await montarRecetas();
+    expect(screen.getByText("recetas:true/false/true")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").recetas).toEqual(PRENDIDAS);
+  });
+
+  it("un chequeo sin el campo (otro rubro, un backend viejo) deja lo que había", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...RESTAURANTE, recetas: { ...PRENDIDAS, elegirPresa: true } }));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await montarRecetas();
+    expect(screen.getByText("recetas:true/true/true")).toBeInTheDocument();
+  });
+
+  it("lo que llega a medias se completa con lo de fábrica", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, recetas: { activas: true } });
+    await montarRecetas();
+    expect(screen.getByText("recetas:true/false/true")).toBeInTheDocument();
+  });
+
+  it("lo guardado en Configuración pisa la sesión sin volver a entrar", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await montarRecetas();
+    expect(screen.getByText("recetas:-")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "guardar" }));
+    expect(screen.getByText("recetas:true/true/false")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").recetas).toEqual({
+      activas: true,
+      elegirPresa: true,
+      puroDoble: false,
+    });
+  });
+
+  it.each([
+    [true, "costos:true"],
+    [false, "costos:false"],
+  ])("«Costos de platos» sigue al ajuste (prendidas: %s) para quien ve los costos", async (activas, esperado) => {
+    function SondaMenu() {
+      const { puede } = useAuth();
+      return <p>costos:{String(puede("costos_platos"))}</p>;
+    }
+    localStorage.setItem(USER_KEY, JSON.stringify({ ...ADMIN, permisos: ["costos.ver"] }));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, recetas: { ...PRENDIDAS, activas } });
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaMenu />
+        </AuthProvider>,
+      );
+    });
+    expect(screen.getByText(esperado)).toBeInTheDocument();
+  });
+
+  it("si el chequeo dice lo mismo, la sesión guardada no se reescribe", async () => {
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify({ ...RESTAURANTE, recetas: PRENDIDAS }));
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, recetas: { ...PRENDIDAS } });
+    const escribe = vi.spyOn(Storage.prototype, "setItem");
+    try {
+      await montarRecetas();
+      expect(screen.getByText("recetas:true/false/true")).toBeInTheDocument();
+      expect(escribe.mock.calls.filter(([clave]) => clave === NEGOCIO_KEY)).toHaveLength(0);
+    } finally {
+      escribe.mockRestore();
+    }
+  });
+});

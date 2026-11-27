@@ -1,6 +1,7 @@
 import { ApiError } from "../api";
 import { vistaDeAgregados } from "../agregados/calculo";
 import type { CatalogoAgregados } from "../agregados/tipos";
+import { recetaDelPlato, textoDelArmado } from "../recetas/armado";
 import type {
   ClienteCredito,
   Credito,
@@ -152,6 +153,10 @@ export function reciboLocal(
       nota: x.nota ?? null,
       consumo: x.consumo ?? "LLEVAR",
     };
+    // Plato con receta: cómo se armó, con la misma regla que el servidor (el
+    // recibo de la venta ya subida dice lo mismo). Sin armado, nada.
+    const armado = x.armado ? textoDelArmado(x.armado, recetaDelPlato(p)) : null;
+    if (armado) vaso.armadoTexto = armado;
     if (!x.agregados?.length) return [vaso];
     // Los toppings, con la misma regla que el servidor (`vistaDeAgregados`): el
     // ticket que se le muestra al cliente dice lo que después se va a cobrar.

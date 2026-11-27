@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Consumo, DetalleVentaInput, Producto, TipoPedido } from "../../types";
+import type { Armado, Consumo, DetalleVentaInput, Producto, TipoPedido } from "../../types";
 import { agregadosParaEnviar, firmaDeAgregados, vistaDeAgregados, type VistaAgregados } from "../../lib/agregados/calculo";
 import type { AgregadoElegido, CatalogoAgregados } from "../../lib/agregados/tipos";
+import { firmaDeArmado, normalizarArmado } from "../../lib/recetas/armado";
 import {
   entraOtra,
   gastoPorUnidad,
@@ -35,6 +36,14 @@ export interface LineaCarrito {
    * precio, extras por unidad). Lo pone `useCarrito`; no se guarda.
    */
   vista?: VistaAgregados;
+  /**
+   * Plato con receta (CONTRATO-recetas-plato §4.2): la presa que eligió el
+   * cliente y lo que quitó de la guarnición, igual para cada unidad. Como los
+   * toppings, es parte de la identidad de la línea: «pecho y ala» y «pierna y
+   * contra» del mismo plato son dos líneas. Ausente: el plato de siempre (y
+   * todo lo que no es un plato con receta, que nunca lo tiene).
+   */
+  armado?: Armado;
 }
 
 /**
@@ -43,12 +52,17 @@ export interface LineaCarrito {
  * el mismo vaso puede estar dos veces con toppings distintos. Para una línea sin
  * toppings la clave es el id (como número o como texto): las pantallas que
  * nunca supieron de toppings siguen funcionando igual.
+ *
+ * Un plato con receta armado («pierna y contra», «sin fideo») suma al final
+ * `|a:` y la firma de su armado. Sin armado la clave es EXACTAMENTE la de antes.
  */
 export type ClaveLinea = number | string;
 
-export function claveDeLinea(l: Pick<LineaCarrito, "producto" | "agregados">): ClaveLinea {
+export function claveDeLinea(l: Pick<LineaCarrito, "producto" | "agregados" | "armado">): ClaveLinea {
   const firma = firmaDeAgregados(l.agregados);
-  return firma ? `${l.producto.id}|${firma}` : l.producto.id;
+  const base: ClaveLinea = firma ? `${l.producto.id}|${firma}` : l.producto.id;
+  const armado = firmaDeArmado(l.armado);
+  return armado ? `${base}|a:${armado}` : base;
 }
 
 const mismaClave = (a: ClaveLinea, b: ClaveLinea) => String(a) === String(b);
@@ -69,10 +83,19 @@ export interface Carrito {
    * con descuentos es el neto del vaso MÁS esto. Ausente = 0.
    */
   totalAgregados?: number;
-  /** Con `agregados`, suma a la línea de ese vaso con esos toppings. */
-  agregar: (p: Producto, agregados?: AgregadoElegido[]) => void;
+  /**
+   * Con `agregados`, suma a la línea de ese vaso con esos toppings. Con
+   * `armado`, a la de ese plato armado así (la hoja de la presa).
+   */
+  agregar: (p: Producto, agregados?: AgregadoElegido[], armado?: Armado) => void;
   /** Cambia los toppings de una línea (reabrir la hoja): si ya hay otra igual, se juntan. */
   setAgregados: (clave: ClaveLinea, agregados: AgregadoElegido[]) => void;
+  /**
+   * Cambia el armado de un plato con receta (reabrir su hoja): si queda igual a
+   * otra línea, se juntan. Opcional: los carritos armados a mano (las pruebas,
+   * los envoltorios) no lo necesitan, y sin él la línea no se edita.
+   */
+  setArmado?: (clave: ClaveLinea, armado: Armado | undefined) => void;
   setCantidad: (clave: ClaveLinea, cantidad: number) => void;
   setNota: (clave: ClaveLinea, nota: string) => void;
   setEnMesa: (clave: ClaveLinea, enMesa: number) => void;
@@ -157,6 +180,8 @@ interface LineaGuardada {
   nota: string;
   /** Lo elegido, no su precio: los extras se recalculan con el catálogo de hoy. */
   agregados?: AgregadoElegido[];
+  /** El armado del plato con receta (la presa, lo quitado). */
+  armado?: Armado;
 }
 
 /** Los ids que dejó guardados el carrito de ese tipo de pedido. */
@@ -228,12 +253,15 @@ export function useCarrito(
           .map((g) => {
             const producto = porId.get(g.id);
             if (!producto) return null;
+            // Lo guardado en la pestaña puede ser de otra versión: pasa limpio.
+            const armado = normalizarArmado(g.armado);
             return {
               producto,
               cantidad: g.cantidad,
               enMesa: g.enMesa,
               nota: g.nota,
               ...(g.agregados?.length ? { agregados: g.agregados } : {}),
+              ...(armado ? { armado } : {}),
             } satisfies LineaCarrito;
           })
           .filter((l): l is LineaCarrito => l !== null),
@@ -282,6 +310,7 @@ export function useCarrito(
         enMesa: l.enMesa,
         nota: l.nota,
         ...(l.agregados?.length ? { agregados: l.agregados } : {}),
+        ...(l.armado ? { armado: l.armado } : {}),
       }));
       sessionStorage.setItem(clave, JSON.stringify(guardar));
     } catch {
@@ -302,9 +331,11 @@ export function useCarrito(
     ls.reduce((n, l) => (l.producto.id === productoId ? n + l.cantidad : n), 0);
 
   const agregar = useCallback(
-    (p: Producto, agregados?: AgregadoElegido[]) => {
+    (p: Producto, agregados?: AgregadoElegido[], armado?: Armado) => {
       const elegidos = agregados?.length ? agregados : undefined;
-      const clavePedida = claveDeLinea({ producto: p, agregados: elegidos });
+      // El plato armado («pierna y contra») suma a SU línea; sin armado, a la de siempre.
+      const armadoLimpio = normalizarArmado(armado);
+      const clavePedida = claveDeLinea({ producto: p, agregados: elegidos, armado: armadoLimpio });
       setLineas((prev) => {
         const ex = prev.find((l) => mismaClave(claveDeLinea(l), clavePedida));
         // El tope es del PRODUCTO: dos vasos con toppings distintos salen del
@@ -330,6 +361,7 @@ export function useCarrito(
               enMesa: enMesaPorDefecto ? 1 : 0,
               nota: "",
               ...(elegidos ? { agregados: elegidos } : {}),
+              ...(armadoLimpio ? { armado: armadoLimpio } : {}),
             },
           ];
         }
@@ -405,6 +437,28 @@ export function useCarrito(
     });
   }, []);
 
+  /** Lo mismo que `setAgregados`, para el armado del plato con receta. */
+  const setArmado = useCallback((id: ClaveLinea, armado: Armado | undefined) => {
+    setLineas((prev) => {
+      const linea = prev.find((l) => mismaClave(claveDeLinea(l), id));
+      if (!linea) return prev;
+      const limpio = normalizarArmado(armado);
+      const nueva: LineaCarrito = { ...linea, armado: limpio };
+      if (!limpio) delete nueva.armado;
+      const claveNueva = claveDeLinea(nueva);
+      const gemela = prev.find((l) => l !== linea && mismaClave(claveDeLinea(l), claveNueva));
+      if (!gemela) return prev.map((l) => (l === linea ? nueva : l));
+      // Quedó igual a otra línea del mismo plato: se juntan en vez de repetirse.
+      const juntas: LineaCarrito = {
+        ...gemela,
+        cantidad: gemela.cantidad + linea.cantidad,
+        enMesa: gemela.enMesa + linea.enMesa,
+        nota: gemela.nota || linea.nota,
+      };
+      return prev.filter((l) => l !== linea).map((l) => (l === gemela ? juntas : l));
+    });
+  }, []);
+
   const setNota = useCallback((id: ClaveLinea, nota: string) => {
     setLineas((prev) => prev.map((l) => (mismaClave(claveDeLinea(l), id) ? { ...l, nota } : l)));
   }, []);
@@ -459,6 +513,11 @@ export function useCarrito(
       // Los toppings viajan en las dos mitades de una línea partida: cada
       // unidad del vaso trae los suyos, vaya a la mesa o se la lleven.
       const agregados = l.vista ? agregadosParaEnviar(l.agregados, l.vista) : undefined;
+      // El armado del plato con receta, igual en las dos mitades. Sólo si el
+      // catálogo todavía dice que el plato tiene receta: con las recetas
+      // apagadas el backend no la manda, y una línea que quedó armada en la
+      // pestaña no le cambia la venta a nadie.
+      const armado = l.armado && l.producto.receta ? l.armado : undefined;
       // Un delivery o un "recoger" no tienen mesa. El carrito se arma con el
       // pedido en LOCAL (en mesa) y recién después se elige el tipo, así que
       // las líneas llegan acá con su reparto del mostrador: se mandan todas
@@ -474,6 +533,7 @@ export function useCarrito(
           consumo: "MESA",
           ...(nota ? { nota } : {}),
           ...(agregados ? { agregados } : {}),
+          ...(armado ? { armado } : {}),
         });
       }
       const llevar = l.cantidad - enMesa;
@@ -485,6 +545,7 @@ export function useCarrito(
           consumo: "LLEVAR",
           ...(nota ? { nota } : {}),
           ...(agregados ? { agregados } : {}),
+          ...(armado ? { armado } : {}),
         });
       }
     }
@@ -499,6 +560,7 @@ export function useCarrito(
     totalAgregados,
     agregar,
     setAgregados,
+    setArmado,
     setCantidad,
     setNota,
     setEnMesa,
