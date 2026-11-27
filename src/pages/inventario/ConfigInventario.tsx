@@ -17,6 +17,7 @@ import { SiNo, Tarjeta } from "../tickets/piezas";
 import TarjetaAgregados from "./TarjetaAgregados";
 import TarjetaConteo from "./TarjetaConteo";
 import TarjetaPlegable from "./TarjetaPlegable";
+import TarjetaRecetas from "./TarjetaRecetas";
 
 /**
  * Configuración › Inventario y stock (pedido del 09-nov): si el stock frena la
@@ -166,6 +167,9 @@ export default function ConfigInventario() {
 
           {/* Vasos, cajas o envases por tamaño y por sucursal (17-nov). Apagado de fábrica. */}
           <TarjetaConteo />
+
+          {/* El costo de cada plato desde su receta de insumos (27-nov). Apagado de fábrica. */}
+          <TarjetaRecetas />
 
           <Tarjeta titulo="Cómo funciona">
             <ul className="space-y-2.5 text-[13px] text-texto-2">

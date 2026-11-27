@@ -20,6 +20,9 @@ import {
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { finDeMes, hoyIso, inicioDeMes } from "../../lib/gastos";
+import { recetasActivas } from "../../lib/recetas/donde";
+import type { InsumoSugerido } from "../../lib/recetas/sugeridos";
+import { resumenInsumo, textoPorciones } from "../../lib/recetas/unidades";
 import { DESCARTABLES_A_GASTOS, insumosSinStock } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
@@ -32,6 +35,7 @@ import type {
   InsumoInput,
   UnidadMedida,
 } from "../../types";
+import { FormInsumoReceta, ListaSugerida, TarjetaInsumoReceta } from "./InsumosReceta";
 import { RUTA_REGISTRAR_COMPRA } from "./Movimientos";
 
 type FiltroStock = "todos" | "bajo" | "sin" | "papelera";
@@ -61,10 +65,14 @@ function estadoStock(i: Insumo): "sin" | "bajo" | "ok" {
 }
 
 export default function Insumos() {
-  const { rubro, puede } = useAuth();
+  const { rubro, puede, negocio } = useAuth();
   const navigate = useNavigate();
+  // Recetas del plato (27-nov): la venta descuenta los insumos, así que su
+  // stock vuelve a ser un dato y la ficha dice cómo se compra y para cuánto
+  // alcanza. Apagadas (de fábrica), la pantalla es la de siempre.
+  const recetas = recetasActivas(negocio);
   // Restaurante: sin stock, y en su lugar lo invertido en el mes.
-  const sinStock = insumosSinStock(rubro);
+  const sinStock = insumosSinStock(rubro) && !recetas;
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está.
   const enPapelera = filtroStock === "papelera";
@@ -113,8 +121,9 @@ export default function Insumos() {
   );
   // La compra se carga en Movimientos, como siempre: el botón lleva al
   // formulario de la entrada ya abierto. Sin permiso para mover inventario no
-  // se ofrece, o terminaría en una pantalla que no puede abrir.
-  const registraCompras = sinStock && puede("movimientos");
+  // se ofrece, o terminaría en una pantalla que no puede abrir. Con las recetas
+  // se ofrece igual: el costo de cada insumo sale de esas compras.
+  const registraCompras = (sinStock || recetas) && puede("movimientos");
   // `true` trae sólo las categorías de insumo: las de venta no aplican acá.
   const categorias = useApi(() => api.getCategorias(true), []);
   const unidades = useApi(() => api.getUnidades(), []);
@@ -126,6 +135,9 @@ export default function Insumos() {
   const [aBorrar, setABorrar] = useState<Insumo | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
+  // Recetas: la «Lista sugerida» y el insumo típico que se eligió ahí.
+  const [viendoSugeridos, setViendoSugeridos] = useState(false);
+  const [plantilla, setPlantilla] = useState<InsumoSugerido | null>(null);
 
   const lista = insumos.datos ?? [];
 
@@ -185,10 +197,17 @@ export default function Insumos() {
         // "Registrar compra" tampoco: se compra lo que está en el catálogo.
         accion={
           !enPapelera && (
-            <div className="flex flex-wrap justify-end gap-2">
+            // Con recetas son tres botones: el tope de ancho los hace bajar de
+            // renglón en el teléfono en vez de salirse de la pantalla.
+            <div className={`flex flex-wrap justify-end gap-2${recetas ? " max-w-[calc(100vw-2.5rem)]" : ""}`}>
               {registraCompras && (
                 <Boton variante="soft" icono="cart" onClick={() => navigate(RUTA_REGISTRAR_COMPRA)}>
                   Registrar compra
+                </Boton>
+              )}
+              {recetas && (
+                <Boton variante="ghost" icono="lista" onClick={() => setViendoSugeridos(true)}>
+                  Lista sugerida
                 </Boton>
               )}
               <Boton icono="plus" onClick={() => setCreando(true)}>
@@ -234,30 +253,46 @@ export default function Insumos() {
             texto={
               lista.length
                 ? "Probá con otro texto o quitá los filtros."
-                : sinStock
-                  ? "Cargá la materia prima que comprás para la cocina."
-                  : "Cargá la materia prima que comprás y controlás."
+                : recetas && !enPapelera
+                  ? "Cargá los insumos de tus platos. Con «Lista sugerida» empezás por los típicos de una cocina."
+                  : sinStock
+                    ? "Cargá la materia prima que comprás para la cocina."
+                    : "Cargá la materia prima que comprás y controlás."
             }
             accion={
-              !lista.length && (
+              !lista.length &&
+              (recetas && !enPapelera ? (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Boton variante="ghost" icono="lista" onClick={() => setViendoSugeridos(true)}>
+                    Lista sugerida
+                  </Boton>
+                  <Boton icono="plus" onClick={() => setCreando(true)}>
+                    Nuevo insumo
+                  </Boton>
+                </div>
+              ) : (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
                   Nuevo insumo
                 </Boton>
-              )
+              ))
             }
           />
         </div>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtrados.map((i) => (
-            <TarjetaInsumo
-              key={i.id}
-              insumo={i}
-              sinStock={sinStock}
-              invertido={invertido}
-              onClick={() => setDetalle(i)}
-            />
-          ))}
+          {filtrados.map((i) =>
+            recetas ? (
+              <TarjetaInsumoReceta key={i.id} insumo={i} estado={estadoStock(i)} onClick={() => setDetalle(i)} />
+            ) : (
+              <TarjetaInsumo
+                key={i.id}
+                insumo={i}
+                sinStock={sinStock}
+                invertido={invertido}
+                onClick={() => setDetalle(i)}
+              />
+            ),
+          )}
         </ul>
       )}
 
@@ -265,6 +300,7 @@ export default function Insumos() {
         insumo={detalle}
         enPapelera={enPapelera}
         sinStock={sinStock}
+        recetas={recetas}
         invertido={invertido}
         onClose={() => setDetalle(null)}
         onEditar={(i) => {
@@ -279,18 +315,38 @@ export default function Insumos() {
         abierto={creando || !!editando}
         insumo={editando}
         sinStock={sinStock}
+        recetas={recetas}
+        plantilla={plantilla}
+        registraCompras={puede("movimientos")}
         categorias={categorias.datos ?? []}
         unidades={unidades.datos ?? []}
         onClose={() => {
           setCreando(false);
           setEditando(null);
+          setPlantilla(null);
         }}
         onGuardado={() => {
           setCreando(false);
           setEditando(null);
+          setPlantilla(null);
           insumos.recargar();
         }}
       />
+
+      {recetas && (
+        <ListaSugerida
+          abierta={viendoSugeridos}
+          existentes={lista.map((i) => i.nombre)}
+          onClose={() => setViendoSugeridos(false)}
+          // Una hoja por vez: la lista se cierra en el mismo toque que abre el formulario.
+          onElegir={(s) => {
+            setViendoSugeridos(false);
+            setPlantilla(s);
+            setEditando(null);
+            setCreando(true);
+          }}
+        />
+      )}
 
       <Confirmar
         abierto={!!aBorrar}
@@ -427,6 +483,7 @@ function DetalleInsumo({
   insumo: i,
   enPapelera,
   sinStock,
+  recetas,
   invertido,
   onClose,
   onEditar,
@@ -438,6 +495,8 @@ function DetalleInsumo({
   enPapelera: boolean;
   /** Restaurante: sin stock ni punto de reorden; con lo comprado en el mes. */
   sinStock: boolean;
+  /** Recetas del plato: con stock, sin punto de reorden (la ficha no lo pide) y con cómo se compra y su rinde. */
+  recetas: boolean;
   /** Null = no se sabe: el bloque del mes no va. */
   invertido: Invertido | null;
   onClose: () => void;
@@ -519,7 +578,7 @@ function DetalleInsumo({
               todas las compras desde siempre, porque vender no lo descuenta. */}
           {!sinStock && <Dato label="Stock actual" valor={`${fmtCantidad(i.stock)} ${unidad}`} />}
           {/* Con la unidad, como el stock de al lado: un "10" suelto no dice si son kilos o bolsas. */}
-          {!sinStock && <Dato label="Punto de reorden" valor={`${fmtCantidad(i.puntoReorden)} ${unidad}`} />}
+          {!sinStock && !recetas && <Dato label="Punto de reorden" valor={`${fmtCantidad(i.puntoReorden)} ${unidad}`} />}
           <Dato label="Costo de compra" valor={fmtMoney(i.costoCompra)} />
           {!sinStock && <Dato label="Valor en stock" valor={fmtMoney(i.stock * i.costoCompra)} />}
           <Dato label="Categoría" valor={i.categoria?.nombre ?? "—"} />
@@ -536,6 +595,8 @@ function DetalleInsumo({
           />
           <Dato label="Estado" valor={i.habilitado ? "Habilitado" : "Inactivo"} />
         </dl>
+
+        {recetas && <ParaLasRecetas insumo={i} />}
 
         {!sinStock && (i.stockPorAlmacen?.length ?? 0) > 1 && (
           <div>
@@ -579,6 +640,44 @@ function Dato({ label, valor }: { label: string; valor: string }) {
 }
 
 /**
+ * Recetas del plato (27-nov): lo que la ficha dice para el costo de cada plato
+ * —cómo se compra, su rinde, cómo se controla— y lo que eso da con el stock y
+ * el costo de hoy.
+ */
+function ParaLasRecetas({ insumo: i }: { insumo: Insumo }) {
+  const r = resumenInsumo(i);
+  return (
+    <section aria-label="Para las recetas">
+      <h4 className="mb-2 text-[13px] font-bold text-texto">Para las recetas</h4>
+      {!r.configurado && (
+        <p role="note" className="mb-2 rounded-lg bg-warning-bg px-3 py-2 text-[12px] text-warning-text">
+          Falta completar para cuánto te alcanza: sin eso no entra en ninguna receta.
+        </p>
+      )}
+      <dl className="grid grid-cols-2 gap-3">
+        <Dato label="Cómo lo comprás" valor={r.compra ?? "Sin decir"} />
+        <Dato label="Rinde" valor={r.rinde ?? "Falta completar"} />
+        <Dato label="Cómo lo controlás" valor={i.seCuenta ? "Lo cuento" : "Lo estimo"} />
+        <Dato
+          label={i.seCuenta ? "Alcanza para" : "Debería alcanzar para"}
+          valor={r.porciones != null ? textoPorciones(r.porciones, r.porcion) : "—"}
+        />
+        <Dato
+          label={`Cada ${r.porcion}`}
+          valor={r.costoPorcion != null ? fmtMoney(r.costoPorcion) : r.sinCosto ? "Todavía sin costo" : "—"}
+        />
+        {i.enRecetas != null && (
+          <Dato
+            label="En recetas"
+            valor={i.enRecetas === 0 ? "En ningún plato" : `En ${i.enRecetas} ${i.enRecetas === 1 ? "plato" : "platos"}`}
+          />
+        )}
+      </dl>
+    </section>
+  );
+}
+
+/**
  * Lo comprado de este insumo en el mes (restaurante), en el lugar del stock:
  * cuánta plata se fue, cuánto entró y cada cuánto se compra. `undefined` es
  * que en el mes no se compró (el backend sólo manda los que tuvieron compras).
@@ -607,6 +706,9 @@ function FormInsumo({
   abierto,
   insumo,
   sinStock,
+  recetas,
+  plantilla,
+  registraCompras,
   categorias,
   unidades,
   onClose,
@@ -616,6 +718,12 @@ function FormInsumo({
   insumo: Insumo | null;
   /** Restaurante: sin punto de reorden y con las notas de compras y descartables. */
   sinStock: boolean;
+  /** Recetas del plato: el formulario por bulto y rinde, sin precio (`FormInsumoReceta`). */
+  recetas: boolean;
+  /** Con recetas, el insumo típico elegido en la «Lista sugerida» (sólo en un alta). */
+  plantilla: InsumoSugerido | null;
+  /** Puede abrir Movimientos (el botón «Registrar una compra» del formulario con recetas). */
+  registraCompras: boolean;
   categorias: Categoria[];
   unidades: UnidadMedida[];
   onClose: () => void;
@@ -624,6 +732,20 @@ function FormInsumo({
   // La clave remonta el formulario al cambiar de insumo: así los estados
   // internos arrancan siempre desde el que se está editando.
   if (!abierto) return null;
+  if (recetas) {
+    return (
+      <FormInsumoReceta
+        key={insumo?.id ?? `nuevo-${plantilla?.nombre ?? ""}`}
+        insumo={insumo}
+        plantilla={insumo ? null : plantilla}
+        categorias={categorias}
+        unidades={unidades}
+        registraCompras={registraCompras}
+        onClose={onClose}
+        onGuardado={onGuardado}
+      />
+    );
+  }
   return (
     <FormInsumoCuerpo
       key={insumo?.id ?? "nuevo"}

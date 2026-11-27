@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { parsearMonto } from "../../lib/dinero";
+import { aCentavos, parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
@@ -23,6 +23,15 @@ import { usePalabras } from "../../lib/academia/usePalabras";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
+import { recetasActivas } from "../../lib/recetas/donde";
+import {
+  PALABRAS_BASE,
+  baseDeNombre,
+  cantidadConUnidad,
+  cuentaCompra,
+  redondear3,
+  textoCompraQueEntra,
+} from "../../lib/recetas/unidades";
 import { insumosSinStock } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import ElegirArticulo from "./ElegirArticulo";
@@ -542,7 +551,7 @@ function DetalleMovimiento({
     }
   }
   const total = detalles.reduce(
-    (acc, d) => acc + (d.subtotal ?? d.cantidad * d.costo),
+    (acc, d) => acc + plataDeLinea(d),
     0,
   );
 
@@ -695,6 +704,13 @@ function DetalleMovimiento({
                                 {d.descripcion}
                               </span>
                             )}
+                            {/* La compra por bulto (recetas del plato): como dice el papel. */}
+                            {d.presentacion && (
+                              <span className="block text-xs text-texto-3">
+                                {fmtCantidad(d.cantidadPresentacion ?? 0)} {d.presentacion}
+                                {d.totalPagado != null ? ` · ${fmtMoney(d.totalPagado)}` : ""}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3.5 py-2.5 text-right text-texto">
                             {/* Sin ",00" (Kevin, 25-oct) y con los 3 decimales
@@ -705,20 +721,27 @@ function DetalleMovimiento({
                             {fmtMoney(d.costo)}
                           </td>
                           <td className="px-3.5 py-2.5 text-right font-bold text-texto">
-                            {fmtMoney(d.subtotal ?? d.cantidad * d.costo)}
+                            {fmtMoney(plataDeLinea(d))}
                           </td>
                           {/* Editar y borrar sólo mientras está pendiente:
                               después el stock ya se movió. */}
                           {editable && (
                             <td className="px-2 py-2.5">
                               <div className="flex justify-end gap-1">
-                                <button
-                                  onClick={() => setEditandoLinea(d)}
-                                  aria-label={`Editar ${d.producto}`}
-                                  className="rounded-lg p-1.5 text-texto-3 hover:bg-muted hover:text-texto"
-                                >
-                                  <Icon name="edit" size={15} />
-                                </button>
+                                {/* Una línea cargada con el total pagado (recetas
+                                    del plato) no se edita acá: este formulario
+                                    cambia cantidad y costo, y el total y el bulto
+                                    quedarían diciendo otra cosa. Se quita y se
+                                    carga de nuevo. */}
+                                {d.totalPagado == null && (
+                                  <button
+                                    onClick={() => setEditandoLinea(d)}
+                                    aria-label={`Editar ${d.producto}`}
+                                    className="rounded-lg p-1.5 text-texto-3 hover:bg-muted hover:text-texto"
+                                  >
+                                    <Icon name="edit" size={15} />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => setABorrarLinea(d)}
                                   aria-label={`Quitar ${d.producto}`}
@@ -871,7 +894,7 @@ function FormLineaMovimiento({
   onClose: () => void;
   onGuardado: () => void;
 }) {
-  const { rubro } = useAuth();
+  const { rubro, negocio } = useAuth();
   const esEdicion = !!linea;
   const [productoId, setProductoId] = useState(String(linea?.productoId ?? ""));
   const [cantidad, setCantidad] = useState(linea ? String(linea.cantidad) : "");
@@ -890,8 +913,10 @@ function FormLineaMovimiento({
   // número es lo vendido sin contar ("-30"): no se muestra y no topea la
   // salida. Sin esto la merma de una botella rota no se podía cargar. El
   // backend tampoco la frena en ese modo.
+  // Con las recetas del plato prendidas (27-nov) la venta sí descuenta los
+  // insumos: el stock vuelve a ser un dato y se muestra, como en los demás rubros.
   const sinControl = !!elegido?.vendeSinStock;
-  const ocultaStock = (!!elegido?.esInsumo && insumosSinStock(rubro)) || sinControl;
+  const ocultaStock = (!!elegido?.esInsumo && insumosSinStock(rubro) && !recetasActivas(negocio)) || sinControl;
 
   /**
    * Cuánto se puede sacar de este artículo. Descuenta lo que ya comprometen
@@ -1087,6 +1112,19 @@ interface LineaDetalle {
   loteCodigo?: string;
   /** yyyy-MM-dd */
   loteVencimiento?: string;
+  /**
+   * Recetas del plato (27-nov): el insumo se compra por bulto (un quintal de 46
+   * kg). Sólo en las líneas de un insumo que dice cómo se compra, con las
+   * recetas prendidas. En una ENTRADA la línea se carga como el papel: cuántos
+   * bultos y lo que se pagó por todo (`CamposPorBulto`).
+   */
+  bulto?: { nombre: string; contenido: number };
+  /** El rinde del insumo, para decir cuántas porciones entran. */
+  rinde?: { cantidad: number | null; porciones: number | null; nombre: string | null };
+  /** La cantidad está en bultos (true) o en la unidad del insumo (false). */
+  enBulto?: boolean;
+  /** Lo que se pagó por toda la línea, como texto (igual que el costo). */
+  totalPagado?: string;
 }
 
 function FormMovimiento({
@@ -1116,6 +1154,59 @@ function subtotalDe(l: { cantidad: string; costo: string }): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * La plata de una línea ya guardada: lo que se pagó, si se cargó con el total
+ * (recetas del plato: 92 kg × Bs 6,30 da 579,60 y se pagaron 580), y si no lo
+ * de siempre. Todo lo de antes viene sin `totalPagado`: no cambia.
+ */
+function plataDeLinea(d: LineaMovimiento): number {
+  return d.totalPagado ?? d.subtotal ?? d.cantidad * d.costo;
+}
+
+/** Lo escrito en «Total pagado», o 0 mientras no es un número (como `subtotalDe`). */
+function totalPagadoDe(l: LineaDetalle): number {
+  const n = parsearMonto(l.totalPagado ?? "");
+  return n != null && n > 0 ? n : 0;
+}
+
+/** La cantidad va en bultos sólo si el bulto no es la unidad misma (un «Kilo» trae 1). */
+function cuentaEnBultos(l: LineaDetalle): boolean {
+  return !!l.bulto && l.bulto.contenido !== 1 && l.enBulto !== false;
+}
+
+/** Las cuentas de una línea por bulto: lo que entra, cada kilo y las porciones. */
+function cuentaDeLinea(l: LineaDetalle) {
+  return cuentaCompra({
+    cantidad: parsearMonto(l.cantidad),
+    contenido: cuentaEnBultos(l) ? l.bulto!.contenido : 1,
+    total: parsearMonto(l.totalPagado ?? ""),
+    rindeCantidad: l.rinde?.cantidad,
+    rindePorciones: l.rinde?.porciones,
+    porcionNombre: l.rinde?.nombre,
+  });
+}
+
+/**
+ * El renglón que viaja de una línea por bulto, o el error que la frena. Va en
+ * la unidad del insumo (92 kg) con lo que se pagó; el bulto («2 Quintal») es
+ * informativo. El costo de cada kilo lo calcula el servidor con el total, y
+ * se manda igual con la misma cuenta.
+ */
+function renglonPorBulto(l: LineaDetalle): DetalleMovimientoInput | string {
+  const cantidad = parsearMonto(l.cantidad);
+  const cuenta = cuentaDeLinea(l);
+  if (cantidad === null || cuenta.cantidadBase == null) return `La cantidad de "${l.nombre}" tiene que ser mayor a cero.`;
+  const total = parsearMonto(l.totalPagado ?? "");
+  if (total === null || total <= 0) return `Escribí cuánto pagaste por "${l.nombre}".`;
+  return {
+    productoId: l.articuloId,
+    cantidad: cuenta.cantidadBase,
+    costo: cuenta.costoUnitario ?? 0,
+    totalPagado: aCentavos(total),
+    ...(cuentaEnBultos(l) ? { presentacion: l.bulto!.nombre, cantidadPresentacion: redondear3(cantidad) } : {}),
+  };
+}
+
 function FormMovimientoCuerpo({
   almacenes,
   onClose,
@@ -1134,8 +1225,11 @@ function FormMovimientoCuerpo({
    */
   onGuardado: (r?: { id: number; aviso?: string }) => void;
 }) {
-  const { incluye, usuario } = useAuth();
+  const { incluye, usuario, negocio } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
+  // Recetas del plato (27-nov): la entrada de un insumo que se compra por bulto
+  // se carga como el papel de la compra, «2 quintales, Bs 580».
+  const recetas = recetasActivas(negocio);
   // Sin `lotes` el plan no tiene Vencimientos: el lote no se pide (16-oct).
   const conLotes = incluye("lotes");
   const [tipo, setTipo] = useState<TipoMovimiento>("ENTRADA");
@@ -1183,9 +1277,19 @@ function FormMovimientoCuerpo({
     (a) => !lineas.some((l) => l.articuloId === a.id),
   );
 
-  const total = lineas.reduce((acc, l) => acc + subtotalDe(l), 0);
+  /** Una línea por bulto: sólo en una ENTRADA y con las recetas prendidas. */
+  const porBulto = (l: LineaDetalle) => recetas && tipo === "ENTRADA" && !!l.bulto;
+
+  const total = lineas.reduce((acc, l) => acc + (porBulto(l) ? totalPagadoDe(l) : subtotalDe(l)), 0);
 
   function agregarLinea(art: ArticuloMovimiento) {
+    // Recetas del plato: el insumo que dice cómo se compra (un quintal de 46 kg)
+    // se carga en bultos y con lo que se pagó. El total arranca vacío: lo que
+    // se pagó esta vez lo dice el papel, no la compra anterior.
+    const bulto =
+      recetas && art.esInsumo && art.compraUnidad && Number(art.compraContenido) > 0
+        ? { nombre: art.compraUnidad, contenido: Number(art.compraContenido) }
+        : undefined;
     setLineas((ls) => [
       ...ls,
       {
@@ -1199,6 +1303,14 @@ function FormMovimientoCuerpo({
         manejaLote: art.manejaLote,
         loteCodigo: "",
         loteVencimiento: "",
+        ...(bulto
+          ? {
+              bulto,
+              enBulto: true,
+              totalPagado: "",
+              rinde: { cantidad: art.rindeCantidad ?? null, porciones: art.rindePorciones ?? null, nombre: art.porcionNombre ?? null },
+            }
+          : {}),
       },
     ]);
   }
@@ -1216,6 +1328,13 @@ function FormMovimientoCuerpo({
 
     const detalles: DetalleMovimientoInput[] = [];
     for (const l of lineas) {
+      // Recetas del plato: la compra por bulto, con lo que se pagó por todo.
+      if (porBulto(l)) {
+        const renglon = renglonPorBulto(l);
+        if (typeof renglon === "string") return setError(renglon);
+        detalles.push(renglon);
+        continue;
+      }
       const cantidad = parsearMonto(String(l.cantidad));
       if (cantidad === null || cantidad <= 0)
         return setError(`La cantidad de "${l.nombre}" tiene que ser mayor a cero.`);
@@ -1437,36 +1556,40 @@ function FormMovimientoCuerpo({
                       <Icon name="trash" size={16} />
                     </button>
                   </div>
-                  <div className="mt-2 grid grid-cols-3 items-end gap-2">
-                    <Campo label="Cantidad">
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0.01"
-                        value={l.cantidad}
-                        onChange={(e) => editarLinea(i, { cantidad: e.target.value })}
-                      />
-                    </Campo>
-                    <Campo label="Costo">
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0"
-                        value={l.costo}
-                        onChange={(e) => editarLinea(i, { costo: e.target.value })}
-                      />
-                    </Campo>
-                    <div className="pb-2.5 text-right">
-                      <p className="text-[11px] font-semibold uppercase text-texto-4">
-                        Subtotal
-                      </p>
-                      <p className="text-sm font-bold text-texto">
-                        {fmtMoney(subtotalDe(l))}
-                      </p>
+                  {porBulto(l) ? (
+                    <CamposPorBulto linea={l} onCambio={(cambio) => editarLinea(i, cambio)} />
+                  ) : (
+                    <div className="mt-2 grid grid-cols-3 items-end gap-2">
+                      <Campo label="Cantidad">
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          min="0.01"
+                          value={l.cantidad}
+                          onChange={(e) => editarLinea(i, { cantidad: e.target.value })}
+                        />
+                      </Campo>
+                      <Campo label="Costo">
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          min="0"
+                          value={l.costo}
+                          onChange={(e) => editarLinea(i, { costo: e.target.value })}
+                        />
+                      </Campo>
+                      <div className="pb-2.5 text-right">
+                        <p className="text-[11px] font-semibold uppercase text-texto-4">
+                          Subtotal
+                        </p>
+                        <p className="text-sm font-bold text-texto">
+                          {fmtMoney(subtotalDe(l))}
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Lote y vencimiento: sólo al RECIBIR mercadería y sólo en
                       los artículos que los llevan. Una salida no elige lote
@@ -1525,5 +1648,81 @@ function FormMovimientoCuerpo({
         <ErrorMsg>{error || articulos.error}</ErrorMsg>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * La línea de un insumo que se compra por bulto (recetas del plato, 27-nov):
+ * cantidad, en qué (el bulto o la unidad del insumo), lo que se pagó por todo,
+ * y lo que sale cada kilo. Debajo, lo que entra y para cuántas porciones
+ * alcanza: «Entran 92 kg, unas 1.104 porciones. Cada porción te sale Bs 0,53.»
+ */
+function CamposPorBulto({
+  linea: l,
+  onCambio,
+}: {
+  linea: LineaDetalle;
+  onCambio: (cambio: Partial<LineaDetalle>) => void;
+}) {
+  const bulto = l.bulto!;
+  const base = baseDeNombre(l.unidad);
+  const cadaUno = base ? PALABRAS_BASE[base].singular : l.unidad.toLowerCase() || "unidad";
+  // Un «Kilo» trae 1 kg: no hay nada que elegir.
+  const conBulto = bulto.contenido !== 1;
+  const cuenta = cuentaDeLinea(l);
+  const resumen = textoCompraQueEntra(cuenta, base, l.unidad, l.rinde?.nombre);
+
+  return (
+    <>
+      {/* Dos y dos en el teléfono: cuatro columnas no entraban en 360 px. */}
+      <div className="mt-2 grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
+        <Campo label="Cantidad">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.001"
+            min="0"
+            value={l.cantidad}
+            onChange={(e) => onCambio({ cantidad: e.target.value })}
+          />
+        </Campo>
+        {conBulto ? (
+          <Campo label="Unidad">
+            {/* Sólo el nombre: «Quintal (46 kg)» no entraba en media fila de un
+                teléfono. Lo que trae lo dice el renglón de abajo («Entran 46 kg»). */}
+            <Select
+              value={cuentaEnBultos(l) ? "bulto" : "base"}
+              onChange={(e) => onCambio({ enBulto: e.target.value === "bulto" })}
+              title={`${bulto.nombre} de ${cantidadConUnidad(bulto.contenido, base, l.unidad)}`}
+            >
+              <option value="bulto">{bulto.nombre}</option>
+              <option value="base">{l.unidad || "Unidad"}</option>
+            </Select>
+          </Campo>
+        ) : (
+          <div className="min-w-0 pb-2.5">
+            <p className="text-[11px] font-semibold uppercase text-texto-4">Unidad</p>
+            <p className="truncate text-sm font-semibold text-texto">{l.unidad || bulto.nombre}</p>
+          </div>
+        )}
+        <Campo label="Total pagado">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            min="0"
+            value={l.totalPagado ?? ""}
+            onChange={(e) => onCambio({ totalPagado: e.target.value })}
+          />
+        </Campo>
+        <div className="min-w-0 pb-2.5 text-right">
+          <p className="text-[11px] font-semibold uppercase text-texto-4">Cada {cadaUno}</p>
+          <p className={`text-sm font-bold ${cuenta.costoUnitario != null ? "text-texto" : "text-texto-4"}`}>
+            {cuenta.costoUnitario != null ? fmtMoney(cuenta.costoUnitario) : "—"}
+          </p>
+        </div>
+      </div>
+      {resumen && <p className="mt-1.5 text-[12px] text-texto-3">{resumen}</p>}
+    </>
   );
 }

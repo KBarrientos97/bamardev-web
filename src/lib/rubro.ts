@@ -127,6 +127,15 @@ export function insumosSinStock(rubro: string | null | undefined): boolean {
 export const DESCARTABLES_A_GASTOS =
   "Los descartables (platos y vasos desechables, servilletas, bolsas, envases para llevar) no son insumos de un plato: van en Gastos operativos, categoría Descartables, para que resten de la ganancia.";
 
+/**
+ * Lo mismo con las recetas del plato prendidas (27-nov): ahí un descartable
+ * que va en la receta de un plato (la bandeja, la bolsa) SÍ entra en su costo,
+ * así que el riesgo es el contrario: cargarlo además como gasto lo resta dos
+ * veces. Lo dice el formulario de Insumos en lugar de `DESCARTABLES_A_GASTOS`.
+ */
+export const DESCARTABLES_CON_RECETAS =
+  "Si un descartable (bandeja, bolsa) va en la receta de un plato, no lo cargues también en Gastos › Descartables: se restaría dos veces.";
+
 // ── Vocabulario ─────────────────────────────────────────────────────────────
 
 /**

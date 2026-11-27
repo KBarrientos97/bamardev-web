@@ -2,7 +2,8 @@ import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { esPositivo } from "../../../lib/dinero";
 import { fmtMoney } from "../../../lib/format";
-import { DESCARTABLES_A_GASTOS, insumosSinStock } from "../../../lib/rubro";
+import { recetasActivas } from "../../../lib/recetas/donde";
+import { DESCARTABLES_A_GASTOS, DESCARTABLES_CON_RECETAS, insumosSinStock } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { apiReportes, fraccion } from "../api";
@@ -23,8 +24,11 @@ export default function Insumos() {
   // y los envases cargados como insumo, que así no restan nunca de la
   // ganancia. La nota de abajo dice dónde van (28-oct), como el alta de un
   // insumo; los demás rubros la ven como siempre.
-  const { rubro } = useAuth();
+  const { rubro, negocio } = useAuth();
   const conDescartables = insumosSinStock(rubro);
+  // Con las recetas del plato prendidas (27-nov) el descartable que va en la
+  // receta ya entra en el costo del plato: el aviso es el contrario.
+  const conRecetas = recetasActivas(negocio);
   const estado = useApi(
     () => apiReportes.insumos(rango, rangoAnterior),
     [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta],
@@ -154,7 +158,9 @@ export default function Insumos() {
             <Nota>
               Es lo efectivamente comprado en insumos en el período, no el costo de lo que vendiste. Si las compras crecen
               mucho más que las ventas, {conDescartables ? "puede haber desperdicio o compras de más." : "puede haber sobre-stock o merma."}
-              {conDescartables && <span className="mt-1.5 block">{DESCARTABLES_A_GASTOS}</span>}
+              {conDescartables && (
+                <span className="mt-1.5 block">{conRecetas ? DESCARTABLES_CON_RECETAS : DESCARTABLES_A_GASTOS}</span>
+              )}
             </Nota>
           </>
         );

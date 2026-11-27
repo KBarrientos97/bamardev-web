@@ -209,6 +209,14 @@ export interface SesionNegocio {
    */
   conteo?: Partial<ConfigConteo> | null;
   /**
+   * Las recetas del plato (Configuración › Inventario y stock, 27-nov): el
+   * interruptor y lo que el punto de venta necesita saber. Sólo viaja en el
+   * restaurante. Se lee SIEMPRE con `recetasActivas` / `recetasDe` de
+   * `lib/recetas/donde.ts`. Sin el dato (otro rubro, sesión o backend viejo)
+   * está apagado y todo se ve como siempre.
+   */
+  recetas?: SesionRecetas;
+  /**
    * Si el negocio recibe pedidos de su página por el sistema: tiene la feature
    * `delivery` y el dueño prendió «Recibir pedidos en el sistema»
    * (CONTRATO-PEDIDOS-WEB §9). La entrada «Pedidos web», la franja del POS, el
@@ -234,6 +242,33 @@ export interface SesionNegocio {
    */
   sucursalesActivas?: number;
 }
+
+/** `negocio.recetas` de la sesión (login y `/licencia/estado`, sólo en el restaurante). */
+export interface SesionRecetas {
+  activas: boolean;
+  /** El punto de venta pregunta la presa de un plato de 1 o 2 presas. */
+  elegirPresa: boolean;
+  /** «Pura papa» descuenta doble porción. */
+  puroDoble: boolean;
+}
+
+/** Cómo se toma el costo de cada insumo para el costo de los platos. */
+export type CostoInsumoReceta = "ULTIMA" | "PROMEDIO3";
+
+/** `GET /recetas-plato/config` (`negocio.configurar`). */
+export interface ConfigRecetas {
+  activas: boolean;
+  /** Avisar si el costo de un plato cambió este % o más (0 a 100). */
+  avisoPct: number;
+  costoInsumo: CostoInsumoReceta;
+  elegirPresa: boolean;
+  puroDoble: boolean;
+  /** El rubro es RESTAURANTE: en otro el backend no deja prenderlas. */
+  sePuede: boolean;
+}
+
+/** `PATCH /recetas-plato/config`: parcial, lo que se manda es lo que cambia. */
+export type CambioConfigRecetas = Partial<Omit<ConfigRecetas, "sePuede">>;
 
 export interface LoginResponse {
   accessToken: string;
@@ -561,6 +596,58 @@ export interface Producto extends FichaFarmaceutica {
    * destildarlo en Artículos; el POS pide `paraVenta` y el backend lo excluye.
    */
   soloAgregado?: boolean;
+  /**
+   * Plato «Con receta» (CONTRATO-recetas-plato §1.2): un SERVICIO cuyo costo lo
+   * calcula su receta de insumos. El backend lo manda SÓLO con las recetas
+   * prendidas (apagadas, la respuesta es la de siempre); se lee junto con
+   * `recetasActivas` de `lib/recetas/donde.ts`.
+   */
+  conReceta?: boolean;
+  /**
+   * Lo que el punto de venta sabe de la receta de un plato «Con receta»
+   * (CONTRATO-recetas-plato §4.1), sin costos. Igual que `conReceta`, el
+   * backend lo manda SÓLO con las recetas prendidas. Se lee con
+   * `recetaDelPlato` de `lib/recetas/armado.ts`.
+   */
+  receta?: RecetaPlatoPos;
+}
+
+/** Una guarnición del plato, como la ve el punto de venta. */
+export interface GuarnicionPos {
+  insumoId: number;
+  nombre: string;
+  /** Se puede pedir «puro» (pura papa). */
+  puro: boolean;
+}
+
+/** `Producto.receta`: la receta del plato para el punto de venta (§4.1). */
+export interface RecetaPlatoPos {
+  /** Cuántas presas lleva el plato (las porciones del renglón PRESA); 0 si no lleva. */
+  presas: number;
+  /** Las partes del insumo de la presa («POLLO_8»: el pollo en 8 presas); null si no hay. */
+  partes: PartesInsumo | null;
+  /** En el orden de la receta: sale completa; el cliente puede quitar o pedir «puro». */
+  guarnicion: GuarnicionPos[];
+  /** Para cuántos platos alcanza lo que se cuenta; null si nada se cuenta. Puede ser ≤ 0. */
+  alcanza: number | null;
+}
+
+/** Las presas del pollo en 8 (dos de cada una). */
+export type PiezaPollo = "ala" | "pecho" | "pierna" | "contra";
+
+/**
+ * Cómo se armó un plato con receta en una venta (CONTRATO-recetas-plato §4.1):
+ * las presas que eligió el cliente, lo que quitó de la guarnición y la que pidió
+ * «puro». Sin esto, el plato sale con el armado de siempre. Viaja SÓLO en la
+ * venta directa (`POST /ventas` y su cola sin señal).
+ */
+export interface Armado {
+  /** Enteros de 0 a 8; las que van, sumadas, son las presas del plato. */
+  piezas?: Partial<Record<PiezaPollo, number>>;
+  /** Los insumos de la guarnición que el cliente quitó. */
+  sin?: number[];
+  /** El insumo de la guarnición que pidió «puro». */
+  puro?: number;
 }
 
 /**
@@ -767,18 +854,60 @@ export interface Insumo {
    */
   stockPorAlmacen?: { almacenId: number; nombre: string; tipo: TipoAlmacen; cantidad: number }[];
   habilitado: boolean;
+  // ── Recetas del plato (27-nov) ──
+  // Sólo se miran con las recetas prendidas (`recetasActivas`). Opcionales: un
+  // backend anterior no los manda. Las cantidades van en la unidad del insumo
+  // (`unidad`: kilo, litro, unidad), que es también la del stock y del costo.
+  /** Cómo lo compra: «Quintal», «Bolsa», «Bidón»… Null = sin decir. */
+  compraUnidad?: string | null;
+  /** Cuánto trae ese bulto (un quintal, 46 kg). */
+  compraContenido?: number | null;
+  /** «Con cuánto…» */
+  rindeCantidad?: number | null;
+  /** «…sirvo cuántas». */
+  rindePorciones?: number | null;
+  /** Cómo se llama lo que sirve, en singular: «porción», «presa», «unidad», «plato», «vaso». */
+  porcionNombre?: string | null;
+  /** «Lo cuento» (true) o «lo estimo» (false). */
+  seCuenta?: boolean;
+  partes?: PartesInsumo | null;
+  /** Tiene rinde completo: ya entra en una receta. */
+  configurado?: boolean;
+  /** Lo que cuesta una porción; null sin costo o sin rinde. */
+  costoPorcion?: number | null;
+  /** Para cuántas porciones alcanza el stock; null sin rinde. */
+  porciones?: number | null;
+  /** En cuántos platos está. */
+  enRecetas?: number;
 }
+
+/** Plantilla de partes de un insumo: hoy sólo el pollo entero (2 alas, 2 pechos, 2 piernas y 2 contras). */
+export type PartesInsumo = "POLLO_8";
 
 export interface InsumoInput {
   nombre: string;
   unidadMedidaId: number;
-  costoCompra: number;
+  /**
+   * Opcional desde el 27-nov: con las recetas prendidas el costo entra sólo por
+   * las compras de Movimientos y la ficha no lo manda (en una edición, ausente
+   * = no se toca; en un alta nace en 0). Apagadas, viaja como siempre.
+   */
+  costoCompra?: number;
   categoriaId?: number;
   puntoReorden?: number;
   proveedor?: string;
   vencimiento?: string;
   /** El backend lo ignora (el insumo nace sin stock): la web ya no lo manda. */
   almacenId?: number;
+  // ── Recetas del plato (27-nov): sólo los manda el formulario con las recetas prendidas ──
+  compraUnidad?: string;
+  compraContenido?: number;
+  rindeCantidad?: number;
+  rindePorciones?: number;
+  porcionNombre?: string;
+  seCuenta?: boolean;
+  /** `null` lo saca (ya no es un pollo entero). */
+  partes?: PartesInsumo | null;
 }
 
 /**
@@ -855,6 +984,14 @@ export interface DetalleMovimiento {
   /** Rubro farmacia: la partida que entró en esta línea. */
   loteCodigo?: string | null;
   loteVencimiento?: string | null;
+  /**
+   * La compra por bulto (recetas del plato, 27-nov): «2 Quintal» y lo que se
+   * pagó por todo. Informativos: `cantidad` y `costo` (en la unidad del insumo)
+   * siguen mandando para el stock y el costo. Null en todo lo demás.
+   */
+  presentacion?: string | null;
+  cantidadPresentacion?: number | null;
+  totalPagado?: number | null;
 }
 
 /** Artículo elegible en un movimiento (productos + insumos en una sola lista). */
@@ -884,6 +1021,15 @@ export interface ArticuloMovimiento {
    * ni topea una salida. Sólo viene en ese modo, y nunca en un insumo.
    */
   vendeSinStock?: boolean;
+  // ── Recetas del plato (27-nov) ──
+  // Sólo en un insumo y sólo con las recetas prendidas (apagadas, la respuesta
+  // es la de siempre). Ver los mismos campos en `Insumo`.
+  compraUnidad?: string | null;
+  compraContenido?: number | null;
+  rindeCantidad?: number | null;
+  rindePorciones?: number | null;
+  porcionNombre?: string | null;
+  partes?: PartesInsumo | null;
 }
 
 export interface MovimientoInput {
@@ -1027,6 +1173,15 @@ export interface DetalleMovimientoInput {
   loteCodigo?: string;
   /** yyyy-MM-dd */
   loteVencimiento?: string;
+  /**
+   * Compra por bulto de un insumo (recetas del plato, 27-nov): «2» «Quintal» y
+   * lo que se pagó por todo. `cantidad` va igual en la unidad del insumo (92
+   * kg). Con `totalPagado` el servidor calcula el `costo` de la línea
+   * (total ÷ cantidad) e ignora el que llegue.
+   */
+  presentacion?: string;
+  cantidadPresentacion?: number;
+  totalPagado?: number;
 }
 
 // ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────────
@@ -1432,6 +1587,12 @@ export interface DetalleVenta {
   paquete?: PaqueteRecibo;
   /** Educación: la cuota que cobró la línea (su concepto viene en `Venta.cuotas`). */
   cuotaId?: number | null;
+  /**
+   * Plato con receta (§4.1): cómo se armó, ya en texto («Pierna y contra · Sin
+   * fideo»). Lo arma el backend; en el ticket de la cola sin señal, la web con
+   * la misma regla (`textoDelArmado`). null o ausente en las demás líneas.
+   */
+  armadoTexto?: string | null;
 }
 
 /**
@@ -1718,6 +1879,11 @@ export interface DetalleVentaInput {
    * extras; sin ellos la línea es la de siempre.
    */
   agregados?: AgregadoInput[];
+  /**
+   * Plato con receta (§4.1): las presas y la guarnición de cada unidad de esta
+   * línea. Sólo en `POST /ventas` (y su cola); sin él, el armado de siempre.
+   */
+  armado?: Armado;
 }
 
 /**
@@ -2265,6 +2431,12 @@ export interface EstadoLicencia {
   pos?: Partial<ConfigPos> | null;
   /** Lo mismo que `negocio.conteo` del login: si el dueño lo cambia desde otro equipo, la caja abierta se entera. */
   conteo?: Partial<ConfigConteo> | null;
+  /**
+   * Lo mismo que `negocio.recetas` del login (27-nov), crudo: si el dueño las
+   * prende o apaga desde otro equipo, la sesión abierta se entera. Sólo viaja en
+   * el restaurante; ausente, queda lo que había.
+   */
+  recetas?: Partial<SesionRecetas> | null;
   /** Lo mismo que `negocio.entregaPedidosWeb` / `servicioDeliveryExterno` del login (§2.6). */
   entregaPedidosWeb?: EntregaPedidosWeb;
   servicioDeliveryExterno?: string | null;
