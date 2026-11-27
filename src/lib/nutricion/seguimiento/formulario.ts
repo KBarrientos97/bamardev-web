@@ -1,4 +1,5 @@
 import { errorDeTope, fmtNumero, hoyIso, leerNumero, redondear, textoDe, valorDe } from "../calculo";
+import { esDiaSemana } from "./dias";
 import type { CambiosTratamiento, IniciarTratamientoInput, ProductoSeguimiento, Registro, RegistroInput, Tratamiento, UnidadDosis, Vial } from "./tipos";
 
 /**
@@ -299,10 +300,21 @@ export interface FormTratamiento {
   vialMl: string;
   /** Ninguna marcada al iniciar: es obligatorio elegir una. */
   unidadDosis: UnidadDosis | "";
+  /** El día que viene (§11): "" (ninguno, es opcional) o "1".."6". Ninguno marcado al iniciar. */
+  diaSemana: string;
 }
 
 export function tratamientoVacio(): FormTratamiento {
-  return { nombre: "", vialMg: "", vialMl: "", unidadDosis: "" };
+  return { nombre: "", vialMg: "", vialMl: "", unidadDosis: "", diaSemana: "" };
+}
+
+/** El día como está en el formulario ("" o "1".."6"). */
+const textoDia = (dia: number | null | undefined) => (esDiaSemana(dia) ? String(dia) : "");
+
+/** El día elegido como viaja (1 a 6), o null si no hay uno. */
+export function diaDe(texto: string): number | null {
+  const n = Number(texto.trim());
+  return texto.trim() && esDiaSemana(n) ? n : null;
 }
 
 /**
@@ -312,17 +324,20 @@ export function tratamientoVacio(): FormTratamiento {
  * semana de su marca).
  */
 export function tratamientoDesde(
-  t: Pick<Tratamiento, "nombre" | "unidadDosis" | "presentacion"> & Partial<Pick<Tratamiento, "productoInicial" | "cambiosDeProducto">>,
+  t: Pick<Tratamiento, "nombre" | "unidadDosis" | "presentacion"> & Partial<Pick<Tratamiento, "productoInicial" | "cambiosDeProducto" | "diaSemana">>,
 ): FormTratamiento {
   const inicial = t.cambiosDeProducto && t.productoInicial ? t.productoInicial : null;
+  // §11: en «Editar», viene marcado el día que tiene (un backend anterior no lo manda: ninguno).
+  const diaSemana = textoDia(t.diaSemana);
   if (inicial) {
-    return { nombre: inicial.nombre, vialMg: vial(inicial.vialMg), vialMl: vial(inicial.vialMl), unidadDosis: t.unidadDosis };
+    return { nombre: inicial.nombre, vialMg: vial(inicial.vialMg), vialMl: vial(inicial.vialMl), unidadDosis: t.unidadDosis, diaSemana };
   }
   return {
     nombre: t.nombre,
     vialMg: t.presentacion ? fmtNumero(t.presentacion.mg, 2) : "",
     vialMl: t.presentacion ? fmtNumero(t.presentacion.ml, 2) : "",
     unidadDosis: t.unidadDosis,
+    diaSemana,
   };
 }
 
@@ -348,14 +363,16 @@ export function vialDe(f: Pick<FormTratamiento, "vialMg" | "vialMl">): { mg: num
   return mg != null && ml != null ? { mg, ml } : null;
 }
 
-/** El alta: el tratamiento y, si hay algo escrito, el registro inicial. */
+/** El alta: el tratamiento y, si hay algo escrito, el registro inicial. El día viaja sólo si se eligió uno (§11). */
 export function iniciarAInput(t: FormTratamiento, inicial: FormSemana): IniciarTratamientoInput {
   const vial = vialDe(t);
+  const dia = diaDe(t.diaSemana);
   const ini = soloLoEscrito(semanaAInput({ ...inicial, sinDosis: false }, true));
   return {
     nombre: t.nombre.trim(),
     unidadDosis: t.unidadDosis as UnidadDosis,
     ...(vial ? { vialMg: vial.mg, vialMl: vial.ml } : {}),
+    ...(dia != null ? { diaSemana: dia } : {}),
     inicial: ini,
   };
 }
@@ -443,7 +460,7 @@ export function cambiosDeProducto(
   return c;
 }
 
-/** Lo que cambió del tratamiento. Quitar el vial manda las dos en null. */
+/** Lo que cambió del tratamiento. Quitar el vial manda las dos en null; quitar el día, `diaSemana: null` (§11). */
 export function cambiosDeTratamiento(antes: FormTratamiento, ahora: FormTratamiento): CambiosTratamiento {
   const c: CambiosTratamiento = {};
   if (ahora.nombre.trim() !== antes.nombre.trim()) c.nombre = ahora.nombre.trim();
@@ -454,5 +471,7 @@ export function cambiosDeTratamiento(antes: FormTratamiento, ahora: FormTratamie
     c.vialMg = vb?.mg ?? null;
     c.vialMl = vb?.ml ?? null;
   }
+  const dia = diaDe(ahora.diaSemana);
+  if (dia !== diaDe(antes.diaSemana)) c.diaSemana = dia;
   return c;
 }

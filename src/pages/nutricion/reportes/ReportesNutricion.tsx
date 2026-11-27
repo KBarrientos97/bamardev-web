@@ -1,10 +1,13 @@
+import { Fragment, useId, useState } from "react";
 import { Link } from "react-router-dom";
+import { Icon } from "../../../components/Icon";
 import { Cargando, ErrorMsg, Vacio } from "../../../components/ui";
 import { fmtMoney } from "../../../lib/format";
 import { fechaLarga, fmtNumero } from "../../../lib/nutricion/calculo";
-import { apiReportesNutricion, type ReporteNutricion, type ResultadoPaciente } from "../../../lib/nutricion/reportes";
+import { apiReportesNutricion, type PacienteDelDia, type PorDiaReporte, type ReporteNutricion, type ResultadoPaciente } from "../../../lib/nutricion/reportes";
+import { esDiaSemana, nombreDia } from "../../../lib/nutricion/seguimiento/dias";
 import { colorDeEscalaImc } from "../../../lib/nutricion/tonos";
-import { RUTA_EVALUACION } from "../../../lib/permisos";
+import { RUTA_EVALUACION, RUTA_SEGUIMIENTO } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { EncabezadoPagina, GrillaKpi, KpiTarjeta, PaginaAcademia as Pagina, TABLA, Tarjeta } from "../../academia/piezas";
@@ -57,6 +60,8 @@ export default function ReportesNutricion() {
   const r = datos.datos;
   // El nombre del ranking abre la planilla sólo a quien ve la evaluación.
   const veEvaluacion = puede("nutricion");
+  // Lo mismo con los nombres de cada día (§11): a su hoja del seguimiento, sólo a quien la ve.
+  const veSeguimiento = puede("seguimiento");
 
   return (
     <Pagina>
@@ -76,6 +81,7 @@ export default function ReportesNutricion() {
           <Resumen r={r} />
           <Resultados r={r} veEvaluacion={veEvaluacion} />
           <DistribucionImc r={r} />
+          <PacientesPorDia r={r} veSeguimiento={veSeguimiento} />
           <Tratamientos r={r} />
           <Pagos r={r} />
         </>
@@ -208,6 +214,160 @@ function DistribucionImc({ r }: { r: ReporteNutricion }) {
       </ul>
       {r.imc.sinDato > 0 && <p className="mt-3 text-xs text-texto-3">{r.imc.sinDato} sin peso o sin talla cargada.</p>}
     </Tarjeta>
+  );
+}
+
+/**
+ * «Pacientes por día de la semana» (CONTRATO-nutricion-seguimiento-23nov §11):
+ * cuántos de los que están en tratamiento vienen cada día (la doctora guarda el
+ * vial de cada uno en la caja de su día). Una foto de hoy, como el IMC. Sólo si
+ * alguien tiene día: un consultorio que no lo usa (o un backend anterior, sin
+ * `porDia`) no ve nada. Cada día con pacientes se abre con sus nombres.
+ */
+function PacientesPorDia({ r, veSeguimiento }: { r: ReporteNutricion; veSeguimiento: boolean }) {
+  const p = r.porDia;
+  if (!p || p.conDia <= 0) return null;
+  const dias = p.dias.filter((d) => esDiaSemana(d.dia));
+  const max = Math.max(0, ...dias.map((d) => d.pacientes));
+  const masDias = max > 0 ? dias.filter((d) => d.pacientes === max) : [];
+  return (
+    <Tarjeta titulo="Pacientes por día de la semana" bajada="Hoy, los pacientes en tratamiento según el día en que vienen">
+      {masDias.length > 0 && (
+        <p className="mb-3 text-sm text-texto-2">
+          <FraseDiaConMas dias={masDias.map((d) => d.dia)} cantidad={max} />
+        </p>
+      )}
+      <ul className="space-y-0.5">
+        {dias.map((d) => (
+          <RenglonDia key={d.dia} dia={d} max={max} conDia={p.conDia} fuerte={max > 0 && d.pacientes === max} veSeguimiento={veSeguimiento} />
+        ))}
+      </ul>
+      <div className="mt-3 border-t border-borde-soft pt-2">
+        <p className="py-1 text-xs text-texto-3">
+          {p.conDia} de {p.enTratamiento} en tratamiento {p.conDia === 1 ? "tiene" : "tienen"} día.
+        </p>
+        {p.sinDia.pacientes > 0 && <SinDiaFijo sinDia={p.sinDia} veSeguimiento={veSeguimiento} />}
+      </div>
+    </Tarjeta>
+  );
+}
+
+/** «El día con más pacientes es el **martes** (5).» o, si empatan, «Los días con más pacientes: **martes** y **jueves** (5 cada uno).» */
+function FraseDiaConMas({ dias, cantidad }: { dias: number[]; cantidad: number }) {
+  const nombre = (d: number) => <strong className="font-semibold text-texto">{nombreDia(d)?.toLowerCase()}</strong>;
+  if (dias.length === 1) {
+    return (
+      <>
+        El día con más pacientes es el {nombre(dias[0])} ({cantidad}).
+      </>
+    );
+  }
+  return (
+    <>
+      Los días con más pacientes:{" "}
+      {dias.map((d, i) => (
+        <Fragment key={d}>
+          {i > 0 && (i === dias.length - 1 ? " y " : ", ")}
+          {nombre(d)}
+        </Fragment>
+      ))}{" "}
+      ({cantidad} cada uno).
+    </>
+  );
+}
+
+/** La barra de un día: el mismo dibujo que «Pacientes por grado de IMC», con la columna de la flecha para abrirlo. */
+const GRILLA_DIA = "grid grid-cols-[minmax(5.5rem,8rem)_minmax(0,1fr)_minmax(4rem,auto)_1rem] items-center gap-3 text-sm";
+
+function RenglonDia({
+  dia,
+  max,
+  conDia,
+  fuerte,
+  veSeguimiento,
+}: {
+  dia: PorDiaReporte["dias"][number];
+  max: number;
+  conDia: number;
+  /** El día con más pacientes: la barra un tono más fuerte. */
+  fuerte: boolean;
+  veSeguimiento: boolean;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const id = useId();
+  const fila = (
+    <>
+      <span className={fuerte ? "font-semibold text-texto" : "text-texto-2"}>{nombreDia(dia.dia)}</span>
+      <span className="h-3 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <span className={`block h-full rounded-full ${fuerte ? "bg-primary-700" : "bg-primary"}`} style={{ width: `${max ? (dia.pacientes / max) * 100 : 0}%` }} />
+      </span>
+      <span className="whitespace-nowrap text-right tabular-nums text-texto">
+        {dia.pacientes} <span className="text-xs text-texto-4">({Math.round((dia.pacientes / conDia) * 100)} %)</span>
+      </span>
+      {dia.pacientes > 0 ? (
+        <Icon name="chevronDown" size={16} className={`text-texto-4 transition-transform ${abierto ? "rotate-180" : ""}`} />
+      ) : (
+        <span aria-hidden="true" />
+      )}
+    </>
+  );
+  if (dia.pacientes <= 0) return <li className={`${GRILLA_DIA} min-h-11 px-2 lg:min-h-9`}>{fila}</li>;
+  return (
+    <li>
+      <button
+        type="button"
+        aria-expanded={abierto}
+        aria-controls={id}
+        onClick={() => setAbierto((a) => !a)}
+        className={`${GRILLA_DIA} min-h-11 w-full rounded-lg px-2 text-left transition-colors hover:bg-muted lg:min-h-9`}
+      >
+        {fila}
+      </button>
+      {abierto && <NombresDelDia id={id} lista={dia.lista} veSeguimiento={veSeguimiento} />}
+    </li>
+  );
+}
+
+/** «Sin día fijo: 2», al pie: también se abre con sus nombres. */
+function SinDiaFijo({ sinDia, veSeguimiento }: { sinDia: PorDiaReporte["sinDia"]; veSeguimiento: boolean }) {
+  const [abierto, setAbierto] = useState(false);
+  const id = useId();
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={abierto}
+        aria-controls={id}
+        onClick={() => setAbierto((a) => !a)}
+        className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-texto-3 transition-colors hover:bg-muted hover:text-texto-2 lg:min-h-8"
+      >
+        Sin día fijo: {sinDia.pacientes}
+        <Icon name="chevronDown" size={14} className={`transition-transform ${abierto ? "rotate-180" : ""}`} />
+      </button>
+      {abierto && <NombresDelDia id={id} lista={sinDia.lista} veSeguimiento={veSeguimiento} />}
+    </>
+  );
+}
+
+/** Los nombres de un día, cada uno a su hoja del seguimiento si la persona lo ve (si no, el nombre solo). */
+function NombresDelDia({ id, lista, veSeguimiento }: { id: string; lista: PacienteDelDia[]; veSeguimiento: boolean }) {
+  return (
+    <ul id={id} className="mb-1.5 ml-2 mt-0.5 grid gap-x-6 border-l-2 border-primary-100 pl-3 sm:grid-cols-2 lg:grid-cols-3">
+      {lista.map((x) => (
+        <li key={x.pacienteId} className="min-w-0">
+          {veSeguimiento ? (
+            <Link
+              to={`${RUTA_SEGUIMIENTO}/${x.pacienteId}`}
+              className="flex min-h-11 items-center break-words text-sm font-semibold text-texto hover:text-primary-700 hover:underline lg:min-h-8"
+            >
+              {x.nombre}
+            </Link>
+          ) : (
+            <span className="block break-words py-1.5 text-sm text-texto">{x.nombre}</span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

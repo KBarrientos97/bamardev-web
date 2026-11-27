@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
@@ -61,7 +61,7 @@ const dosVisitas = armarTratamiento({
 });
 const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
 
-function abrir(t: Tratamiento, opciones: { semana?: number; registro?: number; ultimoControl?: HojaPaciente["ultimoControl"] } = {}) {
+function abrir(t: Tratamiento, opciones: { semana?: number; registro?: number; ultimoControl?: HojaPaciente["ultimoControl"]; diaSemana?: number | null } = {}) {
   const onGuardado = vi.fn();
   const onCerrar = vi.fn();
   const registro = opciones.registro != null ? t.registros.find((r) => r.semana === opciones.registro)! : null;
@@ -73,6 +73,7 @@ function abrir(t: Tratamiento, opciones: { semana?: number; registro?: number; u
         registro={registro}
         semana={opciones.semana ?? t.resumen.semana + 1}
         pacienteNombre="Paciente de prueba"
+        diaSemana={opciones.diaSemana}
         ultimoControl={opciones.ultimoControl ?? null}
         onCerrar={onCerrar}
         onGuardado={onGuardado}
@@ -798,5 +799,28 @@ describe("el foco con el dedo (el teléfono, la tablet)", () => {
     expect(screen.queryByRole("dialog", { name: "¿Guardar sin el pago?" })).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^Medicamento/)).not.toHaveFocus();
     expect(escribiendo()).toBe(false);
+  });
+});
+
+// §11: la doctora guarda el vial por día; en la cabecera, «Viene los martes» para ir a buscarlo.
+describe("el día que viene (§11)", () => {
+  const cabecera = (nombre: string) => screen.getByRole("dialog", { name: nombre }).querySelector("header")!;
+
+  it("con día, la pastilla en la cabecera, de sólo lectura (al cargar y en el inicial)", () => {
+    abrir(lucia, { diaSemana: 2 });
+    expect(sinNb(within(cabecera("Semana 8")).getByText(/^Viene los/).textContent)).toBe("Viene los martes");
+    expect(within(cabecera("Semana 8")).queryByRole("button", { name: /Cambiar el día/ })).not.toBeInTheDocument();
+    cleanup();
+    abrir(lucia, { registro: 0, diaSemana: 6 });
+    expect(sinNb(within(cabecera("Inicial")).getByText(/^Viene los/).textContent)).toBe("Viene los sábados");
+  });
+
+  it("sin día (null, o un backend anterior que no lo manda), la cabecera queda como siempre", () => {
+    abrir(lucia);
+    const deSiempre = cabecera("Semana 8").innerHTML;
+    expect(within(cabecera("Semana 8")).queryByText(/Viene los/)).not.toBeInTheDocument();
+    cleanup();
+    abrir(lucia, { diaSemana: null });
+    expect(cabecera("Semana 8").innerHTML).toBe(deSiempre);
   });
 });

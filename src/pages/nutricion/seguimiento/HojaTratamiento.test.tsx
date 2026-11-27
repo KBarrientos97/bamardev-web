@@ -3,10 +3,10 @@ import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiSeguimiento } from "../../../lib/nutricion/seguimiento/api";
-import type { CatalogoSeguimiento, ProductoSeguimiento } from "../../../lib/nutricion/seguimiento/tipos";
+import type { CatalogoSeguimiento, ProductoSeguimiento, Tratamiento } from "../../../lib/nutricion/seguimiento/tipos";
 import { catalogoConLista } from "../../../lib/nutricion/seguimiento/useCatalogoSeguimiento";
 import { avisaAlCerrar, historialDePrueba } from "../../../test/historial";
-import { CATALOGO_SEGUIMIENTO } from "../../../test/seguimientoFixtures";
+import { armarTratamiento, CATALOGO_SEGUIMIENTO } from "../../../test/seguimientoFixtures";
 import HojaTratamiento from "./HojaTratamiento";
 
 /**
@@ -77,6 +77,92 @@ describe("iniciar tratamiento: el atrás del navegador", () => {
     expect(avisaAlCerrar()).toBe(false);
     fireEvent.change(screen.getByLabelText("Tratamiento"), { target: { value: "Un tratamiento" } });
     expect(avisaAlCerrar()).toBe(true);
+  });
+});
+
+// §11: opcional; ninguno marcado al iniciar (regla de Kevin: los campos arrancan vacíos).
+describe("el día que viene", () => {
+  const SIN_AVISOS: CatalogoSeguimiento = { ...CATALOGO_SEGUIMIENTO, ajustes: { ...CATALOGO_SEGUIMIENTO.ajustes, avisarPagos: false } };
+  const grupo = () => screen.getByRole("group", { name: "Día que viene" });
+  const dia = (nombre: string) => within(grupo()).getByRole("button", { name: nombre });
+  const marcados = () => within(grupo()).queryAllByRole("button", { pressed: true }).map((b) => b.getAttribute("aria-label"));
+  const conDia = (diaSemana: number | null): Tratamiento => ({
+    ...armarTratamiento({ id: 7, pacienteId: 20, nombre: "Tirzepatida", unidadDosis: "UI", vial: { mg: 15, ml: 0.5 }, semanas: [{ semana: 0, fecha: "2026-11-02", pesoKg: 90 }] }),
+    diaSemana,
+  });
+  function abrirEn(modo: "iniciar" | "editar", tratamiento: Tratamiento | null = null) {
+    return render(
+      <MemoryRouter>
+        <HojaTratamiento
+          modo={modo}
+          pacienteId={20}
+          pacienteNombre="Paciente de prueba"
+          catalogo={SIN_AVISOS}
+          tratamiento={tratamiento}
+          ultimoControl={null}
+          onCerrar={vi.fn()}
+          onGuardado={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  }
+  const completar = () => {
+    fireEvent.change(screen.getByLabelText("Tratamiento"), { target: { value: "Tirzepatida" } });
+    fireEvent.click(screen.getByRole("radio", { name: "UI" }));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(apiSeguimiento.iniciar).mockResolvedValue(conDia(null));
+    vi.mocked(apiSeguimiento.cambiarTratamiento).mockResolvedValue(conDia(null));
+  });
+
+  it("al iniciar ninguno marcado; un toque marca, otro sobre el marcado lo desmarca; sin elegir, no viaja", async () => {
+    abrirEn("iniciar");
+    expect(within(grupo()).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]);
+    expect(marcados()).toEqual([]);
+    fireEvent.click(dia("Martes"));
+    expect(marcados()).toEqual(["Martes"]);
+    fireEvent.click(dia("Jueves"));
+    expect(marcados()).toEqual(["Jueves"]);
+    fireEvent.click(dia("Jueves"));
+    expect(marcados()).toEqual([]);
+    completar();
+    fireEvent.click(screen.getByRole("button", { name: /^Iniciar tratamiento/ }));
+    await waitFor(() => expect(apiSeguimiento.iniciar).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(apiSeguimiento.iniciar).mock.calls[0][1]).not.toHaveProperty("diaSemana");
+  });
+
+  it("al iniciar con un día, viaja ese día", async () => {
+    abrirEn("iniciar");
+    completar();
+    fireEvent.click(dia("Sábado"));
+    fireEvent.click(screen.getByRole("button", { name: /^Iniciar tratamiento/ }));
+    await waitFor(() => expect(apiSeguimiento.iniciar).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(apiSeguimiento.iniciar).mock.calls[0][1]).toMatchObject({ nombre: "Tirzepatida", unidadDosis: "UI", diaSemana: 6 });
+  });
+
+  it("al editar viene marcado el que tiene: cambiarlo manda el nuevo y desmarcarlo, `null`", async () => {
+    const { unmount } = abrirEn("editar", conDia(2));
+    expect(marcados()).toEqual(["Martes"]);
+    fireEvent.click(dia("Viernes"));
+    fireEvent.click(screen.getByRole("button", { name: /^Guardar/ }));
+    await waitFor(() => expect(apiSeguimiento.cambiarTratamiento).toHaveBeenCalledWith(7, { diaSemana: 5 }));
+    unmount();
+
+    const otra = abrirEn("editar", conDia(2));
+    fireEvent.click(dia("Martes"));
+    expect(marcados()).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /^Guardar/ }));
+    await waitFor(() => expect(apiSeguimiento.cambiarTratamiento).toHaveBeenLastCalledWith(7, { diaSemana: null }));
+    otra.unmount();
+
+    // Un backend anterior no manda el campo (ni lo acepta): en «Editar» no se ofrece.
+    const viejo = conDia(null);
+    delete viejo.diaSemana;
+    abrirEn("editar", viejo);
+    expect(screen.getByLabelText("Tratamiento")).toHaveValue("Tirzepatida");
+    expect(screen.queryByRole("group", { name: "Día que viene" })).not.toBeInTheDocument();
   });
 });
 

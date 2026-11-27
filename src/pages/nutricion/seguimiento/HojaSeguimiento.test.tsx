@@ -40,6 +40,7 @@ vi.mock("../../../lib/nutricion/seguimiento/api", async (original) => ({
     pagosPendientes: vi.fn(),
     cargarSemana: vi.fn(),
     corregirRegistro: vi.fn(),
+    cambiarTratamiento: vi.fn(),
     productos: vi.fn(),
     agregarProducto: vi.fn(),
   },
@@ -343,6 +344,87 @@ describe("sólo lectura (sin `seguimiento.editar`)", () => {
     await abrirHoja(20);
     expect(screen.getByText("Rosa Vaca Gutiérrez todavía no tiene un tratamiento.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Iniciar tratamiento" })).not.toBeInTheDocument();
+  });
+});
+
+// §11: la doctora guarda el vial por día; al lado del nombre tiene que VER qué día viene.
+describe("el día que viene (§11)", () => {
+  const sinNb = (s: string | null) => (s ?? "").replace(/ /g, " ");
+  /** La hoja de Lucía con el día que se pida (`undefined`: un backend anterior, sin el campo). */
+  const luciaCon = (dia: number | null | undefined) => {
+    const h = hojaDe(pacientes.find((p) => p.paciente.id === 12)!);
+    return { ...h, tratamiento: { ...h.tratamiento!, diaSemana: dia } };
+  };
+  const titulo = () => screen.getByRole("heading", { level: 1 });
+  const dialogo = () => screen.getByRole("dialog", { name: "¿Qué día viene?" });
+  const sinDialogo = () => expect(screen.queryByRole("dialog", { name: "¿Qué día viene?" })).not.toBeInTheDocument();
+
+  beforeEach(() => {
+    vi.mocked(apiSeguimiento.cambiarTratamiento).mockReset();
+  });
+
+  it("con día: la pastilla al lado del nombre; el diálogo guarda al toque, «Sin día fijo» lo quita y un error se queda adentro", async () => {
+    const base = luciaCon(2);
+    vi.mocked(apiSeguimiento.hoja).mockResolvedValueOnce(base);
+    vi.mocked(apiSeguimiento.cambiarTratamiento).mockImplementation(async (_id, c) => ({ ...base.tratamiento, diaSemana: c.diaSemana ?? null }));
+    await abrirHoja(12);
+    const pastilla = within(titulo()).getByRole("button", { name: "Cambiar el día: viene los martes" });
+    expect(sinNb(pastilla.textContent)).toBe("Viene los martes");
+    expect(screen.queryByRole("button", { name: "Elegir el día que viene" })).not.toBeInTheDocument();
+
+    fireEvent.click(pastilla);
+    expect(within(dialogo()).getByText("Lucía Paredes Soria")).toBeInTheDocument();
+    expect(within(dialogo()).getByRole("button", { name: "Martes" })).toHaveAttribute("aria-pressed", "true");
+    // El que ya tiene: cierra sin llamar.
+    fireEvent.click(within(dialogo()).getByRole("button", { name: "Martes" }));
+    sinDialogo();
+    expect(apiSeguimiento.cambiarTratamiento).not.toHaveBeenCalled();
+
+    // Si falla, el error adentro y no se cierra.
+    vi.mocked(apiSeguimiento.cambiarTratamiento).mockRejectedValueOnce(new ApiError("No se pudo guardar.", 500));
+    fireEvent.click(within(titulo()).getByRole("button", { name: /^Cambiar el día/ }));
+    fireEvent.click(within(dialogo()).getByRole("button", { name: "Jueves" }));
+    expect(await within(dialogo()).findByRole("alert")).toHaveTextContent("No se pudo guardar.");
+
+    // Otro día: guarda al toque, cierra y avisa.
+    fireEvent.click(within(dialogo()).getByRole("button", { name: "Jueves" }));
+    await waitFor(sinDialogo);
+    expect(apiSeguimiento.cambiarTratamiento).toHaveBeenLastCalledWith(base.tratamiento.id, { diaSemana: 4 });
+    expect(screen.getByText("Viene los jueves.")).toBeInTheDocument();
+    expect(within(titulo()).getByRole("button", { name: "Cambiar el día: viene los jueves" })).toBeInTheDocument();
+
+    // «Sin día fijo» (desde el menú «⋯»): manda `null` y queda el enlace para elegirlo.
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del tratamiento" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Día que viene/ }));
+    fireEvent.click(within(dialogo()).getByRole("button", { name: "Sin día fijo" }));
+    await waitFor(sinDialogo);
+    expect(apiSeguimiento.cambiarTratamiento).toHaveBeenLastCalledWith(base.tratamiento.id, { diaSemana: null });
+    expect(screen.getByText("Sin día fijo.")).toBeInTheDocument();
+    expect(within(titulo()).queryByRole("button", { name: /^Cambiar el día/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Elegir el día que viene" }));
+    expect(within(dialogo()).queryAllByRole("button", { pressed: true })).toHaveLength(0);
+    expect(within(dialogo()).queryByRole("button", { name: "Sin día fijo" })).not.toBeInTheDocument();
+  });
+
+  it("un backend anterior (sin el campo, que tampoco lo acepta): nada nuevo, ni la pastilla ni con qué elegirlo", async () => {
+    vi.mocked(apiSeguimiento.hoja).mockResolvedValueOnce(luciaCon(undefined));
+    await abrirHoja(12);
+    expect(titulo()).toHaveTextContent("Lucía Paredes Soria");
+    expect(within(titulo()).queryByText(/Viene los/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Elegir el día que viene" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del tratamiento" }));
+    expect(await screen.findByRole("menuitem", { name: /Editar tratamiento/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Día que viene/ })).not.toBeInTheDocument();
+  });
+
+  it("quien sólo mira: la pastilla es texto, sin botón; sin día, nada", async () => {
+    sesion.permisos = ["seguimiento.ver"];
+    sesion.secciones = ["seguimiento"];
+    vi.mocked(apiSeguimiento.hoja).mockResolvedValueOnce(luciaCon(6));
+    await abrirHoja(12);
+    expect(sinNb(within(titulo()).getByText(/^Viene los/).textContent)).toBe("Viene los sábados");
+    expect(within(titulo()).queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Elegir el día que viene" })).not.toBeInTheDocument();
   });
 });
 

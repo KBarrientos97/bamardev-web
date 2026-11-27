@@ -73,6 +73,26 @@ export interface MesPagos {
   pacientes: number;
 }
 
+/** Un paciente en la lista de un día (por nombre, sin distinguir mayúsculas ni acentos). */
+export interface PacienteDelDia {
+  pacienteId: number;
+  nombre: string;
+}
+
+/**
+ * Los pacientes por día de la semana en que vienen (CONTRATO-nutricion-seguimiento-23nov
+ * §11): una foto de HOY, no depende del período; los mismos de `resumen.enTratamiento`
+ * (no archivados, con un tratamiento ACTIVO).
+ */
+export interface PorDiaReporte {
+  enTratamiento: number;
+  /** La suma de los seis días. */
+  conDia: number;
+  sinDia: { pacientes: number; lista: PacienteDelDia[] };
+  /** Siempre los seis, del 1 (lunes) al 6 (sábado), aunque tengan 0. */
+  dias: { dia: number; pacientes: number; lista: PacienteDelDia[] }[];
+}
+
 export interface ReporteNutricion {
   periodo: { desde: string; hasta: string };
   resumen: ResumenReporte;
@@ -80,6 +100,8 @@ export interface ReporteNutricion {
   imc: { grados: { grado: string; pacientes: number }[]; sinDato: number };
   tratamientos: TratamientoReporte[];
   pagos: { meses: MesPagos[]; total: Omit<MesPagos, "mes" | "pacientes"> };
+  /** §11. Un backend anterior no lo manda (= la tarjeta no se dibuja). */
+  porDia?: PorDiaReporte;
 }
 
 export const apiReportesNutricion = {

@@ -34,6 +34,7 @@ import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
 import { CampoTexto, Rotulo, SeccionHoja } from "../piezas";
 import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, PieHoja, PreguntaSinPago, SelectorVial } from "./bloques";
+import { BotonesDia } from "./DiaSemana";
 import DialogoTratamientos from "./DialogoTratamientos";
 import HojaGrande from "./HojaGrande";
 import { BotonAgregarALaLista, BotonesUnidad, BotonSugerencia } from "./piezas";
@@ -41,8 +42,9 @@ import { BotonAgregarALaLista, BotonesUnidad, BotonSugerencia } from "./piezas";
 /**
  * «Iniciar tratamiento» y «Editar tratamiento» (§4.2): el nombre (con las
  * sugerencias del catálogo), la presentación del vial (opcional, para pasar la
- * dosis de mg a UI y a ml) y en qué se anota la dosis (ningún botón marcado al
- * iniciar: es obligatorio elegir). Al iniciar, además, el registro inicial,
+ * dosis de mg a UI y a ml), en qué se anota la dosis (ningún botón marcado al
+ * iniciar: es obligatorio elegir) y el día que viene (opcional, §11: ninguno
+ * marcado al iniciar). Al iniciar, además, el registro inicial,
  * con los mismos bloques que «Semana N». Todo arranca vacío.
  *
  * Quien puede cambiar la lista ve «+ Agregar» al final de las sugerencias
@@ -267,6 +269,20 @@ export default function HojaTratamiento({
               </p>
             )}
           </div>
+
+          {/*
+            §11: opcional; ninguno marcado al iniciar (tampoco el de hoy). En «Editar», el que
+            tiene; si el servidor no manda el campo (un backend anterior, que tampoco lo acepta), no va.
+          */}
+          {(iniciar || tratamiento?.diaSemana !== undefined) && (
+            <div className="space-y-2">
+              <p className="text-[13px] font-semibold text-texto-2">
+                Día que viene <span className="font-normal text-texto-3">(opcional)</span>
+              </p>
+              <BotonesDia valor={formT.diaSemana} onElegir={(d) => cambiarT("diaSemana", d)} />
+              <p className="text-[12px] text-texto-3">El día de la semana en que viene a su aplicación. Se puede cambiar después.</p>
+            </div>
+          )}
 
           {iniciar && (
             <SeccionHoja titulo="Registro inicial">
