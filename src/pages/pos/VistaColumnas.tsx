@@ -109,6 +109,7 @@ export default function VistaColumnas({
   agotadosHoy,
   pausados,
   incluyeDe,
+  disponiblesDe,
   conteoDe,
   onAgregar,
   onQuitar,
@@ -125,6 +126,12 @@ export default function VistaColumnas({
   agotadosHoy: Set<number>;
   pausados: Set<number>;
   incluyeDe: (productoId: number) => string | undefined;
+  /**
+   * Plato con receta (CONTRATO-recetas-plato §4.2): cuántos platos salen con
+   * lo que se cuenta, sólo cuando son pocos; null = nada que decir. Es un
+   * aviso, no frena. Sin esto —las recetas apagadas— la lista es la de siempre.
+   */
+  disponiblesDe?: (p: Producto) => number | null;
   /**
    * El conteo por categoría (vasos por tamaño, 18-nov): lo que dice de una
    * categoría. Sin esto —conteo apagado— la lista es la de siempre.
@@ -173,6 +180,7 @@ export default function VistaColumnas({
       cantidad={enCarrito.get(p.id) ?? 0}
       conIcono={conIcono}
       incluye={incluyeDe(p.id)}
+      disponibles={disponiblesDe?.(p) ?? null}
       agotadoHoy={agotadosHoy.has(p.id)}
       pausado={pausados.has(p.id)}
       conteo={conteoDe?.(p.categoria) ?? null}
@@ -249,6 +257,7 @@ function FilaProducto({
   cantidad,
   conIcono,
   incluye,
+  disponibles = null,
   agotadoHoy,
   pausado,
   conteo,
@@ -262,6 +271,8 @@ function FilaProducto({
   cantidad: number;
   conIcono: boolean;
   incluye?: string;
+  /** Plato con receta: cuántos salen, sólo cuando son pocos (ver `disponiblesDe`). */
+  disponibles?: number | null;
   agotadoHoy: boolean;
   pausado: boolean;
   /** Lo que el conteo por categoría dice de su tamaño (18-nov); null = la fila de siempre. */
@@ -300,6 +311,12 @@ function FilaProducto({
    * por tocar; su número sí baja con el carrito.
    */
   const avisoConteo = !agotado && conteo && (conteo.lleno || conteo.quedan <= QUEDA_POCO) ? conteo : null;
+  /**
+   * Los platos que salen (plato con receta): como «3 disp.» de un producto,
+   * sólo cuando son pocos. Viene del catálogo, no del carrito: tocar la fila no
+   * le suma ni le saca el renglón.
+   */
+  const platosQueSalen = !agotado && !controla ? disponibles : null;
   // El nombre entero para el mouse, o por qué ya no suma.
   const titulo = conteo?.agotado
     ? conteo.aviso
@@ -370,7 +387,7 @@ function FilaProducto({
             {p.nombre}
           </span>
           {incluye && <span className="block text-[11px] font-bold leading-snug text-primary-700">{incluye}</span>}
-          {(agotado || pausado || quedaPoco || !!avisoConteo) && (
+          {(agotado || pausado || quedaPoco || !!avisoConteo || platosQueSalen != null) && (
             <span className="mt-0.5 flex flex-wrap gap-1">
               {agotado ? (
                 <EstadoFila tono="rojo">Agotado</EstadoFila>
@@ -378,6 +395,7 @@ function FilaProducto({
                 <EstadoFila tono="gris">Pausado</EstadoFila>
               ) : null}
               {quedaPoco && <EstadoFila tono="aviso">{fmtCantidad(p.stockTotal)} disp.</EstadoFila>}
+              {platosQueSalen != null && <EstadoFila tono="aviso">{fmtCantidad(platosQueSalen)} disp.</EstadoFila>}
               {avisoConteo && (
                 <EstadoFila tono="aviso" etiqueta={avisoConteo.etiqueta}>
                   {fmtCantidad(avisoConteo.libre)} u.

@@ -951,6 +951,10 @@ function LineaTicket({
           <span className="shrink-0 font-semibold">{h.incluido || h.subtotal === 0 ? "incluido" : fmtMoney(h.subtotal)}</span>
         </div>
       ))}
+      {/* Plato con receta: cómo se armó («Pierna y contra · Sin fideo»), en el
+          lugar y con la letra de la nota, y con su misma regla: con número de
+          pedido va sólo en la comanda, que es para la cocina. */}
+      {conNota && linea.armadoTexto && <p className="text-xs italic text-texto-3">{linea.armadoTexto}</p>}
       {conNota && linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
       {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
           trae. Una venta sin profesional ni paquetes no lo trae y el ticket

@@ -15,7 +15,7 @@ import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { colorDePlataforma } from "../../lib/pedidosPlataforma/marca";
 import { NOMBRE_PLATAFORMA, type Plataforma } from "../../lib/pedidosPlataforma/tipos";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Consumo, FormaPago, LotesDelArticulo, PagoInput, Producto } from "../../types";
+import type { Armado, Categoria, Consumo, FormaPago, LotesDelArticulo, PagoInput, Producto, RecetaPlatoPos } from "../../types";
 import type { PropinaInput } from "../../lib/belleza/apiExtras";
 import type { ProfesionalCobro } from "./belleza/ExtrasCobro";
 import PantallaCobro from "./PantallaCobro";
@@ -24,6 +24,16 @@ import { claveDeLinea, controlaStock, topeStock, type Carrito, type ClaveLinea, 
 import { gruposDelProducto, textoIncluye } from "../../lib/agregados/calculo";
 import type { CatalogoAgregados } from "../../lib/agregados/tipos";
 import HojaAgregados from "./HojaAgregados";
+import HojaReceta from "./HojaReceta";
+import { recetasActivas, recetasDe } from "../../lib/recetas/donde";
+import {
+  disponiblesDelPlato,
+  pideLaPresa,
+  recetaDelPlato,
+  textoDeGuarnicion,
+  textoDePiezas,
+  tieneQueElegir,
+} from "../../lib/recetas/armado";
 import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
 import { useArrastreGrilla, type PropsArrastre } from "./useArrastreGrilla";
 import { useOrdenCategorias } from "./useOrdenCategorias";
@@ -399,13 +409,51 @@ export default function PantallaVenta({
     clave?: ClaveLinea;
     inicial?: LineaCarrito["agregados"];
   } | null>(null);
+  /**
+   * Los platos con receta (CONTRATO-recetas-plato §4.2): sólo en el
+   * restaurante con el ajuste prendido, y no al modificar una venta ya cobrada
+   * (una venta con platos con receta no se modifica: se anula y se carga de
+   * nuevo). Sin esto —el ajuste apagado, que es casi todo negocio— el POS es
+   * el de siempre: ni la hoja de la presa, ni «Cambiar», ni «N disp.».
+   */
+  const sesionRecetas = recetasActivas(negocio) && !modificacion ? recetasDe(negocio) : null;
+  /** La receta del plato para la hoja. Un plato con toppings no la usa: gana la hoja de toppings. */
+  const recetaParaHoja = (p: Producto): RecetaPlatoPos | null =>
+    sesionRecetas && gruposDelProducto(catalogoAgregados, p.id).length === 0 ? recetaDelPlato(p) : null;
+  /** Tocar el plato pregunta la presa (el pollo de 1 o 2 presas, si el local lo pidió). */
+  const preguntaLaPresa = (p: Producto) => pideLaPresa(recetaParaHoja(p), sesionRecetas);
+  /** «N disp.» del plato: cuántos salen con lo que se cuenta, sólo si son pocos. Nunca frena. */
+  const disponiblesDe = (p: Producto) => (sesionRecetas ? disponiblesDelPlato(recetaDelPlato(p)) : null);
+  /** «Incluye 2 toppings», o «Elegí la presa» cuando tocarlo abre la hoja de la presa. */
+  const rotuloDe = (p: Producto) =>
+    textoIncluyeDe(catalogoAgregados, p.id) ?? (preguntaLaPresa(p) ? "Elegí la presa" : undefined);
+  const productosPorId = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
+  /**
+   * La hoja de la presa: el plato que se arma y, si se edita una línea del
+   * carrito, su clave y lo que ya tenía. Abierta desde la hoja del carrito del
+   * celular, al cerrarse la vuelve a abrir (nunca dos hojas apiladas).
+   */
+  const [hojaReceta, setHojaReceta] = useState<{
+    producto: Producto;
+    receta: RecetaPlatoPos;
+    clave?: ClaveLinea;
+    inicial?: Armado;
+    volverAlCarrito?: boolean;
+  } | null>(null);
   /** Suma el producto al carrito: con grupo de toppings abre su hoja, sin él entra directo. */
   const pedirAgregar = (p: Producto) => {
     if (quieto) return;
     // Sin lugar en el conteo no suma: ni se abre la hoja de toppings, que el
     // carrito ignoraría al confirmar.
     if (sinLugarEnConteo(p)) return;
-    if (gruposDelProducto(catalogoAgregados, p.id).length > 0) setHojaAgregados({ producto: p });
+    if (gruposDelProducto(catalogoAgregados, p.id).length > 0) {
+      setHojaAgregados({ producto: p });
+      return;
+    }
+    // El plato con receta de 1 o 2 presas pregunta cuál (§4.2); cualquier otro
+    // entra directo, como siempre.
+    const receta = recetaParaHoja(p);
+    if (receta && pideLaPresa(receta, sesionRecetas)) setHojaReceta({ producto: p, receta });
     else carrito.agregar(p);
   };
   /**
@@ -464,6 +512,44 @@ export default function PantallaVenta({
     confirmarNotasAbiertas();
     setCarritoAbierto(false);
   };
+
+  /**
+   * Reabrir la hoja de un plato del carrito («Cambiar», o tocar lo elegido).
+   * Sin nada que cambiar (ni guarnición ni presa que elegir) la línea no se
+   * edita. En el celular la hoja del carrito se cierra mientras tanto y vuelve
+   * al terminar: dos hojas apiladas dejaban asomar la de abajo.
+   */
+  const editarArmadoDe = (l: LineaCarrito): (() => void) | undefined => {
+    const receta = recetaParaHoja(l.producto);
+    if (!receta || !tieneQueElegir(receta, sesionRecetas) || !carrito.setArmado) return undefined;
+    return () => {
+      if (quieto) return;
+      const enLaHoja = carritoAbierto;
+      if (enLaHoja) cerrarCarrito();
+      setHojaReceta({
+        producto: l.producto,
+        receta,
+        clave: claveDeLinea(l),
+        inicial: l.armado ?? {},
+        volverAlCarrito: enLaHoja,
+      });
+    };
+  };
+  const cerrarHojaReceta = () => {
+    const volver = hojaReceta?.volverAlCarrito;
+    setHojaReceta(null);
+    if (volver) setCarritoAbierto(true);
+  };
+  /** Lo que la línea dice de su armado y cómo se cambia; sin las recetas en uso, nada. */
+  const recetasDelCarrito: RecetasDelCarrito | undefined = sesionRecetas
+    ? {
+        textos: (l) => {
+          const receta = recetaDelPlato(l.producto);
+          return { piezas: textoDePiezas(l.armado, receta), guarnicion: textoDeGuarnicion(l.armado, receta) };
+        },
+        editar: editarArmadoDe,
+      }
+    : undefined;
 
   /**
    * Confirmar el cobro incrustado con una nota todavía en el campo («sin
@@ -529,6 +615,7 @@ export default function PantallaVenta({
           ? (l) => setHojaAgregados({ producto: l.producto, clave: claveDeLinea(l), inicial: l.agregados })
           : undefined
       }
+      recetas={recetasDelCarrito}
       plataformas={
         plataformas && plataformas.disponibles.length > 0
           ? {
@@ -648,7 +735,11 @@ export default function PantallaVenta({
               conIcono={config.iconos}
               agotadosHoy={agotadosHoy}
               pausados={pausados.ids}
-              incluyeDe={(id) => textoIncluyeDe(catalogoAgregados, id)}
+              incluyeDe={(id) => {
+                const p = productosPorId.get(id);
+                return p ? rotuloDe(p) : textoIncluyeDe(catalogoAgregados, id);
+              }}
+              disponiblesDe={sesionRecetas ? disponiblesDe : undefined}
               conteoDe={saldosConteo ? conteoDe : undefined}
               onAgregar={tocarProducto}
               onQuitar={quitarUna}
@@ -668,7 +759,8 @@ export default function PantallaVenta({
                   // tocar la tarjeta es para reactivarla), como en la app.
                   onMas={() => pedirAgregar(p)}
                   onQuitar={() => quitarUna(p)}
-                  incluye={textoIncluyeDe(catalogoAgregados, p.id)}
+                  incluye={rotuloDe(p)}
+                  disponibles={disponiblesDe(p)}
                   arrastre={arrastre.props(p.id)}
                   // Un tap que terminó siendo arrastre no debe agregar al
                   // carrito: cobrar de más es peor que tener que tocar de nuevo.
@@ -751,6 +843,22 @@ export default function PantallaVenta({
             if (hojaAgregados.clave !== undefined) carrito.setAgregados(hojaAgregados.clave, elegidos);
             else carrito.agregar(hojaAgregados.producto, elegidos);
             setHojaAgregados(null);
+          }}
+        />
+      )}
+
+      {hojaReceta && sesionRecetas && (
+        <HojaReceta
+          producto={hojaReceta.producto}
+          receta={hojaReceta.receta}
+          elegirPresa={sesionRecetas.elegirPresa}
+          puroDoble={sesionRecetas.puroDoble}
+          inicial={hojaReceta.clave !== undefined ? (hojaReceta.inicial ?? {}) : undefined}
+          onClose={cerrarHojaReceta}
+          onConfirmar={(armado) => {
+            if (hojaReceta.clave !== undefined) carrito.setArmado?.(hojaReceta.clave, armado);
+            else carrito.agregar(hojaReceta.producto, undefined, armado);
+            cerrarHojaReceta();
           }}
         />
       )}
@@ -939,10 +1047,17 @@ function TarjetaVenta({
   conIcono = true,
   onMas,
   conteo,
+  disponibles = null,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /**
+   * Plato con receta (§4.2): cuántos platos salen con lo que se cuenta, sólo
+   * cuando son pocos. Es un aviso: no lo agota ni lo frena. null o ausente = la
+   * tarjeta de siempre.
+   */
+  disponibles?: number | null;
   /**
    * Lo que el conteo por categoría dice de su tamaño (18-nov): cuántos vasos
    * quedan, o que no queda ninguno. null o ausente = la tarjeta de siempre.
@@ -998,9 +1113,11 @@ function TarjetaVenta({
   const rotuloConteo = conteo && !agotado ? conteo : null;
   /** Por qué el conteo no la deja sumar, al pasar el mouse: el mismo texto que el servidor. */
   const avisoConteo = conteo && (conteo.agotado || (!agotado && conteo.lleno)) ? conteo.aviso : undefined;
+  /** Los platos que salen con lo que queda (plato con receta), donde va el stock de un producto. */
+  const platosQueSalen = !agotado && !controla ? disponibles : null;
   // La fila de arriba lleva el ícono y lo que dice el stock. Sin ícono y sin
   // nada que decir (un elaborado que se vende normal), no queda un renglón vacío.
-  const conFila = conIcono || agotado || pausado || controla;
+  const conFila = conIcono || agotado || pausado || controla || platosQueSalen != null;
   /**
    * «Agotado» o «Pausado», y dónde va según el ancho de la tarjeta (17-nov
    * «Pausado», 18-nov «Agotado»): en la angosta (1366 con el menú abierto) la
@@ -1083,6 +1200,13 @@ function TarjetaVenta({
                 }`}
               >
                 {fmtCantidad(p.stockTotal)} disp.
+              </span>
+            )}
+            {/* Plato con receta: los platos que salen, con el mismo rótulo, sólo
+                cuando son pocos (siempre en ámbar). Nunca «Agotado». */}
+            {platosQueSalen != null && (
+              <span className="inline-flex items-center rounded-lg bg-warning-bg px-2 py-0.5 text-[11px] font-bold text-warning-text">
+                {fmtCantidad(platosQueSalen)} disp.
               </span>
             )}
           </div>
@@ -1228,6 +1352,17 @@ export interface CobroEnLaVenta {
   error: string;
 }
 
+/**
+ * Los platos con receta en el carrito (§4.2): lo que cada línea dice de su
+ * armado y cómo se reabre su hoja. Sin esto, el carrito de siempre.
+ */
+interface RecetasDelCarrito {
+  /** La presa («Pierna y contra») y lo que cambió de la guarnición («Sin fideo»); null = nada. */
+  textos: (l: LineaCarrito) => { piezas: string | null; guarnicion: string | null };
+  /** Reabre la hoja de la línea; `undefined` = el plato no tiene nada para cambiar. */
+  editar: (l: LineaCarrito) => (() => void) | undefined;
+}
+
 export interface ExtraDescuentos {
   /** El total a cobrar (el neto que devolvió la cotización). */
   total: number;
@@ -1247,6 +1382,7 @@ function PanelCarrito({
   notasAbiertas,
   lineaSinLugar,
   onEditarAgregados,
+  recetas,
   plataformas,
   onCobrar,
   onCerrar,
@@ -1256,6 +1392,8 @@ function PanelCarrito({
 }: {
   /** Con el conteo por categoría: si a esa línea ya no le entra otra unidad (ver `PantallaVenta`). */
   lineaSinLugar?: (l: LineaCarrito) => boolean;
+  /** Los platos con receta: su armado debajo del nombre y «Cambiar» (ver `PantallaVenta`). */
+  recetas?: RecetasDelCarrito;
   /** El cobro incrustado en vez de «Cobrar» (ver `PantallaVenta`). */
   cobro?: CobroEnLaVenta;
   /** Se está registrando el cobro incrustado: las líneas no se tocan (ver `PantallaVenta`). */
@@ -1426,6 +1564,8 @@ function PanelCarrito({
                 notasAbiertas={notasAbiertas}
                 sinLugarEnConteo={lineaSinLugar?.(l) ?? false}
                 onEditarAgregados={onEditarAgregados ? () => onEditarAgregados(l) : undefined}
+                armado={recetas?.textos(l) ?? null}
+                onEditarArmado={recetas?.editar(l)}
                 conMesaLlevar={conMesaLlevar}
                 venta={venta}
                 profesional={profesionales?.de(l) ?? null}
@@ -1545,6 +1685,7 @@ function carritoQuieto(c: Carrito): Carrito {
     ...c,
     agregar: nada,
     setAgregados: nada,
+    setArmado: nada,
     setCantidad: nada,
     setNota: nada,
     setEnMesa: nada,
@@ -1588,6 +1729,8 @@ function FilaCarrito({
   notasAbiertas,
   sinLugarEnConteo = false,
   onEditarAgregados,
+  armado = null,
+  onEditarArmado,
   conMesaLlevar,
   venta,
   profesional,
@@ -1601,6 +1744,10 @@ function FilaCarrito({
   sinLugarEnConteo?: boolean;
   /** Tocar los toppings de la línea la reabre en su hoja; ausente = no se edita. */
   onEditarAgregados?: () => void;
+  /** Plato con receta (§4.2): la presa y lo que cambió de la guarnición, ya en texto. null = nada. */
+  armado?: { piezas: string | null; guarnicion: string | null } | null;
+  /** Reabre la hoja de la presa del plato («Cambiar»); ausente = no hay nada que cambiar. */
+  onEditarArmado?: () => void;
   conMesaLlevar: boolean;
   /** La venta de la farmacia; null en un restaurante. */
   venta: VentaFarmacia | null;
@@ -1749,6 +1896,24 @@ function FilaCarrito({
         </button>
       )}
 
+      {/* Plato con receta: la presa y lo que cambió de la guarnición, debajo
+          del plato como los toppings («+ Pierna y contra», «+ Sin fideo» en
+          ámbar), enteros aunque ocupen dos renglones. Tocarlos reabre su hoja. */}
+      {armado && (armado.piezas || armado.guarnicion) && (
+        <button
+          type="button"
+          onClick={onEditarArmado}
+          disabled={!onEditarArmado}
+          aria-label={`Cambiar la presa o la guarnición de ${l.producto.nombre}`}
+          className="mt-1.5 block w-full rounded-lg px-1 text-left enabled:hover:bg-muted"
+        >
+          {armado.piezas && <span className="block text-xs text-texto-3">+ {armado.piezas}</span>}
+          {armado.guarnicion && (
+            <span className="block text-xs font-semibold text-warning-text">+ {armado.guarnicion}</span>
+          )}
+        </button>
+      )}
+
       {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
           dos renglones. */}
       {lotes !== null && (
@@ -1791,6 +1956,19 @@ function FilaCarrito({
                   : "Llevar"}
             </button>
           ))}
+
+        {/* Plato con receta: cambiar la presa o marcar «sin fideo» después de
+            cargarlo, también si se agregó directo. */}
+        {onEditarArmado && (
+          <button
+            type="button"
+            onClick={onEditarArmado}
+            aria-label={`Cambiar ${l.producto.nombre}`}
+            className="rounded-lg border border-dashed border-primary bg-white px-2 py-1 text-[11px] font-semibold text-primary-700 hover:bg-primary-50"
+          >
+            Cambiar
+          </button>
+        )}
 
         {!editandoNota &&
           (l.nota ? (

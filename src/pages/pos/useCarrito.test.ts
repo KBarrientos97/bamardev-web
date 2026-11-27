@@ -710,3 +710,115 @@ describe("useCarrito · el tope del conteo es del tamaño, no del producto", () 
     expect(result.current.unidades).toBe(2);
   });
 });
+
+// ── El plato con receta (CONTRATO-recetas-plato §4.2, 27-nov) ──────────────
+
+describe("useCarrito · el armado del plato con receta es parte de la línea", () => {
+  beforeEach(() => sessionStorage.clear());
+
+  /** Un cuarto de pollo con receta: 2 presas y la guarnición que puede ir «puro». */
+  const cuarto = producto({
+    id: 12,
+    nombre: "Broaster cuarto",
+    precio: 28,
+    tipoProducto: "SERVICIO",
+    stockTotal: 0,
+    conReceta: true,
+    receta: {
+      presas: 2,
+      partes: "POLLO_8",
+      guarnicion: [
+        { insumoId: 7, nombre: "Arroz", puro: true },
+        { insumoId: 9, nombre: "Fideo", puro: true },
+      ],
+      alcanza: null,
+    },
+  });
+  const pechoYAla = { piezas: { pecho: 1, ala: 1 } };
+  const piernaYContra = { piezas: { pierna: 1, contra: 1 } };
+
+  it("sin armado la clave es la de siempre: el id, igual que antes de las recetas", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    act(() => result.current.agregar(cuarto));
+    act(() => result.current.agregar(cuarto, undefined, {}));
+    expect(result.current.lineas).toHaveLength(1);
+    expect(claveDeLinea(result.current.lineas[0])).toBe(12);
+    expect(result.current.lineas[0]).not.toHaveProperty("armado");
+    expect(result.current.aDetalles()[0]).not.toHaveProperty("armado");
+  });
+
+  it("con armado la clave suma «|a:» y su firma, que no depende del orden en que se marcó", () => {
+    const a = claveDeLinea({ producto: cuarto, armado: { piezas: { ala: 1, pecho: 1 }, sin: [9, 7] } });
+    const b = claveDeLinea({ producto: cuarto, armado: { piezas: { pecho: 1, ala: 1 }, sin: [7, 9] } });
+    expect(a).toBe(b);
+    expect(String(a)).toMatch(/^12\|a:/);
+    // Con toppings la firma del armado va al final de la de siempre.
+    const conToppings = claveDeLinea({ producto: cuarto, agregados: [{ grupoId: 1, productoId: 2, cantidad: 1 }], armado: pechoYAla });
+    expect(String(conToppings)).toMatch(/^12\|1\.2x1\|a:/);
+  });
+
+  it("dos armados distintos no se juntan; el mismo otra vez suma a su línea", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    act(() => result.current.agregar(cuarto, undefined, pechoYAla));
+    act(() => result.current.agregar(cuarto, undefined, piernaYContra));
+    act(() => result.current.agregar(cuarto, undefined, { piezas: { ala: 1, pecho: 1 } }));
+    act(() => result.current.agregar(cuarto));
+    expect(result.current.lineas.map((l) => [l.armado ?? null, l.cantidad])).toEqual([
+      [{ piezas: { ala: 1, pecho: 1 } }, 2],
+      [{ piezas: { pierna: 1, contra: 1 } }, 1],
+      [null, 1],
+    ]);
+    expect(result.current.unidades).toBe(4);
+    expect(result.current.total).toBe(112);
+  });
+
+  it("aDetalles manda el armado en las dos mitades de una línea partida", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    act(() => result.current.agregar(cuarto, undefined, { ...piernaYContra, sin: [9] }));
+    act(() => result.current.agregar(cuarto, undefined, { ...piernaYContra, sin: [9] }));
+    act(() => result.current.setEnMesa(claveDeLinea(result.current.lineas[0]), 1));
+    const armado = { piezas: { pierna: 1, contra: 1 }, sin: [9] };
+    expect(result.current.aDetalles()).toStrictEqual([
+      { productoId: 12, cantidad: 1, precio: 28, consumo: "MESA", armado },
+      { productoId: 12, cantidad: 1, precio: 28, consumo: "LLEVAR", armado },
+    ]);
+  });
+
+  it("si el catálogo ya no trae la receta (recetas apagadas), el armado no viaja", () => {
+    const sinReceta = producto({ id: 12, precio: 28, tipoProducto: "SERVICIO" });
+    const { result } = renderHook(() =>
+      useCarrito("LOCAL", [sinReceta], true, { inicial: [{ producto: sinReceta, cantidad: 1, enMesa: 1, nota: "", armado: pechoYAla }] }),
+    );
+    expect(result.current.aDetalles()).toStrictEqual([{ productoId: 12, cantidad: 1, precio: 28, consumo: "MESA" }]);
+  });
+
+  it("cambiar el armado de una línea que queda igual a otra las junta; dejarlo vacío vuelve a la de siempre", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    act(() => result.current.agregar(cuarto, undefined, pechoYAla));
+    act(() => result.current.agregar(cuarto, undefined, piernaYContra));
+    act(() => result.current.setArmado?.(claveDeLinea(result.current.lineas[1]), pechoYAla));
+    expect(result.current.lineas).toHaveLength(1);
+    expect(result.current.lineas[0].cantidad).toBe(2);
+    act(() => result.current.setArmado?.(claveDeLinea(result.current.lineas[0]), undefined));
+    expect(result.current.lineas[0]).not.toHaveProperty("armado");
+    expect(claveDeLinea(result.current.lineas[0])).toBe(12);
+  });
+
+  it("un F5 conserva el armado y lo guardado viejo o roto no rompe nada", () => {
+    const primero = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    act(() => primero.result.current.agregar(cuarto, undefined, { ...pechoYAla, sin: [7] }));
+    primero.unmount();
+    const segundo = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    expect(segundo.result.current.lineas[0].armado).toEqual({ piezas: { ala: 1, pecho: 1 }, sin: [7] });
+    segundo.unmount();
+
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify([{ id: 12, cantidad: 1, enMesa: 1, nota: "", armado: { piezas: { ala: "x" }, sin: "nada" } }]),
+    );
+    const tercero = renderHook(() => useCarrito("LOCAL", [cuarto]));
+    expect(tercero.result.current.lineas).toHaveLength(1);
+    expect(tercero.result.current.lineas[0]).not.toHaveProperty("armado");
+    expect(claveDeLinea(tercero.result.current.lineas[0])).toBe(12);
+  });
+});
