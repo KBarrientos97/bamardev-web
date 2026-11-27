@@ -49,6 +49,10 @@ import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import { actualizarConCombo } from "./edicionCombo";
 import { StockPorLocal } from "./StockPorLocal";
+import { recetasActivas } from "../../lib/recetas/donde";
+import EditorReceta from "./recetas/EditorReceta";
+import { BloqueReceta, CostoDeLaReceta } from "./recetas/BloqueReceta";
+import { apagarReceta } from "./recetas/apagarReceta";
 import type {
   Categoria,
   CondicionVenta,
@@ -75,6 +79,19 @@ const TIPOS: Record<TipoProducto, { label: string; tono: "gris" | "verde" | "mor
   // producto, donde el stock inicial sólo tiene sentido al crear).
   COMPUESTO: { label: "Combo", tono: "morado", conStock: true },
 };
+
+/**
+ * «Con receta» (CONTRATO-recetas-plato §3.4): el cuarto tipo, que se ve sólo
+ * con las recetas prendidas (`recetasActivas`). No es un valor de
+ * `TipoProducto` —hay apps viejas que lo leen—: por debajo es un SERVICIO con
+ * `conReceta`, y lo calcula su receta de insumos.
+ */
+const TIPO_RECETA = { label: "Con receta", tono: "marca" } as const;
+
+/** ¿Se muestra como «Con receta»? Apagadas las recetas, nunca: es un elaborado más. */
+function esPlatoConReceta(p: Pick<Producto, "tipoProducto" | "conReceta">, recetasOn: boolean): boolean {
+  return recetasOn && p.tipoProducto === "SERVICIO" && p.conReceta === true;
+}
 
 /**
  * Condición de venta, con la palabra que usa el mostrador y su color.
@@ -125,7 +142,7 @@ function muestraStock(p: Pick<Producto, "tipoProducto" | "vendeSinStock">): bool
 }
 
 type FiltroStock = "todos" | "activos" | "bajo" | "sin" | "papelera";
-type FiltroTipo = "todos" | TipoProducto;
+type FiltroTipo = "todos" | TipoProducto | "RECETA";
 
 const OPC_STOCK = [
   ["todos", "Todos"],
@@ -143,7 +160,9 @@ const OPC_TIPO = [
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 export default function Productos() {
-  const { incluye, puede, rubro, vocabulario } = useAuth();
+  const { incluye, puede, rubro, vocabulario, negocio } = useAuth();
+  // Las recetas del plato (27-nov): apagadas, la pantalla es la de siempre.
+  const recetasOn = recetasActivas(negocio);
   // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
   const pal = usePalabras();
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
@@ -296,8 +315,12 @@ export default function Productos() {
       (incluye("combos") || lista.some((p) => p.tipoProducto === "COMPUESTO")
         ? OPC_TIPO
         : OPC_TIPO.filter(([k]) => k !== "COMPUESTO")
-      ).map(([k, texto]) => [k, k === "todos" ? texto : etiquetaTipo(k, rubro)] as const),
-    [incluye, lista, rubro],
+      ).flatMap(([k, texto]) => {
+        const opcion = [k, k === "todos" ? texto : etiquetaTipo(k, rubro)] as const;
+        // «Con receta», al lado de «Elaborado», sólo con las recetas prendidas.
+        return recetasOn && k === "SERVICIO" ? [opcion, ["RECETA", TIPO_RECETA.label] as const] : [opcion];
+      }),
+    [incluye, lista, rubro, recetasOn],
   );
 
   const almacenesActivos = (almacenes.datos ?? []).filter((a) => a.activo);
@@ -330,7 +353,14 @@ export default function Productos() {
         !contiene(p.codBarra, texto)
       )
         return false;
-      if (filtroTipo !== "todos" && p.tipoProducto !== filtroTipo) return false;
+      if (
+        filtroTipo === "RECETA"
+          ? !esPlatoConReceta(p, recetasOn)
+          : filtroTipo !== "todos" && p.tipoProducto !== filtroTipo
+      )
+        return false;
+      // Con las recetas prendidas, «Elaborado» es el que no tiene receta.
+      if (filtroTipo === "SERVICIO" && esPlatoConReceta(p, recetasOn)) return false;
 
       const conStock = muestraStock(p);
       if (filtroStock === "activos") return p.habilitado;
@@ -346,7 +376,7 @@ export default function Productos() {
       // En papelera no hay sub-filtro: la lista ya viene filtrada del backend.
       return true;
     });
-  }, [lista, q, filtroStock, filtroTipo, stockDe]);
+  }, [lista, q, filtroStock, filtroTipo, stockDe, recetasOn]);
 
   /**
    * Lo que se dibuja. En modo servidor ya viene filtrado y paginado de allá; en
@@ -664,8 +694,9 @@ function BotonCargarExcel() {
 }
 
 function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick: () => void }) {
-  const { rubro } = useAuth();
+  const { rubro, negocio } = useAuth();
   const tipo = TIPOS[p.tipoProducto];
+  const conReceta = esPlatoConReceta(p, recetasActivas(negocio));
   const conStock = muestraStock(p);
   const sinStock = conStock && p.stockTotal <= 0;
   const bajoStock = conStock && p.stockTotal > 0 && p.stockTotal <= p.stockMinimo;
@@ -732,7 +763,11 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <Badge tono={tipo.tono}>{etiquetaTipo(p.tipoProducto, rubro)}</Badge>
+          {conReceta ? (
+            <Badge tono={TIPO_RECETA.tono}>{TIPO_RECETA.label}</Badge>
+          ) : (
+            <Badge tono={tipo.tono}>{etiquetaTipo(p.tipoProducto, rubro)}</Badge>
+          )}
           <span className="flex items-center gap-1 text-xs text-texto-4">
             {p.categoria?.nombre ?? "Sin categoría"}
           </span>
@@ -761,10 +796,11 @@ function DetalleProducto({
   onEliminar: (p: Producto) => void;
   onRestaurar: (p: Producto) => void;
 }) {
-  const { rubro, vocabulario, incluye } = useAuth();
+  const { rubro, vocabulario, incluye, negocio } = useAuth();
   const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
+  const conReceta = esPlatoConReceta(p, recetasActivas(negocio));
   // Sin `costos.ver` el backend QUITA el campo (`ocultarCosto`), aunque el
   // tipo diga `number`: no hay costo que mostrar, y "Bs 0,00" se leería como
   // que no cuesta nada.
@@ -829,15 +865,15 @@ function DetalleProducto({
           <div className="min-w-0">
             <h3 className="truncate text-base font-bold text-texto">{p.nombre}</h3>
             <p className="text-[13px] text-texto-3">{p.descripcion || "Sin descripción"}</p>
-            <Badge tono={tipo.tono} className="mt-1.5">
-              {etiquetaTipo(p.tipoProducto, rubro)}
+            <Badge tono={conReceta ? TIPO_RECETA.tono : tipo.tono} className="mt-1.5">
+              {conReceta ? TIPO_RECETA.label : etiquetaTipo(p.tipoProducto, rubro)}
             </Badge>
           </div>
         </div>
 
         <dl className="grid grid-cols-2 gap-3">
           <Dato label="Precio de venta" valor={fmtMoney(p.precio)} />
-          {veCosto && <Dato label="Costo" valor={fmtMoney(p.costo)} />}
+          {veCosto && <Dato label={conReceta ? "Costo · de la receta" : "Costo"} valor={fmtMoney(p.costo)} />}
           {margen != null && <Dato label="Margen" valor={fmtPct(margen)} />}
           <Dato label="Categoría" valor={p.categoria?.nombre ?? "—"} />
           {muestraStock(p) && (
@@ -1212,6 +1248,10 @@ function FormProductoCuerpo({
   // Toppings (PLAN-AGREGADOS §7.6): la casilla «Sólo como agregado» existe sólo
   // con el ajuste de Configuración prendido; sin él nadie la ve ni la manda.
   const usaAgregados = negocio?.usaAgregados === true;
+  // Recetas del plato (CONTRATO-recetas-plato §3.4): con el ajuste prendido se
+  // ofrece «Con receta», que por debajo es un SERVICIO con `conReceta`.
+  // Apagado, el formulario es el de siempre.
+  const recetasOn = recetasActivas(negocio);
   // El usuario de un local ve en la lista el precio de SU local: el campo lo
   // dice, porque guardarlo cambiado mueve el precio del catálogo de todos.
   const suc = useSucursales();
@@ -1226,6 +1266,18 @@ function FormProductoCuerpo({
   const [descripcion, setDescripcion] = useState(producto?.descripcion ?? "");
   const [codBarra, setCodBarra] = useState(producto?.codBarra ?? "");
   const [tipo, setTipo] = useState<TipoProducto>(producto?.tipoProducto ?? "ALMACENABLE");
+  const eraConReceta = !!producto && esPlatoConReceta(producto, recetasOn);
+  const [conRecetaElegido, setConRecetaElegido] = useState(eraConReceta);
+  /**
+   * El editor de la receta va EN LUGAR de este formulario (nunca se apilan dos
+   * hojas). `tras` dice a dónde se vuelve: a la lista después de un alta (el
+   * artículo ya está guardado), o acá, con lo escrito intacto.
+   */
+  const [armandoReceta, setArmandoReceta] = useState<{ platoId: number; tras: "lista" | "formulario" } | null>(null);
+  const [volvioDeReceta, setVolvioDeReceta] = useState(false);
+  // Se guardó la receta desde acá: su costo, y al cerrar hay que volver a pedir la lista.
+  const [costoDeReceta, setCostoDeReceta] = useState<number | null>(null);
+  const [recetaGuardada, setRecetaGuardada] = useState(false);
   const [precio, setPrecio] = useState(String(producto?.precio ?? ""));
   /**
    * Quien no tiene `ventas.ver_precios` recibe el catálogo con `precio: null`
@@ -1436,6 +1488,7 @@ function FormProductoCuerpo({
 
   const esCombo = tipo === "COMPUESTO";
   const esServicio = tipo === "SERVICIO";
+  const conReceta = recetasOn && conRecetaElegido && esServicio;
   const conStock = TIPOS[tipo].conStock;
   // Un servicio no se recibe ni vence: no hay lote que pedir al ingresarlo.
   const muestraLote = conLotes && !esServicio;
@@ -1504,7 +1557,9 @@ function FormProductoCuerpo({
       nombre: nombre.trim(),
       unidadMedidaId: Number(unidadId),
       tipoProducto: tipo,
-      costo: costo === "" ? 0 : Number(costo),
+      // Un plato «Con receta» no manda su costo: lo calcula la receta (y el
+      // backend ignora el que llegue). Los demás, como siempre.
+      ...(conReceta ? {} : { costo: costo === "" ? 0 : Number(costo) }),
       stockMinimo: stockMinimo === "" ? 0 : Number(stockMinimo),
       descripcion: descripcion.trim(),
       // Un código vacío se omite en vez de mandarse como "": el índice único
@@ -1560,7 +1615,11 @@ function FormProductoCuerpo({
 
     setGuardando(true);
     try {
+      let platoId = producto?.id;
       if (producto) {
+        // Deja de ser «Con receta»: primero se apaga la receta, mientras sigue
+        // siendo un elaborado (ver `apagarReceta`).
+        if (eraConReceta && !conReceta) await apagarReceta(producto.id);
         // Pasar a combo al editar va en dos PATCH: ver actualizarConCombo.
         await actualizarConCombo(
           producto,
@@ -1570,11 +1629,19 @@ function FormProductoCuerpo({
         // Al crear el precio siempre se pidió: `precioOculto` es sólo de la
         // edición. Si eso cambiara, el backend rechaza el alta sin precio (no
         // la guarda en 0).
-        await api.crearProducto({ ...input, precio: precioNum! });
+        // El id sólo hace falta para abrir la receta: con `?.`, una respuesta
+        // sin cuerpo no convierte en error un alta que se guardó.
+        platoId = (await api.crearProducto({ ...input, precio: precioNum! }))?.id;
       }
       // Recién con el guardado confirmado: un laboratorio que el servidor
       // rechazó no es uno que haya que volver a sugerir.
       if (conFicha) recordarSugerencias(laboratorio.trim(), formaFarmaceutica.trim(), principios);
+      // Recién pasa a «Con receta» (un alta, o un elaborado que la estrena):
+      // enseguida se abre el editor para armarla.
+      if (conReceta && !eraConReceta && platoId != null) {
+        setArmandoReceta({ platoId, tras: "lista" });
+        return;
+      }
       onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
@@ -1583,11 +1650,41 @@ function FormProductoCuerpo({
     }
   }
 
+  // Con una receta guardada desde acá, la lista tiene que volver a pedirse
+  // aunque el formulario se cierre sin guardar (el costo del plato cambió).
+  const cerrarFormulario = recetaGuardada ? onGuardado : onClose;
+
+  if (armandoReceta) {
+    const { platoId, tras } = armandoReceta;
+    const volver = () => {
+      setArmandoReceta(null);
+      setVolvioDeReceta(true);
+    };
+    return (
+      <EditorReceta
+        platoId={platoId}
+        platos={productos.filter((p) => p.conReceta && p.id !== platoId).map((p) => ({ id: p.id, nombre: p.nombre }))}
+        continua="adelante"
+        onClose={tras === "lista" ? onGuardado : volver}
+        onGuardada={(r) => {
+          // Después de un alta, o si el editor lo volvió a Elaborado, el
+          // formulario ya no tiene nada que decir: a la lista.
+          if (tras === "lista" || !r.conReceta) return onGuardado();
+          setCostoDeReceta(r.costo);
+          setRecetaGuardada(true);
+          volver();
+        }}
+      />
+    );
+  }
+
   return (
     <Modal
       abierto
       titulo={`${esEdicion ? "Editar" : "Nuevo"} ${termino(rubro, "articulo", vocabulario)}`}
       cerrarAlClicAfuera={false}
+      // Vuelve del editor de la receta, que ocupó su lugar: entra de costado.
+      continua={volvioDeReceta ? "atras" : undefined}
       subtitulo={
         esEdicion
           ? producto.nombre
@@ -1595,7 +1692,7 @@ function FormProductoCuerpo({
             ? "Datos generales y ficha farmacéutica"
             : "Cargá los datos del producto"
       }
-      onClose={onClose}
+      onClose={cerrarFormulario}
       /* Más ancho SÓLO en farmacia: acá el formulario son dos bloques con
          catorce campos, y a 512 px las columnas quedan tan angostas que
          "Registro sanitario" no entra en su propia etiqueta. El de los demás
@@ -1603,7 +1700,7 @@ function FormProductoCuerpo({
       ancho={conFicha ? "max-w-2xl" : undefined}
       acciones={
         <>
-          <Boton variante="ghost" onClick={onClose}>
+          <Boton variante="ghost" onClick={cerrarFormulario}>
             Cancelar
           </Boton>
           <Boton icono="save" onClick={guardar} disabled={guardando}>
@@ -1611,7 +1708,9 @@ function FormProductoCuerpo({
               ? "Guardando…"
               : conFicha
                 ? `Guardar ${termino(rubro, "articulo", vocabulario)}`
-                : "Guardar"}
+                : conReceta && !eraConReceta
+                  ? "Guardar y armar la receta"
+                  : "Guardar"}
           </Boton>
         </>
       }
@@ -1661,9 +1760,11 @@ function FormProductoCuerpo({
           <Campo
             label="Tipo"
             hint={
-              // Decía "El combo descuenta los ingredientes de su receta al
-              // venderse", y no es así desde el 25-ago (BUG-catalogo-1).
-              esCombo
+              conReceta
+                ? "Con receta: al venderlo descuenta sus insumos y el sistema le calcula el costo."
+                : // Decía "El combo descuenta los ingredientes de su receta al
+                  // venderse", y no es así desde el 25-ago (BUG-catalogo-1).
+                  esCombo
                 ? "Tiene su propio stock: los combos que armás. La receta es lo que lleva; venderlo no descuenta los ingredientes."
                 : conStock
                   ? conFicha
@@ -1675,12 +1776,27 @@ function FormProductoCuerpo({
                     : "Se prepara al vender: no lleva stock propio."
             }
           >
-            <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoProducto)}>
-              {tiposDisponibles.map((t) => (
+            <Select
+              value={conReceta ? "RECETA" : tipo}
+              onChange={(e) => {
+                // «Con receta» es un elaborado con su receta: por debajo, SERVICIO.
+                const elegido = e.target.value;
+                setConRecetaElegido(elegido === "RECETA");
+                setTipo(elegido === "RECETA" ? "SERVICIO" : (elegido as TipoProducto));
+              }}
+            >
+              {tiposDisponibles.flatMap((t) => [
                 <option key={t} value={t}>
                   {etiquetaTipo(t, rubro)}
-                </option>
-              ))}
+                </option>,
+                ...(recetasOn && t === "SERVICIO"
+                  ? [
+                      <option key="RECETA" value="RECETA">
+                        {TIPO_RECETA.label}
+                      </option>,
+                    ]
+                  : []),
+              ])}
             </Select>
           </Campo>
 
@@ -1729,16 +1845,24 @@ function FormProductoCuerpo({
                 />
               </Campo>
             )}
-            <Campo label="Costo">
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={costo}
-                onChange={(e) => setCosto(e.target.value)}
+            {conReceta ? (
+              // No se escribe: lo calcula la receta (si quien edita ve los costos).
+              <CostoDeLaReceta
+                costo={costoDeReceta ?? (eraConReceta ? producto?.costo : null)}
+                armada={eraConReceta || recetaGuardada}
               />
-            </Campo>
+            ) : (
+              <Campo label="Costo">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  value={costo}
+                  onChange={(e) => setCosto(e.target.value)}
+                />
+              </Campo>
+            )}
           </div>
         )}
 
@@ -2064,6 +2188,19 @@ function FormProductoCuerpo({
               setIcono((puesto) => (puesto === llave ? null : puesto));
               onIconoBorrado?.();
             }}
+          />
+        )}
+
+        {/* La receta del plato (recetas prendidas): lo que lleva y el botón
+            que abre el editor, que ocupa el lugar de este formulario. */}
+        {conReceta && (
+          <BloqueReceta
+            platoId={eraConReceta && producto ? producto.id : null}
+            onArmar={
+              eraConReceta && producto
+                ? () => setArmandoReceta({ platoId: producto.id, tras: "formulario" })
+                : undefined
+            }
           />
         )}
 

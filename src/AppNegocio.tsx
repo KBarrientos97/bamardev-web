@@ -100,6 +100,8 @@ const ConfigPuntoDeVenta = lazy(() => import("./pages/configuracion/ConfigPuntoD
 const ConfigCaja = lazy(() => import("./pages/configuracion/ConfigCaja"));
 const ConfigInventario = lazy(() => import("./pages/inventario/ConfigInventario"));
 const Agregados = lazy(() => import("./pages/inventario/Agregados"));
+// «Costos de platos» (recetas del plato, 27-nov): sólo con las recetas prendidas.
+const CostosPlatos = lazy(() => import("./pages/inventario/CostosPlatos"));
 const ConfigTickets = lazy(() => import("./pages/tickets/ConfigTickets"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
@@ -645,6 +647,18 @@ function Rutas() {
           element={
             <Protegida seccion="ingreso_mercaderia">
               <ImportarMedicamentos />
+            </Protegida>
+          }
+        />
+        {/* El guard la cierra con las recetas apagadas (`negocio.recetas`) y a
+            quien no ve los costos. */}
+        <Route
+          path="/inventario/costos-platos"
+          element={
+            <Protegida seccion="costos_platos">
+              <Suspense fallback={null}>
+                <CostosPlatos />
+              </Suspense>
             </Protegida>
           }
         />
