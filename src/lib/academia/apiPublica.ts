@@ -2,6 +2,7 @@ import { formularioConFotos } from "./fotos";
 import type {
   CursoPublico,
   EstadoCuentaPublico,
+  EstadoSolicitud,
   EstadoPagoQr,
   FotosInscripcion,
   InscripcionDeMiCuenta,
@@ -146,6 +147,12 @@ export const apiAcademiaPublica = {
   /** El estudiante cierra el QR sin pagar: se inhabilita en el banco. */
   cancelarQr: (subdominio: string, token: string) =>
     pedir<{ ok: true }>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}/qr/cancelar`, { method: "POST" }),
+  /** El pago obligatorio (28-nov): ¿el banco ya confirmó el QR de la inscripción? */
+  solicitud: (subdominio: string, token: string) =>
+    pedir<EstadoSolicitud>(`/publico/academia/${sub(subdominio)}/solicitud/${encodeURIComponent(token)}`),
+  /** Cierra ese QR sin pagar, para elegir otra cosa. */
+  cancelarSolicitud: (subdominio: string, token: string) =>
+    pedir<{ ok: true }>(`/publico/academia/${sub(subdominio)}/solicitud/${encodeURIComponent(token)}/cancelar`, { method: "POST" }),
   /** P6: el estado de cuenta del enlace que se manda por WhatsApp. */
   estadoCuenta: (subdominio: string, token: string) =>
     pedir<EstadoCuentaPublico>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}`),

@@ -14,9 +14,17 @@ import {
   MAYORIA_DE_EDAD,
   problemaFechaNacimiento,
 } from "../../lib/academia/formato";
-import type { CursoPublico, EstadoCuentaPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
+import type {
+  CursoPublico,
+  EstadoCuentaPublico,
+  FotosInscripcion,
+  GrupoPublico,
+  OpcionPagoClave,
+  PreinscripcionEnviada,
+  TipoFoto,
+} from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
-import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
+import { enlaceWhatsapp, urlWhatsappConTexto } from "../../lib/pagina/catalogo";
 import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { faltaTexto } from "../../lib/texto";
@@ -25,6 +33,7 @@ import { Icon } from "../../components/Icon";
 import CapturaFotos from "../academia/CapturaFotos";
 import { NoDisponible } from "./PaginaPublica";
 import PagoEnLineaPublico from "./PagoEnLineaPublico";
+import PagoParaInscribir, { guardarCobro, leerCobro, type CobroAbierto } from "./PagoParaInscribir";
 import { MarcaBamarDev } from "./VistaPagina";
 
 type Paso = 1 | 2 | 3 | 4;
@@ -69,6 +78,13 @@ function porInicio(grupos: GrupoPublico[]): [string, GrupoPublico[]][] {
   for (const g of grupos) m.set(g.fechaInicio, [...(m.get(g.fechaInicio) ?? []), g]);
   return [...m];
 }
+
+/** Cómo se nombra cada cosa que se puede pagar al inscribirse, de la más barata a la más cara. */
+const PAGOS: Record<OpcionPagoClave, { orden: number; titulo: string }> = {
+  ADELANTO: { orden: 0, titulo: "Reservar mi cupo" },
+  CUOTA: { orden: 1, titulo: "Primer mes" },
+  COMPLETO: { orden: 2, titulo: "Curso completo" },
+};
 
 const DATOS_VACIOS = { ci: "", ciExpedido: "SC", apellidos: "", nombres: "", fechaTexto: "", telefono: "" };
 
@@ -181,6 +197,10 @@ export default function InscribirmePagina() {
   }, [cursos, pedido]);
   const curso = useMemo(() => cursos?.find((c) => c.grupos.some((g) => g.id === id)) ?? null, [cursos, id]);
   const [enviada, setEnviada] = useState<EnvioHecho | null>(null);
+  // El QR de una inscripción que todavía no existe (pago obligatorio). Manda
+  // sobre todo lo demás: si la pestaña se recarga, se vuelve a él.
+  const [cobro, setCobro] = useState<CobroAbierto | null>(() => leerCobro(sub));
+  const [pagado, setPagado] = useState(false);
   /** El backend dijo que el grupo ya no se publica o que la inscripción se apagó. */
   const [cerrada, setCerrada] = useState(false);
 
@@ -195,7 +215,7 @@ export default function InscribirmePagina() {
   if (errorCursos) return <NoDisponible mensaje="Esta inscripción no está disponible" />;
   if (!cursos || !pagina) return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" />;
   if (cerrada) return <NoDisponible mensaje="Este grupo ya no recibe inscripciones" />;
-  if (!curso || id == null) {
+  if (!cobro && (!curso || id == null)) {
     // El de la dirección no está: a la inscripción sin grupo, que elige otro.
     if (pedido != null) return <Navigate to={urlInscribirmeDe(sub)} replace state={{ grupoNoDisponible: true }} />;
     return <NoDisponible mensaje="Por ahora no hay grupos con la inscripción abierta" />;
@@ -215,7 +235,26 @@ export default function InscribirmePagina() {
           </a>
         </header>
         <main className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
-          {enviada ? (
+          {cobro ? (
+            <PagoParaInscribir
+              sub={sub}
+              cobro={cobro}
+              color={c.oscuro}
+              urlEstado={(token) => `${urlPaginaDe(sub)}/pagar/${encodeURIComponent(token)}`}
+              urlPagina={urlPaginaDe(sub)}
+              whatsapp={enlaceWhatsapp(pagina)?.url ?? null}
+              onPagado={() => {
+                guardarCobro(sub, null);
+                guardarBorrador(sub, null);
+                setPagado(true);
+              }}
+              onSalir={() => {
+                guardarCobro(sub, null);
+                // Pagado, no se vuelve al formulario.
+                if (!pagado) setCobro(null);
+              }}
+            />
+          ) : enviada ? (
             <Enviada
               {...enviada}
               sub={sub}
@@ -224,7 +263,7 @@ export default function InscribirmePagina() {
               urlPagina={urlPaginaDe(sub)}
               urlMiCuenta={urlMiCuentaDe(sub)}
             />
-          ) : (
+          ) : curso && id != null ? (
             <Formulario
               sub={sub}
               negocio={pagina.nombre}
@@ -236,8 +275,13 @@ export default function InscribirmePagina() {
               color={c.oscuro}
               onEnviada={setEnviada}
               onCerrada={() => setCerrada(true)}
+              whatsapp={enlaceWhatsapp(pagina)?.url ?? null}
+              onCobrar={(x) => {
+                guardarCobro(sub, x);
+                setCobro(x);
+              }}
             />
-          )}
+          ) : null}
         </main>
         <a href="https://bamardev.com" className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#6B7280]">
           <MarcaBamarDev />
@@ -259,6 +303,8 @@ function Formulario({
   color,
   onEnviada,
   onCerrada,
+  whatsapp,
+  onCobrar,
 }: {
   sub: string;
   negocio: string;
@@ -272,6 +318,9 @@ function Formulario({
   color: string;
   onEnviada: (e: EnvioHecho) => void;
   onCerrada: () => void;
+  whatsapp: string | null;
+  /** Hay que pagar el QR antes de quedar inscrito. */
+  onCobrar: (c: CobroAbierto) => void;
 }) {
   const [borrador] = useState(() => leerBorrador(sub));
   // La elección y el paso sólo vuelven con el mismo enlace y si el grupo sigue.
@@ -296,6 +345,10 @@ function Formulario({
   const [mensaje, setMensaje] = useState(borrador?.mensaje ?? "");
   const [privacidad, setPrivacidad] = useState(false);
   const [pideTutor, setPideTutor] = useState(borrador?.pideTutor ?? false);
+  const [pagoElegido, setPagoElegido] = useState<OpcionPagoClave | null>(null);
+  const [otroMonto, setOtroMonto] = useState("");
+  // El banco no generó el QR: se ofrece WhatsApp.
+  const [sinQr, setSinQr] = useState(false);
   const [telefonoMal, setTelefonoMal] = useState(false);
   const siteKey = siteKeyTurnstile();
   const [captcha, setCaptcha] = useState<string | null>(null);
@@ -345,6 +398,16 @@ function Formulario({
   const edad = fechaMal ? null : edadDe(nacimiento);
   const esMenor = pideTutor || (edad != null && edad < MAYORIA_DE_EDAD);
   const faltanFotos = fotosQueFaltan(fotos);
+  const opciones = [...(grupo?.opciones ?? [])].sort((a, b) => PAGOS[a.clave].orden - PAGOS[b.clave].orden);
+  const pagaAhora = curso.pagoObligatorio === true && opciones.length > 0;
+  const pago = pagaAhora ? (opciones.find((o) => o.clave === pagoElegido) ?? opciones[0]) : null;
+  const maximo = pago?.montoMaximo ?? pago?.monto ?? 0;
+  const eligeMonto = !!pago && maximo > pago.monto;
+  const montoEscrito = eligeMonto && otroMonto.trim() ? Number(otroMonto.replace(",", ".")) : (pago?.monto ?? 0);
+  const montoMal =
+    pago && eligeMonto && !(montoEscrito >= pago.monto && montoEscrito <= maximo)
+      ? `Elegí un monto de ${bs(pago.monto)} a ${bs(maximo)}`
+      : "";
   const visto = carnetVisto != null && carnetVisto === datos.ci.trim();
   const esConocido = visto && conocido != null;
 
@@ -373,6 +436,7 @@ function Formulario({
     }
     // M4: las fotos no bloquean (el instituto las pide en persona si no llegan).
     if (p === 3) return "";
+    if (montoMal) return montoMal;
     const f: string[] = [];
     if (!privacidad) f.push("aceptar la política de privacidad");
     if (siteKey && !captcha) f.push("completar la verificación anti-robots");
@@ -418,13 +482,18 @@ function Formulario({
   async function enviar() {
     if (bloqueo) return marcarFaltantes();
     setError("");
+    setSinQr(false);
     setEnviando(true);
+    // Con el pago obligatorio el plan sale de lo que paga.
+    const planEnviado = pago ? pago.planPagoId : (plan?.id ?? null);
+    const loQuePaga = pago ? { opcion: pago.clave, ...(eligeMonto ? { monto: montoEscrito } : {}) } : {};
     try {
       const base = {
         grupoId: grupoId!,
         ci: datos.ci.trim(),
         ciExpedido: datos.ciExpedido,
-        ...(plan ? { planPagoId: plan.id } : {}),
+        ...(planEnviado != null ? { planPagoId: planEnviado } : {}),
+        ...loQuePaga,
         ...(mensaje.trim() ? { mensaje: mensaje.trim() } : {}),
         privacidad: true as const,
         ...(siteKey && captcha ? { captcha } : {}),
@@ -443,13 +512,24 @@ function Formulario({
           ci: datos.ci.trim(),
           ciExpedido: datos.ciExpedido,
           ...(esMenor ? { tutor: { nombre: tutor.nombre.trim(), telefono: tutor.telefono.trim() } } : {}),
-          ...(plan ? { planPagoId: plan.id } : {}),
+          ...(planEnviado != null ? { planPagoId: planEnviado } : {}),
+          ...loQuePaga,
           ...(mensaje.trim() ? { mensaje: mensaje.trim() } : {}),
           privacidad: true,
           ...(siteKey && captcha ? { captcha } : {}),
         },
         pideFotos ? fotos : {},
       );
+      if (r.requierePago && r.solicitud && r.qr && grupo) {
+        // El borrador se queda: si no paga y vuelve, no escribe todo de nuevo.
+        onCobrar({
+          solicitud: r.solicitud,
+          qr: r.qr,
+          nombre: esConocido ? conocido! : datos.nombres.trim().split(" ")[0],
+          resumen: `${curso.nombre} · ${diasLargo(grupo.dias)}, ${grupo.horaInicio} a ${grupo.horaFin}`,
+        });
+        return;
+      }
       guardarBorrador(sub, null);
       const primerPago = plan?.generado === "COMPLETO" ? (curso.precioCompleto ?? null) : (curso.precioModulo ?? null);
       onEnviada({
@@ -485,6 +565,9 @@ function Formulario({
       } else if (codigo === "GRUPO_NO_DISPONIBLE" || codigo === "PREINSCRIPCION_NO_DISPONIBLE") {
         onCerrada();
         return;
+      } else if (codigo === "QR_NO_GENERADO") {
+        setSinQr(true);
+        setError(e instanceof Error ? e.message : "No pudimos generar el QR.");
       } else if (codigo === "TELEFONO_INVALIDO") {
         setTelefonoMal(true);
         setPaso(2);
@@ -728,13 +811,63 @@ function Formulario({
         {paso === 4 && (
           <div className="space-y-4">
             <div>
-              <h1 className="text-xl font-bold text-[#111827]">¿Cómo querés pagar?</h1>
+              <h1 className="text-xl font-bold text-[#111827]">{pagaAhora ? "Pagá para inscribirte" : "¿Cómo querés pagar?"}</h1>
               <p className="text-[13px] text-[#6B7280]">
                 {curso.nombre}
                 {grupo ? ` · ${diasLargo(grupo.dias).toLowerCase()}, ${grupo.horaInicio} a ${grupo.horaFin} · Sede ${grupo.sede.nombre}` : ""}
               </p>
             </div>
-            {planes.length > 0 && (
+            {pago && (
+              <div role="radiogroup" aria-label="Qué vas a pagar" className="space-y-2">
+                {opciones.map((o) => {
+                  const on = o.clave === pago.clave;
+                  const desde = (o.montoMaximo ?? o.monto) > o.monto;
+                  return (
+                    <button
+                      key={o.clave}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => {
+                        setPagoElegido(o.clave);
+                        setOtroMonto("");
+                      }}
+                      className="flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left"
+                      style={{ borderColor: on ? color : "#E5E7EB", borderWidth: on ? 2 : 1, background: on ? tinte(color) : "#ffffff" }}
+                    >
+                      <Marca on={on} color={color} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-bold text-[#111827]">{PAGOS[o.clave].titulo}</span>
+                          <span className="whitespace-nowrap text-base font-bold text-[#111827]">
+                            {desde ? "desde " : ""}
+                            {bs(o.monto)}
+                          </span>
+                        </span>
+                        {o.ahorro != null && o.ahorro > 0 && (
+                          <span className="mt-1 inline-block rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-[12px] font-semibold text-[#047857]">Ahorrás {bs(o.ahorro)}</span>
+                        )}
+                        <span className="block text-[13px] text-[#6B7280]">
+                          {o.clave === "ADELANTO" ? "Se descuenta de tu primer mes" : o.clave === "CUOTA" ? "El resto, mes a mes" : "Todos los módulos"}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+                {eligeMonto && (
+                  <CampoP etiqueta="¿Querés pagar más? (opcional)" error={montoMal}>
+                    <input
+                      value={otroMonto}
+                      onChange={(e) => setOtroMonto(e.target.value)}
+                      inputMode="decimal"
+                      placeholder={String(pago.monto)}
+                      {...marcado(!!montoMal)}
+                    />
+                  </CampoP>
+                )}
+              </div>
+            )}
+            {!pagaAhora && planes.length > 0 && (
               <div role="radiogroup" aria-label="Forma de pago" className="space-y-2">
                 {planes.map((pl) => {
                   const on = plan?.id === pl.id;
@@ -774,7 +907,7 @@ function Formulario({
                 })}
               </div>
             )}
-            {adelanto != null && (
+            {!pagaAhora && adelanto != null && (
               <p role="note" className="rounded-xl bg-[#F9FAFB] px-3.5 py-2.5 text-[13px] text-[#374151]">
                 ¿No podés pagar todo ahora? Asegurás tu cupo pagando una parte, desde <strong className="text-[#111827]">{bs(adelanto)}</strong>.
               </p>
@@ -800,6 +933,20 @@ function Formulario({
           <p role="alert" className="rounded-xl bg-[#FEE2E2] px-3.5 py-2.5 text-sm text-[#B91C1C]">
             {error}
           </p>
+        )}
+
+        {sinQr && whatsapp && (
+          <a
+            href={urlWhatsappConTexto(
+              whatsapp,
+              `Hola, quiero inscribirme en ${curso.nombre}${grupo ? ` (${diasLargo(grupo.dias).toLowerCase()}, ${grupo.horaInicio} a ${grupo.horaFin}, empieza el ${fechaCorta(grupo.fechaInicio)})` : ""}. No me salió el QR para pagar.${esConocido ? "" : ` Soy ${datos.nombres.trim()} ${datos.apellidos.trim()}.`}`,
+            )}
+            target="_blank"
+            rel="noreferrer"
+            className="block rounded-xl bg-[#047857] py-3.5 text-center text-[15px] font-semibold text-white"
+          >
+            Escribirnos por WhatsApp
+          </a>
         )}
 
         <div className="space-y-2">
@@ -842,7 +989,7 @@ function Formulario({
                 className="flex-1 rounded-xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-60"
                 style={boton}
               >
-                {enviando ? "Enviando…" : "Enviar inscripción"}
+                {pago ? (enviando ? "Generando el QR…" : `Pagar con QR · ${bs(montoMal ? pago.monto : montoEscrito)}`) : enviando ? "Enviando…" : "Enviar inscripción"}
               </button>
             )}
           </div>
@@ -853,9 +1000,11 @@ function Formulario({
           >
             {paso < 4 || (marcar && bloqueo)
               ? bloqueo || notaFotos
-              : adelanto != null
-                ? "Después de enviar podés pagar desde esta página, todo o una parte, o en el instituto."
-                : "Después de enviar podés pagar desde esta página o en el instituto."}
+              : pagaAhora
+                ? "Quedás inscrito cuando el banco confirme tu pago."
+                : adelanto != null
+                  ? "Después de enviar podés pagar desde esta página, todo o una parte, o en el instituto."
+                  : "Después de enviar podés pagar desde esta página o en el instituto."}
           </p>
         </div>
       </div>
