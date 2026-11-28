@@ -47,9 +47,12 @@ export const urlPedirDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/pe
 export const urlPedidoDe = (subdominio: string, token: string) =>
   `${urlPaginaDe(subdominio)}/pedido/${encodeURIComponent(token)}`;
 
-/** El formulario de preinscripción a un grupo (P2, academias). */
-export const urlInscribirmeDe = (subdominio: string, grupoId: number) =>
-  `${urlPaginaDe(subdominio)}/inscribirme/${grupoId}`;
+/**
+ * El formulario de preinscripción (P2, academias). Con `grupoId` llega con ese
+ * grupo elegido; sin él, con el primero que tenga lugar.
+ */
+export const urlInscribirmeDe = (subdominio: string, grupoId?: number) =>
+  `${urlPaginaDe(subdominio)}/inscribirme${grupoId != null ? `/${grupoId}` : ""}`;
 
 /** «Pagar mi inscripción» (M5): entrar con el carnet. */
 export const urlMiCuentaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/mi-cuenta`;
@@ -65,7 +68,7 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/promo/<slug>`: la página de una promoción (enlaces de
   // campaña, PLAN-CRM-Y-PROMOCIONES §6.6), también sin sesión.
   // `/p/<negocio>/regalo/<token>`: la gift card que se comparte (IDEAS/6 #6).
-  // `/p/<negocio>/inscribirme/<grupo>`: la preinscripción de una academia (P2).
+  // `/p/<negocio>/inscribirme[/<grupo>]`: la preinscripción de una academia (P2).
   // `/p/<negocio>/pagar/<token>`: el estado de cuenta de un estudiante (P6),
   // el enlace que la recepción manda por WhatsApp.
   // `/p/<negocio>/mi-cuenta`: «Pagar mi inscripción» con el carnet (M5).
@@ -73,7 +76,7 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/tienda`: el catálogo entero del sitio (09-nov).
   // `/p/<negocio>/pedido/<token>`: el seguimiento de un pedido web (13-nov).
   // `/p/<negocio>/pedir`: directo a la carta para pedir (20-nov).
-  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/mi-ficha|\/tienda|\/pedir|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+|\/pagar\/[^/]+)?\/?$/.test(pathname);
+  return /^\/p\/[^/]+(\/privacidad|\/mi-cuenta|\/mi-ficha|\/tienda|\/pedir|\/pedido\/[^/]+|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme(\/[^/]+)?|\/pagar\/[^/]+)?\/?$/.test(pathname);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useLocation, useParams } from "react-router-dom";
 import Captcha from "../../publico/Captcha";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
 import { fotosQueFaltan, listaDeFotos, textoFaltanFotos } from "../../lib/academia/fotos";
@@ -15,7 +15,7 @@ import {
 import type { CursoPublico, EstadoCuentaPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
-import { urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
+import { urlInscribirmeDe, urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { faltaTexto } from "../../lib/texto";
 import { siteKeyTurnstile } from "../../lib/turnstile";
@@ -89,6 +89,10 @@ function hoyLocal(): string {
  * instituto; sin QR, en el instituto o después con «Pagar mi inscripción». Un
  * grupo lleno ya no recibe preinscripciones: no se puede elegir.
  *
+ * El grupo de la dirección es opcional (28-nov): sin él llega elegido el
+ * primero con lugar, y con uno que ya no se publica (o que no existe) se pasa
+ * a `/inscribirme` y se avisa, para que nadie crea que quedó en el que buscaba.
+ *
  * El carnet va primero: si ya es de un estudiante, lo saluda por el nombre y
  * no le pide los datos ni las fotos (la ficha que ya existe no se toca desde
  * acá, así que escribirlos era para nada).
@@ -111,7 +115,15 @@ export default function InscribirmePagina() {
     };
   }, [sub]);
 
-  const id = Number(grupoId);
+  const pedido = grupoId === undefined ? null : Number(grupoId);
+  // Si se llegó rebotado de un grupo que no está, para decirlo.
+  const cambiado = !!(useLocation().state as { grupoNoDisponible?: boolean } | null)?.grupoNoDisponible;
+  // El pedido en la dirección; sin pedido, el primero con lugar (o el primero).
+  const id = useMemo(() => {
+    if (pedido != null) return pedido;
+    const grupos = cursos?.flatMap((c) => c.grupos) ?? [];
+    return (grupos.find((g) => g.cuposLibres !== 0) ?? grupos[0])?.id ?? null;
+  }, [cursos, pedido]);
   const curso = useMemo(() => cursos?.find((c) => c.grupos.some((g) => g.id === id)) ?? null, [cursos, id]);
   const [enviada, setEnviada] = useState<EnvioHecho | null>(null);
   /** El backend dijo que el grupo ya no se publica o que la inscripción se apagó. */
@@ -127,7 +139,12 @@ export default function InscribirmePagina() {
   if (errorPagina) return <NoDisponible mensaje={errorPagina} />;
   if (errorCursos) return <NoDisponible mensaje="Esta inscripción no está disponible" />;
   if (!cursos || !pagina) return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" />;
-  if (!curso || cerrada) return <NoDisponible mensaje="Este grupo ya no recibe inscripciones" />;
+  if (cerrada) return <NoDisponible mensaje="Este grupo ya no recibe inscripciones" />;
+  if (!curso || id == null) {
+    // El de la dirección no está: a la inscripción sin grupo, que elige otro.
+    if (pedido != null) return <Navigate to={urlInscribirmeDe(sub)} replace state={{ grupoNoDisponible: true }} />;
+    return <NoDisponible mensaje="Por ahora no hay grupos con la inscripción abierta" />;
+  }
 
   const c = paleta(pagina.color.hex);
   return (
@@ -159,6 +176,7 @@ export default function InscribirmePagina() {
               cursos={cursos.filter((x) => x.grupos.length > 0)}
               cursoInicial={curso}
               grupoInicial={id}
+              cambiado={cambiado}
               color={c.oscuro}
               onEnviada={setEnviada}
               onCerrada={() => setCerrada(true)}
@@ -180,6 +198,7 @@ function Formulario({
   cursos,
   cursoInicial,
   grupoInicial,
+  cambiado,
   color,
   onEnviada,
   onCerrada,
@@ -189,6 +208,8 @@ function Formulario({
   cursos: CursoPublico[];
   cursoInicial: CursoPublico;
   grupoInicial: number;
+  /** El grupo del enlace ya no se publica: se eligió otro por la persona. */
+  cambiado: boolean;
   color: string;
   onEnviada: (e: EnvioHecho) => void;
   onCerrada: () => void;
@@ -405,6 +426,11 @@ function Formulario({
         {paso === 1 && (
           <div className="space-y-4">
             <h1 className="text-xl font-bold text-[#111827]">¿Qué querés estudiar?</h1>
+            {cambiado && (
+              <p role="status" className="rounded-xl bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#92400E]">
+                El horario de ese enlace ya no recibe inscripciones. Revisá cuál querés antes de seguir.
+              </p>
+            )}
             {cursos.length > 1 && (
               <div role="radiogroup" aria-label="Curso" className="flex flex-wrap gap-2">
                 {cursos.map((x) => {
