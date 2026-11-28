@@ -105,7 +105,7 @@ export default function Preinscripciones() {
       <EncabezadoPagina
         volver={{ a: "/academia/alumnos", texto: p.Alumnos }}
         titulo="Inscripciones online"
-        bajada={descartadas ? `${lista.total} descartadas` : "Llegan desde la página del instituto, con las 3 fotos subidas"}
+        bajada={descartadas ? `${lista.total} descartadas` : "Llegan desde la página del instituto"}
         // B9: el enlace de un grupo, para que lleguen más por acá.
         acciones={<BotonCompartirInscripcion />}
       />

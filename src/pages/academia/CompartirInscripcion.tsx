@@ -18,7 +18,7 @@ type GrupoCompartible = GrupoParaCompartir &
   Partial<Pick<GrupoResumen, "inscripcionAbierta" | "publicarEnPagina" | "webHasta" | "estado" | "cancelado">>;
 
 /** Para qué es el enlace: la bajada del diálogo y del despliegue en el panel. */
-const BAJADA = "Para que se preinscriban desde el celular, con sus datos y las 3 fotos";
+const BAJADA = "Para que se preinscriban desde el celular, con sus datos";
 
 /**
  * El subdominio del negocio, que arma la dirección, y si la página está

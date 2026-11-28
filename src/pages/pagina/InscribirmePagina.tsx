@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import Captcha from "../../publico/Captcha";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
 import { fotosQueFaltan, listaDeFotos, textoFaltanFotos } from "../../lib/academia/fotos";
 import {
+  conBarrasDeFecha,
   diasTexto,
   edadDe,
   EXPEDIDOS,
+  fechaConDia,
   fechaCorta,
-  limitesFechaNacimiento,
+  isoDeFechaEscrita,
   MAYORIA_DE_EDAD,
   problemaFechaNacimiento,
 } from "../../lib/academia/formato";
@@ -57,6 +59,59 @@ const capital = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const bs = (n: number) => `Bs ${n.toLocaleString("es-BO")}`;
 /** Un fondo apenas teñido con el color de la marca, para lo elegido; gris si el color no es `#RRGGBB`. */
 const tinte = (color: string) => (/^#[0-9a-f]{6}$/i.test(color) ? `${color}0F` : "#F9FAFB");
+
+/** Cómo se le dice al horario: es lo primero que busca quien trabaja o estudia. */
+const turno = (horaInicio: string) => (horaInicio < "12:00" ? "Mañana" : horaInicio < "18:00" ? "Tarde" : "Noche");
+
+/** Los grupos de un curso juntados por fecha de inicio, en el orden en que llegan. */
+function porInicio(grupos: GrupoPublico[]): [string, GrupoPublico[]][] {
+  const m = new Map<string, GrupoPublico[]>();
+  for (const g of grupos) m.set(g.fechaInicio, [...(m.get(g.fechaInicio) ?? []), g]);
+  return [...m];
+}
+
+const DATOS_VACIOS = { ci: "", ciExpedido: "SC", apellidos: "", nombres: "", fechaTexto: "", telefono: "" };
+
+/**
+ * Lo escrito hasta ahora (28-nov): en el celular, ir a la cámara o a WhatsApp
+ * puede recargar la pestaña y se empezaba de cero. Se guarda en la pestaña
+ * (`sessionStorage`: no queda en un equipo compartido al cerrarla), sin las
+ * fotos ni la aceptación de privacidad, y se borra al enviar.
+ */
+interface Borrador {
+  /** El grupo que pedía la dirección: con otro enlace no se arrastra la elección. */
+  pedido: number | null;
+  paso: Paso;
+  cursoId: number;
+  grupoId: number | null;
+  datos: typeof DATOS_VACIOS;
+  tutor: { nombre: string; telefono: string };
+  planId: number | null;
+  mensaje: string;
+  carnetVisto: string | null;
+  conocido: string | null;
+  pideTutor: boolean;
+}
+
+const claveBorrador = (sub: string) => `bamar:inscribirme:${sub}`;
+
+function leerBorrador(sub: string): Borrador | null {
+  try {
+    const b = JSON.parse(sessionStorage.getItem(claveBorrador(sub)) ?? "null") as Borrador | null;
+    return b && typeof b === "object" && b.datos && b.tutor ? b : null;
+  } catch {
+    return null;
+  }
+}
+
+function guardarBorrador(sub: string, b: Borrador | null) {
+  try {
+    if (b) sessionStorage.setItem(claveBorrador(sub), JSON.stringify(b));
+    else sessionStorage.removeItem(claveBorrador(sub));
+  } catch {
+    // Modo privado o sin espacio: el formulario sigue igual, sin memoria.
+  }
+}
 
 /** El círculo de una opción: lleno con el color de la marca si está elegida. */
 function Marca({ on, color }: { on: boolean; color: string }) {
@@ -176,6 +231,7 @@ export default function InscribirmePagina() {
               cursos={cursos.filter((x) => x.grupos.length > 0)}
               cursoInicial={curso}
               grupoInicial={id}
+              pedido={pedido}
               cambiado={cambiado}
               color={c.oscuro}
               onEnviada={setEnviada}
@@ -198,6 +254,7 @@ function Formulario({
   cursos,
   cursoInicial,
   grupoInicial,
+  pedido,
   cambiado,
   color,
   onEnviada,
@@ -208,23 +265,37 @@ function Formulario({
   cursos: CursoPublico[];
   cursoInicial: CursoPublico;
   grupoInicial: number;
+  /** El grupo que pedía la dirección, o null. */
+  pedido: number | null;
   /** El grupo del enlace ya no se publica: se eligió otro por la persona. */
   cambiado: boolean;
   color: string;
   onEnviada: (e: EnvioHecho) => void;
   onCerrada: () => void;
 }) {
-  const [paso, setPaso] = useState<Paso>(1);
-  const [cursoId, setCursoId] = useState(cursoInicial.id);
-  const [grupoId, setGrupoId] = useState<number | null>(grupoInicial);
-  const [datos, setDatos] = useState({ ci: "", ciExpedido: "SC", apellidos: "", nombres: "", fechaNacimiento: "", telefono: "" });
-  const [tutor, setTutor] = useState({ nombre: "", telefono: "" });
+  const [borrador] = useState(() => leerBorrador(sub));
+  // La elección y el paso sólo vuelven con el mismo enlace y si el grupo sigue.
+  const [retoma] = useState(
+    () =>
+      !!borrador &&
+      borrador.pedido === pedido &&
+      cursos.some((x) => x.id === borrador.cursoId && x.grupos.some((g) => g.id === borrador.grupoId)),
+  );
+  const [paso, setPaso] = useState<Paso>(() => {
+    if (!retoma) return 1;
+    const sinFotos = cursos.find((x) => x.id === borrador!.cursoId)?.pideFotos === false;
+    return borrador!.paso === 3 && sinFotos ? 4 : borrador!.paso;
+  });
+  const [cursoId, setCursoId] = useState(retoma ? borrador!.cursoId : cursoInicial.id);
+  const [grupoId, setGrupoId] = useState<number | null>(retoma ? borrador!.grupoId : grupoInicial);
+  const [datos, setDatos] = useState({ ...DATOS_VACIOS, ...borrador?.datos });
+  const [tutor, setTutor] = useState({ nombre: "", telefono: "", ...borrador?.tutor });
   const [fotos, setFotos] = useState<FotosInscripcion>({});
   const [marcadas, setMarcadas] = useState<TipoFoto[]>([]);
-  const [planId, setPlanId] = useState<number | null>(null);
-  const [mensaje, setMensaje] = useState("");
+  const [planId, setPlanId] = useState<number | null>(retoma ? borrador!.planId : null);
+  const [mensaje, setMensaje] = useState(borrador?.mensaje ?? "");
   const [privacidad, setPrivacidad] = useState(false);
-  const [pideTutor, setPideTutor] = useState(false);
+  const [pideTutor, setPideTutor] = useState(borrador?.pideTutor ?? false);
   const [telefonoMal, setTelefonoMal] = useState(false);
   const siteKey = siteKeyTurnstile();
   const [captcha, setCaptcha] = useState<string | null>(null);
@@ -234,8 +305,25 @@ function Formulario({
   // El carnet ya revisado (para no preguntar de nuevo) y, si es de un
   // estudiante, su nombre de pila. El captcha de esa pregunta es otro: el
   // token de Turnstile se gasta en un pedido.
-  const [carnetVisto, setCarnetVisto] = useState<string | null>(null);
-  const [conocido, setConocido] = useState<string | null>(null);
+  const [carnetVisto, setCarnetVisto] = useState<string | null>(borrador?.carnetVisto ?? null);
+  const [conocido, setConocido] = useState<string | null>(borrador?.conocido ?? null);
+  // Tocó «Siguiente» faltando algo: se marca qué (y se lo lleva ahí).
+  const [intento, setIntento] = useState(0);
+  const [marcar, setMarcar] = useState(false);
+  const formulario = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    guardarBorrador(sub, { pedido, paso, cursoId, grupoId, datos, tutor, planId, mensaje, carnetVisto, conocido, pideTutor });
+  }, [sub, pedido, paso, cursoId, grupoId, datos, tutor, planId, mensaje, carnetVisto, conocido, pideTutor]);
+
+  useEffect(() => setMarcar(false), [paso]);
+
+  useEffect(() => {
+    if (!intento) return;
+    const mal = formulario.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    mal?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    mal?.focus({ preventScroll: true });
+  }, [intento]);
   const [buscando, setBuscando] = useState(false);
   const [captchaCarnet, setCaptchaCarnet] = useState<string | null>(null);
   const [vueltaCaptchaCarnet, setVueltaCaptchaCarnet] = useState(0);
@@ -247,11 +335,14 @@ function Formulario({
   const planes = curso.planes ?? [];
   const mesAMes = planes.find((x) => x.generado === "MES_A_MES");
   const plan = planes.find((x) => x.id === planId) ?? mesAMes ?? planes[0] ?? null;
+  const pideFotos = curso.pideFotos !== false;
+  const pasos: Paso[] = pideFotos ? [1, 2, 3, 4] : [1, 2, 4];
   // L4: una fecha imposible (futura, o de más de 100 años) se dice en el campo
   // y no deja seguir. Antes pasaba, y el backend contestaba «Sos menor de edad».
-  const fechaMal = problemaFechaNacimiento(datos.fechaNacimiento);
-  const limitesFecha = limitesFechaNacimiento();
-  const edad = fechaMal ? null : edadDe(datos.fechaNacimiento);
+  const nacimiento = isoDeFechaEscrita(datos.fechaTexto);
+  const fechaMal =
+    datos.fechaTexto.length === 10 && !nacimiento ? "Esa fecha no existe: revisala" : problemaFechaNacimiento(nacimiento);
+  const edad = fechaMal ? null : edadDe(nacimiento);
   const esMenor = pideTutor || (edad != null && edad < MAYORIA_DE_EDAD);
   const faltanFotos = fotosQueFaltan(fotos);
   const visto = carnetVisto != null && carnetVisto === datos.ci.trim();
@@ -275,7 +366,7 @@ function Formulario({
       if (!datos.apellidos.trim() || !datos.nombres.trim()) f.push("tu nombre y apellidos");
       // Obligatoria otra vez (Drick, 08-nov): la academia la necesita en la
       // ficha y dice si hay que pedir tutor. El backend también la exige.
-      if (!datos.fechaNacimiento) f.push("tu fecha de nacimiento");
+      if (!nacimiento && !fechaMal) f.push("tu fecha de nacimiento");
       if (datos.telefono.replace(/\D/g, "").length < 7) f.push("tu WhatsApp");
       if (esMenor && (!tutor.nombre.trim() || tutor.telefono.replace(/\D/g, "").length < 7)) f.push("los datos de tu tutor");
       return f.length ? faltaTexto(f) : fechaMal;
@@ -288,6 +379,13 @@ function Formulario({
     return f.length ? `Falta ${f.join(", ")}` : "";
   }
   const bloqueo = motivo(paso);
+  /** El aviso bajo un campo: sólo después de querer seguir sin completarlo. */
+  const falta = (vacio: boolean, texto: string) => (marcar && vacio ? texto : "");
+  const telefonoCorto = (t: string) => t.replace(/\D/g, "").length < 7;
+  function marcarFaltantes() {
+    setMarcar(true);
+    setIntento((n) => n + 1);
+  }
   // Las fotos no son obligatorias (M4) y la página lo tiene que decir así: «Faltan 3 fotos» sonaba a
   // que no se podía seguir (Drick, 08-nov).
   const notaFotos =
@@ -318,7 +416,7 @@ function Formulario({
   }
 
   async function enviar() {
-    if (bloqueo) return setError(`${bloqueo}.`);
+    if (bloqueo) return marcarFaltantes();
     setError("");
     setEnviando(true);
     try {
@@ -340,7 +438,7 @@ function Formulario({
           nombres: datos.nombres.trim(),
           apellidos: datos.apellidos.trim(),
           telefono: datos.telefono.trim(),
-          ...(datos.fechaNacimiento ? { fechaNacimiento: datos.fechaNacimiento } : {}),
+          ...(nacimiento ? { fechaNacimiento: nacimiento } : {}),
           ...(edad != null ? { edad } : {}),
           ci: datos.ci.trim(),
           ciExpedido: datos.ciExpedido,
@@ -350,8 +448,9 @@ function Formulario({
           privacidad: true,
           ...(siteKey && captcha ? { captcha } : {}),
         },
-        fotos,
+        pideFotos ? fotos : {},
       );
+      guardarBorrador(sub, null);
       const primerPago = plan?.generado === "COMPLETO" ? (curso.precioCompleto ?? null) : (curso.precioModulo ?? null);
       onEnviada({
         nombre: esConocido ? conocido! : datos.nombres.trim().split(" ")[0],
@@ -361,7 +460,7 @@ function Formulario({
         forma: plan ? (plan.generado === "MES_A_MES" ? "Mes a mes" : plan.generado === "COMPLETO" ? "Pago completo" : plan.nombre) : null,
         primerPago,
         // Las fotos de un estudiante que ya existe las tiene la recepción.
-        sinFotos: esConocido ? [] : faltanFotos,
+        sinFotos: esConocido || !pideFotos ? [] : faltanFotos,
       });
     } catch (e) {
       const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
@@ -405,17 +504,17 @@ function Formulario({
 
   const boton = { background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" };
   return (
-    <div>
+    <div ref={formulario}>
       {/* Los pasos en su banda, arriba de la tarjeta: dónde está y cuánto falta. */}
       <div className="border-b border-[#E5E7EB] bg-[#F9FAFB] px-5 py-4">
         <div className="flex items-baseline justify-between gap-2 text-[12px] text-[#6B7280]">
           <span className="font-semibold uppercase tracking-wide">
-            {negocio} · Paso {paso} de 4
+            {negocio} · Paso {pasos.indexOf(paso) + 1} de {pasos.length}
           </span>
           <span className="font-semibold text-[#111827]">{TITULOS[paso]}</span>
         </div>
-        <div role="progressbar" aria-label="Avance de la inscripción" aria-valuemin={1} aria-valuemax={4} aria-valuenow={paso} className="mt-2 flex gap-1">
-          {[1, 2, 3, 4].map((i) => (
+        <div role="progressbar" aria-label="Avance de la inscripción" aria-valuemin={1} aria-valuemax={pasos.length} aria-valuenow={pasos.indexOf(paso) + 1} className="mt-2 flex gap-1">
+          {pasos.map((i) => (
             <span key={i} className="h-1.5 flex-1 rounded-full" style={{ background: i <= paso ? color : "#E5E7EB" }} />
           ))}
         </div>
@@ -425,7 +524,7 @@ function Formulario({
 
         {paso === 1 && (
           <div className="space-y-4">
-            <h1 className="text-xl font-bold text-[#111827]">¿Qué querés estudiar?</h1>
+            <h1 className="text-xl font-bold text-[#111827]">{cursos.length > 1 ? "¿Qué querés estudiar?" : "Elegí tu horario"}</h1>
             {cambiado && (
               <p role="status" className="rounded-xl bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#92400E]">
                 El horario de ese enlace ya no recibe inscripciones. Revisá cuál querés antes de seguir.
@@ -467,47 +566,53 @@ function Formulario({
                 </p>
               )}
             </div>
-            <fieldset className="space-y-2">
-              <legend className="mb-2 text-sm font-semibold text-[#111827]">Elegí tu horario</legend>
-              {curso.grupos.map((g) => {
-                const on = g.id === grupoId;
-                const empezo = g.fechaInicio <= hoyLocal();
-                const lleno = g.cuposLibres === 0;
-                return (
-                  <button
-                    key={g.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    aria-disabled={lleno || undefined}
-                    onClick={() => {
-                      if (!lleno) setGrupoId(g.id);
-                    }}
-                    className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left ${lleno ? "cursor-not-allowed opacity-60" : ""}`}
-                    style={{ borderColor: on ? color : "#E5E7EB", borderWidth: on ? 2 : 1, background: on ? tinte(color) : "#ffffff" }}
-                  >
-                    <Marca on={on && !lleno} color={color} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold text-[#111827]">{diasLargo(g.dias)}</span>
-                      <span className="block text-[13px] text-[#4B5563]">
-                        {g.horaInicio} a {g.horaFin} · Sede {g.sede.nombre}
-                      </span>
-                      <span className="block text-[13px] text-[#6B7280]">
-                        {empezo ? `Empezó el ${fechaCorta(g.fechaInicio)}` : `Empieza el ${fechaCorta(g.fechaInicio)}`}
-                      </span>
-                    </span>
-                    {g.cuposLibres != null && (
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${
-                          g.cuposLibres > 0 ? "border border-[#E5E7EB] bg-white text-[#4B5563]" : "bg-[#FEE2E2] text-[#B91C1C]"
-                        }`}
+            <fieldset className="space-y-4">
+              <legend className={cursos.length > 1 ? "mb-2 text-sm font-semibold text-[#111827]" : "sr-only"}>Elegí tu horario</legend>
+              {porInicio(curso.grupos).map(([inicio, delDia]) => (
+                <div key={inicio} className="space-y-2">
+                  <p className="text-[13px] font-semibold text-[#374151]">
+                    {inicio <= hoyLocal() ? "Empezó el" : "Empieza el"} {fechaConDia(inicio)}
+                  </p>
+                  {delDia.map((g) => {
+                    const on = g.id === grupoId;
+                    const lleno = g.cuposLibres === 0;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        aria-disabled={lleno || undefined}
+                        onClick={() => {
+                          if (!lleno) setGrupoId(g.id);
+                        }}
+                        className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left ${lleno ? "cursor-not-allowed opacity-60" : ""}`}
+                        style={{ borderColor: on ? color : "#E5E7EB", borderWidth: on ? 2 : 1, background: on ? tinte(color) : "#ffffff" }}
                       >
-                        {g.cuposLibres > 0 ? `${g.cuposLibres} libres` : "lleno"}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                        <Marca on={on && !lleno} color={color} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-lg font-bold leading-6 text-[#111827]">
+                            {g.horaInicio} – {g.horaFin}
+                          </span>
+                          <span className="block text-[13px] text-[#4B5563]">
+                            {turno(g.horaInicio)} · {diasLargo(g.dias)}
+                          </span>
+                          <span className="block text-[13px] text-[#6B7280]">Sede {g.sede.nombre}</span>
+                        </span>
+                        {g.cuposLibres != null && (
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${
+                              g.cuposLibres > 0 ? "border border-[#E5E7EB] bg-white text-[#4B5563]" : "bg-[#FEE2E2] text-[#B91C1C]"
+                            }`}
+                          >
+                            {g.cuposLibres > 0 ? `${g.cuposLibres} libres` : "lleno"}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </fieldset>
           </div>
         )}
@@ -521,8 +626,8 @@ function Formulario({
               </p>
             </div>
             <div className="grid grid-cols-[1fr_90px] gap-3">
-              <CampoP etiqueta="Carnet de identidad">
-                <input value={datos.ci} onChange={(e) => setDatos({ ...datos, ci: e.target.value })} inputMode="numeric" className={INPUT} />
+              <CampoP etiqueta="Carnet de identidad" error={falta(!datos.ci.trim(), "Escribí tu carnet")}>
+                <input value={datos.ci} onChange={(e) => setDatos({ ...datos, ci: e.target.value })} inputMode="numeric" {...marcado(marcar && !datos.ci.trim())} />
               </CampoP>
               <CampoP etiqueta="Expedido">
                 <select value={datos.ciExpedido} onChange={(e) => setDatos({ ...datos, ciExpedido: e.target.value })} className={INPUT}>
@@ -546,27 +651,26 @@ function Formulario({
             )}
             {visto && !esConocido && (
               <>
-            <CampoP etiqueta="Apellidos">
-              <input value={datos.apellidos} onChange={(e) => setDatos({ ...datos, apellidos: e.target.value })} autoComplete="family-name" className={INPUT} />
+            <CampoP etiqueta="Apellidos" error={falta(!datos.apellidos.trim(), "Escribí tus apellidos")}>
+              <input value={datos.apellidos} onChange={(e) => setDatos({ ...datos, apellidos: e.target.value })} autoComplete="family-name" {...marcado(marcar && !datos.apellidos.trim())} />
             </CampoP>
-            <CampoP etiqueta="Nombres">
-              <input value={datos.nombres} onChange={(e) => setDatos({ ...datos, nombres: e.target.value })} autoComplete="given-name" className={INPUT} />
+            <CampoP etiqueta="Nombres" error={falta(!datos.nombres.trim(), "Escribí tus nombres")}>
+              <input value={datos.nombres} onChange={(e) => setDatos({ ...datos, nombres: e.target.value })} autoComplete="given-name" {...marcado(marcar && !datos.nombres.trim())} />
             </CampoP>
-            {/* Uno debajo del otro en el celular (Drick, 08-nov): lado a lado, el campo de fecha
-                del iPhone, que trae su propio ancho mínimo, se montaba sobre el de WhatsApp. */}
             <div className="grid gap-3 sm:grid-cols-2 [&>*]:min-w-0">
-              <CampoP etiqueta="Fecha de nacimiento" error={fechaMal}>
+              {/* Escrita y no con el calendario (28-nov): en el celular costaba retroceder años. */}
+              <CampoP etiqueta="Fecha de nacimiento" error={fechaMal || falta(!nacimiento, "Escribí tu fecha: día, mes y año")}>
                 <input
-                  type="date"
-                  value={datos.fechaNacimiento}
-                  min={limitesFecha.min}
-                  max={limitesFecha.max}
-                  onChange={(e) => setDatos({ ...datos, fechaNacimiento: e.target.value })}
-                  aria-invalid={!!fechaMal || undefined}
-                  className={`${INPUT} min-w-0 appearance-none ${fechaMal ? "border-[#B91C1C]" : ""}`}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="bday"
+                  placeholder="DD/MM/AAAA"
+                  value={datos.fechaTexto}
+                  onChange={(e) => setDatos({ ...datos, fechaTexto: conBarrasDeFecha(e.target.value) })}
+                  {...marcado(!!fechaMal || (marcar && !nacimiento))}
                 />
               </CampoP>
-              <CampoP etiqueta="WhatsApp">
+              <CampoP etiqueta="WhatsApp" error={falta(telefonoCorto(datos.telefono), "Escribí tu número de WhatsApp")}>
                 <input
                   value={datos.telefono}
                   onChange={(e) => {
@@ -575,8 +679,7 @@ function Formulario({
                   }}
                   inputMode="tel"
                   autoComplete="tel"
-                  aria-invalid={telefonoMal || undefined}
-                  className={`${INPUT} ${telefonoMal ? "border-[#B91C1C]" : ""}`}
+                  {...marcado(telefonoMal || (marcar && telefonoCorto(datos.telefono)))}
                 />
               </CampoP>
             </div>
@@ -586,11 +689,11 @@ function Formulario({
                 <p className="text-sm font-semibold text-[#92400E]">
                   {edad != null ? `Tenés ${edad} años: ` : "Sos menor de edad: "}datos de tu madre, padre o tutor
                 </p>
-                <CampoP etiqueta="Nombre del tutor">
-                  <input value={tutor.nombre} onChange={(e) => setTutor({ ...tutor, nombre: e.target.value })} className={INPUT} />
+                <CampoP etiqueta="Nombre del tutor" error={falta(!tutor.nombre.trim(), "Escribí el nombre del tutor")}>
+                  <input value={tutor.nombre} onChange={(e) => setTutor({ ...tutor, nombre: e.target.value })} {...marcado(marcar && !tutor.nombre.trim())} />
                 </CampoP>
-                <CampoP etiqueta="Su WhatsApp">
-                  <input value={tutor.telefono} onChange={(e) => setTutor({ ...tutor, telefono: e.target.value })} inputMode="tel" className={INPUT} />
+                <CampoP etiqueta="Su WhatsApp" error={falta(telefonoCorto(tutor.telefono), "Escribí su número de WhatsApp")}>
+                  <input value={tutor.telefono} onChange={(e) => setTutor({ ...tutor, telefono: e.target.value })} inputMode="tel" {...marcado(marcar && telefonoCorto(tutor.telefono))} />
                 </CampoP>
               </fieldset>
             )}
@@ -618,7 +721,7 @@ function Formulario({
               compacto
               color={color}
             />
-            <p className="text-[13px] text-[#6B7280]">"Tomar foto" abre la cámara de tu celular.</p>
+            <p className="text-[13px] text-[#6B7280]">"Tomar foto" abre la cámara de tu celular; "De la galería", una que ya tengas.</p>
           </div>
         )}
 
@@ -679,8 +782,8 @@ function Formulario({
             <CampoP etiqueta="¿Algo que quieras preguntar? (opcional)">
               <textarea value={mensaje} onChange={(e) => setMensaje(e.target.value.slice(0, 500))} rows={2} className={`${INPUT} resize-y`} />
             </CampoP>
-            <label className="flex items-start gap-2 text-[13px] text-[#374151]">
-              <input type="checkbox" checked={privacidad} onChange={(e) => setPrivacidad(e.target.checked)} className="mt-0.5" style={{ accentColor: color }} />
+            <label className={`flex items-start gap-2 text-[13px] ${marcar && !privacidad ? "rounded-xl border border-[#B91C1C] bg-[#FEF2F2] p-2.5 text-[#B91C1C]" : "text-[#374151]"}`}>
+              <input type="checkbox" checked={privacidad} onChange={(e) => setPrivacidad(e.target.checked)} aria-invalid={(marcar && !privacidad) || undefined} className="mt-0.5" style={{ accentColor: color }} />
               <span>
                 Acepto la{" "}
                 <a href={urlPrivacidadDe(sub)} target="_blank" rel="noreferrer" className="underline">
@@ -706,8 +809,8 @@ function Formulario({
                 type="button"
                 onClick={() => {
                   setError("");
-                  // Un estudiante conocido no pasó por las fotos.
-                  setPaso((paso === 4 && esConocido ? 2 : paso - 1) as Paso);
+                  // Un estudiante conocido, o una academia sin fotos, no pasó por ellas.
+                  setPaso((paso === 4 && (esConocido || !pideFotos) ? 2 : paso - 1) as Paso);
                 }}
                 className="rounded-xl border border-[#D1D5DB] bg-white px-4 py-3.5 text-[15px] font-semibold text-[#374151] hover:bg-[#F9FAFB]"
               >
@@ -717,12 +820,14 @@ function Formulario({
             {paso < 4 ? (
               <button
                 type="button"
-                disabled={!!bloqueo || buscando}
+                disabled={buscando}
                 aria-describedby="motivo-paso"
                 onClick={() => {
+                  // El botón no se apaga (28-nov): si falta algo, dice qué.
+                  if (bloqueo) return marcarFaltantes();
                   setError("");
                   if (paso === 2 && !visto) return void revisarCarnet();
-                  setPaso((paso === 2 && esConocido ? 4 : paso + 1) as Paso);
+                  setPaso(paso === 2 && (esConocido || !pideFotos) ? 4 : ((paso + 1) as Paso));
                 }}
                 className="flex-1 rounded-xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50"
                 style={boton}
@@ -741,8 +846,12 @@ function Formulario({
               </button>
             )}
           </div>
-          <p id="motivo-paso" className="text-center text-[13px] text-[#6B7280]">
-            {paso < 4
+          <p
+            id="motivo-paso"
+            role={marcar && bloqueo ? "alert" : undefined}
+            className={`text-center text-[13px] ${marcar && bloqueo ? "font-semibold text-[#B91C1C]" : "text-[#6B7280]"}`}
+          >
+            {paso < 4 || (marcar && bloqueo)
               ? bloqueo || notaFotos
               : adelanto != null
                 ? "Después de enviar podés pagar desde esta página, todo o una parte, o en el instituto."
@@ -905,6 +1014,12 @@ function Enviada({
 
 const INPUT =
   "w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base text-[#111827] outline-none focus:border-[#6B7280]";
+
+/** Un campo, en rojo y anunciado como inválido si `mal`. */
+const marcado = (mal: boolean) => ({
+  "aria-invalid": mal || undefined,
+  className: mal ? `${INPUT} !border-[#B91C1C] bg-[#FEF2F2]` : INPUT,
+});
 
 function CampoP({ etiqueta, error, children }: { etiqueta: string; error?: string; children: ReactNode }) {
   return (

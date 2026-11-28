@@ -257,12 +257,12 @@ export default function AjustesAcademia() {
         <div className="divide-y divide-borde-soft">
           <Interruptor
             activo={a.fotosObligatorias}
-            bloqueado
+            onCambiar={(v) => void guardar({ fotosObligatorias: v })}
             etiqueta={`Pedir foto del ${p.alumno} y carnet por ambos lados`}
             detalle={
-              <span className="inline-flex items-center gap-1">
-                <Icon name="lock" size={13} /> Obligatorio: sin las 3 fotos la inscripción no se activa
-              </span>
+              a.fotosObligatorias
+                ? "En el mostrador, quien no trae las 3 queda marcado «Faltan fotos». En la página son opcionales."
+                : "No se piden en el mostrador ni en la página."
             }
           />
           <Interruptor
