@@ -220,8 +220,8 @@ function Foto({
             <BotonFoto onClick={() => camara.current?.click()} etiqueta={`Tomar foto: ${titulo}`} color={color}>
               Tomar foto
             </BotonFoto>
-            <BotonFoto onClick={() => subir.current?.click()} etiqueta={`Subir archivo: ${titulo}`} suave>
-              Subir
+            <BotonFoto onClick={() => subir.current?.click()} etiqueta={`De la galería: ${titulo}`} suave>
+              De la galería
             </BotonFoto>
           </span>
         ) : (

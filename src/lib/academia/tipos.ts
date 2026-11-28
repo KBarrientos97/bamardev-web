@@ -1655,6 +1655,8 @@ export interface CursoPublico {
   ahorro?: number | null;
   modulos?: string[];
   planes?: { id: number; nombre: string; generado: PlanGenerado | null }[];
+  /** 28-nov: en false la academia no pide fotos. Ausente en un backend anterior: se piden. */
+  pideFotos?: boolean;
 }
 
 /** Cómo se cobra desde la página (M5): el QR del banco, el QR fijo o nada en línea. */

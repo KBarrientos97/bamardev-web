@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CursoPublico, GrupoPublico } from "../../lib/academia/tipos";
@@ -63,19 +63,20 @@ const AVISO = /ya no recibe inscripciones. Revisá/;
 
 describe("InscribirmePagina: el grupo de la dirección", () => {
   beforeEach(() => {
+    sessionStorage.clear();
     vi.mocked(apiAcademiaPublica.cursos).mockResolvedValue([curso([grupo(1, "08:00", 0), grupo(2, "10:00", 5), grupo(3, "15:00", 5)])]);
   });
 
   it("sin grupo, llega elegido el primero con lugar", async () => {
     await montar("/p/horizonte/inscribirme");
-    await screen.findByText("¿Qué querés estudiar?");
+    await screen.findByText("Elegí tu horario", { selector: "h1" });
     expect(elegido()).toContain("10:00");
     expect(screen.queryByText(AVISO)).toBeNull();
   });
 
   it("con un grupo que se publica, ese", async () => {
     await montar("/p/horizonte/inscribirme/3");
-    await screen.findByText("¿Qué querés estudiar?");
+    await screen.findByText("Elegí tu horario", { selector: "h1" });
     expect(elegido()).toContain("15:00");
     expect(screen.getByTestId("ruta").textContent).toBe("/p/horizonte/inscribirme/3");
   });
@@ -91,5 +92,52 @@ describe("InscribirmePagina: el grupo de la dirección", () => {
     vi.mocked(apiAcademiaPublica.cursos).mockResolvedValue([curso([])]);
     await montar("/p/horizonte/inscribirme/99");
     await screen.findByText("Por ahora no hay grupos con la inscripción abierta");
+  });
+});
+
+describe("InscribirmePagina: completar es más fácil (28-nov)", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.mocked(apiAcademiaPublica.cursos).mockResolvedValue([{ ...curso([grupo(2, "10:00", 5)]), pideFotos: false }]);
+    vi.mocked(apiAcademiaPublica.carnet).mockResolvedValue({ nombre: null });
+  });
+
+  const siguiente = () => fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+
+  async function hastaLosDatos() {
+    await montar("/p/horizonte/inscribirme");
+    await screen.findByText("Elegí tu horario", { selector: "h1" });
+    siguiente();
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1234567" } });
+    siguiente();
+    await screen.findByLabelText("Apellidos");
+  }
+
+  it("sin pedir fotos son 3 pasos, y «Siguiente» marca lo que falta", async () => {
+    await hastaLosDatos();
+    expect(screen.getByText(/Paso 2 de 3/)).toBeTruthy();
+    expect(screen.queryByText("Escribí tus apellidos.")).toBeNull();
+    siguiente();
+    expect(screen.getByText("Escribí tus apellidos.")).toBeTruthy();
+    expect(screen.getByLabelText(/^Apellidos/).getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.change(screen.getByLabelText(/^Apellidos/), { target: { value: "Rojas" } });
+    fireEvent.change(screen.getByLabelText(/^Nombres/), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText(/^Fecha de nacimiento/), { target: { value: "05031999" } });
+    fireEvent.change(screen.getByLabelText(/^WhatsApp/), { target: { value: "70000000" } });
+    expect((screen.getByLabelText(/^Fecha de nacimiento/) as HTMLInputElement).value).toBe("05/03/1999");
+    siguiente();
+    // Del 2 se pasa al pago: sin el paso de las fotos.
+    expect(screen.getByText("¿Cómo querés pagar?")).toBeTruthy();
+    expect(screen.getByText(/Paso 3 de 3/)).toBeTruthy();
+  });
+
+  it("al recargar vuelve lo escrito y el paso", async () => {
+    await hastaLosDatos();
+    fireEvent.change(screen.getByLabelText(/^Apellidos/), { target: { value: "Rojas" } });
+    cleanup();
+    await montar("/p/horizonte/inscribirme");
+    expect(((await screen.findByLabelText(/^Apellidos/)) as HTMLInputElement).value).toBe("Rojas");
+    expect((screen.getByLabelText("Carnet de identidad") as HTMLInputElement).value).toBe("1234567");
   });
 });

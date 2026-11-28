@@ -335,6 +335,41 @@ export function limitesFechaNacimiento(hoy = new Date()): { min: string; max: st
   return { min: isoDia(min), max: isoDia(max) };
 }
 
+/**
+ * La fecha de nacimiento escrita a mano (28-nov): pone las barras de
+ * DD/MM/AAAA mientras se teclea en el teclado de números. "1/" completa el cero,
+ * y una fecha `AAAA-MM-DD` (la que autocompleta el celular) se da vuelta.
+ */
+export function conBarrasDeFecha(texto: string): string {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto.trim());
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const conCeros = texto.replace(/^(\d)\//, "0$1/").replace(/^(\d{2}\/)(\d)\//, "$10$2/");
+  const d = conCeros.replace(/\D/g, "").slice(0, 8);
+  return [d.slice(0, 2), d.slice(2, 4), d.slice(4)].filter(Boolean).join("/");
+}
+
+/** "05/03/1999" → "1999-03-05"; "" si no está completa o ese día no existe. */
+export function isoDeFechaEscrita(texto: string): string {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(texto);
+  if (!m) return "";
+  const [d, mes, a] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const f = new Date(Date.UTC(a, mes - 1, d));
+  const existe = a >= 1000 && f.getUTCFullYear() === a && f.getUTCMonth() === mes - 1 && f.getUTCDate() === d;
+  return existe ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
+const MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const DIAS_LARGOS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+/** "lunes 11 de enero", con el año si no es el de `hoy`. */
+export function fechaConDia(iso: string, hoy = new Date()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const [a, mes, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dia = DIAS_LARGOS[new Date(Date.UTC(a, mes - 1, d)).getUTCDay()];
+  return `${dia} ${d} de ${MESES_LARGOS[mes - 1]}${a === hoy.getFullYear() ? "" : ` de ${a}`}`;
+}
+
 /** Los departamentos donde se expide el CI, como los pide el formulario. */
 export const EXPEDIDOS = ["SC", "LP", "CB", "OR", "PT", "CH", "TJ", "BE", "PD"] as const;
 
