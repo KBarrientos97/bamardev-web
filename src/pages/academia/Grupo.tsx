@@ -1039,6 +1039,13 @@ function EditarGrupo({
           <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary-boton)]" checked={publicar} onChange={(e) => setPublicar(e.target.checked)} />
           Mostrar en la página
         </label>
+        {publicar && g.webHasta && (
+          <p className="text-xs font-semibold text-texto-3">
+            {hoyIso > g.webHasta
+              ? `La página ya no lo muestra: recibió inscripciones hasta el ${fechaCorta(g.webHasta)} (límite de clases de Ajustes). Acá se sigue inscribiendo.`
+              : `La página recibe inscripciones hasta el ${fechaCorta(g.webHasta)} (límite de clases de Ajustes).`}
+          </p>
+        )}
         {g.materiasGrupo.length > 0 && (
           <div className="space-y-2">
             <p className="text-[13px] font-semibold text-texto-2">
