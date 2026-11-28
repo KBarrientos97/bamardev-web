@@ -270,6 +270,18 @@ export default function AjustesAcademia() {
             onCambiar={(v) => void guardar({ preinscripcionActiva: v })}
             etiqueta="Recibir inscripciones desde la página"
           />
+          {a.pagoWebObligatorio !== undefined && (
+            <Interruptor
+              activo={a.pagoWebObligatorio}
+              onCambiar={(v) => void guardar({ pagoWebObligatorio: v })}
+              etiqueta="Para inscribirse por la web hay que pagar"
+              detalle={
+                a.pagoWebObligatorio
+                  ? "Al menos la reserva o el primer mes, con el QR del banco. Quien no paga no queda registrado. Sin el cobro automático por QR no se aplica."
+                  : "Apagado: quedan preinscritos y pagan después."
+              }
+            />
+          )}
         </div>
         {/* 28-nov (Drick): hasta cuándo entra por la web a un grupo ya empezado. */}
         {a.inscripcionWebHastaClase !== undefined && (

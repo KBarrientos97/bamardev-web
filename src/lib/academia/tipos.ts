@@ -94,6 +94,11 @@ export interface AjustesAcademia {
    */
   adelantoMinimoBs?: number | null;
   /**
+   * 28-nov: para inscribirse por la web hay que pagar al menos la reserva con
+   * el QR del banco. Ausente en un backend anterior.
+   */
+  pagoWebObligatorio?: boolean;
+  /**
    * 28-nov: la página recibe inscripciones de un grupo hasta el día de esta
    * clase (las suspendidas no cuentan). null = sin límite, hasta que el grupo
    * termina. Ausente en un backend anterior: no se ofrece el campo.
@@ -1638,6 +1643,19 @@ export interface GrupoPublico {
    * desde la página; null si el instituto no lo ofrece.
    */
   adelantoDesde?: number | null;
+  /** 28-nov: lo que se puede pagar al inscribirse (para el pago obligatorio). */
+  opciones?: OpcionDeGrupo[];
+}
+
+/** Una cosa que se puede pagar al inscribirse en un grupo; el monto es del servidor. */
+export interface OpcionDeGrupo {
+  clave: OpcionPagoClave;
+  titulo: string;
+  detalle: string;
+  monto: number;
+  montoMaximo?: number;
+  ahorro: number | null;
+  planPagoId: number | null;
 }
 
 export interface CursoPublico {
@@ -1657,6 +1675,8 @@ export interface CursoPublico {
   planes?: { id: number; nombre: string; generado: PlanGenerado | null }[];
   /** 28-nov: en false la academia no pide fotos. Ausente en un backend anterior: se piden. */
   pideFotos?: boolean;
+  /** 28-nov: para inscribirse hay que pagar con el QR; sin pago no queda nada. */
+  pagoObligatorio?: boolean;
 }
 
 /** Cómo se cobra desde la página (M5): el QR del banco, el QR fijo o nada en línea. */
@@ -1836,6 +1856,9 @@ export interface PreinscripcionInput {
   planPagoId?: number;
   ci?: string;
   ciExpedido?: string;
+  /** Con el pago obligatorio: qué paga (y cuánto, sólo en el adelanto). */
+  opcion?: OpcionPagoClave;
+  monto?: number;
 }
 
 /** Las 3 fotos (D7), ya achicadas en el navegador. */
@@ -1849,4 +1872,14 @@ export interface PreinscripcionEnviada {
    * misma pantalla (un backend anterior no lo manda).
    */
   token?: string | null;
+  /** Con el pago obligatorio: todavía no hay inscripción; hay que pagar este QR. */
+  requierePago?: boolean;
+  solicitud?: string;
+  qr?: QrDelBanco;
 }
+
+/** `GET /publico/academia/:sub/solicitud/:token`: ¿ya se pagó la inscripción? */
+export type EstadoSolicitud =
+  | { estado: "ESPERANDO"; venceEn: string | null }
+  | { estado: "PAGADO"; monto: number; etiqueta: string; token: string | null }
+  | { estado: "VENCIDO" };
