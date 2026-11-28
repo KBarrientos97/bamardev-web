@@ -6,6 +6,7 @@ import { ctrlEnter, pasarAlSiguiente, useTeclas } from "../../../lib/nutricion/a
 import { fechaLarga, fmtNumero, hoyIso } from "../../../lib/nutricion/calculo";
 import { enfocaSolo, enfocarOMostrar } from "../../../lib/nutricion/foco";
 import { apiSeguimiento, esCodigo, hojaDesactualizada } from "../../../lib/nutricion/seguimiento/api";
+import { esDiaSemana } from "../../../lib/nutricion/seguimiento/dias";
 import {
   concentracion,
   conMgDelEscalon,
@@ -54,6 +55,7 @@ import type { CatalogoSeguimiento, HojaPaciente, Producto, ProductoSeguimiento, 
 import { useAtrasConCambios } from "../../../lib/useAtrasConCambios";
 import { useAvisoAlCerrar } from "../../../lib/useAvisoAlCerrar";
 import { BloqueDosis, BloqueObservaciones, BloquePagos, BloquePeso, BloqueProducto, PieHoja, PreguntaSinPago, QuienYCuando } from "./bloques";
+import { ChipDia } from "./DiaSemana";
 import DialogoTratamientos from "./DialogoTratamientos";
 import HojaGrande from "./HojaGrande";
 
@@ -77,6 +79,7 @@ export default function HojaSemana({
   registro,
   semana,
   pacienteNombre,
+  diaSemana,
   ultimoControl,
   focoPago = false,
   focoProducto = false,
@@ -95,6 +98,11 @@ export default function HojaSemana({
   /** El número de la semana nueva (la que sigue, o la que se tocó para cargar). */
   semana: number;
   pacienteNombre: string;
+  /**
+   * El día que viene (§11): la pastilla «Viene los martes» en la cabecera, para
+   * ir a buscar su vial. Sin día (null, o un backend anterior), la cabecera de siempre.
+   */
+  diaSemana?: number | null;
   ultimoControl: HojaPaciente["ultimoControl"];
   /** «Anotar pago»: abre con el foco en «Medicamento». */
   focoPago?: boolean;
@@ -357,6 +365,15 @@ export default function HojaSemana({
   const errSemana = !esInicial && (intento || form.semana !== antes.semana) ? errores.semana : null;
   const errFecha = intento ? errores.fecha : null;
   const vial = productoSemana.vialMg != null && productoSemana.vialMl != null ? textoPresentacion(productoSemana.vialMg, productoSemana.vialMl) : null;
+  // §11: el día que viene, para ir a buscar su vial (cargar, corregir y el inicial).
+  const conDia = esDiaSemana(diaSemana);
+  // Con el teclado abierto y poco alto, este renglón no va (los errores de abajo y la pastilla del día, sí).
+  const renglonPaciente = (
+    <p className="col-span-2 row-start-2 min-w-0 text-sm text-texto-2 sm:col-span-1 sm:col-start-1 group-data-[teclado=compacto]/hoja:hidden">
+      {pacienteNombre} · {productoSemana.nombre}
+      {vial && <span className="max-sm:hidden">, {vial}</span>}
+    </p>
+  );
   // El vial que falta: el del producto nuevo de esta semana, el de una marca de antes o el del tratamiento.
   const avisoVial = !faltaVial ? null : form.cambioProducto ? (
     <>Completá la presentación del vial del producto nuevo para ver las dosis en {unidad}.</>
@@ -391,7 +408,18 @@ export default function HojaSemana({
         // Mientras guarda, `Esc` y la ✕ esperan (como «Cancelar»): preguntaba «se pierde» y la semana se guardaba igual.
         onClose={otraPregunta || guardando ? sinCerrar : pedirCerrar}
         cabecera={
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4">
+          /*
+            Con el día que viene (§11), una columna más desde `sm`: la pastilla,
+            inmediatamente a la izquierda de la fecha. En el teléfono, en el renglón
+            de abajo, antes del paciente; ese renglón se disuelve desde `sm`
+            (`contents`) para que la pastilla y el paciente vayan cada uno a su lugar
+            de la grilla. Sin día, la cabecera de siempre.
+          */
+          <div
+            className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 ${
+              conDia ? "sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-x-3" : "sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4"
+            }`}
+          >
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 sm:gap-2.5">
               <h2 className="flex items-baseline gap-1 whitespace-nowrap text-[22px] font-bold leading-tight sm:text-[26px] lg:text-[22px]">
                 {esInicial ? (
@@ -437,15 +465,19 @@ export default function HojaSemana({
               max={hoy}
               invalido={!!errFecha}
               onCambiar={(v) => cambiar("fecha", v)}
-              className="col-start-2 row-start-1 justify-self-start sm:row-span-2 sm:justify-self-end"
+              className={`col-start-2 row-start-1 justify-self-start sm:row-span-2 sm:justify-self-end${conDia ? " sm:col-start-3" : ""}`}
             />
-            {/* Con el teclado abierto y poco alto, este renglón no va (los errores de abajo, sí). */}
-            <p className="col-span-2 row-start-2 min-w-0 text-sm text-texto-2 sm:col-span-1 sm:col-start-1 group-data-[teclado=compacto]/hoja:hidden">
-              {pacienteNombre} · {productoSemana.nombre}
-              {vial && <span className="max-sm:hidden">, {vial}</span>}
-            </p>
+            {conDia ? (
+              <div className="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 sm:contents">
+                {/* Siempre a la vista, también con el teclado abierto y poco alto (el renglón del paciente, no). */}
+                <ChipDia dia={diaSemana} className="sm:col-start-2 sm:row-span-2 sm:row-start-1" />
+                {renglonPaciente}
+              </div>
+            ) : (
+              renglonPaciente
+            )}
             {(errSemana || errFecha) && (
-              <p id={errSemana ? `${id}-semana-error` : undefined} role="alert" className="col-span-2 text-[13px] font-semibold text-danger-text">
+              <p id={errSemana ? `${id}-semana-error` : undefined} role="alert" className={`col-span-2 text-[13px] font-semibold text-danger-text${conDia ? " sm:col-span-3" : ""}`}>
                 {errSemana ?? errFecha}
               </p>
             )}

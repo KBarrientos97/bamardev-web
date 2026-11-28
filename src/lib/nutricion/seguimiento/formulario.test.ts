@@ -283,7 +283,7 @@ describe("el cambio de producto de una semana (§7.1)", () => {
 
   it("editar el tratamiento con cambios de producto: el nombre y el vial son los del inicio", () => {
     expect(conMarca.nombre).toBe("Tirze");
-    expect(tratamientoDesde(conMarca)).toEqual({ nombre: "Tirzepatida", vialMg: "15", vialMl: "0,5", unidadDosis: "UI" });
+    expect(tratamientoDesde(conMarca)).toEqual({ nombre: "Tirzepatida", vialMg: "15", vialMl: "0,5", unidadDosis: "UI", diaSemana: "" });
     // Un backend sin marcas: el del tratamiento.
     expect(tratamientoDesde({ ...conMarca, productoInicial: undefined, cambiosDeProducto: undefined })).toMatchObject({ nombre: "Tirze", vialMg: "10" });
   });
@@ -291,7 +291,7 @@ describe("el cambio de producto de una semana (§7.1)", () => {
 
 describe("el tratamiento", () => {
   it("iniciar: el tratamiento con el vial y, si hay, lo escrito del inicial (sin «No se aplicó»)", () => {
-    const t = { nombre: " Tirzepatida ", vialMg: "15", vialMl: "0,5", unidadDosis: "UI" as const };
+    const t = { nombre: " Tirzepatida ", vialMg: "15", vialMl: "0,5", unidadDosis: "UI" as const, diaSemana: "" };
     const ini = { ...semanaVacia(0, HOY), pesoKg: "129", dosis: "8", pagoMedicamento: "480", pagoControl: "150" };
     expect(iniciarAInput(t, ini)).toEqual({
       nombre: "Tirzepatida",
@@ -306,10 +306,30 @@ describe("el tratamiento", () => {
 
   it("editar: sólo lo que cambió; quitar el vial manda las dos en null", () => {
     const antes = tratamientoDesde({ nombre: "Tirzepatida", unidadDosis: "UI", presentacion: { mg: 15, ml: 0.5, mgPorMl: 30, mgPorUi: 0.3 } });
-    expect(antes).toEqual({ nombre: "Tirzepatida", vialMg: "15", vialMl: "0,5", unidadDosis: "UI" });
+    expect(antes).toEqual({ nombre: "Tirzepatida", vialMg: "15", vialMl: "0,5", unidadDosis: "UI", diaSemana: "" });
     expect(cambiosDeTratamiento(antes, { ...antes })).toEqual({});
     expect(cambiosDeTratamiento(antes, { ...antes, unidadDosis: "mg" })).toEqual({ unidadDosis: "mg" });
     expect(cambiosDeTratamiento(antes, { ...antes, vialMg: "", vialMl: "" })).toEqual({ vialMg: null, vialMl: null });
     expect(cambiosDeTratamiento(antes, { ...antes, vialMg: "10" })).toEqual({ vialMg: 10, vialMl: 0.5 });
+  });
+
+  // §11: el día que viene es opcional; ninguno marcado al iniciar.
+  it("el día que viene: al iniciar, sólo si se eligió uno; al editar, el cambio o `null` si se quitó", () => {
+    expect(tratamientoVacio().diaSemana).toBe("");
+    const t = { ...tratamientoVacio(), nombre: "Tirzepatida", unidadDosis: "UI" as const };
+    expect(iniciarAInput(t, semanaVacia(0, HOY))).not.toHaveProperty("diaSemana");
+    expect(iniciarAInput({ ...t, diaSemana: "2" }, semanaVacia(0, HOY))).toEqual({ nombre: "Tirzepatida", unidadDosis: "UI", diaSemana: 2, inicial: { fecha: HOY } });
+
+    const base = { nombre: "Tirzepatida", unidadDosis: "UI" as const, presentacion: null };
+    const conDia = tratamientoDesde({ ...base, diaSemana: 2 });
+    expect(conDia.diaSemana).toBe("2");
+    // Un backend anterior no manda el día (o lo manda fuera de rango): ninguno marcado.
+    expect(tratamientoDesde(base).diaSemana).toBe("");
+    expect(tratamientoDesde({ ...base, diaSemana: 9 }).diaSemana).toBe("");
+    expect(cambiosDeTratamiento(conDia, { ...conDia })).toEqual({});
+    expect(cambiosDeTratamiento(conDia, { ...conDia, diaSemana: "4" })).toEqual({ diaSemana: 4 });
+    expect(cambiosDeTratamiento(conDia, { ...conDia, diaSemana: "" })).toEqual({ diaSemana: null });
+    const sinDia = tratamientoDesde(base);
+    expect(cambiosDeTratamiento(sinDia, { ...sinDia, diaSemana: "6" })).toEqual({ diaSemana: 6 });
   });
 });
