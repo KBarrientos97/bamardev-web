@@ -93,6 +93,12 @@ export interface AjustesAcademia {
    * queden los dos. Ausente en un backend anterior: sólo existe el %.
    */
   adelantoMinimoBs?: number | null;
+  /**
+   * 28-nov: la página recibe inscripciones de un grupo hasta el día de esta
+   * clase (las suspendidas no cuentan). null = sin límite, hasta que el grupo
+   * termina. Ausente en un backend anterior: no se ofrece el campo.
+   */
+  inscripcionWebHastaClase?: number | null;
 }
 
 export interface Franja {
@@ -264,6 +270,11 @@ export interface GrupoResumen {
   cupo: number | null;
   inscripcionAbierta: boolean;
   publicarEnPagina: boolean;
+  /**
+   * El último día en que la página recibe inscripciones por el límite de clases
+   * de Ajustes; null = sin límite. Un backend anterior no lo manda.
+   */
+  webHasta?: string | null;
   estado: EstadoGrupo;
   inscritos: number;
   alDia: number;

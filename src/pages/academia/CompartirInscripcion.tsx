@@ -8,12 +8,14 @@ import type { GrupoParaCompartir } from "../../lib/academia/vista";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, enlaceInscripcion, textoInscripcion } from "../../lib/academia/vista";
 import { copiarTexto } from "../../lib/agenda/recordatorio";
+import { isoDia } from "../../lib/format";
 import { apiPagina } from "../../lib/pagina/apiPagina";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { BotonFila } from "./piezas";
 
-type GrupoCompartible = GrupoParaCompartir & Partial<Pick<GrupoResumen, "inscripcionAbierta" | "publicarEnPagina" | "estado" | "cancelado">>;
+type GrupoCompartible = GrupoParaCompartir &
+  Partial<Pick<GrupoResumen, "inscripcionAbierta" | "publicarEnPagina" | "webHasta" | "estado" | "cancelado">>;
 
 /** Para qué es el enlace: la bajada del diálogo y del despliegue en el panel. */
 const BAJADA = "Para que se preinscriban desde el celular, con sus datos y las 3 fotos";
@@ -174,7 +176,13 @@ function ContenidoCompartir({
       )}
       {grupo && grupo.publicarEnPagina === false && (
         <p role="note" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
-          Este grupo no está publicado en la página: el enlace funciona, pero no aparece en la lista de cursos.
+          Este grupo no está publicado en la página: quien abra el enlace no va a poder inscribirse.
+        </p>
+      )}
+      {grupo?.webHasta && isoDia(new Date()) > grupo.webHasta && (
+        <p role="note" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+          La página recibió inscripciones de este grupo hasta el {fechaCorta(grupo.webHasta)}: quien abra el enlace no va a poder
+          inscribirse.
         </p>
       )}
 

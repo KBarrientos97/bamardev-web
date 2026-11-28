@@ -271,6 +271,27 @@ export default function AjustesAcademia() {
             etiqueta="Recibir inscripciones desde la página"
           />
         </div>
+        {/* 28-nov (Drick): hasta cuándo entra por la web a un grupo ya empezado. */}
+        {a.inscripcionWebHastaClase !== undefined && (
+          <div className="mb-4 mt-3">
+            <Campo
+              label="La página recibe inscripciones hasta la clase número"
+              hint={
+                a.inscripcionWebHastaClase
+                  ? `Cada grupo se puede inscribir desde la página hasta el día de su clase ${a.inscripcionWebHastaClase}; al día siguiente deja de salir. Las clases suspendidas no cuentan y en el mostrador se sigue inscribiendo.`
+                  : "Vacío = sin límite: un grupo sigue saliendo en la página hasta que termina."
+              }
+            >
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="Sin límite"
+                className="sm:max-w-[140px]"
+                {...numero("inscripcionWebHastaClase", 1, 60, true)}
+              />
+            </Campo>
+          </div>
+        )}
         {/* C7: lo que tiene que estar prendido, en cinco lugares, para que la página reciba inscripciones. */}
         <InscripcionEnLinea ajustes={a} cursos={cursos.error ? "error" : cursos.datos} onActivarRecibir={() => void guardar({ preinscripcionActiva: true })} />
       </SeccionAjuste>
