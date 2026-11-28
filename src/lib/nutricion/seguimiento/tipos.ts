@@ -246,6 +246,11 @@ export interface Tratamiento {
   productoInicial?: Producto | null;
   /** Cuántas semanas tienen la marca de cambio de producto. */
   cambiosDeProducto?: number;
+  /**
+   * El día de la semana en que viene (§11): 1 = lunes … 6 = sábado; null = sin
+   * día fijo. Un backend anterior no lo manda (= sin día: nada se dibuja).
+   */
+  diaSemana?: number | null;
   creadoEn: string;
   actualizadoEn: string;
 }
@@ -255,6 +260,8 @@ export interface TratamientoDeLaLista {
   id: number;
   nombre: string;
   unidadDosis: UnidadDosis;
+  /** El día que viene (§11; la lista no lo usa: se busca por nombre y carnet). */
+  diaSemana?: number | null;
   semana: number;
   ultimaFecha: string | null;
   dosisActual: DosisAnotada | null;
@@ -408,6 +415,8 @@ export interface IniciarTratamientoInput {
   /** Las dos o ninguna. */
   vialMg?: number;
   vialMl?: number;
+  /** El día que viene, 1 a 6 (§11). Sin enviar = sin día: viaja sólo si se eligió uno. */
+  diaSemana?: number | null;
   inicial?: Omit<RegistroInput, "semana" | "sinDosis" | "motivoSinDosis" | "producto">;
 }
 
@@ -421,4 +430,6 @@ export interface CambiosTratamiento {
   nota?: string | null;
   estado?: EstadoTratamiento;
   terminadoEn?: string;
+  /** El día que viene, 1 a 6 (§11); `null` lo quita. Sin enviar no se toca. */
+  diaSemana?: number | null;
 }
