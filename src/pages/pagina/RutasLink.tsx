@@ -44,6 +44,7 @@ export default function RutasLink() {
         <Route path="/:subdominio/privacidad" element={<Privacidad />} />
         <Route path="/:subdominio/promo/:slug" element={<PromoPublica />} />
         <Route path="/:subdominio/regalo/:token" element={<VerRegalo />} />
+        <Route path="/:subdominio/inscribirme" element={<InscribirmePagina />} />
         <Route path="/:subdominio/inscribirme/:grupoId" element={<InscribirmePagina />} />
         <Route path="/:subdominio/pagar/:token" element={<PagarPagina />} />
         <Route path="/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />

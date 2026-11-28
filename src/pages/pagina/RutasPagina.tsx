@@ -33,6 +33,7 @@ export default function RutasPaginaPublica() {
         <Route path="/p/:subdominio/privacidad" element={<PrivacidadNegocio />} />
         <Route path="/p/:subdominio/promo/:slug" element={<PromoPublica />} />
         <Route path="/p/:subdominio/regalo/:token" element={<VerRegalo />} />
+        <Route path="/p/:subdominio/inscribirme" element={<InscribirmePagina />} />
         <Route path="/p/:subdominio/inscribirme/:grupoId" element={<InscribirmePagina />} />
         <Route path="/p/:subdominio/pagar/:token" element={<PagarPagina />} />
         <Route path="/p/:subdominio/mi-cuenta" element={<MiCuentaPagina />} />

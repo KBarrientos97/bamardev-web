@@ -9,7 +9,7 @@
  *   link…/<sub>/reservar[/<suc>] la reserva       (= app…/r/<sub>/reservar…)
  *   link…/<sub>/c/<token>        gestión de la cita (= app…/r/<sub>/c/<token>)
  *   link…/<sub>/regalo/<token>   una gift card    (= app…/p/<sub>/regalo/<token>)
- *   link…/<sub>/inscribirme/<id> preinscribirse a un grupo (= app…/p/<sub>/inscribirme/<id>)
+ *   link…/<sub>/inscribirme[/<id>] preinscribirse, con ese grupo elegido o el primero (= app…/p/<sub>/inscribirme[/<id>])
  *   link…/<sub>/mi-cuenta        pagar con el carnet (= app…/p/<sub>/mi-cuenta)
  *   link…/<sub>/mi-ficha         consultar la ficha de nutrición con el carnet (= app…/p/<sub>/mi-ficha)
  *   link…/<sub>/pedido/<token>   seguir un pedido web (= app…/p/<sub>/pedido/<token>)
@@ -83,9 +83,11 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (segundo === "pedido" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/pedido/${tercero}`;
   // La gift card que se comparte (IDEAS/6 #6).
   if (segundo === "regalo" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/regalo/${tercero}`;
-  // La preinscripción a un grupo de una academia (P2): el id es un número.
-  if (segundo === "inscribirme" && tercero !== undefined && /^\d{1,12}$/.test(tercero)) {
-    return `/p/${sub}/inscribirme/${tercero}`;
+  // La preinscripción de una academia (P2). El grupo es opcional, y uno que no
+  // sirve también entra: la pantalla lo lleva al primero disponible (28-nov).
+  if (segundo === "inscribirme") {
+    if (tercero === undefined) return `/p/${sub}/inscribirme`;
+    return RESTO.test(tercero) ? `/p/${sub}/inscribirme/${tercero}` : null;
   }
   // El estado de cuenta de un estudiante (P6), el enlace que va por WhatsApp.
   if (segundo === "pagar" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/pagar/${tercero}`;
@@ -152,7 +154,7 @@ export function destinoLink(pathname: string): DestinoLink {
 export const ROBOTS_LINK = `User-agent: *
 Disallow: /*/reservar
 Disallow: /*/c/
-Disallow: /*/inscribirme/
+Disallow: /*/inscribirme
 Disallow: /*/pagar/
 Disallow: /*/mi-cuenta
 Disallow: /*/mi-ficha
